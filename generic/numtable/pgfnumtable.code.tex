@@ -1,0 +1,371 @@
+%--------------------------------------------
+%
+% Package numtable
+%
+% Provides support to read and work with abstact numeric tables of the
+% form
+%
+% COLUMN1	COLUMN2 COLUMN3
+% 1 		2		3
+% 4			4		552
+% 1e124		0.00001	1.2345e-12
+% ...
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+
+% \pgfnumtableread[OPTIONS] {FILE} to \name
+%
+% This method reads a table from FILE to macro \name.
+%
+% FILE is something like
+% G	Basis	dof	L2	A	Lmax	cgiter	maxlevel	eps
+% 5	5	5	8.31160034e-02	0.00000000e+00	1.80007647e-01	2	2	-1
+% 17	17	17	2.54685628e-02	0.00000000e+00	3.75580565e-02	5	3	-1
+% ...
+%
+% A number format line is also understood:
+% G	Basis	dof	L2	A	Lmax	cgiter	maxlevel	eps
+% $flags int	int	int	sci:8	sci:8	sci:8	int	int	std:8
+% 5	5	5	8.31160034e-02	0.00000000e+00	1.80007647e-01	2	2	-1
+%
+% or a three-column-gnuplot file with 2 comment headers like
+% #Curve 0, 20 points
+% #x y type
+% 0.00000 0.00000 i
+% 0.52632 0.50235 i
+%
+% The table data is stored columnwise in lists and can be accessed
+% with the other methods of this package.
+\def\pgfnumtableread{%
+	\pgfutil@ifnextchar[{%
+		\pgfnumtableread@impl
+	}{%
+		\pgfnumtableread@impl[]%
+	}%
+}
+
+\def\pgfnumtablegetcolumnlist#1\to#2{%
+	\let#2=#1
+}
+
+\def\pgfnumtablegetcolumnbyname#1\of#2\to#3{%
+	\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
+}
+
+\def\pgfnumtablegetcolumnbyindex#1\of#2\to#3{%
+	\pgfplotslistselect#1\of#2\to#3\relax
+	\expandafter\let\expandafter#3\csname\string#2@#3\endcsname
+}
+
+\def\pgfnumtablecopy#1\to#2{%
+	\let#2=#1%
+	\pgfplotslistforeachungrouped#1\as\pgfnumtable@TMP{%
+		\def\pgfnumtable@TMPB{%
+			\expandafter\let\csname\string#2@\pgfnumtable@TMP\endcsname}%
+		\expandafter\pgfnumtable@TMPB\csname\string#1@\pgfnumtable@TMP\endcsname
+	}%
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% IMPLEMENTATION
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\pgfnumtableread@impl[#1]#2 to #3{%
+	\begingroup
+%\pgfplots@message{ATTEMPTING TO READ #2}%
+	\openin1=#2
+	\let\pgfnumtableread@lineno=\c@pgf@counta
+	\let\pgfnumtableread@numcols=\c@pgf@countb
+	\let\pgfnumtableread@curcol=\c@pgf@countc
+	\let\pgfnumtableread@usablelineno=\c@pgf@countd
+	\newif\ifcurline@contains@colnames
+	\newif\ifpgfnumtableread@foundcolnames
+	\newif\ifpgfnumtableread@skipline
+	\pgfnumtableread@lineno=0
+	\pgfnumtableread@usablelineno=0
+	\pgfnumtableread@numcols=0
+	\pgfplotslistnewempty\pgfnumtable@colnames
+	\ifeof1
+		\pgfnumtable@error{Could not read table file '#2'.}%
+	\fi
+	%
+	\pgfnumtableread@loop@over@lines
+	%
+	\ifpgfnumtableread@foundcolnames
+	\else
+		\pgfnumtableread@create@column@names@with@numbers
+	\fi
+	% Well, now write the identified data to #3:
+	%
+	% make all temporaries global:
+	\global\let\pgfnumtable@colnames=\pgfnumtable@colnames
+	\pgfnumtableread@curcol=0
+	\loop
+	\ifnum\pgfnumtableread@curcol<\pgfnumtableread@numcols
+%\pgfplots@message{ASSIGNING COLUMN NO \the\pgfnumtableread@curcol / \the\pgfnumtableread@numcols}%
+		% numtable@TMP := column list content
+		\expandafter\global\expandafter\let\expandafter\pgfnumtable@TMP\csname numtable@col@\the\pgfnumtableread@curcol\endcsname
+		% global := numtable@TMP
+		\expandafter\global\expandafter\let\csname numtable@col@\the\pgfnumtableread@curcol\endcsname=\pgfnumtable@TMP
+		\advance\pgfnumtableread@curcol by1
+	\repeat
+	\closein1
+	\endgroup
+	% Now, we can access the global variables!
+	% copy them to #3.
+	\let#3=\pgfnumtable@colnames
+	\c@pgf@counta=0
+	\pgfplotslistforeachungrouped\pgfnumtable@colnames\as\pgfnumtable@TMP{%
+		\def\pgfnumtable@TMPB{%
+			\expandafter\let\csname\string#3@\pgfnumtable@TMP\endcsname}%
+		\expandafter\pgfnumtable@TMPB\csname numtable@col@\the\c@pgf@counta\endcsname
+		\expandafter\global\expandafter\let\csname numtable@col@\the\c@pgf@counta\endcsname=\pgfutil@empty
+		\advance\c@pgf@counta by1
+	}%
+	\global\let\pgfnumtable@colnames=\pgfutil@empty
+}
+
+\def\pgfnumtableread@loop@over@lines{%
+	\ifeof1
+%\pgfplots@message{EOF}%
+	\else
+		\read1 to\pgfnumtable@LINE
+		\ifeof1
+		\else
+		\expandafter\pgfnumtableread@checkspecial@line\pgfnumtable@LINE\pgfnumtable@EOI
+		\ifpgfnumtableread@skipline
+		\else
+			\ifnum\pgfnumtableread@lineno=0
+				\let\pgfnumtable@firstline=\pgfnumtable@LINE
+			\fi
+			\ifnum\pgfnumtableread@numcols=0
+%\pgfplots@message{READING LINE \the\pgfnumtableread@lineno: no columns found so far; checking for colnames.}%
+				\pgfnumtableread@curcol=0
+				\curline@contains@colnamesfalse
+				\expandafter\pgfnumtableread@impl@checkforcolnames@ITERATE\pgfnumtable@LINE\pgfnumtable@EOI
+				\pgfnumtableread@numcols=\pgfnumtableread@curcol
+				\pgfnumtableread@curcol=0
+				% Create column lists:
+				\pgfnumtableread@create@column@lists
+				%
+				\ifnum\pgfnumtableread@usablelineno=0
+				\ifnum\pgfnumtableread@lineno=2
+				\ifnum\pgfnumtableread@numcols=3
+					% The file started with
+					% #...
+					% #...
+					% X Y i
+					% -> thats a gnuplot file!
+					\curline@contains@colnamesfalse
+				\fi
+				\fi
+				\fi
+				% Now, read the first line.
+				% It contains either
+				% - column names,
+				% - numerical data,
+				% - nothing (comments).
+				\ifcurline@contains@colnames
+					\pgfnumtableread@foundcolnamestrue
+					\pgfnumtableread@curcol=0
+					\expandafter\pgfnumtableread@impl@collectcolnames@ITERATE\pgfnumtable@LINE\pgfnumtable@EOI
+				\else
+					\pgfnumtableread@foundcolnamesfalse
+					\pgfnumtableread@curcol=0
+					% Leave column names empty...
+					\expandafter\pgfnumtableread@impl@nextrow@ITERATE\pgfnumtable@LINE\pgfnumtable@EOI
+				\fi
+			\else
+				\pgfnumtableread@curcol=0
+				\expandafter\pgfnumtableread@impl@nextrow@ITERATE\pgfnumtable@LINE\pgfnumtable@EOI
+			\fi
+			\ifnum\pgfnumtableread@curcol=\pgfnumtableread@numcols
+			\else
+				\pgfnumtable@error{ERROR: the input table had only '\the\pgfnumtableread@numcols' in row '\the\pgfnumtableread@lineno'. Expected '\the\pgfnumtableread@numcols'!? Maybe the input table is corrupted?}%
+			\fi
+			\advance\pgfnumtableread@usablelineno by1
+		\fi
+		\fi
+		\advance\pgfnumtableread@lineno by1
+		\pgfnumtableread@loop@over@lines
+	\fi
+}
+
+\def\pgfnumtableread@checkspecial@line{%
+	\pgfutil@ifnextchar##{%
+		\pgfnumtableread@skiplinetrue
+		\pgfnumtableread@impl@gobble
+	}{%
+		\pgfutil@ifnextchar${%
+			\pgfnumtableread@process@flags@line
+		}{%
+			\pgfutil@ifnextchar\pgfnumtable@EOI{%
+				\pgfnumtableread@skiplinetrue
+				\pgfnumtableread@impl@gobble
+			}{%
+				\pgfutil@ifnextchar\par{%
+					\pgfnumtableread@skiplinetrue
+					\pgfnumtableread@impl@gobble
+				}{%
+					\pgfnumtableread@skiplinefalse
+					\pgfnumtableread@impl@gobble
+				}%
+			}%
+		}%
+	}%
+}
+
+\long\def\pgfnumtableread@process@flags@line$flags {%
+%\pgfplots@message{Ignoring flags line ...}%
+	\pgfnumtableread@skiplinetrue
+	\pgfnumtableread@impl@gobble
+}
+
+\def\pgfnumtableread@create@column@lists{%
+	\loop
+		\ifnum\pgfnumtableread@curcol=\pgfnumtableread@numcols
+		\else
+		\expandafter\pgfplotslistnewempty\csname numtable@col@\the\pgfnumtableread@curcol\endcsname
+		\advance\pgfnumtableread@curcol by1
+	\repeat
+}
+
+\def\pgfnumtableread@create@column@names@with@numbers{%
+	\pgfnumtableread@curcol=0
+	\loop
+		\ifnum\pgfnumtableread@curcol=\pgfnumtableread@numcols
+		\else
+		\expandafter\pgfplotslistpushback\the\pgfnumtableread@curcol\to\pgfnumtable@colnames
+		\advance\pgfnumtableread@curcol by1
+	\repeat
+}
+
+\long\def\pgfnumtableread@impl@gobble#1\pgfnumtable@EOI{}%
+
+\def\pgfnumtable@EOI{\pgfnumtable@EOI}%
+
+
+\def\pgfnumtableread@impl@nextrow@ITERATE{%
+	\pgfutil@ifnextchar\pgfnumtable@EOI{%
+		\pgfnumtableread@impl@gobble
+	}{%
+		\pgfnumtableread@impl@nextrow@NEXT
+	}%
+}
+\long\def\pgfnumtableread@impl@nextrow@NEXT#1 {%
+%\pgfplots@message{Inserting '#1' at (\the\pgfnumtableread@lineno, \the\pgfnumtableread@curcol).}%
+	\def\pgfnumtableread@TMP{\pgfplotslistpushback#1\to}%
+	\expandafter\pgfnumtableread@TMP\csname numtable@col@\the\pgfnumtableread@curcol\endcsname
+	\advance\pgfnumtableread@curcol by1
+	\pgfnumtableread@impl@nextrow@ITERATE
+}
+
+
+
+\def\pgfnumtableread@impl@collectcolnames@ITERATE{%
+	\pgfutil@ifnextchar\pgfnumtable@EOI{%
+		\pgfnumtableread@impl@gobble
+	}{%
+		\pgfnumtableread@impl@collectcolnames@NEXT
+	}%
+}
+\long\def\pgfnumtableread@impl@collectcolnames@NEXT#1 {%
+%\pgfplots@message{Got column name no \the\pgfnumtableread@curcol\ as '#1'}%
+	\advance\pgfnumtableread@curcol by1
+	\pgfplotslistpushback#1\to\pgfnumtable@colnames
+	\pgfnumtableread@impl@collectcolnames@ITERATE
+}
+
+
+
+
+\def\pgfnumtableread@impl@checkforcolnames@ITERATE{%
+	\pgfutil@ifnextchar\pgfnumtable@EOI{%
+		\pgfnumtableread@impl@gobble
+	}{%
+		\pgfnumtableread@impl@checkforcolnames@NEXT
+	}%
+}
+
+
+\long\def\pgfnumtableread@impl@checkforcolnames@NEXT#1 {%
+	\advance\pgfnumtableread@curcol by1
+%\pgfplots@message{Checking whether '#1' is a column name or numerical data...}%
+	\pgfnumtableread@isnumber@ITERATE#1\pgfnumtable@EOI
+	%--------------------------------------------------
+	% do not break! the method needs to count the number of columns.
+	% \ifcurline@contains@colnames
+	% 	% break loop.
+	% 	\def\pgfnumtableread@next{\pgfnumtableread@impl@gobble}%
+	% \else
+	% 	\def\pgfnumtableread@next{\pgfnumtableread@impl@checkforcolnames@ITERATE}%
+	% \fi
+	% \pgfnumtableread@next
+	%-------------------------------------------------- 
+	\pgfnumtableread@impl@checkforcolnames@ITERATE
+}
+
+\def\pgfnumtableread@isnumber@ITERATE#1{%
+	\def\pgfnumtableread@CURTOK{#1}%
+	\ifx\pgfnumtableread@CURTOK\pgfnumtable@EOI
+		\def\pgfnumtableread@NEXT{\pgfnumtableread@impl@gobble}%
+	\else
+		\def\pgfnumtableread@NEXT{\pgfnumtableread@isnumber@ITERATE}%
+		\ifx\pgfnumtableread@CURTOK+
+		\else
+		\ifx\pgfnumtableread@CURTOK-
+		\else
+		\ifx\pgfnumtableread@CURTOK0
+		\else
+		\ifx\pgfnumtableread@CURTOK1
+		\else
+		\ifx\pgfnumtableread@CURTOK2
+		\else
+		\ifx\pgfnumtableread@CURTOK3
+		\else
+		\ifx\pgfnumtableread@CURTOK4
+		\else
+		\ifx\pgfnumtableread@CURTOK5
+		\else
+		\ifx\pgfnumtableread@CURTOK6
+		\else
+		\ifx\pgfnumtableread@CURTOK7
+		\else
+		\ifx\pgfnumtableread@CURTOK8
+		\else
+		\ifx\pgfnumtableread@CURTOK9
+		\else
+		\ifx\pgfnumtableread@CURTOK e
+		\else
+		\ifx\pgfnumtableread@CURTOK E
+		\else
+		\ifx\pgfnumtableread@CURTOK.
+		\else
+			% it's no number, so it is a column name.
+			\curline@contains@colnamestrue
+			\def\pgfnumtableread@NEXT{\pgfnumtableread@impl@gobble}%
+		\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+	\fi
+	\pgfnumtableread@NEXT
+}
+
+\def\pgfnumtable@error#1{\PackageError{numtable}{#1}{Please refer to the manual for further information.}}%
+\endinput

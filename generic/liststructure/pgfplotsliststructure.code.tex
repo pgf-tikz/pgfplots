@@ -1,0 +1,208 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a helper package with an elementary list datastructure.
+%
+% Its implementation is based on Knuth's list macros in "The TeXbook".
+%
+% The following macros are supplied:
+%
+% \pgfplotslistnewempty
+% \pgfplotslistnew
+% \pgfplotslistcopy
+% \pgfplotslistpopfront
+% \pgfplotslistpushback
+% \pgfplotslistpushfront
+% \pgfplotslistsize
+% \pgfplotslistselect
+% \pgfplotslistcheckempty
+% \pgfplotslistforeach
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newtoks\pgfplotslist@TOK@a
+\newtoks\pgfplotslist@TOK@b
+\newif\ifpgfplotslistempty
+
+
+\newif\ifpgfplots@loop@CONTINUE
+
+% Creates a new, empty list.
+\long\def\pgfplotslistnewempty#1{\let#1=\pgfutil@empty}
+
+% Creates a new list with an abirtrary number of elements.
+% Arguments:
+% #1: the list's name (a macro name)
+% #2: the elements in the form 
+%     first\\second\\third\\ ...\\
+%     like in tabular with one column.
+%
+% Example:
+% \pgfplotslistnew\foolist{First Element\\Second Element\\Third Element\\}
+%
+% WARNING: do NOT forget the final '\\'!
+\long\def\pgfplotslistnew#1#2{%
+	\pgfplotslistnewempty{#1}%
+	\long\def\pgfplotslistnew@impl@rest{#2}%
+	\loop
+	\ifx\pgfplotslistnew@impl@rest\pgfutil@empty
+		\pgfplots@loop@CONTINUEfalse
+	\else
+		\pgfplots@loop@CONTINUEtrue
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\expandafter\pgfplotslistnew@impl\pgfplotslistnew@impl@rest\tolist#1\relax
+	\repeat
+}
+
+% Copies list #1 to list #2.
+\def\pgfplotslistcopy#1\to#2{\let#2=#1}
+
+
+% helper macro for \pgfplotslistnew
+\long\def\pgfplotslistnew@impl#1\\#2\tolist#3{%
+	\pgfplotslistpushback#1\to#3\relax%
+	\def\pgfplotslistnew@impl@rest{#2}%
+}
+
+
+% #1: the item to prepend
+% #2: the list as macro name
+% Example:
+% \pgfplotslistpushfront Next first Element\to\foolist
+\long\def\pgfplotslistpushfront#1\to#2{%
+	\pgfplotslist@TOK@a={\pgfplotslist@sep{#1}}%
+	\pgfplotslist@TOK@b=\expandafter{#2}%
+  	\edef#2{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+}
+
+% #1: the item to append
+% #2: the list as macro name
+% Example:
+% \pgfplotslistpushback Next last element\to\foolist
+\long\def\pgfplotslistpushback#1\to#2{%
+	\pgfplotslist@TOK@a={\pgfplotslist@sep{#1}}%
+	\pgfplotslist@TOK@b=\expandafter{#2}%
+ 	\edef#2{\the\pgfplotslist@TOK@b\the\pgfplotslist@TOK@a}%
+}
+
+% Concatenates two lists #2 and #3 into #1
+% Example:
+% \pgfplotslistconcat\result=\foolist&\bar
+\long\def\pgfplotslistconcat#1=#2&#3{%
+	\pgfplotslist@TOK@a=\expandafter{#2}%
+	\pgfplotslist@TOK@b=\expandafter{#3}%
+	\edef#1{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+}
+
+% implements #2 := pop_front(#1)
+% Example:
+% \pgfplotslistpopfront\foolist\to\poppedfirstelem
+\long\def\pgfplotslistpopfront#1\to#2{%
+	\pgfplotslistcheckempty#1\relax
+	\ifpgfplotslistempty
+		\pgfplots@error{ERROR: \string\pgfplotslistpopfront\ from \string#1\ although list is EMPTY}%
+	\else
+		\expandafter\pgfplotslistpopfront@impl#1\pgfplotslistpopfront@macronames#1#2%
+	\fi
+}
+
+% implementation helper for listpopfront
+\long\def\pgfplotslistpopfront@impl\pgfplotslist@sep#1#2\pgfplotslistpopfront@macronames#3#4{%
+	\def#4{#1}%
+	\def#3{#2}%
+}
+
+% Counts the number of elements in list #1, storing it into the count
+% register #2.
+% Example:
+% \pgfplotslistsize\foo\to{\count0}%
+% \the\count0
+\long\def\pgfplotslistsize#1\to#2{%
+	#2=0%
+	\long\def\pgfplotslist@sep##1{\advance#2 by 1 }%
+	#1%
+}
+
+% Returns the #1th element of list #2 into macro #3
+% Arguments:
+% #1: a count 0,...,N-1 where N is the list size.
+%     You may specify a number of a count.
+% #2: a list
+% #3: a macro name
+% Example:
+%   Element 0:
+%   \pgfplotslistselect0\of\foo\to\elem
+%   \elem
+%   Element \count1:
+%   \pgfplotslistselect\count1\of\foo\to\elem
+\long\def\pgfplotslistselect#1\of#2\to#3{%
+	\def#3{\pgfplots@error{The requested item #1 of \string#2 is OUT OF RANGE.}}%
+	\begingroup
+	\count0=#1\relax
+ 	\long\def\pgfplotslist@sep##1{%
+		\advance\count0-1
+		\ifnum\count0=-1
+			\global\def\pgfplotslistselect@tmp{\def#3{##1}}%
+			% the command \pgfplotslistselect@tmp will be expander AFTER
+			% '\endgroup'
+			\aftergroup\pgfplotslistselect@tmp%
+		\fi%
+	}%
+	#2%
+	\endgroup
+}
+
+% Sets the boolean \ifpgfplotslistempty depending on whether list #1 is empty
+% or not.
+% Example:
+%
+% \pgfplotslistcheckempty\foolist
+% \ifpgfplotslistempty
+%    List foolist is empty!
+% \else
+%    List is not empty.
+% \fi
+\def\pgfplotslistcheckempty#1{%
+	\ifx#1\pgfutil@empty
+		\pgfplotslistemptytrue
+	\else
+		\pgfplotslistemptyfalse
+	\fi
+}
+
+
+% Iterates through each list element, names it #2 and calls code #3.
+% Example:
+% \pgfplotslistnew\foolist{Eins\\Zwei\\Drei\\}%
+% \pgfplotslistforeach\foolist\as\foo{Element \foo\par}%
+% results in
+%  Element Eins
+%  Element Zwei
+%  Element Drei
+\long\def\pgfplotslistforeach#1\as#2#3{{%
+	\long\def\pgfplotslist@sep##1{\def#2{##1}#3}%
+	#1\relax
+}}
+
+% The same but without groups around #3.
+\long\def\pgfplotslistforeachungrouped#1\as#2#3{%
+	\long\def\pgfplotslist@sep##1{\def#2{##1}#3}%
+	#1\relax
+}

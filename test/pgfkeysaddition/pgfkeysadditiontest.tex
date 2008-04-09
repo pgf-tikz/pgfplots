@@ -1,0 +1,275 @@
+\documentclass[a4paper]{article}
+
+\usepackage[intlimits]{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{ifpdf}
+
+\ifpdf
+\else
+\def\pgfsysdriver{pgfsys-dvipdfm.def}
+\fi
+\usepackage{tikz}
+\usepackage{pgfkeysaddition}
+
+\parindent=0pt
+
+\def\testsection#1{\message{---------- STARTING TEST SECTION '#1'}\section{#1}}
+\def\testsubsection#1{\message{-------STARTING TEST SUBSECTION '#1'}\subsection{#1}}
+\def\testsubsubsection#1{\message{------STARTING TEST SUBSUBSECTION '#1'}\subsubsection{#1}}
+
+\author{Christian Feuers\"anger}
+\title{Test cases for pgfkeysaddition.sty}
+
+\begin{document}
+\maketitle
+
+\pgfkeys{/my group/option1/.code={\message{/my group/option1 set to '#1'!}}}
+\pgfkeys{/my group/option2/.code={\message{/my group/option2 set to '#1'!}}}
+\pgfkeys{/my other group/O1/.code={\message{/my other group/O1 set to '#1'!}}}
+\pgfkeys{/my other group/O2/.code={\message{/my other group/O2 set to '#1'!}}}
+
+\testsection{Testing the `is descendant of -- predicate'}
+\tracingmacros=2\tracingcommands=2
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeyslogfiltered}%
+	{/my group/.cd,option1=value for option1,/my other group/O1=value for O1}%
+\tracingmacros=0\tracingcommands=0
+
+\testsubsection{Testing it for a tikz style}
+\tikzstyle{mein style}=[/my group/option1=option1 value in a style!,/tikz/line width=1pt]
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeyslogfiltered}%
+	{/my group/.cd,option1=value for option1,/my other group/O1=value for O1,/tikz/mein style}%
+
+
+\testsection{Testing filtering for errors}
+\testsubsection{unknown handler in /my group/}
+{
+\pgfkeys{/my group/.unknown/.code=\message{'#1' is unknown and the handler /my group/.unknown has been invoked!}}%
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeyslogfiltered}%
+	{/my group/.cd,option1=value for option1,option42=42}%
+}
+
+\testsubsection{unknown handler in /handlers/}
+{
+\pgfkeys{/handlers/.unknown/.code=\message{'#1' is unknown and the handler /handlers/.unknown has been invoked!}}%
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeyslogfiltered}%
+	{/my group/.cd,option1=value for option1,option42=42}%
+}
+
+\testsubsection{Check whether error messages come through}
+{
+\pgfkeys{/errors/mein fehler/.code=\message{My error message came through. That's good!}}%
+\pgfkeys{/handlers/.unknown/.code=\pgfkeysalso{/errors/mein fehler=foo}}%
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeyslogfiltered}%
+	{/my group/.cd,option1=value for option1,option42=42}%
+}
+
+
+\testsection{Checking single key selection}
+{
+\pgfkeys{/test/a/.code=\message{'/test/a' is currently running; that's correct.}}%
+\pgfkeys{/test/b/.code=\errmessage{'/test/b' shouldn't run! test failed!}}%
+\pgfkeyssetvalue{/test/c}{Value of 'c'}%
+\pgfkeys{/test/d/.style={/test/a=bar}}%
+
+\testsubsection{command keys}
+\pgfkeysfiltered%
+	{\pgfkeysequals{/test/a}}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5}
+
+\testsubsection{value keys}
+\pgfkeysfiltered%
+	{\pgfkeysequals{/test/c}}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5,/test/c=7}
+
+\testsubsection{handler keys}
+\pgfkeysfiltered%
+	{\pgfkeysequals{/test/d}}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5,/test/d}
+}
+
+
+\testsection{Checking logical combinations}
+{
+\pgfkeys{/test/a/.code=\message{'/test/a' is currently running; that's correct.}}%
+\pgfkeys{/test/b/.code=\errmessage{'/test/b' shouldn't run! test failed!}}%
+\pgfkeys{/test/c/.code=\message{'/test/c' is currently running; that's correct.}}%
+\pgfkeys{/my group/A/.code=\message{'/my group/A' is currently running, that's correct.}}
+
+\testsubsection{NOT}
+\pgfkeysfiltered%
+	{\pgfkeyspredicateNOT{\pgfkeysequals{/test/b}}}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5,/test/c}
+
+\testsubsection{AND}
+\pgfkeysfiltered%
+	{\pgfkeyspredicateAND%
+		{\pgfkeysequals{/test/a}}%
+		{\pgfkeysisdescendantof{/test}}%
+	}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5,/test/c}
+
+\testsubsection{OR}
+\pgfkeysfiltered%
+	{\pgfkeyspredicateOR%
+		{\pgfkeysequals{/test/a}}%
+		{\pgfkeysisdescendantof{/my group}}%
+	}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=4,/test/b=5,/my group/A=value 1}
+}
+
+\testsection{Testing filtered key collection}
+{
+\testsubsection{full keys}
+\def\filtered{}%
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantof{/my group}}%
+	{\pgfkeysappendfilterednamestomacro\filtered}%
+	{/my group/.cd,option1=value for option1,/my other group/O1=value for O1,/my other group/O2=value for O2}%
+\message{filtered = '\filtered'}
+\filtered
+
+\testsubsection{partial keys}
+\def\filtered{}%
+\pgfkeysfiltered%
+	{\pgfkeyspredicateOR
+		{\pgfkeysisdescendantof{/my group}}%
+		{\pgfkeysequals{/my other group/.cd}}%
+	}%
+	{\pgfkeysappendfilterednamestomacro\filtered}%
+	{/my group/.cd,option1=value for option1,/my other group/.cd,O1=value for O1,O2= value for O2}%
+\tracingmacros=2\tracingcommands=2
+\message{filtered = '\filtered'}
+\tracingmacros=0\tracingcommands=0
+\filtered
+
+\testsubsubsection{setting remaining keys}
+\pgfkeys{/my other group/.cd,/utils/exec=\pgfkeysalsofrom\filtered}
+}%
+
+
+\testsection{Testing search paths}
+{
+\pgfkeys{/my search path/.unknown/.code={%
+		\let\searchname=\pgfkeyscurrentname%
+		\pgfkeysalso{%
+			/my group/\searchname/.try=#1,
+			/my other group/\searchname/.lastretry=#1
+		}%
+	}%
+}
+\pgfkeys{/my other group/.unknown/.code=\message{/my other/group/.unknown: called with unknown option '#1'.}}%
+
+\testsubsection{First: no filtering}
+\pgfkeys{/my search path/.cd,option1=value for option1,O1=value for O1,an unknown option=foo}
+
+\testsubsection{Second: with filtering}
+\pgfkeysfiltered%
+	{\pgfkeysisdescendantoftwo{/my group}{/my search path}}%
+	{\pgfkeyslogfiltered}%
+	{/my search path/.cd,option1=value for option1,O1=value for O1,an unknown option=foo}
+}
+
+
+\testsection{Testing pgfkeysalsofiltered}
+{
+\pgfkeys{/my group/.cd,/utils/exec=\pgfkeysalsofiltered
+		{\pgfkeysisdescendantof{/my group}}%
+		{\pgfkeyslogfiltered}%
+		{option1= value for option1,/my other group/O1=value for O1}}
+}
+
+
+\testsection{Testing family handling}
+{
+\testsubsection{testing .is family init:}
+\pgfkeys{/my group/.is family}
+\pgfkeysisfamilyactive{/my group}
+\ifpgfkeysfiltercontinue
+	\errmessage{TEST FAILED: /my group active: TRUE (EXPECTED FALSE)}%
+\else
+	\message{/my group active: FALSE (correct)}%
+\fi
+
+\testsubsection{testing .activate family:}
+\pgfkeys{/my group/.activate family}
+\pgfkeysisfamilyactive{/my group}
+\ifpgfkeysfiltercontinue
+	\message{/my group active: TRUE (correct)}%
+\else
+	\errmessage{TEST FAILED: /my group active: FALSE (EXPECTED: TRUE)}%
+\fi
+
+\testsubsection{testing .deactivate family:}
+\pgfkeys{/my group/.deactivate family}
+\pgfkeysisfamilyactive{/my group}
+\ifpgfkeysfiltercontinue
+	\errmessage{TEST FAILED: /my group active: TRUE (EXPECTED FALSE)}%
+\else
+	\message{/my group active: FALSE (correct)}%
+\fi
+
+\testsubsection{Testing filtering by active family}
+{
+\pgfkeys{/family1/.is family}
+\pgfkeys{/family2/.is family}
+\pgfkeys{/test/a/.code=\message{'/test/a' is currently running; that's correct.}}%
+\pgfkeys{/test/a/.belongs to family=/family1}
+
+\pgfkeys{/test/b/.code=\errmessage{'/test/b' shouldn't run! test failed!}}%
+\pgfkeys{/test/b/.belongs to family=/family2}%
+
+\pgfkeys{/test/c/.code=\errmessage{'/test/c' shouldn't run! test failed! }}%
+\pgfkeys{/test/d/.code=\message{'/test/d' currently running. Ok.}}
+\pgfkeys{/test/d/.belongs to family=/family2}
+
+\testsubsubsection{first: only /test/a should run}%
+\pgfkeys{/family1/.activate family}
+
+\pgfkeysfiltered
+	{\pgfkeyshasactivefamily}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=value for a,/test/b=value for b,/test/c=value for c}
+
+\testsubsubsection{second: no option should run}%
+\pgfkeys{/family1/.deactivate family}
+
+\pgfkeysfiltered
+	{\pgfkeyshasactivefamily}%
+	{\pgfkeyslogfiltered}%
+	{/test/a=value for a,/test/b=value for b,/test/c=value for c}
+
+\testsubsubsection{once more again with pgfkeysalsofamilyoptions}
+\pgfkeysfamilyoptionsone{/family1}{\pgfkeyslogfiltered}
+	{/test/a=value for a,/test/b=value for b,/test/c=value for c}
+
+\testsubsubsection{once more again with 'quick' pgfqkeysalsofamilyoptions}
+\pgfqkeysfamilyoptionsone{/family1}{\pgfkeyslogfiltered}{/test}
+	{a=value for a,b=value for b,c=value for c}
+s
+
+\testsubsubsection{once more again with dynamic family list detection pgfqkeysalsofamilyoptions}
+\tracingmacros=2\tracingcommands=2
+\pgfqkeysfamilyoptions{/family1,/family2}{\pgfkeyslogfiltered}{/test}
+	{a=value for a,c=value for c,d=value for d}
+\tracingmacros=0\tracingcommands=0
+}}
+
+
+\end{document}

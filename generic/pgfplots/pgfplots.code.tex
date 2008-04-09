@@ -1,0 +1,4086 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\input pgfplotsliststructure.code.tex
+\input pgfnumtable.code.tex
+\input pgfkeysfiltered.pgfplots.code.tex
+\input pgfmathfloat.pgfplots.code.tex
+
+% FIXME: reduce number of variables!
+\newtoks\pgfplots@toka
+
+\newcount\axisticknum
+\newcount\pgfplots@tickposnum
+\newcount\pgfplots@xmode
+\newcount\pgfplots@ymode
+\newcount\pgfplots@numplots
+\newdimen\pgfplots@xcoordminTEX
+\newdimen\pgfplots@xcoordmaxTEX
+\newdimen\pgfplots@ycoordminTEX
+\newdimen\pgfplots@ycoordmaxTEX
+\newdimen\pgfplots@tmpa
+\newdimen\pgfplots@tmpb
+\newif\ifpgfplots@isuniformtick
+\newif\ifpgfplots@addplot@table@from@macro
+\newif\ifpgfplots@clip@limits
+\newif\ifpgfplots@enlargelimits
+\newif\ifpgfplots@enlargelimits@rel@thresh
+\newif\ifpgfplots@enlargelimits@auto
+\newif\ifpgfplots@xminorticks
+\newif\ifpgfplots@xmajorticks
+\newif\ifpgfplots@yminorticks
+\newif\ifpgfplots@ymajorticks
+\newif\ifpgfplots@xminorgrids
+\newif\ifpgfplots@xmajorgrids
+\newif\ifpgfplots@yminorgrids
+\newif\ifpgfplots@ymajorgrids
+\newif\ifpgfplots@scaled@ticks
+\newif\ifpgfplots@identify@log@minor@tick@pos
+\newif\ifpgfplots@disablelogfilter
+\newif\ifpgfplots@disabledatascaling
+\newif\ifpgfplots@hide
+\newif\ifpgfplots@is@old@list@format
+\newif\ifpgfplots@scale@only@axis
+\let\pgfplots@TMP=\pgfutil@empty
+\let\pgfplots@TMPB=\pgfutil@empty
+\let\pgfplots@TMPC=\pgfutil@empty
+\let\pgfnodepartimagebox=\pgfnodeparttextbox
+
+\def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
+\def\pgfplots@warning#1{\pgfplots@message{#1}}%
+\def\pgfplots@message#1{%
+	\edef\pgfplots@message@@{#1}%
+	\expandafter\write\expandafter-\expandafter1\expandafter{\pgfplots@message@@}%
+}%
+
+\def\pgfplots@leftover{}
+\def\pgfplots@rightover{}
+\def\axisdefaultwidth{240pt}
+\def\axisdefaultheight{207pt}
+
+
+% Assigns list contents #2 to a list macro #1.
+%
+% The list contents may be provided in one of two formats:
+% a) in the (deprecated) list format 'first\\second\\thirst\\'
+% or
+% b) in the PGF foreach list format 'first,second,third'.
+\def\pgfplots@assign@list#1#2{%
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+		\pgfplotslistnewempty#1%
+	\else
+		\pgfplots@check@backwards@compatible@list@format #2\\\pgfplots@EOI
+		\ifpgfplots@is@old@list@format
+			\pgfplotslistnew#1{#2}%
+		\else
+			\pgfplots@foreach@to@list{#2}\to#1
+		\fi
+	\fi
+}%
+
+\def\pgfplots@EOI{\pgfplots@EOI}%
+
+% Sets the boolean \ifpgfplots@is@old@list@format  to true if and only
+% if the input is a list in the format '{first\\second\\}'.
+%
+% This format is deprecated, but is still provided for backwards
+% compatibility.
+%
+% Usage:
+% \pgfplots@check@backwards@compatible@list@format <argument>'\\'\pgfplots@EOI
+% you NEED to append '\\\pgfplots@EOI' at the end.
+\def\pgfplots@check@backwards@compatible@list@format#1\\#2\pgfplots@EOI{%
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+		\pgfplots@is@old@list@formatfalse
+	\else
+		\pgfplots@is@old@list@formattrue
+	\fi
+}%
+
+
+
+% Creates a named plot cycle list.
+%
+% #1:  the name of the final list. Can be used in 'cycle list name'
+% #2:  the list entries. You can use either a comma-separated list or
+%      a '\\'-terminated list. The latter case also requires '\\'
+%      AFTER the last entry.
+\def\pgfcreateplotcyclelist#1#2{\pgfplots@assign@list#1{#2}}
+
+\pgfcreateplotcyclelist{\blackwhiteplotspeclist}{%
+	mark options={fill=gray},mark=*\\%
+	mark options={fill=gray},mark=square*\\%
+	mark options={fill=gray},mark=otimes*\\%
+	mark=star\\%
+	mark options={fill=gray},mark=diamond*\\%
+	densely dashed,mark options={solid,fill=gray},mark=*\\%
+	densely dashed,mark options={solid,fill=gray},mark=square*\\%
+	densely dashed,mark options={solid,fill=gray},mark=otimes*\\%
+	densely dashed,mark options={solid},mark=star\\%
+	densely dashed,mark options={solid,fill=gray},mark=diamond*\\%
+}
+\pgfcreateplotcyclelist{\coloredplotspeclist}{%
+	blue,mark options={fill=blue!80!black},mark=*\\%
+	red,mark options={fill=red!80!black},mark=square*\\%
+	brown!60!black,mark options={fill=brown!80!black},mark=otimes*\\%
+	black,mark=star\\%
+	blue,mark options={fill=blue!80!black},mark=diamond*\\%
+	red,densely dashed,mark options={solid,fill=red!80!black},mark=*\\%
+	brown!60!black,densely dashed,mark options={solid,fill=brown!80!black},mark=square*\\%
+	black,densely dashed,mark options={solid,fill=gray},mark=otimes*\\%
+	blue,densely dashed,mark=star,mark options=solid\\%
+	red,densely dashed,mark options={solid,fill=red!80!black},mark=diamond*\\%
+}
+
+\pgfkeys{%
+	/pgfplots/search path for tikz/.unknown/.code={%
+		\let\searchname=\pgfkeyscurrentname%
+		\pgfkeysalso{%
+			/tikz/\searchname/.try=#1,
+			/pgfplots/\searchname/.lastretry=#1
+		}%
+	},%
+	/pgfplots/.is family,
+	/pgfplots/scale/.is family,
+	/pgfplots/legend/.is family,
+	/pgfplots/tick/.is family,
+	/pgfplots/descriptions/.is family,
+	/pgfplots/style commands/.is family,
+	/pgfplots/naming commands/.is family,
+	/tikz/every axis/.style={},
+	/tikz/every axis/.belongs to family=/pgfplots,
+	/tikz/every semilogx axis/.style={},
+	/tikz/every semilogx axis/.belongs to family=/pgfplots,
+	/tikz/every semilogy axis/.style={},
+	/tikz/every semilogy axis/.belongs to family=/pgfplots,
+	/tikz/every loglog axis/.style={},
+	/tikz/every loglog axis/.belongs to family=/pgfplots,
+	/tikz/every linear axis/.style={},
+	/tikz/every linear axis/.belongs to family=/pgfplots,
+	/tikz/every axis plot/.style={},
+	/tikz/every axis plot/.belongs to family=/pgfplots,
+	/tikz/every axis label/.style={},
+	/tikz/every axis label/.belongs to family=/pgfplots/descriptions,
+	/tikz/every axis x label/.style={at={(0.5,0)},below,yshift=-15pt},
+	/tikz/every axis x label/.belongs to family=/pgfplots/descriptions,
+	/tikz/every axis y label/.style={at={(0,0.5)},xshift=-35pt,rotate=90},
+	/tikz/every axis y label/.belongs to family=/pgfplots/descriptions,
+	/tikz/every axis title/.style={at={(0.5,1)},above,yshift=6pt},
+	/tikz/every axis title/.belongs to family=/pgfplots/descriptions,
+	/tikz/every tick/.style={very thin,gray},
+	/tikz/every tick/.belongs to family=/pgfplots/tick,
+	/tikz/every minor tick/.style={},
+	/tikz/every minor tick/.belongs to family=/pgfplots/tick,
+	/tikz/every major tick/.style={},
+	/tikz/every major tick/.belongs to family=/pgfplots/tick,
+	/tikz/every axis grid/.style={style=help lines},
+	/tikz/every axis grid/.belongs to family=/pgfplots/tick,
+	/tikz/every minor grid/.style={},
+	/tikz/every minor grid/.belongs to family=/pgfplots/tick,
+	/tikz/every major grid/.style={},
+	/tikz/every major grid/.belongs to family=/pgfplots/tick,
+	/tikz/every tick label/.style={},
+	/tikz/every tick label/.belongs to family=/pgfplots/tick,
+	/tikz/every x tick label/.style={},
+	/tikz/every x tick label/.belongs to family=/pgfplots/tick,
+	/tikz/every extra x tick/.style={},
+	/tikz/every extra x tick/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra x tick style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/extra x tick style/.code={%
+		\pgfkeysalso{/tikz/every extra x tick/.append style={#1}},
+	},
+	/tikz/every x tick scale label/.style={at={(1,0)},yshift=-2em,left,inner sep=0pt},
+	/tikz/every x tick scale label/.belongs to family=/pgfplots/tick,
+	/tikz/every y tick label/.style={/tikz/auto y tick label/.try},
+	/tikz/every y tick label/.belongs to family=/pgfplots/tick,
+	/tikz/every extra y tick/.style={},
+	/tikz/every extra y tick/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra y tick style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/extra y tick style/.code={%
+		\pgfkeysalso{/tikz/every extra y tick/.append style={#1}},
+	},
+	/tikz/every y tick scale label/.style={at={(0,1)},above right,inner sep=0pt,yshift=0.3em},
+	/tikz/every y tick scale label/.belongs to family=/pgfplots/tick,
+	/tikz/every axis legend/.style={%
+		cells={anchor=center},
+		inner xsep=3pt,inner ysep=2pt,nodes={inner sep=2pt,text depth=0.15em},
+		anchor=north east,%
+		shape=rectangle,%
+		fill=white,%
+		draw=black,
+		at={(0.98,0.98)},
+	},
+	/tikz/every axis legend/.belongs to family=/pgfplots/legend,
+% tick options:
+	/pgfplots/xticklabel/.store in=	\pgfplots@xticklabel,
+	/pgfplots/xticklabel/.belongs to family=/pgfplots/tick,
+	/pgfplots/xticklabel=,
+	/pgfplots/xticklabels/.belongs to family=/pgfplots/tick,
+	/pgfplots/xticklabels/.code={%
+		\pgfplots@foreach@to@list{#1}\to\pgfplots@xticklabels
+		\let\pgfplots@xticklabel=\pgfplots@user@ticklabel@list@x
+	},
+	/pgfplots/yticklabels/.belongs to family=/pgfplots/tick,
+	/pgfplots/yticklabels/.code={%
+		\pgfplots@foreach@to@list{#1}\to\pgfplots@yticklabels
+		\let\pgfplots@yticklabel=\pgfplots@user@ticklabel@list@y
+	},
+	/pgfplots/extra x tick label/.store in=	\pgfplots@extra@xticklabel,
+	/pgfplots/extra x tick label/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra x tick label=,
+	/pgfplots/extra x tick labels/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra x tick labels/.code={%
+		\pgfplots@foreach@to@list{#1}\to\pgfplots@extra@xticklabels
+		\let\pgfplots@extra@xticklabel=\pgfplots@user@extra@ticklabel@list@x
+	},
+	/pgfplots/extra y tick labels/.code={%
+		\pgfplots@foreach@to@list{#1}\to\pgfplots@extra@yticklabels
+		\let\pgfplots@extra@yticklabel=\pgfplots@user@extra@ticklabel@list@y
+	},
+	/pgfplots/xtick/.store in=			\pgfplots@xtick,
+	/pgfplots/xtick/.belongs to family=/pgfplots/tick,
+	/pgfplots/xtick=,
+	/pgfplots/extra x ticks/.store in=\pgfplots@extra@xtick,
+	/pgfplots/extra x ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra x ticks=,
+	/pgfplots/xtickten/.store in=		\pgfplots@xtickten,
+	/pgfplots/xtickten/.belongs to family=/pgfplots/tick,
+	/pgfplots/xtickten=,
+	/pgfplots/yticklabel/.store in=	\pgfplots@yticklabel,
+	/pgfplots/yticklabel/.belongs to family=/pgfplots/tick,
+	/pgfplots/yticklabel=,
+	/pgfplots/extra y tick label/.store in=	\pgfplots@extra@yticklabel,
+	/pgfplots/extra y tick label/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra y tick label=,
+	/pgfplots/ytick/.store in=			\pgfplots@ytick,
+	/pgfplots/ytick/.belongs to family=/pgfplots/tick,
+	/pgfplots/ytick=,
+	/pgfplots/extra y ticks/.store in=\pgfplots@extra@ytick,
+	/pgfplots/extra y ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/extra y ticks=,
+	/pgfplots/ytickten/.store in=		\pgfplots@ytickten,
+	/pgfplots/ytickten/.belongs to family=/pgfplots/tick,
+	/pgfplots/ytickten=,
+	/pgfplots/tick scale label code/.code={$\cdot 10^{#1}$},
+	/pgfplots/tick scale label code/.belongs to family=/pgfplots/tick,
+	/pgfplots/scaled ticks/.is if=pgfplots@scaled@ticks,
+	/pgfplots/scaled ticks/.default=false,
+	/pgfplots/scaled ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/scaled ticks=true,
+	/pgfplots/scale ticks above exponent/.store in=	\pgfplots@scale@ticks@above@exponent,
+	/pgfplots/scale ticks above exponent/.belongs to family=/pgfplots/tick,
+	/pgfplots/scale ticks above exponent=3,
+	/pgfplots/scale ticks below exponent/.store in=	\pgfplots@scale@ticks@below@exponent,
+	/pgfplots/scale ticks below exponent/.belongs to family=/pgfplots/tick,
+	/pgfplots/scale ticks below exponent=-1,
+	/pgfplots/subtickwidth/.store in=	\pgfplots@subtickwidth,
+	/pgfplots/subtickwidth/.belongs to family=/pgfplots/tick,
+	/pgfplots/subtickwidth=0.1cm,
+	/pgfplots/tickwidth/.store in=		\pgfplots@tickwidth,
+	/pgfplots/tickwidth/.belongs to family=/pgfplots/tick,
+	/pgfplots/tickwidth=0.15cm,
+	/pgfplots/minor tick length/.estore in=\pgfplots@subtickwidth,
+	/pgfplots/minor tick length/.belongs to family=/pgfplots/tick,
+	/pgfplots/major tick length/.estore in=\pgfplots@tickwidth,
+	/pgfplots/major tick length/.belongs to family=/pgfplots/tick,
+	/pgfplots/max space between ticks/.estore in=\axisdefaulttickwidth,
+	/pgfplots/max space between ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/max space between ticks=35,% the maximum space between adjacent ticks (in pt, but don't specify the unit 'pt')
+	/pgfplots/try min ticks/.estore in=			\axisdefaulttryminticks,
+	/pgfplots/try min ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/try min ticks=4,
+	/pgfplots/try min ticks log/.estore in=			\pgfplots@default@try@minticks@log,
+	/pgfplots/try min ticks log/.belongs to family=/pgfplots/tick,
+	/pgfplots/try min ticks log=3,
+	/pgfplots/log plot exponent style/.style={/pgf/number format/fixed,/pgf/number format/precision=2},
+	/pgfplots/log plot exponent style/.belongs to family=/pgfplots/tick,
+	/pgfplots/log identify minor tick positions/.is if=pgfplots@identify@log@minor@tick@pos,
+	/pgfplots/log identify minor tick positions/.belongs to family=/pgfplots/tick,
+	/pgfplots/log identify minor tick positions=true,
+	/pgfplots/log number format code/.code={{%
+		\pgfmathlogtologten@{#1}%
+		\ifpgfplots@identify@log@minor@tick@pos
+			\expandafter\pgfplots@is@log@tick@a@minor@tick@pos\pgfmathresult\relax%
+		\else
+			\pgfmathcomparisonfalse
+		\fi
+		\ifpgfmathcomparison
+			\pgfmathprintnumber[sci]{\pgfmathresult}%
+		\else
+			\pgfkeysalso{/pgfplots/log plot exponent style,/pgfplots/log base 10 number format code=\pgfmathresult}%
+		\fi
+	}},
+	/pgfplots/log number format code/.belongs to family=/pgfplots/tick,
+	/pgfplots/log base 10 number format code/.code={$10^{\pgfmathprintnumber{#1}}$},
+	/pgfplots/log base 10 number format code/.belongs to family=/pgfplots/tick,
+% sets \pgfplots@tickposnum to
+% left=0
+% right=1
+% both=2
+	/pgfplots/tickpos/.is choice,
+	/pgfplots/tickpos/.belongs to family=/pgfplots/tick,
+	/pgfplots/tickpos/left/.code	={\pgfplots@tickposnum=0},
+	/pgfplots/tickpos/left/.belongs to family=/pgfplots/tick,
+	/pgfplots/tickpos/right/.code	={\pgfplots@tickposnum=1},
+	/pgfplots/tickpos/right/.belongs to family=/pgfplots/tick,
+	/pgfplots/tickpos/both/.code	={\pgfplots@tickposnum=2},
+	/pgfplots/tickpos/both/.belongs to family=/pgfplots/tick,
+	/pgfplots/tickpos=both,
+% 'axis' options:
+	/pgfplots/anchor/.belongs to family=/pgfplots,
+	/pgfplots/anchor/.store in=			\pgfplots@anchorname,
+	/pgfplots/anchor=south west,
+% tick options:
+	/pgfplots/ticks/.is choice,
+	/pgfplots/ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/ticks/none/.belongs to family=/pgfplots/tick,
+	/pgfplots/ticks/none/.code={%
+		\pgfplots@xminorticksfalse
+		\pgfplots@yminorticksfalse
+		\pgfplots@xmajorticksfalse
+		\pgfplots@ymajorticksfalse
+	},
+	/pgfplots/ticks/major/.belongs to family=/pgfplots/tick,
+	/pgfplots/ticks/major/.code={%
+		\pgfplots@xminorticksfalse
+		\pgfplots@yminorticksfalse
+		\pgfplots@xmajortickstrue
+		\pgfplots@ymajortickstrue
+	},
+	/pgfplots/ticks/minor/.belongs to family=/pgfplots/tick,
+	/pgfplots/ticks/minor/.code={%
+		\pgfplots@xminortickstrue
+		\pgfplots@yminortickstrue
+		\pgfplots@xmajorticksfalse
+		\pgfplots@ymajorticksfalse
+	},
+	/pgfplots/ticks/both/.belongs to family=/pgfplots/tick,
+	/pgfplots/ticks/both/.code={%
+		\pgfplots@xminortickstrue
+		\pgfplots@yminortickstrue
+		\pgfplots@xmajortickstrue
+		\pgfplots@ymajortickstrue
+	},
+	/pgfplots/ticks=both,
+	/pgfplots/grid/.is choice,
+	/pgfplots/grid/.belongs to family=/pgfplots/tick,
+	/pgfplots/grid/none/.belongs to family=/pgfplots/tick,
+	/pgfplots/grid/none/.code={%
+		\pgfplots@xminorgridsfalse
+		\pgfplots@yminorgridsfalse
+		\pgfplots@xmajorgridsfalse
+		\pgfplots@ymajorgridsfalse
+	},
+	/pgfplots/grid/major/.belongs to family=/pgfplots/tick,
+	/pgfplots/grid/major/.code={%
+		\pgfplots@xminorgridsfalse
+		\pgfplots@yminorgridsfalse
+		\pgfplots@xmajorgridstrue
+		\pgfplots@ymajorgridstrue
+	},
+	/pgfplots/grid/minor/.belongs to family=/pgfplots/tick,
+	/pgfplots/grid/minor/.code={%
+		\pgfplots@xminorgridstrue
+		\pgfplots@yminorgridstrue
+		\pgfplots@xmajorgridsfalse
+		\pgfplots@ymajorgridsfalse
+	},
+	/pgfplots/grid/both/.belongs to family=/pgfplots/tick,
+	/pgfplots/grid/both/.code={%
+		\pgfplots@xminorgridstrue
+		\pgfplots@yminorgridstrue
+		\pgfplots@xmajorgridstrue
+		\pgfplots@ymajorgridstrue
+	},
+	/pgfplots/grid=none,
+	/pgfplots/grid/.default=major,
+	/pgfplots/xminorticks/.is if=pgfplots@xminorticks,
+	/pgfplots/xminorticks/.default=true,
+	/pgfplots/xminorticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/xmajorticks/.is if=pgfplots@xmajorticks,
+	/pgfplots/xmajorticks/.default=true,
+	/pgfplots/xmajorticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/yminorticks/.is if=pgfplots@yminorticks,
+	/pgfplots/yminorticks/.default=true,
+	/pgfplots/yminorticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/ymajorticks/.is if=pgfplots@ymajorticks,
+	/pgfplots/ymajorticks/.default=true,
+	/pgfplots/ymajorticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/xminorgrids/.is if=pgfplots@xminorgrids,
+	/pgfplots/xminorgrids/.default=true,
+	/pgfplots/xminorgrids/.belongs to family=/pgfplots/tick,
+	/pgfplots/xmajorgrids/.is if=pgfplots@xmajorgrids,
+	/pgfplots/xmajorgrids/.default=true,
+	/pgfplots/xmajorgrids/.belongs to family=/pgfplots/tick,
+	/pgfplots/yminorgrids/.is if=pgfplots@yminorgrids,
+	/pgfplots/yminorgrids/.default=true,
+	/pgfplots/yminorgrids/.belongs to family=/pgfplots/tick,
+	/pgfplots/ymajorgrids/.is if=pgfplots@ymajorgrids,
+	/pgfplots/ymajorgrids/.default=true,
+	/pgfplots/ymajorgrids/.belongs to family=/pgfplots/tick,
+% legend options:
+	/pgfplots/legend columns/.store in=\pgfplots@legend@columns,
+	/pgfplots/legend columns/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend columns=1,
+	/pgfplots/legend plot pos/.is choice,
+	/pgfplots/legend plot pos/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend plot pos/left/.code=	{\def\pgfplots@legend@plot@pos{0}},
+	/pgfplots/legend plot pos/left/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend plot pos/right/.code=	{\def\pgfplots@legend@plot@pos{1}},
+	/pgfplots/legend plot pos/right/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend plot pos/none/.code=	{\def\pgfplots@legend@plot@pos{2}},
+	/pgfplots/legend plot pos/none/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend plot pos=left,
+% axis description options:
+	/pgfplots/title/.store in=		\pgfplots@title,
+	/pgfplots/title/.belongs to family=/pgfplots/descriptions,
+	/pgfplots/title=,
+	/pgfplots/xlabel/.store in=	\pgfplots@xlabel,
+	/pgfplots/xlabel/.belongs to family=/pgfplots/descriptions,
+	/pgfplots/xlabel=,
+	/pgfplots/ylabel/.store in=	\pgfplots@ylabel,
+	/pgfplots/ylabel/.belongs to family=/pgfplots/descriptions,
+	/pgfplots/ylabel=,
+% axis options:
+	/pgfplots/at/.code={\tikz@scan@one@point\pgfplots@set@at#1},
+	/pgfplots/at/.belongs to family=/pgfplots,
+	/pgfplots/clip limits/.is if=pgfplots@clip@limits,
+	/pgfplots/clip limits/.default=true,
+	/pgfplots/clip limits=true,
+	/pgfplots/clip limits/.belongs to family=/pgfplots,
+	/pgfplots/xmin/.store in=		\pgfplots@xmin,
+	/pgfplots/xmin/.belongs to family=/pgfplots,
+	/pgfplots/xmin=,
+	/pgfplots/xmax/.store in=		\pgfplots@xmax,
+	/pgfplots/xmax/.belongs to family=/pgfplots,
+	/pgfplots/xmax=,
+	/pgfplots/ymin/.store in=		\pgfplots@ymin,
+	/pgfplots/ymin/.belongs to family=/pgfplots,
+	/pgfplots/ymin=,
+	/pgfplots/ymax/.store in=		\pgfplots@ymax,
+	/pgfplots/ymax/.belongs to family=/pgfplots,
+	/pgfplots/ymax=,
+	/pgfplots/xfilter/.store in=	\pgfplots@xfilter,
+	/pgfplots/xfilter/.belongs to family=/pgfplots,
+	/pgfplots/xfilter=,
+	/pgfplots/yfilter/.store in=	\pgfplots@yfilter,
+	/pgfplots/yfilter/.belongs to family=/pgfplots,
+	/pgfplots/yfilter=,
+	/pgfplots/width/.store in=		\pgfplots@width,
+	/pgfplots/width/.belongs to family=/pgfplots,
+	/pgfplots/width=,
+	/pgfplots/height/.store in=	\pgfplots@height,
+	/pgfplots/height/.belongs to family=/pgfplots,
+	/pgfplots/height=,
+	/pgfplots/execute at begin plot/.store in=\pgfplots@execute@at@begin@plot,
+	/pgfplots/execute at begin plot/.belongs to family=/pgfplots,
+	/pgfplots/execute at begin plot=,
+	/pgfplots/execute at end plot/.store in=		\pgfplots@execute@at@end@plot,
+	/pgfplots/execute at end plot/.belongs to family=/pgfplots,
+	/pgfplots/execute at end plot=,
+	/pgfplots/enlargelimits/.store in=		\pgfplots@enlargelimits,
+	/pgfplots/enlargelimits/.belongs to family=/pgfplots,
+	/pgfplots/enlargelimits=auto,
+	/pgfplots/enlargelimits/.default=true,
+	/pgfplots/x/.store in=		\pgfplots@x,
+	/pgfplots/x/.belongs to family=/pgfplots,
+	/pgfplots/x=,% is implicitly set by 'width' and/or '\axisdefaultwidth'
+	/pgfplots/y/.store in=		\pgfplots@y,
+	/pgfplots/y/.belongs to family=/pgfplots,
+	/pgfplots/y=,% is implicitly set by 'width' and/or '\axisdefaultwidth'
+	/pgfplots/cycle list/.code={\pgfplots@assign@list\autoplotspeclist{#1}},
+	/pgfplots/cycle list/.belongs to family=/pgfplots,
+	/pgfplots/cycle list name/.code={\let\autoplotspeclist=#1\relax},
+	/pgfplots/cycle list name/.belongs to family=/pgfplots,
+	/pgfplots/cycle list name=\coloredplotspeclist,
+	/pgfplots/legend style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/legend style/.code={%
+		\pgfkeysalso{/tikz/every axis legend/.append style={#1}},
+	},
+	/pgfplots/label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/label style/.code={%
+		\pgfkeysalso{/tikz/every axis label/.append style={#1}}%
+	}%
+	/pgfplots/x label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/x label style/.code={%
+		\pgfkeysalso{/tikz/every axis x label/.append style={#1}}%
+	},
+	/pgfplots/y label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/y label style/.code={%
+		\pgfkeysalso{/tikz/every axis y label/.append style={#1}}%
+	},
+	/pgfplots/title style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/title style/.code={%
+		\pgfkeysalso{/tikz/every axis title/.append style={#1}}%
+	},
+	/pgfplots/tick style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/tick style/.code={%
+		\pgfkeysalso{/tikz/every tick/.append style={#1}}%
+	},
+	/pgfplots/tick label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/tick label style/.code={%
+		\pgfkeysalso{/tikz/every tick label/.append style={#1}}%
+	},
+	/pgfplots/x tick label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/x tick label style/.code={%
+		\pgfkeysalso{/tikz/every x tick label/.append style={#1}}%
+	},
+	/pgfplots/y tick label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/y tick label style/.code={%
+		\pgfkeysalso{/tikz/every y tick label/.append style={#1}}%
+	},
+	/pgfplots/x tick scale label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/x tick scale label style/.code={%
+		\pgfkeysalso{/tikz/every x scale tick label/.append style={#1}}%
+	},
+	/pgfplots/y tick scale label style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/y tick scale label style/.code={%
+		\pgfkeysalso{/tikz/every y scale tick label/.append style={#1}}%
+	},
+	/pgfplots/minor tick style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/minor tick style/.code={%
+		\pgfkeysalso{/tikz/every minor tick/.append style={#1}}%
+	},
+	/pgfplots/major tick style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/major tick style/.code={%
+		\pgfkeysalso{/tikz/every major tick/.append style={#1}}%
+	},
+	/pgfplots/grid style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/grid style/.code={%
+		\pgfkeysalso{/tikz/every axis grid/.append style={#1}}%
+	},
+	/pgfplots/minor grid style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/minor grid style/.code={%
+		\pgfkeysalso{/tikz/every minor grid/.append style={#1}}%
+	},
+	/pgfplots/major grid style/.belongs to family=/pgfplots/style commands,
+	/pgfplots/major grid style/.code={%
+		\pgfkeysalso{/tikz/every major grid/.append style={#1}}%
+	},
+	/pgfplots/disablelogfilter/.is if=pgfplots@disablelogfilter,
+	/pgfplots/disablelogfilter/.default=true,
+	/pgfplots/disablelogfilter/.belongs to family=/pgfplots,
+	/pgfplots/disablelogfilter=false,
+	/pgfplots/disabledatascaling/.is if=pgfplots@disabledatascaling,
+	/pgfplots/disabledatascaling/.default=true,
+	/pgfplots/disabledatascaling/.belongs to family=/pgfplots,
+	/pgfplots/disabledatascaling=false,
+	/pgfplots/hide axis/.is if=pgfplots@hide,
+	/pgfplots/hide axis/.default=true,
+	/pgfplots/hide axis/.belongs to family=/pgfplots,
+	/pgfplots/hide axis=false,
+	/pgfplots/scale only axis/.is if=pgfplots@scale@only@axis,
+	/pgfplots/scale only axis/.default=true,
+	/pgfplots/scale only axis/.belongs to family=/pgfplots,
+	/pgfplots/scale only axis=false,
+% sets \pgfplots@xmode to
+% normal=0
+% log=1
+	/pgfplots/xmode/.is choice,
+	/pgfplots/xmode/.belongs to family=/pgfplots/scale,
+	/pgfplots/xmode/normal/.code={\pgfplots@xmode=0},
+	/pgfplots/xmode/normal/.belongs to family=/pgfplots/scale,
+	/pgfplots/xmode/linear/.code={\pgfplots@xmode=0},
+	/pgfplots/xmode/linear/.belongs to family=/pgfplots/scale,
+	/pgfplots/xmode/log/.code={\pgfplots@xmode=1},
+	/pgfplots/xmode/log/.belongs to family=/pgfplots/scale,
+	/pgfplots/xmode=linear,
+	/pgfplots/ymode/.is choice,
+	/pgfplots/ymode/.belongs to family=/pgfplots/scale,
+	/pgfplots/ymode/normal/.code={\pgfplots@ymode=0},
+	/pgfplots/ymode/normal/.belongs to family=/pgfplots/scale,
+	/pgfplots/ymode/linear/.code={\pgfplots@ymode=0},
+	/pgfplots/ymode/linear/.belongs to family=/pgfplots/scale,
+	/pgfplots/ymode/log/.code={\pgfplots@ymode=1},
+	/pgfplots/ymode/log/.belongs to family=/pgfplots/scale,
+	/pgfplots/ymode=linear,
+	/pgfplots/numeric table/x index/.store in=\pgfplots@plot@tbl@xindex,
+	/pgfplots/numeric table/x index=0,
+	/pgfplots/numeric table/x/.store in=\pgfplots@plot@tbl@x,
+	/pgfplots/numeric table/x=,
+	/pgfplots/numeric table/y index/.store in=\pgfplots@plot@tbl@yindex,
+	/pgfplots/numeric table/y index=0,
+	/pgfplots/numeric table/y/.store in=\pgfplots@plot@tbl@y,
+	/pgfplots/numeric table/y=,
+}
+
+% Checks whether the tick position given as #1.#2=log10(T) belongs to
+% T=i*10^j with an integer i>1.
+%
+% If T=i*10^j,  \ifpgfmathcomparison will be set to true and
+% \pgfmathresult will contain T.
+%
+% Otherwise, \ifpgfmathcomparison will be set to false and
+% pgfmathresult to #1.#2
+%
+% Arguments:
+% #1.#2  the value log10(T)
+%
+% Implementation:  
+% if T = i*10^j,  log10(T) = log10(i) + j.
+% That means if log10(T) in \Z,  we have T = 10^j. If not, we need to
+% check wether i is an integer. Please note that log10(i) < 1.
+%
+% Further note: log(T) < 0 <=>  j<0.
+% In case j<0, we have 
+%   #1.#2 = j + log(i) 
+%         = - ( -j - log(i) ) 
+%         = - ( -j - 1  + (1-log(i)) )
+%         = #1 '.' #2 [ up to the '0.'
+% that means #1 = j-1  and #2 = 1-log(i).
+\def\pgfplots@is@log@tick@a@minor@tick@pos#1.#2\relax{%
+	\pgfmathapproxequalto{#1.#2}{#1.0}%
+	\ifpgfmathcomparison
+		\pgfmathcomparisonfalse
+		\def\pgfmathresult{#1.#2}%
+	\else
+		% I guess this won't happen too often. In fact, it's a very
+		% special case.
+		\begingroup
+		\c@pgf@counta=#1\relax
+		\ifnum\c@pgf@counta<0
+			\advance\c@pgf@counta by-1
+			\pgfmathsubtract@{1}{0.#2}%
+			\expandafter\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi\pgfmathresult\relax
+			\ifpgfmathcomparison
+				\aftergroup\pgfmathcomparisontrue
+				\edef\pgfmathresult{\pgfmathresult e\the\c@pgf@counta}%
+			\else
+			\aftergroup\pgfmathcomparisonfalse
+				\def\pgfmathresult{#1.#2}%
+			\fi
+		\else
+			\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi0.#2\relax
+			\ifpgfmathcomparison
+				\aftergroup\pgfmathcomparisontrue
+				\edef\pgfmathresult{\pgfmathresult e\the\c@pgf@counta}%
+			\else
+			\aftergroup\pgfmathcomparisonfalse
+				\def\pgfmathresult{#1.#2}%
+			\fi
+		\fi
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	\fi
+}
+
+% expects a positive number.
+\def\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi0.#1\relax{%
+	\pgfmathcomparisontrue
+	\pgfmathapproxequalto{0.#1}{0.3010299956639}%
+	\ifpgfmathcomparison
+		\def\pgfmathresult{2}%
+	\else
+		\pgfmathapproxequalto{0.#1}{0.4771212547196}%
+		\ifpgfmathcomparison
+			\def\pgfmathresult{3}%
+		\else
+			\pgfmathapproxequalto{0.#1}{0.6020599913279}%
+			\ifpgfmathcomparison
+				\def\pgfmathresult{4}%
+			\else
+				\pgfmathapproxequalto{0.#1}{0.698970004}%
+				\ifpgfmathcomparison
+					\def\pgfmathresult{5}%
+				\else
+					\pgfmathapproxequalto{0.#1}{0.7781512503}%
+					\ifpgfmathcomparison
+						\def\pgfmathresult{6}%
+					\else
+						\pgfmathapproxequalto{0.#1}{0.8450980400}%
+						\ifpgfmathcomparison
+							\def\pgfmathresult{7}%
+						\else
+							\pgfmathapproxequalto{0.#1}{0.9030899869}%
+							\ifpgfmathcomparison
+								\def\pgfmathresult{8}%
+							\else
+								\pgfmathapproxequalto{0.#1}{0.954242509439}%
+								\ifpgfmathcomparison
+									\def\pgfmathresult{9}%
+								\else
+									\pgfmathcomparisonfalse
+								\fi
+							\fi
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+}
+
+
+\def\pgfplots@set@at#1{\def\pgfplots@at{#1}}%
+
+
+
+% converts a comma-separated list (PGF foreach)  to my internal list
+% structure.
+\long\def\pgfplots@foreach@to@list#1\to#2{%
+	\pgfplotslistnewempty\pgfplots@TMP
+	\begingroup
+	\foreach \i in {#1} {%
+		\globaldefs=1
+		\expandafter\pgfplotslistpushback\i\to\pgfplots@TMP
+		\globaldefs=0
+	}%
+	\endgroup
+	\pgfplotslistcopy\pgfplots@TMP\to#2\relax
+}
+
+% Several tick options:
+\long\def\axispreset#1{%
+	\tikzstyle{every axis}+=[#1]%
+}
+\long\def\legendpreset#1{%
+	\pgfplots@error{Sorry, legendpreset is now deprecated, along with the legend options text width and font. Legends are now TikZ-matrizes which provide better alignment and can be placed horizontally. See the manual for details.}%
+}
+
+% Checks whether we need to create a separate 'tick scale label',
+% a node with ' * 10^3' on the side of the axis:
+%
+% PRECONDITION:
+%    Axis limits for #1 are given. I need their values before any data
+%    scale transformation has been applied.
+%    If  
+%    	\pgfplots@#1min@unscaled@as@float 
+%    and
+%    	\pgfplots@#1max@unscaled@as@float 
+%    exist; I will use these macros.
+%    Otherwise, I will use \pgfplots@#1min and \pgfplots@#1max;
+%    assuming that no data scale transformation is active.
+%    FIXME : does that need further attention?
+\def\pgfplots@init@scaled@tick@for#1{%
+	\begingroup
+	% the \pgfplots@xmin@unscaled@as@float  is set just before the data
+	% scale transformation is initialised.
+	%
+	% The variables are empty if there is no datascale transformation.
+	\expandafter\let\expandafter\pgfplots@cur@min@unscaled\csname pgfplots@#1min@unscaled@as@float\endcsname
+	\expandafter\let\expandafter\pgfplots@cur@max@unscaled\csname pgfplots@#1max@unscaled@as@float\endcsname
+	%
+	\ifx\pgfplots@cur@min@unscaled\pgfutil@empty
+		\xdef\pgfplots@TMP{\csname pgfplots@#1min\endcsname}%
+		\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@TMP}%
+		\let\pgfplots@cur@min@unscaled=\pgfmathresult
+		\xdef\pgfplots@TMP{\csname pgfplots@#1max\endcsname}%
+		\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@TMP}%
+		\let\pgfplots@cur@max@unscaled=\pgfmathresult
+	\fi
+	%
+	\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@min@unscaled\relax\pgfmathfloat@a@E
+	\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@max@unscaled\relax\pgfmathfloat@b@E
+	\ifnum\pgfmathfloat@b@E<\pgfmathfloat@a@E
+		\pgfmathfloat@b@E=\pgfmathfloat@a@E
+	\fi
+	\xdef\pgfplots@TMP{\pgfplots@scale@ticks@above@exponent}%
+	\expandafter\ifnum\pgfplots@TMP<\pgfmathfloat@b@E
+		% ok, scale it:
+		\multiply\pgfmathfloat@b@E by-1
+		\xdef\pgfplots@TMP{\the\pgfmathfloat@b@E}%
+	\else
+		\xdef\pgfplots@TMP{\pgfplots@scale@ticks@below@exponent}%
+		\expandafter\ifnum\pgfplots@TMP>\pgfmathfloat@b@E
+			% ok, scale it:
+			\multiply\pgfmathfloat@b@E by-1
+			\xdef\pgfplots@TMP{\the\pgfmathfloat@b@E}%
+		\else
+			% no scaling necessary:
+			\xdef\pgfplots@TMP{0}%
+		\fi
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@tick@scale@#1\endcsname=\pgfplots@TMP%
+}
+
+\def\pgfplots@show@yticklabel#1#2{{%
+	\let\ticknum=#1%
+	\ifpgfplots@float@numerics@mode@y
+		\pgfplots@inverse@datascaletrafo@y{#2}%
+		% FIXME: do that for any linear axis, also if no datascale is
+		% applied!
+		\ifpgfplots@scaled@ticks
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\pgfplots@tick@scale@y}%
+		\fi
+		% .. and this here provides \tick as fixed point repr:
+		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+		\let\tick=\pgfmathresult
+	\else
+		\def\tick{#2}%
+	\fi
+	\pgfplots@yticklabel
+}}
+
+% x-Achsenbeschriftung zum #1.ten Tick:
+% #1: die ticknum
+% #2: der x wert dafuer
+\def\pgfplots@show@xticklabel#1#2{{%
+	\let\ticknum=#1%
+	\ifpgfplots@float@numerics@mode@x
+		\pgfplots@inverse@datascaletrafo@x{#2}%
+		% FIXME: do that for any linear axis, also if no datascale is
+		% applied!
+		\ifpgfplots@scaled@ticks
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\pgfplots@tick@scale@x}%
+		\fi
+		% .. and this here provides \tick as fixed point repr:
+		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+		\let\tick=\pgfmathresult
+	\else
+		\def\tick{#2}%
+	\fi
+	\pgfplots@xticklabel
+}}
+
+\def\pgfplots@user@ticklabel@list@x{%
+	\pgfplotslistselect\ticknum\of\pgfplots@xticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@ticklabel@list@y{%
+	\pgfplotslistselect\ticknum\of\pgfplots@yticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@extra@ticklabel@list@x{%
+	\pgfplotslistselect\ticknum\of\pgfplots@extra@xticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@extra@ticklabel@list@y{%
+	\pgfplotslistselect\ticknum\of\pgfplots@extra@yticklabels\to\tick
+	\tick
+}
+
+\def\axisdefaultticklabel{%
+	$\pgfmathprintnumber{\tick}$%
+}
+
+\def\axisdefaultticklabellog{%
+	\pgfkeysgetvalue{/pgfplots/log number format code/.@cmd}\pgfplots@log@label@style
+	\expandafter\pgfplots@log@label@style\tick\pgfeov
+}
+	
+
+\def\pgfplots@show@label#1{%
+	\node 
+		[style=every axis,%
+		style=every axis label,%
+		style=every axis #1 label]
+	{\csname pgfplots@#1label\endcsname};
+}
+
+\def\pgfplots@show@title{%
+	\node%
+		[style=every axis,%
+		style=every axis title]
+		{\pgfplots@title};
+}
+
+\def\pgfplots@drawyaxis@placecomputedtick#1[#2]{%
+	\draw[#2]
+	\ifcase\pgfplots@tickposnum
+		(\pgfplots@xcoordminTEX\pgfplots@leftover,		\pgfplots@tmpa)
+	--	(\pgfplots@xcoordminTEX+#1,	\pgfplots@tmpa)
+	\or
+		(\pgfplots@xcoordmaxTEX\pgfplots@rightover,		\pgfplots@tmpa)
+	--	(\pgfplots@xcoordmaxTEX-#1,	\pgfplots@tmpa)
+	\or
+		(\pgfplots@xcoordminTEX\pgfplots@leftover,		\pgfplots@tmpa)
+	--	(\pgfplots@xcoordminTEX+#1,	\pgfplots@tmpa)
+
+		(\pgfplots@xcoordmaxTEX\pgfplots@rightover,		\pgfplots@tmpa)
+	--	(\pgfplots@xcoordmaxTEX-#1,	\pgfplots@tmpa)
+	\fi
+	;
+}%
+\def\pgfplots@drawyaxis@placecomputedgridline[#1]{%
+	\draw[#1]
+		(\pgfplots@xcoordminTEX\pgfplots@leftover,	\pgfplots@tmpa)
+	--	(\pgfplots@xcoordmaxTEX\pgfplots@rightover,	\pgfplots@tmpa)
+	;
+}%
+% Y-Achsen und Achsenbeschriftung LOG:
+% 1: Ticks
+\def\pgfplots@drawyaxis#1{%
+	\ifnum\pgfplots@ymode=0
+		\ifpgfplots@scaled@ticks
+			\pgfplots@init@scaled@tick@for y%
+		\fi
+	\fi
+	\begingroup
+	\newif\ifneedsminorloop
+	\axisticknum=0
+	\edef\pgfplots@TMP{#1}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\ifpgfplots@yminorticks
+			\needsminorlooptrue
+		\fi
+		\ifpgfplots@yminorgrids
+			\needsminorlooptrue
+		\fi
+		\foreach \y in {#1} {	
+			\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\y}}%
+			%
+			\ifdim\pgfplots@tmpa<\pgfplots@ycoordminTEX
+			\else
+				\ifdim\pgfplots@tmpa>\pgfplots@ycoordmaxTEX
+				\else
+					% Achsenbeschriftung:
+					\ifnum\pgfplots@tickposnum=1
+						\node at 
+							(\pgfplots@xcoordmaxTEX\pgfplots@leftover,\pgfplots@tmpa)
+							[right,style=every tick label,style=every y tick label]
+							{\pgfplots@show@yticklabel\axisticknum\y};
+					\else
+						\node at 
+							(\pgfplots@xcoordminTEX\pgfplots@leftover,\pgfplots@tmpa)
+							[left,style=every tick label,style=every y tick label]
+							{\pgfplots@show@yticklabel\axisticknum\y};
+					\fi
+				\fi
+			\fi
+			\global\advance\axisticknum by1
+			\scope
+			\clip 			(\pgfplots@xcoordminTEX\pgfplots@leftover,	\pgfplots@ycoordminTEX\pgfplots@leftover) 
+				rectangle	(\pgfplots@xcoordmaxTEX\pgfplots@rightover,	\pgfplots@ycoordmaxTEX\pgfplots@rightover);
+			% Y-ticks left and/or right
+			% in log:
+			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
+			\ifneedsminorloop
+				\foreach \i in {1,...,9} {
+					% this code here is scoped inside of \foreach.
+					\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\logi\i}}%
+					\advance\pgfplots@tmpa by\pgfplots@tmpb
+					\ifpgfplots@yminorgrids
+						\pgfplots@drawyaxis@placecomputedgridline[style=every axis grid,style=every minor grid]%
+					\fi
+					\ifpgfplots@yminorticks
+						\pgfplots@drawyaxis@placecomputedtick\pgfplots@subtickwidth[style=every tick,style=every minor tick]%
+					\fi
+				}%
+			\fi
+			\ifpgfplots@ymajorgrids
+				\pgfplots@drawyaxis@placecomputedgridline[style=every axis grid,style=every major grid]%
+			\fi
+			\ifpgfplots@ymajorticks
+				\pgfplots@drawyaxis@placecomputedtick\pgfplots@tickwidth[style=every tick,style=every major tick]%
+			\fi
+			\endscope
+		}%
+	\fi
+	\pgfplots@draw@tick@scale@label@for y%
+	\endgroup
+}
+
+\def\pgfplots@draw@tick@scale@label@for#1{%
+	\expandafter\ifnum\csname pgfplots@#1mode\endcsname=0
+		\ifpgfplots@scaled@ticks
+			\begingroup
+				\xdef\pgfplots@TMP{\csname pgfplots@tick@scale@#1\endcsname}%
+				\expandafter\c@pgf@counta\pgfplots@TMP\relax
+				\multiply\c@pgf@counta by-1
+				\ifnum\c@pgf@counta=0\relax
+					\global\let\pgfplots@TMP=\pgfutil@empty
+				\else
+					\xdef\pgfplots@TMP{\the\c@pgf@counta}%
+				\fi
+			\endgroup
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\edef\pgfplots@tick@scale@labels{\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/tick scale label code/.@cmd}{\pgfplots@TMP}}%
+				\node 
+					[%
+					xshift=\pgfplots@xcoordminTEX,%
+					yshift=\pgfplots@ycoordminTEX,%
+					x=\pgfplots@xcoordmaxTEX-\pgfplots@xcoordminTEX,%
+					y=\pgfplots@ycoordmaxTEX-\pgfplots@ycoordminTEX,%
+					style=every axis,%
+					style=every tick label,%
+					style=every #1 tick label,%
+					style=every #1 tick scale label]
+				{\pgfplots@tick@scale@labels};
+			\fi
+		\fi
+	\fi
+}
+
+% Simply invokes the code of PGF key #1 with value #2, that means
+% #1#2\pgfeov
+\def\pgfplots@invoke@pgfkeyscode#1#2{%
+	\pgfkeysgetvalue{#1}\pgfplots@invoke@pgfkeyscode@CODE
+	\pgfplots@invoke@pgfkeyscode@CODE#2\pgfeov
+}
+
+\def\pgfplots@drawxaxis@placecomputedtick#1[#2]{%
+	\draw[#2]
+	\ifcase\pgfplots@tickposnum
+		(\pgfplots@tmpa,	\pgfplots@ycoordminTEX\pgfplots@leftover)
+	--	(\pgfplots@tmpa,	\pgfplots@ycoordminTEX+#1)
+	\or
+		(\pgfplots@tmpa,	\pgfplots@ycoordmaxTEX\pgfplots@rightover)
+	--	(\pgfplots@tmpa,	\pgfplots@ycoordmaxTEX-#1)
+	\or
+		(\pgfplots@tmpa,	\pgfplots@ycoordminTEX\pgfplots@leftover)
+	--	(\pgfplots@tmpa,	\pgfplots@ycoordminTEX+#1)
+
+		(\pgfplots@tmpa,	\pgfplots@ycoordmaxTEX\pgfplots@rightover)
+	--	(\pgfplots@tmpa,	\pgfplots@ycoordmaxTEX-#1)
+	\fi
+	;
+}%
+\def\pgfplots@drawxaxis@placecomputedgridline[#1]{%
+	\draw[#1]
+		(\pgfplots@tmpa,	\pgfplots@ycoordminTEX\pgfplots@leftover)
+	--	(\pgfplots@tmpa,	\pgfplots@ycoordmaxTEX\pgfplots@rightover)
+	;
+}%
+
+% #1: axis (x or y)
+% #2: tick position list
+\def\pgfplots@draw@extra@ticks@for#1#2{%
+	\begingroup
+	\edef\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\pgfplots@scaled@ticksfalse
+		\csname pgfplots@#1minorticksfalse\endcsname
+		\csname pgfplots@#1minorgridsfalse\endcsname
+		\expandafter\let\expandafter\axis@TMP\csname pgfplots@extra@#1ticklabel\endcsname
+		\expandafter\let\csname pgfplots@#1ticklabel\endcsname=\axis@TMP
+		% FIXME: that search path - thing is far from perfect.
+		% In fact, it doesn't even work for choice keys... with
+		% unexpected results.
+		\pgfqkeys{/pgfplots/search path for tikz}{/tikz/every extra #1 tick}%
+		\csname pgfplots@draw#1axis\endcsname{#2}%
+	\fi
+	\endgroup
+}
+
+% X-Achsen und Achsenbeschriftung 
+% 1: Ticks
+\def\pgfplots@drawxaxis#1{%
+	\ifnum\pgfplots@xmode=0
+		\ifpgfplots@scaled@ticks
+			\pgfplots@init@scaled@tick@for{x}%
+		\fi
+	\fi
+	\begingroup
+	\axisticknum=0
+	\newif\ifneedsminorloop
+	\edef\pgfplots@TMP{#1}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\ifpgfplots@xminorticks
+			\needsminorlooptrue
+		\fi
+		\ifpgfplots@xminorgrids
+			\needsminorlooptrue
+		\fi
+		\foreach \x in {#1} {	
+			\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\x}{0}}%
+			%
+			\ifdim\pgfplots@tmpa<\pgfplots@xcoordminTEX
+			\else
+				\ifdim\pgfplots@tmpa>\pgfplots@xcoordmaxTEX
+				\else
+					% Achsenbeschriftung:
+					\ifnum\pgfplots@tickposnum=1
+						\node at 
+							(\pgfplots@tmpa,\pgfplots@ycoordmaxTEX\pgfplots@leftover)
+							[above,style=every tick label,style=every x tick label]
+							{\pgfplots@show@xticklabel\axisticknum\x};
+					\else
+						\node at 
+							(\pgfplots@tmpa,\pgfplots@ycoordminTEX\pgfplots@leftover)
+							[below,style=every tick label,style=every x tick label]
+							{\pgfplots@show@xticklabel\axisticknum\x};
+					\fi
+				\fi
+			\fi
+			\global\advance\axisticknum by1
+			%
+			\scope
+			\clip 			(\pgfplots@xcoordminTEX\pgfplots@leftover,	\pgfplots@ycoordminTEX\pgfplots@leftover) 
+				rectangle	(\pgfplots@xcoordmaxTEX\pgfplots@rightover,	\pgfplots@ycoordmaxTEX\pgfplots@rightover);
+			% X-Axis ticks bottom and top
+			% in log:
+			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
+			\ifneedsminorloop
+				\foreach \i in {1,...,9} {
+					\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\logi\i}{0}}%
+					\advance\pgfplots@tmpa by\pgfplots@tmpb
+					\ifpgfplots@xminorgrids
+						\pgfplots@drawxaxis@placecomputedgridline[style=every axis grid,style=every minor grid]%
+					\fi
+					\ifpgfplots@xminorticks
+						\pgfplots@drawxaxis@placecomputedtick\pgfplots@subtickwidth[style=every tick,style=every minor tick]%
+					\fi
+				}%
+			\fi
+			\ifpgfplots@xmajorgrids
+				\pgfplots@drawxaxis@placecomputedgridline[every axis grid,style=every major grid]%
+			\fi
+			\ifpgfplots@xmajorticks
+				\pgfplots@drawxaxis@placecomputedtick\pgfplots@tickwidth[every tick,style=every major tick]%
+			\fi
+			\endscope
+		}%
+	\fi
+	\pgfplots@draw@tick@scale@label@for x%
+	\endgroup
+}
+
+\def\pgfplots@rememberplotspec#1{{%
+	\globaldefs=1
+	\pgfplotslistpushback#1\to\pgfplots@plotspeclist
+	\advance\pgfplots@numplots by1%
+}}
+
+\def\pgfplots@getautoplotspec into#1{%
+	\pgfplotslistsize\autoplotspeclist\to\c@pgf@counta
+	\ifnum\c@pgf@counta=0
+		\let#1=\pgfutil@empty
+	\else
+		\c@pgf@countb=\pgfplots@numplots
+		% offset modulo size:
+		\loop
+		\ifnum\c@pgf@countb<\c@pgf@counta
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\pgfplots@loop@CONTINUEtrue
+		\fi
+		\ifpgfplots@loop@CONTINUE
+			\advance\c@pgf@countb by-\c@pgf@counta
+		\repeat
+		\pgfplotslistselect\c@pgf@countb\of\autoplotspeclist\to#1
+%\pgfplots@message{pgfplots.sty: using \string\autoplotspeclist\ specification no\#\the\c@pgf@countb (of \the\c@pgf@counta): #1}%
+	\fi
+}
+
+% The main interface to draw a plot into an axis.
+%
+% Usage:
+% \addplot 
+% 	plot coordinates {
+% 		(0,0)
+% 		(1,1)
+% 	};
+% 
+% or
+%
+% \addplot[color=blue,mark=*]
+% 	plot coordinates {
+% 		(0,0)
+% 		(1,1)
+% 	};
+% 
+% The first syntax will use the next plot specification in the list
+% \autoplotspeclist
+% and the first will use blue color and * markers. 
+%
+% The linespec. will be used in the legend.
+\long\def\pgfplots@addplot{%
+	\pgfutil@ifnextchar+{%
+		\pgfplots@getautoplotspec into\nextplotspec
+		\pgfplots@addplotimplAPPEND
+	}{%
+		\pgfutil@ifnextchar[{%
+			\pgfplots@addplotimpl%
+		}{%
+			\pgfplots@getautoplotspec into\nextplotspec
+			% the space after ']' is required here:
+			% FIXME: 
+			% - \addplot[]plot coordinates is NOT allowed!?
+			\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec]
+		}%
+	}%
+}
+
+\long\def\pgfplots@addplotimplAPPEND+[{%
+	\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec,
+}
+
+\long\def\pgfplots@addplotimpl[#1]{%
+	\pgfplots@start@plot@with@options{#1}%
+	\pgfutil@ifnextchar p{%
+		\pgfplots@addplotimpl@plot{#1}%
+	}{%
+		\pgfplots@addplotimpl@plot{#1}plot
+	}%
+}
+
+\def\pgfplots@addplotimpl@plot#1plot{%
+	\pgfutil@ifnextchar c{%
+		\pgfplots@addplotimpl@coordinates{#1}plot 
+	}{%
+		\pgfutil@ifnextchar f{%
+			\pgfplots@addplotimpl@f{#1}%
+		}{%
+			\pgfutil@ifnextchar t{%
+				\pgfplots@addplotimpl@table{#1}%
+			}{%
+				\pgfutil@ifnextchar ({%
+					\pgfplots@addplotimpl@expression{#1}%
+				}{%
+					\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots!}%
+				}%
+			}%
+		}%
+	}%
+}
+
+% The plot expression thing does two things.
+%
+% 1. It disables any data scaling transformation,
+% 2. It checks for 'domain' arguments inside of #1 (the options
+% directly following the \addplot command).
+\long\def\pgfplots@addplotimpl@expression#1#2;{%
+	\pgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITYtrue
+	\pgfplots@addplotimpl@expression@limits{#1}%
+	\axispath \draw[#1] plot #2;%
+	\pgfplots@end@plot
+}%
+
+\def\pgfplots@addplotimpl@expression@limits#1{%
+	\pgfqkeysfiltered
+		{\pgfkeysequals{/tikz/domain}}%
+		{\pgfkeysignore}%
+		{/tikz}%
+		{#1}%
+	\expandafter\pgfplots@addplotimpl@expression@limits@domain\tikz@plot@domain\relax
+}%
+
+\def\pgfplots@addplotimpl@expression@limits@domain#1:#2\relax{%
+	\ifpgfplots@autocompute@xlim
+		\ifpgfplots@float@numerics@mode@x
+			\pgfmathfloatparsenumber{#1}%
+			\let\pgfplots@filter@tmp@x=\pgfmathresult
+			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@xmin=\pgfmathresult
+			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@xmax=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{#2}%
+			\let\pgfplots@filter@tmp@x=\pgfmathresult
+			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@xmin=\pgfmathresult
+			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@xmax=\pgfmathresult
+		\else
+			\pgfmathmin{\pgfplots@xmin}{#1}%
+			\let\pgfplots@xmin=\pgfmathresult
+			\pgfmathmax{\pgfplots@xmax}{#1}%
+			\let\pgfplots@xmax=\pgfmathresult
+			\pgfmathmin{\pgfplots@xmin}{#2}%
+			\let\pgfplots@xmin=\pgfmathresult
+			\pgfmathmax{\pgfplots@xmax}{#2}%
+			\let\pgfplots@xmax=\pgfmathresult
+		\fi
+	\fi
+}
+
+\def\pgfplots@addplotimpl@f#1file{%
+	\pgfplots@addplotimpl@table{#1}table%
+}%
+
+\def\pgfplots@addplotimpl@table#1table{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@table@getopts{#1}%
+	}{%
+		\pgfplots@addplotimpl@table@getopts{#1}[x index=0,y index=1]%
+	}%
+}%
+
+\def\pgfplots@addplotimpl@table@f#1#2from{%
+	\pgfplots@addplot@table@from@macrotrue
+	\pgfplots@addplotimpl@table@START{#1}{#2}%
+}
+
+\def\pgfplots@addplotimpl@table@getopts#1[#2]{%
+	\pgfutil@ifnextchar f{%
+		\pgfplots@addplotimpl@table@f{#1}{#2}%
+	}{%
+		\pgfplots@addplot@table@from@macrofalse
+		\pgfplots@addplotimpl@table@START{#1}{#2}%
+	}%
+}
+
+\long\def\pgfplots@addplotimpl@table@START#1#2#3{%
+	\begingroup
+	\let\pgfplots@plot@tbl@x\pgfutil@empty
+	\let\pgfplots@plot@tbl@y\pgfutil@empty
+	\def\pgfplots@plot@tbl@xindex{0}%
+	\def\pgfplots@plot@tbl@yindex{1}%
+	\pgfqkeys{/pgfplots/numeric table}{#2}%
+	\ifpgfplots@addplot@table@from@macro
+		\pgfnumtablecopy#3\to\table
+	\else
+		\pgfnumtableread{#3} to \table
+	\fi
+	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\table\to\addplot@tbl@x
+	\else
+		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@x\of\table\to\addplot@tbl@x
+	\fi
+	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@yindex\of\table\to\addplot@tbl@y
+	\else
+		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@y\of\table\to\addplot@tbl@y
+	\fi
+	\pgfplots@toka={}%
+	\loop
+	\pgfplotslistcheckempty\addplot@tbl@x
+	\ifpgfplotslistempty
+		\pgfplots@loop@CONTINUEfalse
+	\else
+		\pgfplots@loop@CONTINUEtrue
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\pgfplotslistpopfront\addplot@tbl@x\to\addplot@tbl@cur@x
+		\pgfplotslistpopfront\addplot@tbl@y\to\addplot@tbl@cur@y
+		\edef\pgfplots@TMP{\the\pgfplots@toka(\addplot@tbl@cur@x,\addplot@tbl@cur@y)}%
+		\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+	\repeat
+	\xdef\pgfplots@TMP{plot coordinates {\the\pgfplots@toka}}%
+	\endgroup
+	\def\pgfplots@TMPB{\pgfplots@addplotimpl@coordinates{#1}}%
+	\expandafter\pgfplots@TMPB\pgfplots@TMP;
+	\pgfplots@addplotimpl@gobblesemicolon
+}
+
+\def\pgfplots@addplotimpl@gobblesemicolon;{}
+
+\def\pgfplots@start@plot@with@options#1{%
+	\ifx\pgfplots@execute@at@begin@plot\pgfutil@empty
+	\else
+		\pgfplots@execute@at@begin@plot
+	\fi
+	\pgfplots@rememberplotspec{[#1]}%
+}
+
+\def\pgfplots@end@plot{%
+	\ifx\pgfplots@execute@at@end@plot\pgfutil@empty
+	\else
+		\pgfplots@execute@at@end@plot
+	\fi
+}
+
+\long\def\pgfplots@addplotimpl@coordinates#1#2;{%
+%\tracingmacros=2\tracingcommands=2
+	% #2 = plot coordinates {...}
+	\ifpgfplots@filtercoords
+		% FIXME : FREE THIS VARIABLE:
+		\pgfplots@filtercoords@and@up@limits#2;\newplotcmdto\pgfplots@filteredcoordinateplotcmd
+		\def\pgfplots@TMP{\pgfplots@path@impl{\draw[style=every axis plot,#1]}}%
+		\expandafter\pgfplots@TMP\pgfplots@filteredcoordinateplotcmd%
+	\else
+		\ifpgfplots@draw@at@end
+			\pgfplots@update@limits{#2;}%
+		\fi
+		\pgfplots@path@impl{\draw[style=every axis plot,#1]}#2;%
+	\fi
+	\pgfplots@end@plot
+%\tracingmacros=0\tracingcommands=0
+}%
+
+\long\def\pgfplots@update@limits#1{%
+	\pgfplots@foreach@plot@coord@do%
+		\pgfplots@update@limits@for@one@point
+	\for
+	#1%
+	\pgfplots@EOI
+}
+
+\newif\ifpgfplots@update@limits@for@one@point@ISCLIPPED
+\def\pgf@math@ONE{1.0}%
+
+% Updates the current x and y limits for point (#1,#2).
+%
+% The point coordinates may be given in floating point format, see
+% below.
+%
+% Please note that if user specified limits are given, automatic
+% limits are only applied to points which fall into the user specified
+% clipping region.
+%
+% PRECONDITIONS:
+%   - 'floating point numerics active' 
+%   		=> coordinate filtering is active
+%   		=> #1 and #2 are in floating point format
+%   - no coordinate filters active 
+%   		=> #1 and #2 MAY be macros, but they must be valid TeX
+%   		length (without unit).
+\long\def\pgfplots@update@limits@for@one@point#1#2{%
+%\tracingmacros=2\tracingcommands=2
+%\pgfplots@message{Updating limits for (#1,#2) ...}%
+	\pgfplots@update@limits@for@one@point@ISCLIPPEDfalse
+	\ifpgfplots@clip@limits
+		\ifpgfplots@autocompute@xlim
+		\else
+			\ifpgfplots@float@numerics@mode@x
+				\pgfmathfloatlessthan{#1}{\pgfplots@xmin}%
+				\ifpgfmathfloatcomparison
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+				\pgfmathfloatlessthan{\pgfplots@xmax}{#1}%
+				\ifpgfmathfloatcomparison
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+			\else
+				\pgfmathlessthan{#1}{\pgfplots@xmin}%
+				\ifx\pgfmathresult\pgf@math@ONE
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+				\pgfmathlessthan{\pgfplots@xmax}{#1}%
+				\ifx\pgfmathresult\pgf@math@ONE
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+			\fi
+		\fi
+		\ifpgfplots@autocompute@ylim
+		\else
+			\ifpgfplots@float@numerics@mode@y
+				\pgfmathfloatlessthan{#2}{\pgfplots@ymin}%
+				\ifpgfmathfloatcomparison
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+				\pgfmathfloatlessthan{\pgfplots@ymax}{#2}%
+				\ifpgfmathfloatcomparison
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+			\else
+				\pgfmathlessthan{#2}{\pgfplots@ymin}%
+				\ifx\pgfmathresult\pgf@math@ONE
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+				\pgfmathlessthan{\pgfplots@ymax}{#2}%
+				\ifx\pgfmathresult\pgf@math@ONE
+					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+				\fi
+			\fi
+		\fi
+	\fi
+	\ifpgfplots@update@limits@for@one@point@ISCLIPPED
+	\else
+		\ifpgfplots@autocompute@xlim
+			\ifpgfplots@float@numerics@mode@x
+				\pgfmathfloatmin{\pgfplots@xmin}{#1}%
+				\let\pgfplots@xmin=\pgfmathresult
+				\pgfmathfloatmax{\pgfplots@xmax}{#1}%
+				\let\pgfplots@xmax=\pgfmathresult
+			\else
+				\pgfmathmin{\pgfplots@xmin}{#1}%
+				\let\pgfplots@xmin=\pgfmathresult
+				\pgfmathmax{\pgfplots@xmax}{#1}%
+				\let\pgfplots@xmax=\pgfmathresult
+			\fi
+		\fi
+		\ifpgfplots@autocompute@ylim
+			\ifpgfplots@float@numerics@mode@y
+				\pgfmathfloatmin{\pgfplots@ymin}{#2}%
+				\let\pgfplots@ymin=\pgfmathresult
+				\pgfmathfloatmax{\pgfplots@ymax}{#2}%
+				\let\pgfplots@ymax=\pgfmathresult
+			\else
+				\pgfmathmin{\pgfplots@ymin}{#2}%
+				\let\pgfplots@ymin=\pgfmathresult
+				\pgfmathmax{\pgfplots@ymax}{#2}%
+				\let\pgfplots@ymax=\pgfmathresult
+			\fi
+		\fi
+		\pgfplots@limits@are@computedtrue
+	\fi
+%\pgfplots@message{Updated limits: (\pgfplots@xmin,\pgfplots@ymin) rectangle  (\pgfplots@xmax,\pgfplots@ymax).}%
+%\tracingmacros=0\tracingcommands=0
+}
+
+% Filters coordinates and writes a new, modified 'plot coordinates'
+% command to macro #2.
+\long\def\pgfplots@filtercoords@and@up@limits#1\newplotcmdto#2{%
+	\let#2=\pgfutil@empty
+	\let\pgfplots@filter@output=#2
+	\pgfplots@foreach@plot@coord@do%
+		\pgfplots@filter@one@coord@pair
+	\for
+	#1%
+	\pgfplots@EOI
+	\edef#2{plot coordinates {\pgfplots@filter@output};}%
+}%
+
+\def\pgfplots@filter@one@coord@pair#1#2{%
+	\ifx\pgfplots@xfilter\pgfutil@empty
+		\def\pgfplots@filter@tmp@x{#1}%
+	\else
+		\let\pgfplots@filter@tmp@x=\pgfutil@empty
+		\pgfplots@xfilter#1\to\pgfplots@filter@tmp@x
+	\fi
+	\ifx\pgfplots@yfilter\pgfutil@empty
+		\def\pgfplots@filter@tmp@y{#2}%
+	\else
+		\let\pgfplots@filter@tmp@y=\pgfutil@empty
+		\pgfplots@yfilter#2\to\pgfplots@filter@tmp@y
+	\fi
+	\ifx\pgfplots@filter@tmp@x\pgfutil@empty
+		\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the x-coordinate filter.}%
+	\else
+		\ifx\pgfplots@filter@tmp@y\pgfutil@empty
+			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
+		\else
+			\ifpgfplots@draw@at@end
+				% update also axis limits:
+				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
+			\else
+				% apply data transformation directly.
+				\ifpgfplots@float@numerics@mode@x
+					\pgfplots@datascaletrafo@x\pgfplots@filter@tmp@x
+					\let\pgfplots@filter@tmp@x=\pgfmathresult
+				\fi
+				\ifpgfplots@float@numerics@mode@y
+					\pgfplots@datascaletrafo@y\pgfplots@filter@tmp@y
+					\let\pgfplots@filter@tmp@y=\pgfmathresult
+				\fi
+			\fi
+			\pgfplots@toka=\expandafter{\pgfplots@filter@output}%
+			\edef\pgfplots@filter@output{\the\pgfplots@toka (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
+%\pgfplots@message{FILTERING: appended \pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y}%  -> results in \pgfplots@filter@output}%
+		\fi
+	\fi
+}
+
+
+% A looping command to loop through plot coordinates.
+% For every point, #3{X}{Y} will be invoked.
+%
+% No scoping is used during this operation, so you can access outer
+% variables.
+\long\def\pgfplots@foreach@plot@coord@do#1\for plot coordinates #2;\pgfplots@EOI{%
+	\pgfplots@foreach@plot@coord@ITERATE#1\n#2\pgfplots@EOI%
+}
+
+\def\pgfplots@foreach@plot@coord@ITERATE#1\n{%
+	\pgfutil@ifnextchar;{%
+		\pgfplots@foreach@plot@coord@FINISH@SEMICOLON%
+	}{%
+		\pgfutil@ifnextchar\pgfplots@EOI{%
+			\pgfplots@foreach@plot@coord@FINISH%
+		}{%
+			\pgfplots@foreach@plot@coord@NEXT#1\n%
+		}%
+	}%
+}
+
+\def\pgfplots@foreach@plot@coord@NEXT#1\n(#2,#3){%
+	#1{#2}{#3}%
+	\pgfplots@foreach@plot@coord@ITERATE#1\n
+}
+
+\def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
+\def\pgfplots@foreach@plot@coord@FINISH@SEMICOLON;\pgfplots@EOI{}
+
+% INPUT: 
+%   a sequence of points (SMeE,SMeE) (terminated with ';') 
+%   where S=sign, M=mantisse, E = exponent.
+%   Such input is generated in the case pgfplots@float@numerics@modetrue
+%   by the coordinate filters.
+% OUTPUT: 
+%   proper sequence of fixed point coordinates which are the result of the
+%   data scaling transformation (\pgfplots@datascaletrafo@x).
+%
+% The output will be written into the macro #2.
+\long\def\pgfplots@apply@data@scaletrafo@to@plot@data#1\to#2{%
+	\let#2=\pgfutil@empty
+	\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
+	\pgfplots@foreach@plot@coord@do
+		\pgfplots@apply@data@scaletrafo@to@one@point
+	\for
+	#1%
+	\pgfplots@EOI
+	\edef#2{plot coordinates {\pgfplots@data@scaletrafo@result};}%
+}
+
+% for use in \ifx:
+\def\pgfplots@EOI{\pgfplots@EOI}%
+	
+\def\pgfplots@apply@data@scaletrafo@to@one@point#1#2{%
+	\ifpgfplots@float@numerics@mode@x
+		\pgfplots@datascaletrafo@x{#1}%
+		\let\pgfplots@filter@tmp@x=\pgfmathresult
+	\else
+		\def\pgfplots@filter@tmp@x{#1}%
+	\fi
+	\ifpgfplots@float@numerics@mode@y
+		\pgfplots@datascaletrafo@y{#2}%
+		\let\pgfplots@filter@tmp@y=\pgfmathresult
+	\else
+		\def\pgfplots@filter@tmp@y{#2}%
+	\fi
+	\edef\pgfplots@data@scaletrafo@result{\pgfplots@data@scaletrafo@result (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
+}
+
+
+\long\def\pgfplots@path#1;{%
+	\pgfplots@path@impl{}#1;
+}
+
+% This thing here shall be used to replace any '\path' where \axispath
+% shall be used.
+\long\def\pgfplots@replacement@for@tikz@path#1;{%
+	\axispath\path#1;%
+}
+
+% low-level \axispath implementation.
+% #1:
+%    the command which is responsable for drawing.
+%    - If #1 is NOT '\pgfutil@empty', we expect #2 to contain only
+%      EXPANDABLE DATA.
+%      That's important for postponed floating point arithmetics in #2.
+%    - If #1='\pgfutil@empty', we don't make any assumption about #2
+%      and process it as-is.
+%
+% #2: see above.
+\long\def\pgfplots@path@impl#1#2;{%
+	\ifpgfplots@draw@at@end
+		\pgfplotslistpushback{#1}\to\pgfplots@stored@plot@cmds
+		\pgfplotslistpushback{#2;}\to\pgfplots@stored@plot@data
+	\else
+		#1#2;%
+	\fi
+}
+
+
+% Assigns a legend.
+% Syntax:
+% \legend{entry 1\\entry2\\entry3}
+\def\pgfplots@command@legend{
+	\pgfutil@ifnextchar[{%
+		\pgfplots@error{Sorry, legend options are now deprecated. Legends are now TikZ-matrizes which provide better alignment and can be placed horizontally. See the manual for details.}%
+	}{%
+		\pgfplots@command@legend@impl
+	}%
+}
+
+\def\pgfplots@command@legend@impl#1{%
+	\pgfplots@assign@list\pgfplots@TMPC{#1}%
+	\global\let\pgfplots@legend=\pgfplots@TMPC
+}
+
+
+\def\pgfplots@addlegendentry#1{%
+	{%
+	\globaldefs=1% this will ONLY store the options and the legend into global variables
+	\pgfplotslistpushback#1\to\pgfplots@legend
+	}%
+}
+
+\def\pgfplots@pop@next@legend{{%
+	\globaldefs=1
+	\pgfplotslistcheckempty\pgfplots@plotspeclist
+	\ifpgfplotslistempty
+		\let\pgfplots@curplotlist=\pgfutil@empty
+	\else
+		\pgfplotslistpopfront\pgfplots@plotspeclist\to\pgfplots@curplotlist
+	\fi
+	%
+	\pgfplotslistcheckempty\pgfplots@legend
+	\ifpgfplotslistempty
+		\let\pgfplots@curlegend=\pgfutil@empty
+	\else
+		\pgfplotslistpopfront\pgfplots@legend\to\pgfplots@curlegend
+	\fi
+	\advance\pgfplots@numplots by-1
+}}
+
+\long\def\pgfplots@show@small@legendplots#1{
+	\draw#1
+			[mark repeat=2,mark phase=2] 
+			plot coordinates {
+				(0cm,0cm) 
+				(0.3cm,0cm)
+				(0.6cm,0cm)%
+			};%
+}
+
+% Typesets a legend node.
+%
+% It will either typeset a previously computed legend (which needs to be
+% stored in the macro \pgfplots@already@computed@legend@node)
+%
+% or it creates a legend, stores the commands into the macro named
+% above and typesets it.
+\def\pgfplots@createlegend{%
+	\ifx\pgfplots@already@computed@legend@node\pgfutil@empty
+		\pgfplotslistcheckempty\pgfplots@legend
+		\ifpgfplotslistempty
+		\else
+		%
+		% 
+		\begingroup
+			% assemble a 
+			% \matrix {
+			% 	small plot  & legend1\\
+			% 	small plot  & legend2\\
+			% 	...
+			% };
+			% command [and using the 'legend columns' option]
+			%
+			% \pgfplotslist@TOK@a={
+			% 	small plot  & legend1\\
+			% 	small plot  & legend2\\
+			% 	...
+			% }
+			% ( I have allocated the token registers in my
+			% liststructure.sty)
+			% 
+			% \global\def\pgfplots@TMP{
+			% 	\matrix {
+			% 		\TOKL@TA
+			% 	};
+			% }
+			% -> finally, \pgfplots@TMP will contain the complete command.
+			\pgfplotslist@TOK@a={}%
+			\let\curcolumnNum=\c@pgf@counta
+			\let\maxcolumnCount=\c@pgf@countb
+			\let\legendplotpos=\c@pgf@countc
+			\legendplotpos\expandafter=\pgfplots@legend@plot@pos
+			\curcolumnNum=0
+			\maxcolumnCount=\pgfplots@legend@columns\relax
+			%
+			\loop
+			\ifnum0<\pgfplots@numplots\relax
+				\pgfplots@pop@next@legend
+				\ifx\pgfplots@curlegend\pgfutil@empty
+				\else
+					\advance\curcolumnNum by1
+					\ifcase\legendplotpos
+						% legend plot pos=left 
+						\pgfplotslist@TOK@b=\expandafter{%
+								\expandafter\pgfplots@show@small@legendplots
+								\expandafter{\pgfplots@curplotlist}%
+								\pgfmatrixnextcell\node}%
+						\pgfplotslist@TOK@b=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\pgfplotslist@TOK@b\expandafter{\pgfplots@curlegend};}%
+					\or
+						% legend plot pos=right
+						\pgfplotslist@TOK@b=\expandafter{%
+							\expandafter\node
+							\expandafter{\pgfplots@curlegend};%
+							\pgfmatrixnextcell
+							\pgfplots@show@small@legendplots}%
+						\pgfplotslist@TOK@b=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\pgfplotslist@TOK@b\expandafter{\pgfplots@curplotlist}}%
+					\or
+						% legend plot pos=none
+						\pgfplotslist@TOK@b=\expandafter{\expandafter\node\expandafter{\pgfplots@curlegend};}%
+					\fi
+					\ifnum\curcolumnNum=\maxcolumnCount
+						\pgfplotslist@TOK@b=\expandafter{\the\pgfplotslist@TOK@b\\}%
+					\else
+						\ifnum\pgfplots@numplots=0
+							\pgfplotslist@TOK@b=\expandafter{\the\pgfplotslist@TOK@b\\}%
+						\else
+							\pgfplotslist@TOK@b=\expandafter{\the\pgfplotslist@TOK@b\pgfmatrixnextcell}%
+						\fi
+					\fi
+					\edef\pgfplots@TMP{%
+						\the\pgfplotslist@TOK@a
+						\the\pgfplotslist@TOK@b
+					}%
+					\ifnum\curcolumnNum=\maxcolumnCount
+						\curcolumnNum=0
+					\fi
+					\expandafter\pgfplotslist@TOK@a\expandafter{\pgfplots@TMP}%
+				\fi
+			\repeat
+			\pgfplotslist@TOK@b={\matrix[every axis,every axis legend]}%
+			\xdef\pgfplots@TMP{%
+				\the\pgfplotslist@TOK@b {%
+					\the\pgfplotslist@TOK@a
+				};%
+			}%
+		\endgroup
+		\let\pgfplots@already@computed@legend@node=\pgfplots@TMP
+		\fi
+	\fi
+% \pgfkeysgetvalue{/tikz/every axis legend/.@cmd}{\pgfplots@TMP}%
+% \pgfplots@message{Vor legende: every axis legend= \meaning\pgfplots@TMP}%
+% \pgfkeysgetvalue{/tikz/every axis/.@cmd}{\pgfplots@TMP}%
+% \pgfplots@message{Vor legende: every axis= \meaning\pgfplots@TMP}%
+	\pgfplots@already@computed@legend@node
+}
+
+% Checks whether the argument to xtick or ytick is a UNIFORM tick
+% sequence.
+%
+% A uniform tick sequence is 0,...,10 and 3,4,5 and -5,-4,-2 but 
+% NOT 0,2,4 or 4,10.
+%
+% Furthermore, any NON-integer tick arguments are also assumed to be
+% NOT uniform.
+%
+% INPUT:
+% #1: a tick argument (i.e. something which can be put to 
+%     \foreach \x in {#1})
+%
+% OUTPUT:
+%    \pgfplots@isuniformticktrue
+%    or
+%    \pgfplots@isuniformtickfalse
+% depending on the check.
+% This variable will be set globally.
+\def\pgfplots@checkisuniformLOGtick#1{%
+	\begingroup
+	\global\pgfplots@isuniformticktrue
+	\newif\ifisfirst
+	\newif\iftwo@are@equal
+	\isfirsttrue
+	\foreach \x in {#1}{%
+		\pgfmathmultiply@\x\reciproc@logten
+		\let\cur=\pgfmathresult
+		% check whether
+		%  \cur - last == 1 (last = \pgfplots@TMPB)
+		\ifisfirst
+			\global\isfirstfalse
+		\else
+			\pgfmathsubtract@\cur\pgfplots@TMPB%
+			\pgfmathapproxequaltomacro\pgfmathresult{1.0}{two@are@equal}%
+			\iftwo@are@equal
+			\else
+				\global\pgfplots@isuniformtickfalse
+				\breakforeach
+			\fi
+		\fi
+		\global\let\pgfplots@TMPB=\cur
+	}%
+	\endgroup
+}
+
+\def\skipsuffixzero#1.#2|{
+	{%
+	\def\pgfplots@TMP{#2}%
+	\def\pgfplots@TMPB{0}%
+	\ifx\pgfplots@TMP\pgfplots@TMPB
+		\global\def\pgfmathresult{#1}%
+	\else
+		\global\def\pgfmathresult{#1.#2}%
+	\fi
+	}%
+}
+
+\def\pgfmathlogtologten#1{%
+	\pgfmathparse{#1}%
+	\expandafter\pgfmathlogtologten@\expandafter{\pgfmathresult}%
+}
+
+% Simply divides #1 by log(10).
+\def\pgfmathlogtologten@#1{%
+	\pgfmathmultiply@{#1}\reciproc@logten%
+}%
+
+% DEPRECATED.
+\def\logtologtentomacro#1#2{%
+	\pgfmathmultiply@{#1}\reciproc@logten%
+	\expandafter\skipsuffixzero\pgfmathresult|%
+	\let#2=\pgfmathresult
+}
+
+% DEPRECATED.
+\def\logtologten#1{%
+	\pgfmathmultiply@{#1}\reciproc@logten%
+	\expandafter\skipsuffixzero\pgfmathresult|%
+	\pgfmathresult
+}
+
+% helper method which computes log10*\x foreach \x in {#1}.
+% The result will be \xdef'ed into #2.
+\def\pgfplots@compute@tick@times@logten#1\to#2{%
+	\global\let#2=\pgfutil@empty
+	\foreach \pgfplots@TMPB in {#1} {%
+		\pgfmathmultiply@\pgfplots@TMPB\logten%
+		\ifx#2\pgfutil@empty
+			\xdef#2{\pgfmathresult}%
+		\else
+			\xdef#2{#2,\pgfmathresult}%
+		\fi
+	}%
+}
+
+\def\pgfplots@init@enlarge@limit@booleans{%
+	\pgfplots@enlargelimits@autofalse
+	\pgfplots@enlargelimitsfalse
+	\pgfplots@enlargelimits@rel@threshfalse
+	\edef\pgfplots@TMP{\pgfplots@enlargelimits}%
+	%
+	\def\pgfplots@TMPB{true}%
+	\ifx\pgfplots@TMP\pgfplots@TMPB
+		\pgfplots@enlargelimitstrue
+	\else
+		\def\pgfplots@TMPB{false}%
+		\ifx\pgfplots@TMP\pgfplots@TMPB
+		\else
+			\def\pgfplots@TMPB{auto}%
+			\ifx\pgfplots@TMP\pgfplots@TMPB
+				\pgfplots@enlargelimits@autotrue
+			\else
+				\begingroup
+				% try to read it as number:
+				\expandafter\pgf@xa\pgfplots@enlargelimits pt\relax
+				\endgroup
+				\pgfplots@enlargelimitstrue
+				\pgfplots@enlargelimits@rel@threshtrue
+			\fi
+		\fi
+	\fi
+}
+
+\def\pgfplots@enlarge@limit@for#1{%
+	\begingroup
+	\expandafter\let\expandafter\min\expandafter=\csname pgfplots@#1min\endcsname
+	\expandafter\let\expandafter\max\expandafter=\csname pgfplots@#1max\endcsname
+	\ifcase\csname pgfplots@#1mode\endcsname
+		\ifpgfplots@enlargelimits@rel@thresh
+			\edef\enlargepercent{\pgfplots@enlargelimits}%
+		\else
+			\def\enlargepercent{0.1}% FIXME : pack 10% as default into option 'enlargelimits' or so
+		\fi
+		\pgfmathsubtract@\max\min%
+		\expandafter\pgf@xa\pgfmathresult pt
+		\expandafter\pgf@xb\enlargepercent\pgf@xa
+		\ifdim\pgf@xb>0.001pt
+			% the case with 
+			%   enlargeabsolute ~= 0
+			% means that \min ~= \max.
+			% It is handled in another method.
+			\edef\enlargeabsolute{\pgf@sys@tonumber{\pgf@xb}}%
+			%
+			% compute xmin := xmin - enlargeabsolute
+			\pgfmathsubtract@\min\enlargeabsolute%
+			\let\min=\pgfmathresult
+			\pgfmathadd@\max\enlargeabsolute%
+			\let\max=\pgfmathresult
+		\fi
+	\or
+		% compute
+		%   \pgfmathsetmacro{\min}{\min - 0.5*\logten}%
+		%   \pgfmathsetmacro{\max}{\max + 0.5*\logten}%
+		% just a more efficiently (I hope so):
+		\expandafter\pgfmath@x\logten pt
+		\divide\pgfmath@x by2
+		\pgfmathlog@invoke@expanded\pgfmathsubtract@{{\min}{\pgf@sys@tonumber{\pgfmath@x}}}%
+		\let\min=\pgfmathresult
+		\pgfmathlog@invoke@expanded\pgfmathadd@{{\max}{\pgf@sys@tonumber{\pgfmath@x}}}%
+		\let\max=\pgfmathresult
+	\fi
+	\xdef\pgfplots@TMP{\min}%
+	\xdef\pgfplots@TMPB{\max}%
+	\endgroup
+	\expandafter\let\csname pgfplots@#1min\endcsname=\pgfplots@TMP
+	\expandafter\let\csname pgfplots@#1max\endcsname=\pgfplots@TMPB
+}
+
+% Computes tick positions using the current axis limits.
+%
+% Parameters:
+% /pgfplots/max space between ticks
+%    Determines the maximum space which is not filled by at least one
+%    tick label (approximate, there is some rounding internally)
+% /pgfplots/try min ticks
+%    see manual
+%
+% Idea:
+% We want ticks at each 
+%    { i*H, i in \Z }.
+% Of course, there shouldn't be TOO MUCH ticks. 
+%
+% Our heuristics is to set
+%    desirednumticks = round(ACTUAL WIDTH / (max space between ticks) )
+% and generate H = (axis range) / (desirednumticks).
+%
+% Since not all step sizes H look well, restrict H to a set of allowed 
+% step sizes such as 
+%   { 1, 1/2, 1/5, 1/10 },
+% or, to be more precise:
+%   { 1*10^e, 2*10^e, 5*10^e }
+% -> round to the nearest matching number!
+%
+% For log-plots, 
+% 	H in { j*log(10), j=1,2,3,... }
+% where the usual case should be j = 1.
+%
+% Then, the resulting tick is
+% TICK={MIN,MIN+H,...,MAX}
+% where
+%    MIN = I*H
+% is chosen such that 
+%    axis minimum limit = I*H + rest; |rest| < H.
+%
+% Again, log plots follow a slightly different approach: here,
+%   MIN = I * log(10)
+% is chosen such that
+%    axis minimum limit = I*log(10) + rest; |rest| < log(10)
+% while H = j*log(10), j>=1.
+%
+%
+% PRECONDITION:
+% - limits are correct
+% - axis width/height is set correctly
+%
+% POSTCONDITION:
+% - Tick for axis #1 is assigned
+% - \ifpgfplots@needs@check@uniformtick is set
+\def\pgfplots@assign@default@tick@foraxis#1{%
+	\begingroup
+	% Shortcut-names:
+	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1\endcsname
+	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1\endcsname
+	%
+	\let\desirednumticks=\c@pgf@countd
+	\let\Wr=\pgf@xc
+	\Wr=\csname pgfplots@#1coordmaxTEX\endcsname
+	\advance\Wr by-\csname pgfplots@#1coordminTEX\endcsname
+	% r = max place without ticks in pt -> choose desirednumticks >= W/r
+	\expandafter\expandafter\divide\Wr\axisdefaulttickwidth
+	\pgfmathsetcount{\desirednumticks}{\Wr}%
+	\advance\desirednumticks by1
+	\ifnum1=\csname pgfplots@#1mode\endcsname\relax
+		\expandafter\ifnum\pgfplots@default@try@minticks@log>\desirednumticks
+			\expandafter\desirednumticks\pgfplots@default@try@minticks@log\relax
+		\fi
+		\expandafter\ifx\csname pgfplots@#1tickten\endcsname\pgfutil@empty
+		\else
+			% log plot and tickten-option: provide special processing.
+			\edef\pgfplots@TMP{\csname pgfplots@#1tickten\endcsname}%
+			\expandafter\pgfplots@compute@tick@times@logten\pgfplots@TMP\to\pgfplots@TMP
+			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMP
+			\aftergroup\pgfplots@needs@check@uniformticktrue
+		\fi
+	\else
+		\expandafter\ifnum\axisdefaulttryminticks>\desirednumticks
+			\expandafter\desirednumticks\axisdefaulttryminticks
+		\fi
+	\fi
+	%
+	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
+		% Ok, we have either log or linear axis and need default
+		% ticks MIN,MIN+H,...,MAX.
+		\let\MINH=\pgf@xa
+		\let\H=\pgf@xb
+		\let\MAX=\pgfplots@tmpa
+		\let\MIN=\pgfplots@tmpb
+		% compute step size 'H':
+		\expandafter\MAX\csname pgfplots@#1max\endcsname pt
+		\advance\MAX by0.001pt% avoid round errors
+		%\expandafter\MIN\the\c@pgf@counta pt
+		\expandafter\MIN\csname pgfplots@#1min\endcsname pt
+		\H=\MAX
+		\advance\H by-\MIN
+		\c@pgf@counta=\desirednumticks
+		\advance\c@pgf@counta by-1
+		\divide\H by\c@pgf@counta
+%\pgfplots@message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H=(axis range/(desirednumticks-1)) = \the\H}%
+		%
+		% SEARCH for the NEXT FEASABLE H.
+		\edef\Hmacro{\pgf@sys@tonumber\H}%
+		\ifcase\csname pgfplots@#1mode\endcsname
+			% CASE LINEAR AXIS
+			\ifpgfplots@is@datascaled
+				\expandafter\pgfplots@data@scale@inverse@trafo\expandafter{\Hmacro}%
+				\let\Hmacro=\pgfmathresult
+			\else
+				\pgfmathfloatparsenumber{\Hmacro}%
+				\let\Hmacro=\pgfmathresult
+			\fi
+			\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
+%\pgfplots@message{Got T^{-1}(H) = [\H@S] \H@M * 10^\H@E}%
+			% modify the mantisse:
+			\ifdim\H<2pt
+				\ifdim\H<1.5pt
+					\H=1.0pt
+				\else
+					\H=2.0pt
+				\fi
+			\else
+				\ifdim\H<4.9999pt
+					\ifdim\H<3.5pt
+						\H=2.0pt\relax
+					\else
+						\H=5.0pt\relax
+					\fi
+				\else
+					\ifdim\H<7.5pt
+						\H=5.0pt\relax
+					\else
+						\H=1.0pt\relax
+						\advance\pgfmathfloat@a@E by1
+					\fi
+				\fi
+			\fi
+			\edef\Hmacro{\the\pgfmathfloat@a@S\pgf@sys@tonumber{\H}e\the\pgfmathfloat@a@E}%
+			\ifpgfplots@is@datascaled
+				\pgfplots@data@scale@trafo\Hmacro
+			\else
+				\pgfmathfloattofixed\Hmacro
+			\fi
+			\let\Hmacro=\pgfmathresult
+%\pgfplots@message{I have computed H=\Hmacro}%
+			\expandafter\H\Hmacro pt
+			\expandafter\aftergroup\csname pgfplots@#1isuniformtrue\endcsname
+			%
+			% Now, we want to activate the Tick set {i*H, i in \Z}
+			% compute I such that
+			%   xmin = I * H + rest;  |rest| < H
+			% -> I = round(xmin/H)
+			% -> MIN = I * H
+			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+				{\pgf@sys@tonumber\MIN}%
+				{\pgf@sys@tonumber\H}%
+			}%
+			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+			\ifdim\MIN<0pt
+				% the truncation rounds TOWARDS 0 which is not what I want.
+				\advance\c@pgf@counta by-1
+			\fi
+			\MIN=\H
+			\multiply\MIN by\c@pgf@counta
+		\or
+			% CASE LOG AXIS
+			%
+			% search for the "best" H= j* log(10),  j an integer.
+			%
+			% And prefer j=1 if that is possible (otherwise minor
+			% ticks are not useful).
+			\pgfmathmultiply@{\Hmacro}{\reciproc@logten}%
+			\expandafter\H\pgfmathresult pt
+%\pgfplots@message{ [ H / log(10) = \pgfmathresult}%
+			\ifdim\H<2pt
+				\H=1pt
+			\else
+				\ifnum\H<1pt
+					\H=1pt
+				\else
+					\expandafter\pgfmathfloor\expandafter{\pgfmathresult}%
+					\expandafter\H\pgfmathresult pt
+				\fi
+			\fi
+			\ifdim\H=1pt
+				\expandafter\aftergroup\csname pgfplots@#1isuniformtrue\endcsname
+				\pgfplots@isuniformticktrue
+			\else
+				\expandafter\aftergroup\csname pgfplots@#1isuniformfalse\endcsname
+				\pgfplots@isuniformtickfalse
+			\fi
+%\pgfplots@message{final H=\pgf@sys@tonumber{\H} * log(10)}%
+			\H=\logten\H\relax
+			% Now, we want to activate the Tick set 
+			%   {lowest, lowest+H, ..., highest}
+			%
+			% Where 
+			% 	lowest =  I * log(10) + rest, |rest| < log(10).
+			% this is conceptionally different from the approach for
+			% linear axes, because H = j*log(10).
+			%
+			% remember the original xmin in MINH:
+			\MINH=\MIN
+			%
+			% and compute I and I*log(10) here:
+			\expandafter\MIN\reciproc@logten\MIN\relax
+			\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
+			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+			\ifdim\MIN<0pt
+				% the truncation rounds TOWARDS 0 which is not what I want.
+				\advance\c@pgf@counta by-1
+			\fi
+			\expandafter\MIN\logten pt
+			\multiply\MIN by\c@pgf@counta
+			\ifpgfplots@isuniformtick
+			\else
+				% This here is a special case to move the first tick
+				% near the lower axis limit.
+				%
+				% "Near" means either directly above or directly below ymin.
+				% 
+				% My application example is as follows:
+				% Let H = 2*log(10).
+				% Furthermore, ymin = 3e-6, ymax= 8e-2. That means we can choose either
+				%    10^{-5}, 10^{-3}, 10^{-1}
+				% or
+				%    10^{-4}, 10^{-2}
+				% as ticks. Well, I prefer the first one.
+				%
+				% HEURISTICS: start as near to ymin as possible!
+				%
+				% We check here if we can come nearer to ymin if we
+				% shift the current tick by log(10):
+				%  if( ymin - I * log(10) < 0.5*H ->  use I+1, that means add log(10).
+				%
+				% that's equivalent to 
+				%  2*(ymin - I * log(10)) - H < 0.
+				\advance\MINH by-\MIN
+				\multiply\MINH by2
+				\advance\MINH by-\H
+				% 
+				\ifdim\MINH<0pt
+					\expandafter\advance\expandafter\MIN\logten pt
+				\fi
+			\fi
+		\fi
+		\MINH=\MIN
+		\advance\MINH by\H
+%\pgfplots@message{final H=\the\H}%
+		\xdef\pgfplots@TMP{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
+		\aftergroup\pgfplots@needs@check@uniformtickfalse
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMP
+%\pgfplots@message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1mode=\the\csname pgfplots@#1mode\endcsname,  #1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
+}
+
+% Helper method for 
+%  \pgfplots@apply@data@scale@trafo@to@options@for
+% #1: the ticks
+% #2: the trafo macro name 
+% #3: the output macro name
+\long\def\pgfplots@apply@data@scale@trafo@to@user@ticks#1#2\to#3{%
+	\let#3=\pgfutil@empty
+	\foreach \pgfplots@TMPB in {#1} {%
+		\pgfmathfloatparsenumber{\pgfplots@TMPB}%
+		\expandafter#2\expandafter{\pgfmathresult}%
+		\ifx#3\pgfutil@empty
+			\xdef#3{\pgfmathresult}%
+		\else
+			\xdef#3{#3,\pgfmathresult}%
+		\fi
+	}%
+	%
+}%
+
+% helper for \pgfplots@apply@data@scale@trafo@to@options@for.
+\def\pgfplots@compute@number@order@for@trafo@isdimen#1\tocount#2{%
+	\edef\pgfplots@TMP{\pgf@sys@tonumber{#1}}%
+	\pgfmathfloatparsenumber{\pgfplots@TMP}%
+	\expandafter\pgfmathfloat@decompose@E\pgfmathresult\relax#2
+	\advance#2 by1
+}
+
+% helper for \pgfplots@apply@data@scale@trafo@to@options@for.
+% 
+\def\pgfplots@compute@number@order@for@trafo@isfloat#1\tocount#2{%
+	\expandafter\pgfmathfloat@decompose@E#1\relax#2
+	\advance#2 by1
+}
+
+% Initialises the data scale transformation and applies it to any
+% user specified options.
+%
+% PRECONDITION:
+%   - all axis limits are available in float representation
+%   - \pgfplots@set@default@size@options has been called before
+% POSTCONDITION:
+%   - the scaling transformation is set up,
+%   - all axis limits are transformed,
+%   - any user input (like ticks and tick labels)
+%     will reflect the changes.
+\def\pgfplots@apply@data@scale@trafo@to@options@for#1{%
+	% initialise data scale transformation 
+	%   T(x) = 10^{q-m} * x
+	%
+	\begingroup
+	\let\data@max@order=\c@pgf@counta
+	\let\data@cur@order=\c@pgf@countb
+	\let\data@dimen=\pgf@xa
+	\let\data@dimen@order=\c@pgf@countc
+	%
+	% Step 1: compute 'm', the data order
+	\expandafter\pgfplots@compute@number@order@for@trafo@isfloat
+		\csname pgfplots@#1min\endcsname
+		\tocount\data@cur@order
+	%
+	\data@max@order=\data@cur@order
+	%
+	\expandafter\pgfplots@compute@number@order@for@trafo@isfloat
+		\csname pgfplots@#1max\endcsname
+		\tocount\data@cur@order
+	%
+	\ifnum\data@cur@order>\data@max@order
+		\data@max@order=\data@cur@order
+	\fi
+	%
+	% Step 2: compute 'q', the #1-size of the axis.
+	\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
+		% We have 'width' or 'height'.
+		%
+		% Use the order of these parameters.
+		\def\pgfplots@TMP{#1}%
+		\def\pgfplots@TMPB{x}%
+		\ifx\pgfplots@TMP\pgfplots@TMPB
+			\expandafter\data@dimen\pgfplots@width\relax
+		\else
+			\def\pgfplots@TMPB{y}%
+			\ifx\pgfplots@TMP\pgfplots@TMPB
+				\expandafter\data@dimen\pgfplots@height\relax
+			\fi
+		\fi
+		\pgfplots@compute@number@order@for@trafo@isdimen
+			\data@dimen
+			\tocount\data@dimen@order
+		% This here is to avoid inaccuracies in the final
+		% axis rectangle size, see \pgfplots@initsizes:
+		\advance\data@dimen@order by-1
+	\else
+		% FIXME:
+		% we have either the 'x=1cm' or 'y=1cm' option!
+		% How should I initialise the trafo!?
+		\data@dimen@order=3
+	\fi
+	%
+%\pgfplots@message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
+	\advance\data@dimen@order by-\data@max@order
+	\xdef\pgfplots@TMP{\the\data@dimen@order}%
+	\endgroup
+%\pgfplots@message{Initialising the data scale transformation in direction #1 to \pgfplots@TMP...}%
+	% COMPLETE INITIALISATION:
+	\ifpgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITY
+		\pgfplots@warning{WARNING: the automatic scaling of input data has been DISABLED to allow unscalable commands. DISABLING THE DATA SCALING LIMITS THE DATA RANGE! I hope I can fix this issue as soon as possible. Please take a look at the manual for more information. If you get 'OVERFLOW' or 'UNDERFLOW' errors, you may need to disable the axispath.}%
+		\def\pgfplots@TMP{0}%
+		\expandafter\let\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname\pgfplots@TMP
+	\else
+		\expandafter\let\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname\pgfplots@TMP
+	\fi
+	%
+	% ... and apply transformation to any user input
+	%
+	% Transform axis limits:
+	\expandafter\expandafter\csname pgfplots@datascaletrafo@#1\endcsname\expandafter{\csname pgfplots@#1min\endcsname}%
+	\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+	%
+	\expandafter\expandafter\csname pgfplots@datascaletrafo@#1\endcsname\expandafter{\csname pgfplots@#1max\endcsname}%
+	\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+	%
+	% Convert any user-specified ticks:
+	\edef\pgfplots@TMP{\csname pgfplots@#1tick\endcsname}%
+	% this here should also work with 'xtick=\pgfutil@empty', the "No tick" command.
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+%\pgfplots@message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
+		\pgfplots@toka=\expandafter{\csname pgfplots@datascaletrafo@#1\endcsname}%
+		\edef\pgfplots@TMP{{\csname pgfplots@#1tick\endcsname}\the\pgfplots@toka}%
+		\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@TMP\to\pgfplots@TMPC
+		\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMPC
+	\fi
+	%
+	% Convert any extra-ticks, see above.
+	\edef\pgfplots@TMP{\csname pgfplots@extra@#1tick\endcsname}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\pgfplots@toka=\expandafter{\csname pgfplots@datascaletrafo@#1\endcsname}%
+		\edef\pgfplots@TMP{{\csname pgfplots@extra@#1tick\endcsname}\the\pgfplots@toka}%
+		\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@TMP\to\pgfplots@TMPC
+		\expandafter\let\csname pgfplots@extra@#1tick\endcsname=\pgfplots@TMPC
+	\fi
+	%
+	% Transform any explicit axis unit scalings:
+	\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
+	\else
+%\pgfplots@message{Converting #1 unit scale='\csname pgfplots@#1\endcsname' ... }%
+		\expandafter\pgfmathparse\expandafter{\csname pgfplots@#1\endcsname}%
+		\expandafter\expandafter\csname pgfplots@inverse@datascaletrafo@tofixed@#1\endcsname\expandafter{\pgfmathresult}%
+		\expandafter\edef\csname pgfplots@#1\endcsname{\pgfmathresult pt}%
+%\pgfplots@message{to #1='\csname pgfplots@#1\endcsname'.}%
+	\fi
+}
+
+\def\pgfplots@determinedefaultvalues{%
+	\ifpgfplots@limits@are@computed
+	\else
+		% EMPTY AXIS:
+		\pgfplots@warning{WARNING: You have a plot with empty range. This may produce errors!}%
+		%--------------------------------------------------
+		% \ifpgfplots@autocompute@xlim
+		% 	\ifpgfplots@float@numerics@mode@x
+		% 		\def\pgfplots@xmin{00.0e0}%
+		% 		\def\pgfplots@xmax{11.0e0}%
+		% 	\else
+		% 		\def\pgfplots@xmin{0}%
+		% 		\def\pgfplots@xmax{1}%
+		% 	\fi
+		% \fi
+		% \ifpgfplots@autocompute@ylim
+		% 	\ifpgfplots@float@numerics@mode@y
+		% 		\def\pgfplots@ymin{00.0e0}%
+		% 		\def\pgfplots@ymax{11.0e0}%
+		% 	\else
+		% 		\def\pgfplots@ymin{0}%
+		% 		\def\pgfplots@ymax{1}%
+		% 	\fi
+		% \fi
+		%-------------------------------------------------- 
+	\fi
+	%
+	\pgfplots@set@default@size@options
+	%
+	\ifpgfplots@float@numerics@mode@x
+		\let\pgfplots@xmin@unscaled@as@float=\pgfplots@xmin
+		\let\pgfplots@xmax@unscaled@as@float=\pgfplots@xmax
+		\pgfplots@apply@data@scale@trafo@to@options@for x%
+	\else
+		\let\pgfplots@xmin@unscaled@as@float=\pgfutil@empty
+		\let\pgfplots@xmax@unscaled@as@float=\pgfutil@empty
+	\fi
+	\ifpgfplots@float@numerics@mode@y
+		\let\pgfplots@ymin@unscaled@as@float=\pgfplots@ymin
+		\let\pgfplots@ymax@unscaled@as@float=\pgfplots@ymax
+		\pgfplots@apply@data@scale@trafo@to@options@for y%
+	\else
+		\let\pgfplots@ymin@unscaled@as@float=\pgfutil@empty
+		\let\pgfplots@ymax@unscaled@as@float=\pgfutil@empty
+	\fi
+	%
+	\ifnum\pgfplots@xmode=0
+		\pgfplots@xminorticksfalse
+	\fi
+	\ifnum\pgfplots@ymode=0
+		\pgfplots@yminorticksfalse
+	\fi
+	%
+	\pgfplots@init@enlarge@limit@booleans
+	\ifpgfplots@enlargelimits
+		% relax the sizes.
+		%
+		% Idea: if the user chose his xmin,xmax tight to his data,
+		% this here will look better.
+		\pgfplots@enlarge@limit@for x
+		\pgfplots@enlarge@limit@for y
+	\else
+		\ifpgfplots@enlargelimits@auto
+			\ifpgfplots@hide
+				% there is no axis, so skip this enlargement (unless
+				% the user explizitly requests it)
+			\else
+				% FIXME : this here should be user-configurable!
+				\ifpgfplots@autocompute@xlim
+					\pgfplots@enlarge@limit@for x
+				\fi
+				\ifpgfplots@autocompute@ylim
+					\pgfplots@enlarge@limit@for y
+				\fi
+			\fi
+		\fi
+	\fi
+	%
+	\pgfplots@avoid@empty@axis@range@for x%
+	\pgfplots@avoid@empty@axis@range@for y%
+	%
+	\pgfplots@initsizes
+	%
+	\newif\ifpgfplots@xisuniform
+	\newif\ifpgfplots@yisuniform
+	\pgfplots@xisuniformtrue
+	\pgfplots@yisuniformtrue
+	\newif\ifpgfplots@needs@check@uniformtick
+	\pgfplots@needs@check@uniformticktrue
+	\ifx\pgfplots@xtick\pgfutil@empty
+		\pgfplots@assign@default@tick@foraxis{x}%
+	\fi
+	\ifpgfplots@needs@check@uniformtick
+		\ifnum\pgfplots@xmode=1
+			\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@xtick}%
+			\ifpgfplots@isuniformtick
+				\pgfplots@xisuniformtrue
+			\else
+				\pgfplots@xisuniformfalse
+			\fi
+		\fi
+	\fi
+	\ifpgfplots@xisuniform
+	\else
+		\pgfplots@xminorticksfalse
+	\fi
+	%
+	%
+	%
+	\pgfplots@needs@check@uniformticktrue
+	\ifx\pgfplots@ytick\pgfutil@empty
+		\pgfplots@assign@default@tick@foraxis{y}%
+	\fi
+	\ifpgfplots@needs@check@uniformtick
+		\ifnum\pgfplots@ymode=1
+			\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@ytick}%
+			\ifpgfplots@isuniformtick
+				\pgfplots@yisuniformtrue
+			\else
+				\pgfplots@yisuniformfalse
+			\fi
+		\fi
+	\fi
+	\ifpgfplots@yisuniform
+	\else
+		\pgfplots@yminorticksfalse
+	\fi
+	%
+	\ifx\pgfplots@xticklabel\pgfutil@empty
+		\ifcase\pgfplots@xmode
+			\def\pgfplots@xticklabel{\axisdefaultticklabel}%
+		\or
+			\def\pgfplots@xticklabel{\axisdefaultticklabellog}%
+		\fi
+	\fi
+	\ifx\pgfplots@extra@xticklabel\pgfutil@empty
+		\let\pgfplots@extra@xticklabel=\pgfplots@xticklabel
+	\fi
+	\ifx\pgfplots@yticklabel\pgfutil@empty
+		\ifcase\pgfplots@ymode
+			\def\pgfplots@yticklabel{\axisdefaultticklabel}%
+		\or
+			\def\pgfplots@yticklabel{\axisdefaultticklabellog}%
+		\fi
+	\fi
+	\ifx\pgfplots@extra@yticklabel\pgfutil@empty
+		\let\pgfplots@extra@yticklabel=\pgfplots@yticklabel
+	\fi
+}
+
+
+% Helper method for initsizes.
+%
+% It computes a scaling such that \pgfplots@width = SCALE * ACTUAL WIDTH.
+% 
+% The actual width is 
+% 	c + x*(xmax-xmin)
+% based on
+% - x*xmax = \pgfplots@xcoordmaxTEX
+% - x*xmin = \pgfplots@xcoordminTEX
+% - c = estimated, a constant for the axis label/tick labels
+%
+% Arguments: 
+% #1: the output argument for the SCALE.
+\def\pgfplots@initsizes@getXscale\into#1{%
+	\expandafter\pgfplots@tmpa\pgfplots@width\relax
+	% EXPECTED WIDTH = X = \pgfplots@width
+	% ACTUAL WIDTH = c + x * (xmax-xmin)
+	% where c is a CONSTANT (for the axis labels/tick labels).
+	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
+	%
+	% \pgfplots@tmpa := X-c:
+	\ifpgfplots@scale@only@axis
+	\else
+		\advance\pgfplots@tmpa by-45pt% FIXME determine 'c' correctly!
+	\fi
+	\ifdim\pgfplots@tmpa<0pt
+		\pgfplots@error{Error: Plot width `\pgfplots@width' is too small. This can't be realised while maintaining constant width for y-labels. Sorry, label width are only approximate. You will need to adjust your width.}%
+		\pgfplots@tmpa=0pt
+	\fi
+	% \pgfplots@tmpb := x*(xmax-xmin):
+	\pgfplots@tmpb=\pgfplots@xcoordmaxTEX
+	\advance\pgfplots@tmpb by-\pgfplots@xcoordminTEX
+	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+		{\pgf@sys@tonumber\pgfplots@tmpa}%
+		{\pgf@sys@tonumber\pgfplots@tmpb}%
+	}%
+	\let#1=\pgfmathresult
+%\pgfplots@message{pgfplots.sty: Computing 'x' such that 'width = c + x*(xmax-xmin)';
+%	c=estimated, 
+%	width-c =\the\pgfplots@tmpa,  
+%	x*(xmax[=\the\pgfplots@xcoordmaxTEX] - xmin[=\the\pgfplots@xcoordminTEX)]) = \the\pgfplots@tmpb  
+%	-> x-scale =#1 }%
+}
+
+% The same as \pgfplots@initsizes@getXscale, just for the height.
+\def\pgfplots@initsizes@getYscale\into#1{%
+	\expandafter\pgfplots@tmpa\pgfplots@height\relax
+	% EXPECTED WIDTH = X = \pgfplots@width
+	% ACTUAL WIDTH = c + x * (xmax-xmin)
+	% where c is a CONSTANT (for the axis labels/tick labels).
+	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
+	%
+	% \pgfplots@tmpa := X-c:
+	\ifpgfplots@scale@only@axis
+	\else
+		\advance\pgfplots@tmpa by-45pt\relax% FIXME determine 'c' correctly!
+	\fi
+	\ifdim\pgfplots@tmpa<0pt
+		\pgfplots@error{Error: Plot height `\pgfplots@height' is too small. This can't be realised while maintaining constant height for x-labels. Sorry, label heights are only approximate. You will need to adjust your height.}%
+		\pgfplots@tmpa=0pt
+	\fi
+	% \pgfplots@tmpb := x*(xmax-xmin):
+	\pgfplots@tmpb=\pgfplots@ycoordmaxTEX
+	\advance\pgfplots@tmpb by-\pgfplots@ycoordminTEX
+	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+		{\pgf@sys@tonumber\pgfplots@tmpa}%
+		{\pgf@sys@tonumber\pgfplots@tmpb}%
+	}%
+	\let#1=\pgfmathresult
+%\pgfplots@message{pgfplots.sty: Computing 'y' such that 'height = c + y*(ymax-ymin)';
+%	height=\pgfplots@height,
+%	c=estimated,
+%	height-c =\the\pgfplots@tmpa,  
+%	y*(ymax[=\the\pgfplots@ycoordmaxTEX] - ymin[=\the\pgfplots@ycoordminTEX)]) = \the\pgfplots@tmpb  
+%	-> y-scale =#1 }%
+}
+
+
+% Checks whether axis limits in coordinate #1 are approximately equal.
+%
+% If that is the case, force a non-zero width of the range.
+%
+\def\pgfplots@avoid@empty@axis@range@for#1{%
+	% Check if axis limits are empty:
+	\begingroup
+	\expandafter\let\expandafter\if@cur@is@scaled\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\let\expandafter\min\csname pgfplots@#1min\endcsname
+	\expandafter\let\expandafter\max\csname pgfplots@#1max\endcsname
+	\let\min@d=\pgf@xa
+	\let\max@d=\pgf@xb
+	\let\diff=\pgf@xc
+	\newif\ifrange@is@approx@equal
+	\expandafter\min@d\min pt
+	\expandafter\max@d\max pt
+	\diff=\max@d
+	\advance\diff by-\min@d
+	% FIXME : I need a RELATIVE check here!
+	% but: real number point division is expensive
+	\if@cur@is@scaled
+		% this here should be sufficient because the axis
+		% has absolute values of order O( 10^3 ) or so.
+		\ifdim\diff<1pt
+			\range@is@approx@equaltrue
+		\fi
+	\else
+		% there is no data scaling, so I should be much more defensive
+		% with absolute thresholds...
+		\ifdim\diff<0.05pt
+			\range@is@approx@equaltrue
+		\fi
+	\fi
+	\ifrange@is@approx@equal
+%\pgfplots@message{avoid range is approx equal for coord #1: MODIFYING (\min,\max)...}%
+		% the case \min ~= \max
+		%
+		% enlarge \max and shrink \min:
+		\ifdim\max@d<0pt
+			\ifdim\max@d<-1pt
+				\max@d=0.8\max@d
+				\min@d=1.2\min@d
+			\else
+				\advance\max@d by-1pt
+				\advance\min@d by1pt
+			\fi
+		\else
+			\ifdim\max@d>1pt
+				\max@d=1.2\max@d
+				\min@d=0.8\min@d
+			\else
+				\ifdim\max@d=0pt
+					\if@cur@is@scaled
+						% we can't simply add a constant in the
+						% transformed range.
+						%
+						% So: set limits to [-1,1] = [-1.0e0,+1.0e0]
+						\csname pgfplots@datascaletrafo@#1\endcsname{21.0e0}%
+						\let\min=\pgfmathresult
+						\csname pgfplots@datascaletrafo@#1\endcsname{11.0e0}%
+						\let\max=\pgfmathresult
+%\pgfplots@message{[trafo shift = \csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname; setting limits -1:1]}%
+						\expandafter\min@d\min pt
+						\expandafter\max@d\max pt
+					\else
+						\advance\max@d by1pt
+						\advance\min@d by-1pt
+					\fi
+				\else
+					\advance\max@d by1pt
+					\advance\min@d by-1pt
+				\fi
+			\fi
+		\fi
+		\xdef\pgfplots@TMP{\pgf@sys@tonumber{\min@d}}%
+		\xdef\pgfplots@TMPB{\pgf@sys@tonumber{\max@d}}%
+%\pgfplots@message{ -> #1 = \pgfplots@TMP : \pgfplots@TMPB;}%
+	\else
+		\global\let\pgfplots@TMP=\min%
+		\global\let\pgfplots@TMPB=\max%
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@#1min\endcsname=\pgfplots@TMP
+	\expandafter\let\csname pgfplots@#1max\endcsname=\pgfplots@TMPB
+}
+
+% PRECONDITION:
+% 	none
+% POSTCONDITION:
+% 	\pgfplots@default@aspect@ratio is set.
+\def\pgfplots@compute@default@aspect@ratio{%
+	\expandafter\pgfmath@x\axisdefaultwidth
+	\expandafter\pgfmath@y\axisdefaultheight
+	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+		{\pgf@sys@tonumber{\pgfmath@x}}%
+		{\pgf@sys@tonumber{\pgfmath@y}}%
+	}%
+	\let\pgfplots@default@aspect@ratio=\pgfmathresult
+}
+
+\def\pgfplots@set@default@size@options{%
+	% The axes 'x' and 'y' vectors will be scaled such that the total
+	% size is (\axisdefaultwidth, \axisdefaultheight).
+	%
+	% If the user specifies ONE of width OR height, 
+	% the plot will be resized; keeping the aspect ratio.
+	%
+	\let\pgfplots@default@aspect@ratio=\pgfutil@empty
+	% CASES:
+	% hasx := 'x' option non-empty
+	% hasy := 'y' option non-empty
+	% W := 'width' option non-empty
+	% H := 'height' option non-empty
+	%
+	% hasx = 1 -> width is not interesting; we use 'x' option.
+	% hasx = 0 -> determine final width:
+	% 		W H
+	% 		0 0 -> \axisdefaultwidth 
+	% 		0 1 -> determine width out of H and the default aspect ratio
+	% 		1 X -> ok, use the user parameter.
+	%
+	% hasy = 1 -> height is not interesting, we use 'y' option.
+	% hasy = 0 -> determine final height:
+	% 		W H
+	% 		0 0 -> \axisdefaultheight
+	% 		X 1 -> ok, use the user parameter
+	% 		1 0 -> determine height out of W and the default aspect ratio
+	%
+	\ifx\pgfplots@x\pgfutil@empty
+		\ifx\pgfplots@y\pgfutil@empty
+			% hasx=0, hasy=0 
+			%
+			% -> KEEP ASPECT RATIO if just one W, or H is given!
+			\ifx\pgfplots@width\pgfutil@empty
+				\ifx\pgfplots@height\pgfutil@empty
+					% The case hasx=0, hasy=0,  W=0 H=0:
+					\let\pgfplots@width=\axisdefaultwidth
+					\let\pgfplots@height=\axisdefaultheight
+				\else
+					% The case hasx=0, hasy=0,  W=0 H=1:
+					\pgfplots@compute@default@aspect@ratio
+					\expandafter\pgfmath@y\pgfplots@height
+					\pgfmathlog@invoke@expanded\pgfmathmultiply@{%
+						{\pgf@sys@tonumber{\pgfmath@y}}%
+						{\pgfplots@default@aspect@ratio}%
+					}%
+					\edef\pgfplots@width{\pgfmathresult pt}%
+				\fi
+			\else
+				\ifx\pgfplots@height\pgfutil@empty
+					% The case hasx=0, hasy=0,  W=1 H=0:
+					\pgfplots@compute@default@aspect@ratio
+					\expandafter\pgfmath@x\pgfplots@width
+					\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+						{\pgf@sys@tonumber{\pgfmath@x}}%
+						{\pgfplots@default@aspect@ratio}%
+					}%
+					\edef\pgfplots@height{\pgfmathresult pt}%
+				\else
+					% The case hasx=0, hasy=0,  W=1 H=1:
+				\fi
+			\fi
+		\else
+			% hasx=0, hasy=1, W=0:
+			\ifx\pgfplots@width\pgfutil@empty
+				\let\pgfplots@width=\axisdefaultwidth
+			\fi
+		\fi
+	\else
+		\ifx\pgfplots@y\pgfutil@empty
+			% hasx=1, hasy=0, H=0
+			\ifx\pgfplots@height\pgfutil@empty
+				\let\pgfplots@height=\axisdefaultheight
+			\fi
+		\fi
+	\fi
+}
+
+% PRECONDITION: 
+% 	- final axis limits are given in transformed range
+% 	-  \pgfplots@set@default@size@options has been invoked before
+% POSTCONDITION: 
+% 	- the current x- and y unit vectors are changed;
+% 	- \pgfplots@[xy]coord{min,max}TEX  are set
+%
+\def\pgfplots@initsizes{%
+	% INIT.
+	%
+	%
+	\pgfpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\pgfplots@xcoordminTEX=\pgf@x
+	\pgfplots@ycoordminTEX=\pgf@y
+	\pgfpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\pgfplots@xcoordmaxTEX=\pgf@x
+	\pgfplots@ycoordmaxTEX=\pgf@y
+	%
+	%
+	%-----------------------------------------
+	% PROCESS THE 'width' and 'height' options
+	%-----------------------------------------
+	%
+	% FIXME: make these variables LOCAL:
+	%
+	\let\pgfplots@rectangle@width=\pgfutil@empty
+	\let\pgfplots@rectangle@height=\pgfutil@empty
+	%
+	\ifx\pgfplots@x\pgfutil@empty
+		\ifx\pgfplots@width\pgfutil@empty
+			\pgfplots@error{INTERNAL LOGIC ERROR! WIDTH NOT SET}%
+		\fi
+		\pgfplots@initsizes@getXscale\into\pgfplots@tmpXscale
+		\ifpgfplots@scale@only@axis
+			\let\pgfplots@rectangle@width=\pgfplots@width
+		\fi
+	\else
+		\def\pgfplots@tmpXscale{1}%
+	\fi
+	%
+	\ifx\pgfplots@y\pgfutil@empty
+		\ifx\pgfplots@height\pgfutil@empty
+			\pgfplots@error{INTERNAL LOGIC ERROR! HEIGHT NOT SET}%
+		\fi
+		\pgfplots@initsizes@getYscale\into\pgfplots@tmpYscale
+		\ifpgfplots@scale@only@axis
+			\let\pgfplots@rectangle@height=\pgfplots@height
+		\fi
+	\else
+		\def\pgfplots@tmpYscale{1}%
+	\fi
+	%
+	% 
+	% assert( \pgfplots@tmpXscale != \pgfutil@empty && \pgfplots@tmpYscale != \pgfutil@empty )
+	%
+	% Apply scaling:
+	\pgfpointxy{\pgfplots@tmpXscale}{\pgfplots@tmpYscale}%
+	\pgfplots@tmpa=\pgf@x
+	\pgfplots@tmpb=\pgf@y
+	\ifx\pgfplots@x\pgfutil@empty
+		\pgfsetxvec{\pgfpoint{\pgfplots@tmpa}{0pt}}%
+	\else
+		\pgfsetxvec{\pgfpoint{\pgfplots@x}{0pt}}%
+	\fi
+	\ifx\pgfplots@y\pgfutil@empty
+		\pgfsetyvec{\pgfpoint{0pt}{\pgfplots@tmpb}}%
+	\else
+		\pgfsetyvec{\pgfpoint{0pt}{\pgfplots@y}}%
+	\fi
+	%
+	% Determine final rectangle dimensions.
+	% There are the following cases: 
+	% 1. the user really wants a fixed dimension,
+	%    i.e. he used 'scale only axis'.
+	%    Then, we have to work to get the correct dimension!
+	%
+	%    Up to now, the scaling mechanism looses to many significant
+	%    digits such that the final width/height differs by 1-2 pt.
+	%
+	%    If I am not mistaken, this does ONLY affect the final size,
+	%    not the relative plot precision.
+	%    
+	%    FIXME : really compute the plot precision!
+	% 
+	% 2. The use specified width and/or height, but not 'scale only
+	%    axis'. Accept inaccurate final widths/heights (see above).
+	%
+	% 3. The user supplied 'x' and or 'y'. Simply use them, its
+	% accurate.
+	%
+	\pgfpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\pgfplots@xcoordminTEX=\pgf@x
+	\pgfplots@ycoordminTEX=\pgf@y
+	\pgfpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\ifx\pgfplots@rectangle@width\pgfutil@empty
+		\pgfplots@xcoordmaxTEX=\pgf@x
+	\else
+		% this 'if' here should only make a difference of about
+		% 1-2pt, not more.
+		%
+		% and I am quite sure that this inaccuracy (and this
+		% work-around) only affects the
+		% final size, not the relative plot accuracy.
+		\pgfplots@xcoordmaxTEX=\pgfplots@xcoordminTEX
+		\expandafter\advance\expandafter\pgfplots@xcoordmaxTEX\pgfplots@width
+	\fi
+	\ifx\pgfplots@rectangle@height\pgfutil@empty
+		\pgfplots@ycoordmaxTEX=\pgf@y
+	\else
+		\pgfplots@ycoordmaxTEX=\pgfplots@ycoordminTEX
+		\expandafter\advance\expandafter\pgfplots@ycoordmaxTEX\pgfplots@height
+	\fi
+%--------------------------------------------------
+% \begingroup
+% \pgf@x=\pgfplots@xcoordmaxTEX\advance\pgf@x by-\pgfplots@xcoordminTEX
+% \pgf@y=\pgfplots@ycoordmaxTEX\advance\pgf@y by-\pgfplots@ycoordminTEX
+% \pgfplots@message{Axis scaling x=\pgfplots@tmpXscale, y=\pgfplots@tmpYscale\ yields lower-left-corner (\pgfplots@xmin,\pgfplots@ymin) = (\the\pgfplots@xcoordminTEX,\the\pgfplots@ycoordminTEX) and upper right (\pgfplots@xmax,\pgfplots@ymax) = (\the\pgfplots@xcoordmaxTEX,\the\pgfplots@ycoordmaxTEX).   Axis dimensions are width=\the\pgf@x, height=\the\pgf@y.}%
+% \endgroup
+%-------------------------------------------------- 
+}
+
+
+% This is the main axis shape.
+%
+% It has one node part, which is the complete image. It provides a lot
+% of anchors.
+\pgfdeclareshape{pgfplots@low@level@shape}{%
+	\savedanchor\upperrightcorner{
+		\pgf@x=\wd\pgfnodepartimagebox
+		\pgf@y=\ht\pgfnodepartimagebox
+	}%
+	\savedanchor\lowerleftinnercorner{%
+		\pgfpoint{\pgfplots@savedanchor@inner@lowerleft@x}{\pgfplots@savedanchor@inner@lowerleft@y}%
+	}%
+	\savedanchor\upperrightinnercorner{%
+		\pgfpoint{\pgfplots@savedanchor@inner@upperright@x}{\pgfplots@savedanchor@inner@upperright@y}%
+	}%
+	%
+	\nodeparts{image}%
+	\anchor{image}{%
+		\pgf@x=0pt
+		\pgf@y=0pt
+	}%
+	%
+	\anchor{outer north}{%
+		\upperrightcorner
+		\pgf@x=.5\pgf@x
+	}%
+	\anchor{outer north east}{\upperrightcorner}%
+	\anchor{outer east}{%
+		\upperrightcorner
+		\pgf@y=.5\pgf@y
+	}%
+	\anchor{outer south east}{%
+		\upperrightcorner
+		\pgf@y=0pt
+	}%
+	\anchor{outer south}{%
+		\upperrightcorner
+		\pgf@x=.5\pgf@x
+		\pgf@y=0pt
+	}%
+	\anchor{outer south west}{%
+		\pgf@x=0pt
+		\pgf@y=0pt
+	}%
+	\anchor{outer west}{%
+		\upperrightcorner
+		\pgf@x=0pt
+		\pgf@y=.5\pgf@y
+	}%
+	\anchor{outer north west}{%
+		\upperrightcorner
+		\pgf@x=0pt
+	}%
+	\anchor{outer center}{%
+		\upperrightcorner
+		\pgf@x=.5\pgf@x
+		\pgf@y=.5\pgf@y
+	}%
+	%
+	%
+	\anchor{center}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\advance\pgf@xa by\pgf@x
+		\pgf@x=.5\pgf@xa
+		\advance\pgf@xb by\pgf@y
+		\pgf@y=.5\pgf@xb
+	}%
+	\anchor{north}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\advance\pgf@xa by\pgf@x
+		\pgf@x=.5\pgf@xa
+	}%
+	\anchor{north east}{\upperrightinnercorner}%
+	\anchor{east}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\advance\pgf@xb by\pgf@y
+		\pgf@y=.5\pgf@xb
+	}%
+	\anchor{south east}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\pgf@y=\pgf@xb
+	}%
+	\anchor{south}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\advance\pgf@xa by\pgf@x
+		\pgf@x=.5\pgf@xa
+		\pgf@y=\pgf@xb
+	}%
+	\anchor{south west}{\lowerleftinnercorner}%
+	\anchor{west}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\pgf@x=\pgf@xa
+		\advance\pgf@xb by\pgf@y
+		\pgf@y=.5\pgf@xb
+	}%
+	\anchor{north west}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\upperrightinnercorner
+		\pgf@x=\pgf@xa
+	}%
+	%%
+	%%
+	\anchor{above north}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@y
+		\lowerleftinnercorner
+		\pgf@xb=\pgf@x
+		\upperrightinnercorner
+		\advance\pgf@xb by\pgf@x
+		\pgf@x=.5\pgf@xb
+		\pgf@y=\pgf@xa
+	}%
+	\anchor{above north east}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@y
+		\upperrightinnercorner
+		\pgf@y=\pgf@xa
+	}%
+	\anchor{right of north east}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@x
+		\upperrightinnercorner
+		\pgf@x=\pgf@xa
+	}%
+	\anchor{right of east}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@x
+		\upperrightinnercorner
+		\pgf@xb=\pgf@y
+		\lowerleftinnercorner
+		\advance\pgf@xb by\pgf@y
+		\pgf@x=\pgf@xa
+		\pgf@y=.5\pgf@xb
+	}%
+	\anchor{right of south east}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@x
+		\lowerleftinnercorner
+		\pgf@x=\pgf@xa
+	}%
+	\anchor{below south east}{%
+		\upperrightinnercorner
+		\pgf@y=0pt
+	}%
+	\anchor{below south}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@x
+		\upperrightinnercorner
+		\pgf@y=0pt
+		\advance\pgf@xa by\pgf@x
+		\pgf@x=.5\pgf@xa
+	}%
+	\anchor{below south west}{%
+		\lowerleftinnercorner
+		\pgf@y=0pt
+	}%
+	\anchor{left of south west}{%
+		\lowerleftinnercorner
+		\pgf@x=0pt
+	}%
+	\anchor{left of west}{%
+		\lowerleftinnercorner
+		\pgf@xa=\pgf@y
+		\upperrightinnercorner
+		\advance\pgf@xa by\pgf@y
+		\pgf@y=.5\pgf@xa
+		\pgf@x=0pt
+	}%
+	\anchor{left of north west}{%
+		\upperrightinnercorner
+		\pgf@x=0pt
+	}%
+	\anchor{above north west}{%
+		\upperrightcorner
+		\pgf@xa=\pgf@y
+		\lowerleftinnercorner
+		\pgf@y=\pgf@xa
+	}%
+	%%
+	%%
+	%%
+	\anchorborder{%
+		% Call a function that computes a border point. Since this
+		% function will modify dimensions like \pgf@x, we must move them to
+		% other dimensions.
+		\@tempdima=\pgf@x
+		\@tempdimb=\pgf@y
+		\pgfpointborderrectangle%
+			{\pgfpoint{\@tempdima}{\@tempdimb}}%
+			{\pgfpointadd{\upperrightcorner}{\pgfpoint{\width}{\height}}}
+	}%
+	\backgroundpath{\pgfpathrectangle{\pgfpointorigin}{\upperrightcorner}}%
+	\foregroundpath{}%
+	\behindbackgroundpath{}%
+	\beforebackgroundpath{}%
+	\behindforegroundpath{}%
+	\beforeforegroundpath{}%
+}
+
+\def\pgfplots@BEGIN@init@and@draw@axis{%
+	\pgfplots@determinedefaultvalues
+	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
+		\pgfinterruptpicture
+		\tikzpicture%
+		% set baseline for sub-picture to default value.
+		% the baseline option will be applied to the OUTER picture.
+		\pgfsetbaseline{\pgf@picminy}%
+		%
+		\scope[style=every axis]
+		\ifpgfplots@hide
+			\clip
+							(\pgfplots@xcoordminTEX,	\pgfplots@ycoordminTEX) 
+				rectangle	(\pgfplots@xcoordmaxTEX,	\pgfplots@ycoordmaxTEX);
+		\else
+			\expandafter\pgfplots@drawxaxis\expandafter{\pgfplots@xtick}%
+			\expandafter\pgfplots@draw@extra@ticks@for\expandafter x\expandafter{\pgfplots@extra@xtick}%
+			\expandafter\pgfplots@drawyaxis\expandafter{\pgfplots@ytick}%
+			\expandafter\pgfplots@draw@extra@ticks@for\expandafter y\expandafter{\pgfplots@extra@ytick}%
+			\draw[clip]
+							(\pgfplots@xcoordminTEX,	\pgfplots@ycoordminTEX) 
+				rectangle	(\pgfplots@xcoordmaxTEX,	\pgfplots@ycoordmaxTEX);
+		\fi
+}
+
+\def\pgfplots@END@init@and@draw@axis{%
+	\endscope%
+}
+
+% Writes output to \pgfplots@TMP
+\def\pgfplots@filter@input@ticks@with@log#1{%
+	\let\pgfplots@TMP=\pgfutil@empty
+	\foreach \pgfplots@TMPB in {#1} {%
+		\expandafter\pgfmathlog@\expandafter{\pgfplots@TMPB}%
+		\ifx\pgfplots@TMP\pgfutil@empty
+			\xdef\pgfplots@TMP{\pgfmathresult}%
+		\else
+			\xdef\pgfplots@TMP{\pgfplots@TMP,\pgfmathresult}%
+		\fi
+	}%
+}
+
+\tikzdeclarecoordinatesystem{axis}{\pgfplots@evalute@tikz@coord@system@interface#1\pgfplots@coord@end}
+
+
+% Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
+\long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
+	\expandafter\let\expandafter\if@datascaled@cur\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\ifcase\csname pgfplots@#1mode\endcsname
+		\if@datascaled@cur
+			\csname pgfplots@datascaletrafo@fromfixed@#1\endcsname{#2}%
+		\else
+			\def\pgfmathresult{#2}%
+		\fi
+	\or
+		\pgfmathlog@{#2}%
+	\fi
+}
+
+\long\def\pgfplots@evalute@tikz@coord@system@interface#1,#2\pgfplots@coord@end{%
+	\begingroup
+	\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}%
+	\let\pgfplots@evaluate@tikz@coord@x=\pgfmathresult
+	\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
+	\xdef\pgfplots@TMP{\pgfplots@evaluate@tikz@coord@x pt}%
+	\xdef\pgfplots@TMPB{\pgfmathresult pt}%
+	\endgroup
+	\pgfpointxy{\pgfplots@TMP}{\pgfplots@TMPB}%
+}
+
+% In case of (semi-) logplots, this command will 
+% - assign a filter which invokes \pgfmathlog@{} for each coordinate
+% - replace any user-specified coordinate by its log.
+%
+% All subsequent commands will then work with logarithmic coordinates.
+%
+% @see pgfmathlog.sty for details about the implementation of log().
+%
+% PRECONDITION: 
+% - The user input options have been set correctly, 
+% - the option processing has not yet begun
+%
+% POSTCONDITION: 
+% - any user input for log-axis has been replaced by its log
+% - coordinate filters to compute logs are installed
+%
+% See also:
+%     \pgfplots@apply@data@scale@trafo@to@options@for
+\def\pgfplots@prepare@coord@filtering@for#1{%
+	\expandafter\ifcase\csname pgfplots@#1mode\endcsname
+		\ifpgfplots@disabledatascaling
+			\csname pgfplots@float@numerics@mode@#1false\endcsname
+			\pgfplots@float@numerics@modefalse
+		\else
+			\csname pgfplots@float@numerics@mode@#1true\endcsname
+			\pgfplots@float@numerics@modetrue
+		\fi
+		\ifpgfplots@float@numerics@mode
+			% Install coordinate filters that
+			% - read input as normalised floating point numbers,
+			% - return [SIGN][MANTISSE]eEXPONENT
+			% Motivation: 
+			% 1. we can compute axis limits using such data
+			% 2. we can remember the floating point representation for 
+			%    the data scaling transformation.
+			% ATTENTION:
+			% this here is a preprocessing step! You will need to
+			% apply the data scaling later!
+			% see 
+			% \pgfplots@apply@data@scaletrafo@to@plot@data
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1filter\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+				\expandafter\def\csname addplot@float@numerics@#1filter\endcsname##1\to##2{%
+					\pgfmathfloatparsenumber{##1}%
+					\let##2=\pgfmathresult
+				}%
+			\else
+				\expandafter\let\csname pgfplots@#1filter@orig\endcsname=\pgfplots@TMP
+				\expandafter\def\csname addplot@float@numerics@#1filter\endcsname##1\to##2{%
+					\csname pgfplots@#1filter@orig\endcsname##1\to##2\relax
+					\ifx##2\pgfutil@empty
+					\else
+						\expandafter\pgfmathfloatparsenumber\expandafter{##2}%
+						\let##2=\pgfmathresult
+					\fi
+				}%
+			\fi
+			\expandafter\let\expandafter\pgfplots@TMP\csname addplot@float@numerics@#1filter\endcsname
+			\expandafter\let\csname pgfplots@#1filter\endcsname\pgfplots@TMP
+			%
+			% Check for any existing axis limits:
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1min\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@TMP}%
+				\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+			\fi
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1max\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@TMP}%
+				\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+			\fi
+		\fi
+	\or
+		\ifpgfplots@disablelogfilter
+		\else
+			% any user-specified axis limits:
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1min\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfmathlog@\expandafter{\pgfplots@TMP}%
+				\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+			\fi
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1max\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfmathlog@\expandafter{\pgfplots@TMP}%
+				\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+			\fi
+			%
+			% any user specified axis ticks:
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1tick\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@TMP}%
+				\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfplots@TMP}%
+			\fi
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@extra@#1tick\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+			\else
+				\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@TMP}%
+				\expandafter\edef\csname pgfplots@extra@#1tick\endcsname{\pgfplots@TMP}%
+			\fi
+			%
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1filter\endcsname
+			\ifx\pgfplots@TMP\pgfutil@empty
+				\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
+					\pgfmathlog@{##1}%
+					\let##2=\pgfmathresult
+				}%
+			\else
+				\expandafter\let\csname pgfplots@#1filter@orig\endcsname=\pgfplots@TMP
+				\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
+					\pgfmathlog@{##1}%
+					\ifx\pgfmathresult\pgfutil@empty
+						\let##2=\pgfutil@empty
+					\else
+						\expandafter\expandafter\csname pgfplots@#1filter@orig\endcsname\pgfmathresult\to##2\relax
+					\fi
+				}%
+			\fi
+			\expandafter\let\expandafter\pgfplots@TMP\csname addplot@log@compute@#1filter\endcsname
+			\expandafter\let\csname pgfplots@#1filter\endcsname\pgfplots@TMP
+		\fi
+	\fi
+}
+
+\def\pgfplots@create@axis@descriptions{%
+	\ifpgfplots@hide
+	\else
+		\ifx\pgfplots@xlabel\pgfutil@empty
+		\else
+			\pgfplots@show@label{x}%
+		\fi
+		\ifx\pgfplots@ylabel\pgfutil@empty
+		\else
+			\pgfplots@show@label{y}%
+		\fi
+	\fi
+	\ifx\pgfplots@title\pgfutil@empty
+	\else
+		\pgfplots@show@title
+	\fi
+	\pgfplots@createlegend
+}
+
+% DATA TRANSFORMATION T(x) = X
+%
+% Input: 
+%    a number in the original data range, given in **floating** point representation
+% Output: 
+%    a fixed point number in transformed range
+%    stored in \pgfmathresult
+% @see
+% \pgfplots@datascaletrafo@fromfixed@x
+\def\pgfplots@datascaletrafo@x#1{%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+
+% Overloaded function.
+% Input:
+%     a FIXED point number instead of a floating point one.
+% @see \pgfplots@datascaletrafo@x
+\def\pgfplots@datascaletrafo@fromfixed@x#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplots@datascaletrafo@x\expandafter{\pgfmathresult}%
+}
+
+\def\pgfplots@datascaletrafo@y#1{%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+\def\pgfplots@datascaletrafo@fromfixed@y#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplots@datascaletrafo@y\expandafter{\pgfmathresult}%
+}
+
+% INVERSE transformation x = T^{-1}( X )
+% Input: 
+%    a fixed point number in transformed domain
+% Output:
+%    a number in the data domain, given in floating point
+%    representation
+%
+% If the input number is approximately X=0, we will return x=0 as
+% well.
+%
+% This allows to handle rounding inaccuracies and should not pose any
+% problems.
+\def\pgfplots@inverse@datascaletrafo@x#1{%
+	\begingroup
+	\pgfmathapproxequalto{#1}{0.0}%
+	\ifpgfmathcomparison
+		\def\pgfmathresult{00.0e0}%
+	\else
+		\pgfmathfloatparsenumber{#1}%
+		\edef\pgfplots@data@scale@trafo@SHIFT@x{-\pgfplots@data@scale@trafo@SHIFT@x}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@x}%
+	\fi
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}
+
+\def\pgfplots@inverse@datascaletrafo@y#1{%
+	\begingroup
+	\pgfmathapproxequalto{#1}{0.0}%
+	\ifpgfmathcomparison
+		\def\pgfmathresult{00.0e0}%
+	\else
+		\pgfmathfloatparsenumber{#1}%
+		\edef\pgfplots@data@scale@trafo@SHIFT@y{-\pgfplots@data@scale@trafo@SHIFT@y}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@y}%
+	\fi
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}
+
+% Overloaded function.
+%
+% In contrast to \pgfplots@inverse@datascaletrafo@x, this method
+% returns a number in FIXED point representation.
+% @see \pgfplots@inverse@datascaletrafo@x
+\def\pgfplots@inverse@datascaletrafo@tofixed@x#1{%
+	\pgfplots@inverse@datascaletrafo@x{#1}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+\def\pgfplots@inverse@datascaletrafo@tofixed@y#1{%
+	\pgfplots@inverse@datascaletrafo@y{#1}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+
+% Parses all options in #1 which are known in an (pgfplots) families #2.
+%
+% The result will be stored back into the TikZ-style named #3 without 
+% further processing.
+%
+% Example:
+% \tikzstyle{every axis}=[xmin=0,xmax=1,line width=1pt
+% \pgfplots@set@keys@from@tikz@style\tmpmacro{every axis}{/pgfplots}
+% 
+% - sets axis options 'xmin' and 'xmax'
+% - calls \tikzstyle{every axis}={line width=1pt}
+% 
+% I assume that this method is called within local TeX groups so
+% nothing will be destroyed outside.
+%
+% #1:  a temporary macro name which will be used to accumulate options
+%      which will be appended to the style.
+%      You just need to provide the name, it will be reset properly.
+%      Make sure you don't use the same name in nested calls!
+% #2:  A style name.
+% #3:  A comma separated sequence of families.
+\long\def\pgfplots@set@keys@from@tikz@style#1#2#3{%
+%\pgfplots@message{set@keys@from@tikz@style{#2}{#3}...}%
+	\let#1=\pgfutil@empty
+	\pgfqkeysfamilyoptionsdetailed%
+		{#3}%  family list
+		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
+		{\pgfkeyspredicateFALSE}% for unknown keys
+		{\pgfkeysappendfilterednamestomacro#1}%
+		{/pgfplots}%
+		{/tikz/#2}%
+	\pgfplots@set@keymacro@to@style\pgfplots@rmopts{#2}%
+%\pgfplots@message{set@keys@from@tikz@style{#2}{#3}... END.}%
+}
+
+% The same as \pgfplots@set@keys@from@tikz@style  but this one appends
+% unmatched options to style #4.
+%
+% #1:  a temporary macro name which will be used to accumulate options
+%      which will be appended to the style.
+%      You just need to provide the name, it will be reset properly.
+%      Make sure you don't use the same name in nested calls!
+% #2:  A style name.
+% #3:  A comma separated sequence of families.
+% #4:  A style name which will be filled with unprocessed options.
+\long\def\pgfplots@set@keys@from@tikz@style@append@to#1#2#3#4{%
+%\pgfplots@message{axis@set@keys@from@tikz@style@append@to{#2}{#3}{#4}...}%
+	\let#1=\pgfutil@empty
+	\pgfqkeysfamilyoptionsdetailed%
+		{#3}%
+		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
+		{\pgfkeyspredicateFALSE}% for unknown keys
+		{\pgfkeysappendfilterednamestomacro#1}%
+		{/pgfplots}%
+		{/tikz/#2}%
+	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#4}%
+%\pgfplots@message{axis@set@keys@from@tikz@style@append@to{#2}{#3}{#4}... END.}%
+}
+
+% #1:  a temporary macro name which will be used to accumulate options
+%      which will be appended to the style.
+%      You just need to provide the name, it will be reset properly.
+%      Make sure you don't use the same name in nested calls!
+% #2:  A sequence of options.
+% #3:  A comma separated sequence of families.
+% #4:  A style name which will be filled with unprocessed options.
+\long\def\pgfplots@set@keys@and@append@remaining@to@style#1#2#3#4{%
+%\pgfplots@message{axis@set@keys@and@append@remaining@to@style{...}{#3}{#4} ...}
+	\let#1=\pgfutil@empty
+	\pgfqkeysfamilyoptionsdetailed%
+		{#3}%
+		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
+		{\pgfkeyspredicateFALSE}% for unknown keys
+		{\pgfkeysappendfilterednamestomacro#1}%
+		{/pgfplots}%
+		{#2}%
+	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#4}%
+%\pgfplots@message{axis@set@keys@and@append@remaining@to@style{...}{#3}{#4} ... END.}%
+}%
+
+% #1: input macro
+% #2: macro for remaining options
+% #3: families
+\long\def\pgfplots@setkeys@from@macro#1#2#3{%
+	\let#2=\pgfutil@empty
+	\def\pgfplots@TMP{%
+		\pgfqkeysfamilyoptionsdetailed%
+			{#3}%
+			{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
+			{\pgfkeyspredicateFALSE}% for unknown keys
+			{\pgfkeysappendfilterednamestomacro#2}%
+			{/pgfplots}%
+	}%
+	\expandafter\pgfplots@TMP\expandafter{#1}%
+}
+
+% #1: macro
+% #2: style name
+\long\def\pgfplots@append@keymacro@to@style#1#2{%
+	\def\pgfplots@setkeys@TMP{\tikzstyle{#2}+=[}%
+	\expandafter\pgfplots@setkeys@TMP#1]%
+%\pgfplots@message{tikzstyle{#2}+=[#1]}%
+}
+
+% #1: macro
+% #2: style name
+\long\def\pgfplots@set@keymacro@to@style#1#2{%
+	\def\pgfplots@setkeys@TMP{\tikzstyle{#2}=[}%
+	\expandafter\pgfplots@setkeys@TMP#1]%
+%\pgfplots@message{tikzstyle{#2}=[#1]}%
+}
+
+\def\pgfplots@preset@keys{%
+	%--------------------------------------------------
+	% \pgfkeys{/pgfplots,
+	% 	xmode=normal,
+	% 	ymode=normal,%}%
+	% 	legend columns=1,
+	% 	legend plot pos=left,
+	% 	xtick=,
+	% 	xtickten=,
+	% 	xticklabel=,
+	% 	xminorticks=true,
+	% 	xmajorticks=true,
+	% 	xminorgrids=false,
+	% 	xmajorgrids=false,
+	% 	ytick=,
+	% 	ytickten=,
+	% 	yticklabel=,
+	% 	yminorticks=true,
+	% 	ymajorticks=true,
+	% 	yminorgrids=false,
+	% 	ymajorgrids=false,
+	% 	scaled ticks=true,
+	% 	tick scale labels=\axisdefaulttickscalelabel,
+	% 	scale ticks above exponent=3,
+	% 	scale ticks below exponent=1,
+	% 	grid=none,
+	% 	tickpos=both,
+	% 	subtickwidth=0.1cm,
+	% 	tickwidth=0.15cm,
+	% 	xlabel=,
+	% 	ylabel=,
+	% 	title=,
+	% 	xmin=,
+	% 	xmax=,
+	% 	ymin=,
+	% 	ymax=,
+	% 	xfilter=,
+	% 	yfilter=,
+	% 	width=,
+	% 	height=,
+	% 	anchor=south west,
+	% 	scale only axis=false,
+	% 	hide axis=false,
+	% 	x=,
+	% 	y=,% is implicitly set by 'height' and/or '\axisdefaultheight'
+	% 	execute at begin plot=,
+	% 	execute at end plot=,
+	% 	enlargelimits=auto,
+	% 	disablelogfilter=false}%
+	%-------------------------------------------------- 
+  \def\pgfplots@at{\pgfqpoint{\the\tikz@lastx}{\the\tikz@lasty}}%
+}
+
+% backwards compatibility:
+\def\prettyprintnumber#1{\pgfmathprintnumber{#1}}%
+
+\def\pgfplots@set@options#1{%
+%\pgfplots@message{SET OPTS: VOR preset}%
+	\pgfplots@preset@keys
+	%
+	% Temporarily assign families to 'name' and 'alias' options.
+	% This allows to get the names - they should not be appended to
+	% 'every axis'!
+	\pgfkeys{%
+		/tikz/domain/.belongs to family=/pgfplots,
+		/pgfplots/domain/.code={\pgfkeysalso{/tikz/domain=##1}},
+		/tikz/name/.belongs to family=/pgfplots/naming commands,
+		/tikz/alias/.belongs to family=/pgfplots/naming commands,
+		% and provide aliases in the '/pgfplots/' tree to avoid 
+		% search path problems just for these two options:
+		/pgfplots/name/.belongs to family=/pgfplots/naming commands,
+		/pgfplots/alias/.belongs to family=/pgfplots/naming commands,
+		/pgfplots/name/.code={\pgfkeysalso{/tikz/name=##1}},
+		/pgfplots/alias/.code={\pgfkeysalso{/tikz/alias=##1}},
+	}%
+	\let\tikz@alias=\pgfutil@empty
+	\let\tikz@fig@name=\pgfutil@empty
+	%
+%\pgfplots@message{SET OPTS: VOR mode}%
+	% Step 1: acquire ONLY 'xmode' and 'ymode' (necessary to decide
+	% which axis style shall be loaded):
+	\let\pgfplots@remaining@input=\pgfutil@empty
+	\pgfqkeysfamilyoptionsNone{/pgfplots/scale}%
+		{\pgfkeysappendfilterednamestomacro\pgfplots@remaining@input}
+		{/pgfplots}
+		{#1}%
+%\pgfplots@message{SET OPTS: VOR styles}%
+	%
+	% Step 2: parse any pgfplots options out of styles.
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis}{/pgfplots,/pgfplots/style commands,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions,/pgfplots/scale}%
+	\ifcase\pgfplots@xmode
+		\ifcase\pgfplots@ymode
+			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every linear axis}{/pgfplots,/pgfplots/style commands,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+		\or
+			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every semilogy axis}{/pgfplots,/pgfplots/style commands,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+		\fi
+	\or
+		\ifcase\pgfplots@ymode
+			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every semilogx axis}{/pgfplots,/pgfplots/style commands,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+		\or
+			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every loglog axis}{/pgfplots,/pgfplots/style commands,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+		\fi
+	\fi
+	% Acquire the style commands from direct input options BEFORE styles are processed:
+	\pgfplots@setkeys@from@macro\pgfplots@remaining@input\pgfplots@rmopts{/pgfplots/style commands,/pgfplots/naming commands}%
+	\let\pgfplots@remaining@input\pgfplots@rmopts
+	%
+	% Now, any 'name' and 'alias' options have been processed. 
+	%
+	% Remember their current meaning and reset the tikz options!
+	\let\pgfplots@fig@name=\tikz@fig@name
+	\let\pgfplots@fig@alias=\tikz@alias
+	\let\tikz@alias=\pgfutil@empty
+	\let\tikz@fig@name=\pgfutil@empty
+	%
+	% And protocol all named sub-nodes! Their positions need to be
+	% updated later.
+	\let\pgfplots@named@child@node@list=\pgfutil@empty
+	\pgfkeysgetvalue{/tikz/name/.@cmd}\pgfplots@old@name@impl
+	\pgfkeysgetvalue{/tikz/alias/.@cmd}\pgfplots@old@alias@impl
+	\pgfkeysdef{/tikz/name}{%
+		\xdef\pgfplots@named@child@node@list{\pgfplots@named@child@node@list,{##1}}%
+		\pgfplots@old@name@impl##1\pgfeov
+	}%
+	\pgfkeysdef{/tikz/alias}{%
+		\xdef\pgfplots@named@child@node@list{\pgfplots@named@child@node@list,{##1}}%
+		\pgfplots@old@alias@impl##1\pgfeov
+	}%
+	%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis legend}{/pgfplots/legend}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis plot}{/pgfplots}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis label}{/pgfplots/descriptions}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis x label}{/pgfplots/descriptions}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis y label}{/pgfplots/descriptions}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis title}{/pgfplots/descriptions}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every tick}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every minor tick}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every major tick}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis grid}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every minor grid}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every major grid}{/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every x tick label}{/pgfplots/descriptions,/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every y tick label}{/pgfplots/descriptions,/pgfplots/tick}%
+	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every tick label}{/pgfplots/descriptions,/pgfplots/tick}%
+	%
+%\pgfplots@message{SET OPTS: VOR eigentlichen opts}%
+	\expandafter\pgfplots@set@keys@and@append@remaining@to@style\expandafter\pgfplots@rmopts\expandafter{\pgfplots@remaining@input}%
+		{/pgfplots,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}%
+		{every axis}%
+%\pgfplots@message{setopts OK}%
+}
+
+\def\pgfplots@install@abbrev@commands{
+	\let\pgfplots@orig@path=\path
+	\let\pgfplots@orig@plot=\plot
+	%
+	\let\axispath=\pgfplots@path
+	%
+	\let\addplot=\pgfplots@addplot
+	\let\plot=\addplot
+	%
+	\def\logten{2.3025851}%
+	\def\reciproc@logten{0.434294}%
+	%
+	\def\logi##1{%
+		\ifcase##1
+		\or0
+		\or0.693147
+		\or1.098612
+		\or1.386294
+		\or1.60943791
+		\or1.7917594
+		\or1.94591014
+		\or2.07944154
+		\or2.197224
+		\fi
+	}%
+	%
+	\let\legend=\pgfplots@command@legend
+	\let\addlegendentry=\pgfplots@addlegendentry
+}
+
+\def\pgfplots@environment{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@environment@opt
+	}{%
+		\pgfplots@environment@opt[]%
+	}%
+}%
+\def\pgfplots@environment@opt[#1]{%
+	\begingroup
+	\pgfplots@install@abbrev@commands
+	%
+	%
+	% The explicit specification of 'x' and 'y' as 1pt is to avoid
+	% numeric overflow/underflow during scale computations:
+	%
+	% The scaling (i.e. proper values for 'x' and 'y') will be
+	% determined later-on, dependend on the axis limits.  Since axis
+	% limits are implicitly in units of 1pt, it is reasonable to use
+	% '1pt' here as well.
+	\pgfsetxvec{\pgfpoint{1pt}{0pt}}%
+	\pgfsetyvec{\pgfpoint{0pt}{1pt}}%
+	%
+	\pgfplots@set@options{#1}%
+	%
+	% --------------------
+	% Allocations:
+	% --------------------
+	\pgfplotslistnewempty\pgfplots@plotspeclist
+	\pgfplotslistnewempty\pgfplots@legend
+	\pgfplotslistnewempty\pgfplots@stored@plot@cmds
+	\pgfplotslistnewempty\pgfplots@stored@plot@data
+	\newif\ifpgfplots@autocompute@xlim
+	\newif\ifpgfplots@autocompute@ylim
+	\newif\ifpgfplots@filtercoords
+	\newif\ifpgfplots@float@numerics@mode@x
+	\newif\ifpgfplots@float@numerics@mode@y
+	\newif\ifpgfplots@float@numerics@mode
+	\newif\ifpgfplots@draw@at@end
+	\newif\ifpgfplots@limits@are@computed
+	\newif\ifpgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITY
+	\pgfplots@numplots=0
+	\let\pgfplots@already@computed@legend@node=\pgfutil@empty
+	%
+	% --------------------
+	% Option preprocessing
+	% --------------------
+	\pgfplots@prepare@coord@filtering@for x
+	\pgfplots@prepare@coord@filtering@for y
+	%
+	\ifx\pgfplots@xfilter\pgfutil@empty
+	\else
+		\pgfplots@filtercoordstrue
+	\fi
+	\ifx\pgfplots@yfilter\pgfutil@empty
+	\else
+		\pgfplots@filtercoordstrue
+	\fi
+	% 
+	\ifx\pgfplots@xmin\pgfutil@empty
+		\pgfplots@autocompute@xlimtrue
+		\def\pgfplots@xmin{16300}%
+		\ifpgfplots@float@numerics@mode@x
+			\def\pgfplots@xmin{11.0e324}%
+		\fi
+	\fi
+	\ifx\pgfplots@xmax\pgfutil@empty
+		\pgfplots@autocompute@xlimtrue
+		\def\pgfplots@xmax{-16300}%
+		\ifpgfplots@float@numerics@mode@x
+			\def\pgfplots@xmax{21.0e324}%
+		\fi
+	\fi
+	\ifx\pgfplots@ymin\pgfutil@empty
+		\pgfplots@autocompute@ylimtrue
+		\def\pgfplots@ymin{16300}%
+		\ifpgfplots@float@numerics@mode@y
+			\def\pgfplots@ymin{11.0e324}%
+		\fi
+	\fi
+	\ifx\pgfplots@ymax\pgfutil@empty
+		\pgfplots@autocompute@ylimtrue
+		\def\pgfplots@ymax{-16300}%
+		\ifpgfplots@float@numerics@mode@y
+			\def\pgfplots@ymax{21.0e324}%
+		\fi
+	\fi
+	%
+	\pgfplots@limits@are@computedtrue
+	\ifpgfplots@autocompute@xlim
+		\pgfplots@draw@at@endtrue
+		\pgfplots@limits@are@computedfalse
+	\fi
+	\ifpgfplots@autocompute@ylim
+		\pgfplots@draw@at@endtrue
+		\pgfplots@limits@are@computedfalse
+	\fi
+	%
+	%
+	% --------------------
+	% Start axis:
+	% either postponed to \end or directly.
+	% --------------------
+	%
+	% ALWAYS TRUE. This allows to use inline plots because the data
+	% scale transformation will be applied after I know that it should
+	% be disabled.
+	\pgfplots@draw@at@endtrue
+	%
+	% any \path command is invalid inside of an axis.
+	% Use \axispath instead:
+	\let\path=\pgfplots@replacement@for@tikz@path
+	%
+	\ifpgfplots@draw@at@end
+		\let\pgfplots@nextcommand=\pgfutil@empty
+	\else
+		\def\pgfplots@nextcommand{\pgfplots@BEGIN@init@and@draw@axis}%
+	\fi
+	\pgfplots@nextcommand
+}
+\def\endpgfplots@environment@opt{%
+	% restore old \path command:
+	\let\path=\pgfplots@orig@path
+	\let\plot=\pgfplots@orig@plot
+	%
+	%\end{axis}:
+	% --------------------
+	%  All plotting commands have been read.
+	%  -> apply postponed drawing commands!
+	% --------------------
+	\ifpgfplots@draw@at@end
+		\def\pgfplots@nextcommand{%
+			\pgfplots@BEGIN@init@and@draw@axis
+			\pgfplotslistforeach\pgfplots@stored@plot@cmds\as\plotcmd{%
+				\pgfplotslistpopfront\pgfplots@stored@plot@data\to\plotdata
+				\ifpgfplots@float@numerics@mode
+					\ifx\plotcmd\pgfutil@empty
+						\plotdata
+					\else
+						% Apply the data scaling transformation
+						\expandafter\pgfplots@apply@data@scaletrafo@to@plot@data\plotdata\to\plotdata
+						\expandafter\plotcmd\plotdata
+					\fi
+				\else
+					\expandafter\plotcmd\plotdata
+				\fi
+			}%
+		}%
+	\else
+		\let\pgfplots@nextcommand=\pgfutil@empty
+	\fi
+	\pgfplots@nextcommand
+	\pgfplots@END@init@and@draw@axis
+	%
+	\begingroup
+		% set coordinate system to (0,0) rectangle (1,1) for descriptions:
+		\pgftransformxshift{\pgfplots@xcoordminTEX}%
+		\pgftransformyshift{\pgfplots@ycoordminTEX}%
+		%
+		\pgfplots@tmpa=\pgfplots@xcoordmaxTEX
+		\advance\pgfplots@tmpa by-\pgfplots@xcoordminTEX
+		\pgfsetxvec{\pgfpoint{\pgfplots@tmpa}{0cm}}%
+		%
+		\pgfplots@tmpa=\pgfplots@ycoordmaxTEX
+		\advance\pgfplots@tmpa by-\pgfplots@ycoordminTEX
+		\pgfsetyvec{\pgfpoint{0cm}{\pgfplots@tmpa}}%
+		%
+		\pgfplots@create@axis@descriptions
+	\endgroup
+%	\pgfsys@endpicture
+	\endtikzpicture%
+	\begingroup
+		% Protocol sizes for the axis-shape.
+		% I fear that needs to be done globally, do avoid all those
+		% \endgroup's in and after \endpgfinterruptpicture ...
+		\ifdim\pgf@picmaxx=-16000pt\relax%
+			\pgf@picmaxx=0pt\relax%
+			\pgf@picminx=0pt\relax%
+			\pgf@picmaxy=0pt\relax%
+			\pgf@picminy=0pt\relax%
+		\fi%
+		%
+		\xdef\pgfplots@saveddimen@picminx{\the\pgf@picminx}%
+		\xdef\pgfplots@saveddimen@picminy{\the\pgf@picminy}%
+		%
+		\pgf@xa=\pgfplots@xcoordmaxTEX
+		\advance\pgf@xa by-\pgf@picminx
+		\xdef\pgfplots@savedanchor@inner@upperright@x{\the\pgf@xa}%
+		%
+		\pgf@xa=\pgfplots@xcoordminTEX
+		\advance\pgf@xa by-\pgf@picminx
+		\xdef\pgfplots@savedanchor@inner@lowerleft@x{\the\pgf@xa}%
+		%
+		\pgf@xa=\pgfplots@ycoordmaxTEX
+		\advance\pgf@xa by-\pgf@picminy
+		\xdef\pgfplots@savedanchor@inner@upperright@y{\the\pgf@xa}%
+		%
+		\pgf@xa=\pgfplots@ycoordminTEX
+		\advance\pgf@xa by-\pgf@picminy
+		\xdef\pgfplots@savedanchor@inner@lowerleft@y{\the\pgf@xa}%
+	\endgroup
+	\endpgfinterruptpicture
+	\egroup\egroup% end of pgfnodepartimagebox
+	%
+	\let\tikz@fig@name=\pgfplots@fig@name
+	\tikz@fig@mustbenamed
+    \pgftransformshift{\pgfplots@at}%
+	\pgfmultipartnode{pgfplots@low@level@shape}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+	\pgfplots@fig@alias
+	%
+	\pgfplots@finally@correct@child@node@positions
+	\endgroup
+}
+
+% Now, we need to process all named nodes inside of our
+% axis-image.
+%
+% The situation at this point is as follows:
+% 1. the complete axis image has been "typeset" into a box. That
+% means its coordinate system is LOST up to those variables
+% which have been saved explicitly.
+%
+% 2. the \pgfmultipartnode above knows about all axis anchors and
+% saved dimensions.
+%
+% 3. All sub-nodes don't know about their position any more. Any
+% saved anchors are wrong.
+%
+% The approach:
+% 1. we shift each named node's saved anchors such that it's
+% coordinate is valid inside of the TeX box.
+%
+% 2. we also shift each named node's saved anchors to reflect the
+% axis anchor.
+%
+% Afterwards, everything should be fine.
+\def\pgfplots@finally@correct@child@node@positions{%
+   \ifx\pgfplots@named@child@node@list\pgfutil@empty%
+   \else%
+      	\begingroup
+		\pgftransformreset% FIXME: what's that for!? Copied from matrix code...
+		%
+		% Use the 'image' anchor here - the internal anchor
+		% transformation matrix already has the shift for
+		% \pgfplots@anchorname.
+		\pgfpointanchor{\tikz@fig@name}{image}%
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\pgf@process{\pgfpoint{\pgfplots@saveddimen@picminx}{\pgfplots@saveddimen@picminy}}%
+		\advance\pgf@xa by-\pgf@x
+		\advance\pgf@xb by-\pgf@y
+		\pgf@x=\pgf@xa
+		\pgf@y=\pgf@xb
+		\edef\pgfplots@offset{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
+		%
+		\pgfutil@for\pgfplots@child@node@name:=\pgfplots@named@child@node@list\do{%
+			\ifx\pgfplots@child@node@name\pgfutil@empty
+			\else
+				\expandafter\ifx\csname pgfplots@child@node@visited@\pgfplots@child@node@name\endcsname\relax%
+					\pgfutil@ifundefined{pgf@sh@nt@\pgfplots@child@node@name}{%
+						\pgfplots@warning{Package pgfplots WARNING: could not adjust coordinates of named node '\pgfplots@child@node@name' for reasons I do not understand! After finishing the image, it did no longer exist!? Sorry.}%
+					}{%
+						\pgf@shift@node{\pgfplots@child@node@name}{\pgfplots@offset}%
+						\expandafter\let\csname pgfplots@child@node@visited@\pgfplots@child@node@name\endcsname=\pgfutil@empty%
+					}%
+				\fi
+			\fi
+		}%
+		\endgroup
+    \fi%
+}%
+
+\def\pgfplots@environment@axis{%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@axis}{\pgfplots@@environment@axis[]}%
+}
+\let\endpgfplots@environment@axis=\endpgfplots@environment@opt
+\def\pgfplots@@environment@axis[#1]{%
+	\pgfplots@environment@opt[/pgfplots/xmode=linear,/pgfplots/ymode=linear,#1]%
+}
+
+\def\pgfplots@environment@semilogxaxis{%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@semilogxaxis}{\pgfplots@@environment@semilogxaxis[]}%
+}
+\let\endpgfplots@environment@semilogxaxis=\endpgfplots@environment@opt
+\def\pgfplots@@environment@semilogxaxis[#1]{%
+	\pgfplots@environment@opt[/pgfplots/xmode=log,/pgfplots/ymode=linear,#1]%
+}
+
+\def\pgfplots@environment@semilogyaxis{%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@semilogyaxis}{\pgfplots@@environment@semilogyaxis[]}%
+}
+\let\endpgfplots@environment@semilogyaxis=\endpgfplots@environment@opt
+\def\pgfplots@@environment@semilogyaxis[#1]{%
+	\pgfplots@environment@opt[/pgfplots/xmode=linear,/pgfplots/ymode=log,#1]%
+}
+
+\def\pgfplots@environment@loglogaxis{%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@loglogaxis}{\pgfplots@@environment@loglogaxis[]}%
+}
+\let\endpgfplots@environment@loglogaxis=\endpgfplots@environment@opt
+\def\pgfplots@@environment@loglogaxis[#1]{%
+	\pgfplots@environment@opt[/pgfplots/xmode=log,/pgfplots/ymode=log,#1]%
+}
+
+
+\let\pgfplots@ORIG@tikz@installcommands=\tikz@installcommands
+\let\pgfplots@ORIG@tikz@uninstallcommands=\tikz@uninstallcommands
+
+% this command here is installed at the beginning of every
+% tikzpicture.
+%
+% It installs abbreviated commands - and I use it for the same
+% purpose.
+\def\tikz@installcommands{%
+	\pgfplots@ORIG@tikz@installcommands
+	%
+	\let\axis=\pgfplots@environment@axis
+	\let\endaxis=\endpgfplots@environment@axis
+	%
+	\let\semilogxaxis=\pgfplots@environment@semilogxaxis
+	\let\endsemilogxaxis=\endpgfplots@environment@semilogxaxis
+	%
+	\let\semilogyaxis=\pgfplots@environment@semilogyaxis
+	\let\endsemilogyaxis=\endpgfplots@environment@semilogyaxis
+	%
+	\let\loglogaxis=\pgfplots@environment@loglogaxis
+	\let\endloglogaxis=\endpgfplots@environment@loglogaxis
+}%
