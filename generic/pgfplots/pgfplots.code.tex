@@ -72,8 +72,7 @@
 \def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
 \def\pgfplots@warning#1{\pgfplots@message{#1}}%
 \def\pgfplots@message#1{%
-	\edef\pgfplots@message@@{#1}%
-	\expandafter\write\expandafter-\expandafter1\expandafter{\pgfplots@message@@}%
+	\immediate\write16{#1}%
 }%
 
 \def\pgfplots@leftover{}
@@ -1275,9 +1274,9 @@
 }%
 
 \def\pgfplots@addplotimpl@expression@limits#1{%
+	\pgfkeysinstallkeyfilter{/pgf/key filters/equals}{/tikz/domain}%
+	\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/ignore}%
 	\pgfqkeysfiltered
-		{\pgfkeysequals{/tikz/domain}}%
-		{\pgfkeysignore}%
 		{/tikz}%
 		{#1}%
 	\expandafter\pgfplots@addplotimpl@expression@limits@domain\tikz@plot@domain\relax
@@ -3515,9 +3514,9 @@
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
-% Parses all options in #1 which are known in an (pgfplots) families #2.
+% Parses all options in #1 which are known in the currently active families.
 %
-% The result will be stored back into the TikZ-style named #3 without 
+% The result will be stored back into the TikZ-style named #1 without 
 % further processing.
 %
 % Example:
@@ -3530,84 +3529,36 @@
 % I assume that this method is called within local TeX groups so
 % nothing will be destroyed outside.
 %
-% #1:  a temporary macro name which will be used to accumulate options
-%      which will be appended to the style.
-%      You just need to provide the name, it will be reset properly.
-%      Make sure you don't use the same name in nested calls!
-% #2:  A style name.
-% #3:  A comma separated sequence of families.
-\long\def\pgfplots@set@keys@from@tikz@style#1#2#3{%
-%\pgfplots@message{set@keys@from@tikz@style{#2}{#3}...}%
-	\let#1=\pgfutil@empty
-	\pgfqkeysfamilyoptionsdetailed%
-		{#3}%  family list
-		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
-		{\pgfkeyspredicateFALSE}% for unknown keys
-		{\pgfkeysappendfilterednamestomacro#1}%
-		{/pgfplots}%
-		{/tikz/#2}%
-	\pgfplots@set@keymacro@to@style\pgfplots@rmopts{#2}%
-%\pgfplots@message{set@keys@from@tikz@style{#2}{#3}... END.}%
+% #1:  A style name.
+\def\pgfplots@set@keys@from@tikz@style#1{%
+	\let\pgfplots@rmopts=\pgfutil@empty
+	\pgfqkeysfiltered{/pgfplots}{/tikz/#1}%
+	\pgfplots@set@keymacro@to@style\pgfplots@rmopts{#1}%
 }
 
 % The same as \pgfplots@set@keys@from@tikz@style  but this one appends
-% unmatched options to style #4.
+% unmatched options to style #2.
 %
-% #1:  a temporary macro name which will be used to accumulate options
-%      which will be appended to the style.
-%      You just need to provide the name, it will be reset properly.
-%      Make sure you don't use the same name in nested calls!
-% #2:  A style name.
-% #3:  A comma separated sequence of families.
-% #4:  A style name which will be filled with unprocessed options.
-\long\def\pgfplots@set@keys@from@tikz@style@append@to#1#2#3#4{%
-%\pgfplots@message{axis@set@keys@from@tikz@style@append@to{#2}{#3}{#4}...}%
-	\let#1=\pgfutil@empty
-	\pgfqkeysfamilyoptionsdetailed%
-		{#3}%
-		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
-		{\pgfkeyspredicateFALSE}% for unknown keys
-		{\pgfkeysappendfilterednamestomacro#1}%
-		{/pgfplots}%
-		{/tikz/#2}%
-	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#4}%
-%\pgfplots@message{axis@set@keys@from@tikz@style@append@to{#2}{#3}{#4}... END.}%
+% #1:  A style name.
+% #2:  A style name which will be filled with unprocessed options.
+\def\pgfplots@set@keys@from@tikz@style@append@to#1#2{%
+	\let\pgfplots@rmopts=\pgfutil@empty
+	\pgfqkeysfiltered{/pgfplots}{/tikz/#1}%
+	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#2}%
 }
 
-% #1:  a temporary macro name which will be used to accumulate options
-%      which will be appended to the style.
-%      You just need to provide the name, it will be reset properly.
-%      Make sure you don't use the same name in nested calls!
-% #2:  A sequence of options.
-% #3:  A comma separated sequence of families.
-% #4:  A style name which will be filled with unprocessed options.
-\long\def\pgfplots@set@keys@and@append@remaining@to@style#1#2#3#4{%
-%\pgfplots@message{axis@set@keys@and@append@remaining@to@style{...}{#3}{#4} ...}
-	\let#1=\pgfutil@empty
-	\pgfqkeysfamilyoptionsdetailed%
-		{#3}%
-		{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
-		{\pgfkeyspredicateFALSE}% for unknown keys
-		{\pgfkeysappendfilterednamestomacro#1}%
-		{/pgfplots}%
-		{#2}%
-	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#4}%
-%\pgfplots@message{axis@set@keys@and@append@remaining@to@style{...}{#3}{#4} ... END.}%
+% #1:  A sequence of options.
+% #2:  A style name which will be filled with unprocessed options.
+\def\pgfplots@set@keys@and@append@remaining@to@style#1#2{%
+	\let\pgfplots@rmopts=\pgfutil@empty
+	\pgfqkeysfiltered{/pgfplots}{#1}%
+	\pgfplots@append@keymacro@to@style\pgfplots@rmopts{#2}%
 }%
 
 % #1: input macro
-% #2: macro for remaining options
-% #3: families
-\long\def\pgfplots@setkeys@from@macro#1#2#3{%
-	\let#2=\pgfutil@empty
-	\def\pgfplots@TMP{%
-		\pgfqkeysfamilyoptionsdetailed%
-			{#3}%
-			{\pgfkeysisdescendantof{/pgfplots}}% for keys without family
-			{\pgfkeyspredicateFALSE}% for unknown keys
-			{\pgfkeysappendfilterednamestomacro#2}%
-			{/pgfplots}%
-	}%
+\def\pgfplots@setkeys@from@macro#1{%
+	\let\pgfplots@rmopts=\pgfutil@empty
+	\def\pgfplots@TMP{\pgfqkeysfiltered{/pgfplots}}%
 	\expandafter\pgfplots@TMP\expandafter{#1}%
 }
 
@@ -3632,7 +3583,7 @@
 }
 
 % backwards compatibility:
-\def\prettyprintnumber#1{\pgfmathprintnumber{#1}}%
+\let\prettyprintnumber=\pgfmathprintnumber%
 
 \def\pgfplots@set@options#1{%
 	\pgfplots@preset@keys
@@ -3651,38 +3602,60 @@
 		/pgfplots/alias/.belongs to family=/pgfplots/naming commands,
 		/pgfplots/name/.code={\pgfkeysalso{/tikz/name=##1}},
 		/pgfplots/alias/.code={\pgfkeysalso{/tikz/alias=##1}},
+		%
+		%
+		/pgf/key filter handlers/append filtered to/.install key filter handler=\pgfplots@rmopts,
 	}%
 	\let\tikz@alias=\pgfutil@empty
 	\let\tikz@fig@name=\pgfutil@empty
 	%
 	% Step 1: acquire ONLY 'xmode' and 'ymode' (necessary to decide
 	% which axis style shall be loaded):
-	\let\pgfplots@remaining@input=\pgfutil@empty
-	\pgfqkeysfamilyoptionsNone{/pgfplots/scale}%
-		{\pgfkeysappendfilterednamestomacro\pgfplots@remaining@input}
-		{/pgfplots}
-		{#1}%
-	\pgfkeysactivatefamily{/pgfplots/style commands}%
+		\let\pgfplots@rmopts=\pgfutil@empty
+		\pgfkeysinstallkeyfilter
+			{/pgf/key filters/active families or no family}
+			{{/pgf/key filters/false}{/pgf/key filters/false}}
+		%
+		\pgfqkeysactivatesinglefamilyandfilteroptions{/pgfplots/scale}%
+			{/pgfplots}
+			{#1}%
+	\let\pgfplots@remaining@input=\pgfplots@rmopts
 	%
 	% Step 2: parse any pgfplots options out of styles.
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis}{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions,/pgfplots/scale}%
-	\ifcase\pgfplots@xmode
-		\ifcase\pgfplots@ymode
-			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every linear axis}{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+	\pgfkeysactivatefamily{/pgfplots/style commands}%
+	\pgfkeysinstallkeyfilter
+		{/pgf/key filters/active families or no family}%
+		{{/pgf/key filters/is descendant of=/pgfplots}% for keys without family
+		 {/pgf/key filters/false}% for unknown keys
+		}%
+	%
+	\pgfkeysactivatefamilies
+		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions,/pgfplots/scale}
+		{\pgfplots@deactivefamiliescmd}%
+		\pgfplots@set@keys@from@tikz@style{every axis}%
+		\pgfkeysdeactivatefamily{/pgfplots/scale}%
+		%
+		\ifcase\pgfplots@xmode
+			\ifcase\pgfplots@ymode
+				\pgfplots@set@keys@from@tikz@style@append@to{every linear axis}{every axis}%
+			\or
+				\pgfplots@set@keys@from@tikz@style@append@to{every semilogy axis}{every axis}%
+			\fi
 		\or
-			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every semilogy axis}{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
+			\ifcase\pgfplots@ymode
+				\pgfplots@set@keys@from@tikz@style@append@to{every semilogx axis}{every axis}%
+			\or
+				\pgfplots@set@keys@from@tikz@style@append@to{every loglog axis}{every axis}%
+			\fi
 		\fi
-	\or
-		\ifcase\pgfplots@ymode
-			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every semilogx axis}{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
-		\or
-			\pgfplots@set@keys@from@tikz@style@append@to{\pgfplots@rmopts}{every loglog axis}{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}{every axis}%
-		\fi
-	\fi
+	\pgfplots@deactivefamiliescmd
+	%
 	% Acquire style commands and nameing commands from direct input
 	% options '#1' BEFORE the 'every' styles are processed:
-	\pgfplots@setkeys@from@macro\pgfplots@remaining@input\pgfplots@rmopts{/pgfplots/naming commands}%
-	\let\pgfplots@remaining@input=\pgfplots@rmopts
+	\pgfkeysactivatefamily{/pgfplots/naming commands}%
+		\pgfplots@setkeys@from@macro\pgfplots@remaining@input%
+		\let\pgfplots@remaining@input=\pgfplots@rmopts
+	\pgfkeysdeactivatefamily{/pgfplots/naming commands}%
 	%
 	% Now, any 'name' and 'alias' options have been processed. 
 	%
@@ -3714,27 +3687,51 @@
 	% What I am doing here is: set every pgfplots-option directly, and
 	% discard it from the every-style. Any non-pgfplots-option will
 	% be set in its context.
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis legend}{/pgfplots/legend}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis plot}{/pgfplots}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis label}{/pgfplots/descriptions}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis x label}{/pgfplots/descriptions}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis y label}{/pgfplots/descriptions}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis title}{/pgfplots/descriptions}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every tick}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every minor tick}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every major tick}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every axis grid}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every minor grid}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every major grid}{/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every x tick label}{/pgfplots/descriptions,/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every y tick label}{/pgfplots/descriptions,/pgfplots/tick}%
-	\pgfplots@set@keys@from@tikz@style{\pgfplots@rmopts}{every tick label}{/pgfplots/descriptions,/pgfplots/tick}%
+	%
+	\pgfkeysactivatefamily{/pgfplots/legend}%
+		\pgfplots@set@keys@from@tikz@style{every axis legend}%
+	\pgfkeysdeactivatefamily{/pgfplots/legend}%
+	%
+	%
+	\pgfkeysactivatefamily{/pgfplots/descriptions}%
+		\pgfplots@set@keys@from@tikz@style{every axis label}%
+		\pgfplots@set@keys@from@tikz@style{every axis x label}%
+		\pgfplots@set@keys@from@tikz@style{every axis y label}%
+		\pgfplots@set@keys@from@tikz@style{every axis title}%
+	\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
+	%
+	\pgfkeysactivatefamily{/pgfplots/tick}%
+		\pgfplots@set@keys@from@tikz@style{every tick}%
+		\pgfplots@set@keys@from@tikz@style{every minor tick}%
+		\pgfplots@set@keys@from@tikz@style{every major tick}%
+		\pgfplots@set@keys@from@tikz@style{every axis grid}%
+		\pgfplots@set@keys@from@tikz@style{every minor grid}%
+		\pgfplots@set@keys@from@tikz@style{every major grid}%
+	\pgfkeysdeactivatefamily{/pgfplots/tick}%
+	%
+	\pgfkeysactivatefamily{/pgfplots}%
+		\pgfplots@set@keys@from@tikz@style{every axis plot}%
+	\pgfkeysdeactivatefamily{/pgfplots}%
+	%
+	\pgfkeysactivatefamily{/pgfplots/descriptions}%
+	\pgfkeysactivatefamily{/pgfplots/tick}%
+		\pgfplots@set@keys@from@tikz@style{every x tick label}%
+		\pgfplots@set@keys@from@tikz@style{every y tick label}%
+		\pgfplots@set@keys@from@tikz@style{every tick label}%
+	\pgfkeysdeactivatefamily{/pgfplots/tick}%
+	\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
 	%
 	% Step 3: Set all remaining options of '#1'. They should have
 	% highest precedence.
-	\expandafter\pgfplots@set@keys@and@append@remaining@to@style\expandafter\pgfplots@rmopts\expandafter{\pgfplots@remaining@input}%
+	\pgfkeysactivatefamilies
 		{/pgfplots,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}%
-		{every axis}%
+		{\pgfplots@deactivefamiliescmd}%
+		\expandafter
+			\pgfplots@set@keys@and@append@remaining@to@style
+		\expandafter
+			{\pgfplots@remaining@input}%
+			{every axis}%
+	\pgfplots@deactivefamiliescmd
 	%
 	\pgfkeysdeactivatefamily{/pgfplots/style commands}%
 }
