@@ -618,14 +618,6 @@
 	/pgfplots/ymode/log/.code={\pgfplots@ymode=1},
 	/pgfplots/ymode/log/.belongs to family=/pgfplots/scale,
 	/pgfplots/ymode=linear,
-	/pgfplots/numeric table/x index/.store in=\pgfplots@plot@tbl@xindex,
-	/pgfplots/numeric table/x index=0,
-	/pgfplots/numeric table/x/.store in=\pgfplots@plot@tbl@x,
-	/pgfplots/numeric table/x=,
-	/pgfplots/numeric table/y index/.store in=\pgfplots@plot@tbl@yindex,
-	/pgfplots/numeric table/y index=0,
-	/pgfplots/numeric table/y/.store in=\pgfplots@plot@tbl@y,
-	/pgfplots/numeric table/y=,
 }
 
 % Checks whether the tick position given as #1.#2=log10(T) belongs to
@@ -1072,6 +1064,8 @@
 		% FIXME: that search path - thing is far from perfect.
 		% In fact, it doesn't even work for choice keys... with
 		% unexpected results.
+		% I have fixed that in PGF CVS - but PGF 2.0 does not yet work
+		% here!
 		\pgfqkeys{/pgfplots/search path for tikz}{/tikz/every extra #1 tick}%
 		\csname pgfplots@draw#1axis\endcsname{#2}%
 	\fi
@@ -1348,12 +1342,12 @@
 	\closein1
 	\endgroup
 	\ifpgfplots@loop@CONTINUE
-		\pgfplots@addplotimpl@table{#1}table{#2};%
+		\pgfplots@addplotimpl@file{#1}ile{#2};%
 	\fi
 }
 
 \def\pgfplots@addplotimpl@file#1ile{%
-	\pgfplots@addplotimpl@table{#1}table%
+	\pgfplots@addplotimpl@table{#1}table[x index=0,y index=1,header=false]%
 }%
 
 \def\pgfplots@addplotimpl@table#1table{%
@@ -1380,25 +1374,21 @@
 
 \long\def\pgfplots@addplotimpl@table@START#1#2#3{%
 	\begingroup
-	\let\pgfplots@plot@tbl@x\pgfutil@empty
-	\let\pgfplots@plot@tbl@y\pgfutil@empty
-	\def\pgfplots@plot@tbl@xindex{0}%
-	\def\pgfplots@plot@tbl@yindex{1}%
 	\pgfqkeys{/pgfplots/numeric table}{#2}%
 	\ifpgfplots@addplot@table@from@macro
-		\pgfnumtablecopy#3\to\table
+		\pgfnumtablecopy#3\to\pgfplots@table
 	\else
-		\pgfnumtableread{#3} to \table
+		\pgfnumtableread{#3} to \pgfplots@table
 	\fi
 	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
-		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\table\to\addplot@tbl@x
+		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\addplot@tbl@x
 	\else
-		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@x\of\table\to\addplot@tbl@x
+		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@x\of\pgfplots@table\to\addplot@tbl@x
 	\fi
 	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
-		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@yindex\of\table\to\addplot@tbl@y
+		\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@yindex\of\pgfplots@table\to\addplot@tbl@y
 	\else
-		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@y\of\table\to\addplot@tbl@y
+		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
 	\fi
 	\pgfplots@toka={}%
 	\loop
@@ -2007,38 +1997,25 @@
 	\begingroup
 	\expandafter\let\expandafter\min\expandafter=\csname pgfplots@#1min\endcsname
 	\expandafter\let\expandafter\max\expandafter=\csname pgfplots@#1max\endcsname
-	\ifcase\csname pgfplots@#1mode\endcsname
-		\ifpgfplots@enlargelimits@rel@thresh
-			\edef\enlargepercent{\pgfplots@enlargelimits}%
-		\else
-			\def\enlargepercent{0.1}% FIXME : pack 10% as default into option 'enlargelimits' or so
-		\fi
-		\pgfmathsubtract@\max\min%
-		\expandafter\pgf@xa\pgfmathresult pt
-		\expandafter\pgf@xb\enlargepercent\pgf@xa
-		\ifdim\pgf@xb>0.001pt
-			% the case with 
-			%   enlargeabsolute ~= 0
-			% means that \min ~= \max.
-			% It is handled in another method.
-			\edef\enlargeabsolute{\pgf@sys@tonumber{\pgf@xb}}%
-			%
-			% compute xmin := xmin - enlargeabsolute
-			\pgfmathsubtract@\min\enlargeabsolute%
-			\let\min=\pgfmathresult
-			\pgfmathadd@\max\enlargeabsolute%
-			\let\max=\pgfmathresult
-		\fi
-	\or
-		% compute
-		%   \pgfmathsetmacro{\min}{\min - 0.5*\logten}%
-		%   \pgfmathsetmacro{\max}{\max + 0.5*\logten}%
-		% just a more efficiently (I hope so):
-		\expandafter\pgfmath@x\logten pt
-		\divide\pgfmath@x by2
-		\pgfmathlog@invoke@expanded\pgfmathsubtract@{{\min}{\pgf@sys@tonumber{\pgfmath@x}}}%
+	\ifpgfplots@enlargelimits@rel@thresh
+		\edef\enlargepercent{\pgfplots@enlargelimits}%
+	\else
+		\def\enlargepercent{0.1}% FIXME : pack 10% as default into option 'enlargelimits' or so
+	\fi
+	\pgfmathsubtract@\max\min%
+	\expandafter\pgf@xa\pgfmathresult pt
+	\expandafter\pgf@xb\enlargepercent\pgf@xa
+	\ifdim\pgf@xb>0.001pt
+		% the case with 
+		%   enlargeabsolute ~= 0
+		% means that \min ~= \max.
+		% It is handled in another method.
+		\edef\enlargeabsolute{\pgf@sys@tonumber{\pgf@xb}}%
+		%
+		% compute xmin := xmin - enlargeabsolute
+		\pgfmathsubtract@\min\enlargeabsolute%
 		\let\min=\pgfmathresult
-		\pgfmathlog@invoke@expanded\pgfmathadd@{{\max}{\pgf@sys@tonumber{\pgfmath@x}}}%
+		\pgfmathadd@\max\enlargeabsolute%
 		\let\max=\pgfmathresult
 	\fi
 	\xdef\pgfplots@TMP{\min}%
