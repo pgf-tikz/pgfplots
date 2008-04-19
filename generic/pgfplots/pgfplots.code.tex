@@ -1233,7 +1233,11 @@
 }
 
 \def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
-	\pgfqkeys{/tikz}{#2}%
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\pgfqkeys{/tikz}{#2}%
+	\fi
 	\pgfutil@ifnextchar c{%
 		\pgfplots@addplotimpl@coordinates{#1}plot 
 	}{%
@@ -1309,7 +1313,10 @@
 
 \let\pgfplots@backupof@pgfplotxyfile=\pgfplotxyfile
 
-\def\pgfplots@addplotimpl@function#1unction#2{%
+% #1: args of \addplot[...]
+% #2: file name
+% #3: trailing path commands until ';'
+\def\pgfplots@addplotimpl@function#1unction#2#3;{%
   \def\tikz@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
   \iftikz@plot@raw@gnuplot%
     \def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{#2}}%
@@ -1325,16 +1332,16 @@
           plot [x=\tikz@plot@domain] #2}}%
     \fi%
   \fi%
-  \def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}}%
+  \def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#3}}%
   \tikz@plot@data
   \let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
 }%
 
-\def\pgfplots@addplotimpl@gnuplotresult#1#2{%
+\def\pgfplots@addplotimpl@gnuplotresult#1#2#3{%
 	\begingroup
-	\openin1=#2
+	\openin1=#3
 	\ifeof1
-		\pgfplots@error{Sorry, the gnuplot-result file '#2' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> gnuplot #2' manually.}%
+		\pgfplots@error{Sorry, the gnuplot-result file '#3' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> gnuplot #3' manually.}%
 		\aftergroup\pgfplots@loop@CONTINUEfalse
 	\else
 		\aftergroup\pgfplots@loop@CONTINUEtrue
@@ -1342,7 +1349,7 @@
 	\closein1
 	\endgroup
 	\ifpgfplots@loop@CONTINUE
-		\pgfplots@addplotimpl@file{#1}ile{#2};%
+		\pgfplots@addplotimpl@file{#1}ile{#3}#2;%
 	\fi
 }
 
@@ -1372,6 +1379,9 @@
 	}%
 }
 
+% #1: arguments to \addplot[...]
+% #2: arguments to table[...]
+% #3: the argument of plot table{...}
 \long\def\pgfplots@addplotimpl@table@START#1#2#3{%
 	\begingroup
 	\pgfqkeys{/pgfplots/numeric table}{#2}%
@@ -1407,11 +1417,8 @@
 	\xdef\pgfplots@TMP{plot coordinates {\the\pgfplots@toka}}%
 	\endgroup
 	\def\pgfplots@TMPB{\pgfplots@addplotimpl@coordinates{#1}}%
-	\expandafter\pgfplots@TMPB\pgfplots@TMP;
-	\pgfplots@addplotimpl@gobblesemicolon
+	\expandafter\pgfplots@TMPB\pgfplots@TMP% this will automatically continue the path statement until the trailing ';'
 }
-
-\def\pgfplots@addplotimpl@gobblesemicolon;{}
 
 \def\pgfplots@start@plot@with@options#1{%
 	\ifx\pgfplots@execute@at@begin@plot\pgfutil@empty
@@ -1428,19 +1435,23 @@
 	\fi
 }
 
-\long\def\pgfplots@addplotimpl@coordinates#1#2;{%
+% #1: arguments to \addplot[...]
+% #2: the plot coordinates
+% #3: any trailing path command before the final ';'. It will be used as-is.
+\long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
 %\tracingmacros=2\tracingcommands=2
+%\pgfplots@message{processing plots coords with trailing path '#3'}%
 	% #2 = plot coordinates {...}
 	\ifpgfplots@filtercoords
 		% FIXME : FREE THIS VARIABLE:
-		\pgfplots@filtercoords@and@up@limits#2;\newplotcmdto\pgfplots@filteredcoordinateplotcmd
+		\pgfplots@filtercoords@and@up@limits plot coordinates {#2};\newplotcmdto\pgfplots@filteredcoordinateplotcmd
 		\def\pgfplots@TMP{\pgfplots@path@impl{\draw[every axis plot,#1]}}%
-		\expandafter\pgfplots@TMP\pgfplots@filteredcoordinateplotcmd%
+		\expandafter\pgfplots@TMP\pgfplots@filteredcoordinateplotcmd #3;%
 	\else
 		\ifpgfplots@draw@at@end
-			\pgfplots@update@limits{#2;}%
+			\pgfplots@update@limits{ plot coordinates {#2};}%
 		\fi
-		\pgfplots@path@impl{\draw[every axis plot,#1]}#2;%
+		\pgfplots@path@impl{\draw[every axis plot,#1]} plot coordinates {#2}#3;%
 	\fi
 	\pgfplots@end@plot
 %\tracingmacros=0\tracingcommands=0
@@ -1567,7 +1578,7 @@
 	\for
 	#1%
 	\pgfplots@EOI
-	\edef#2{plot coordinates {\pgfplots@filter@output};}%
+	\edef#2{plot coordinates {\pgfplots@filter@output}}%
 }%
 
 \def\pgfplots@filter@one@coord@pair#1#2{%
@@ -1650,15 +1661,15 @@
 %   data scaling transformation (\pgfplots@datascaletrafo@x).
 %
 % The output will be written into the macro #2.
-\long\def\pgfplots@apply@data@scaletrafo@to@plot@data#1\to#2{%
-	\let#2=\pgfutil@empty
+\long\def\pgfplots@apply@data@scaletrafo@to@plot@data plot coordinates #1#2;\to#3{%
+	\let#3=\pgfutil@empty
 	\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
 	\pgfplots@foreach@plot@coord@do
 		\pgfplots@apply@data@scaletrafo@to@one@point
 	\for
-	#1%
+	plot coordinates {#1};%
 	\pgfplots@EOI
-	\edef#2{plot coordinates {\pgfplots@data@scaletrafo@result};}%
+	\edef#3{plot coordinates {\pgfplots@data@scaletrafo@result}#2;}%
 }
 
 % for use in \ifx:
@@ -3878,15 +3889,15 @@
 			\pgfplots@BEGIN@init@and@draw@axis
 			\pgfplotslistforeach\pgfplots@stored@plot@cmds\as\plotcmd{%
 				\pgfplotslistpopfront\pgfplots@stored@plot@data\to\plotdata
-				\ifpgfplots@float@numerics@mode
-					\ifx\plotcmd\pgfutil@empty
-						\plotdata
-					\else
+				\ifx\plotcmd\pgfutil@empty
+					\plotdata%
+				\else
+					% this code here means we REALLY have a plotting
+					% command!
+					\ifpgfplots@float@numerics@mode
 						% Apply the data scaling transformation
 						\expandafter\pgfplots@apply@data@scaletrafo@to@plot@data\plotdata\to\plotdata
-						\expandafter\plotcmd\plotdata
 					\fi
-				\else
 					\expandafter\plotcmd\plotdata
 				\fi
 			}%
