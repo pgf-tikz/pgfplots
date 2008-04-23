@@ -171,6 +171,7 @@
 	/pgfplots/descriptions/.is family,
 	/pgfplots/style commands/.is family,
 	/pgfplots/naming commands/.is family,
+	/pgfplots/error bars/.is family,
 	/tikz/every axis/.style={},
 	/tikz/every axis/.belongs to family=/pgfplots/style commands,
 	/tikz/every semilogx axis/.style={},
@@ -618,6 +619,23 @@
 	/pgfplots/ymode/log/.code={\pgfplots@ymode=1},
 	/pgfplots/ymode/log/.belongs to family=/pgfplots/scale,
 	/pgfplots/ymode=linear,
+	/pgfplots/error bars/fixed/.code=				\def\pgfplots@errorbars@fixed{#1}\def\pgfplots@errorbars@mode{0},
+	/pgfplots/error bars/fixed relative/.code=		\def\pgfplots@errorbars@rel{#1}\def\pgfplots@errorbars@mode{1},
+	/pgfplots/error bars/explicit/.code=			\def\pgfplots@errorbars@mode{2},
+	/pgfplots/error bars/explicit relative/.code=	\def\pgfplots@errorbars@mode{3},
+	/pgfplots/error bars/fixed=0,
+	/pgfplots/error bars/x/.is choice,
+	/pgfplots/error bars/x/none/.code=				\def\pgfplots@errorbars@xmode{0},
+	/pgfplots/error bars/x/plus/.code=				\def\pgfplots@errorbars@xmode{1},
+	/pgfplots/error bars/x/minus/.code=				\def\pgfplots@errorbars@xmode{2},
+	/pgfplots/error bars/x/both/.code=				\def\pgfplots@errorbars@xmode{3},
+	/pgfplots/error bars/x=none,
+	/pgfplots/error bars/y/.is choice,
+	/pgfplots/error bars/y/none/.code=				\def\pgfplots@errorbars@ymode{0},
+	/pgfplots/error bars/y/plus/.code=				\def\pgfplots@errorbars@ymode{1},
+	/pgfplots/error bars/y/minus/.code=				\def\pgfplots@errorbars@ymode{2},
+	/pgfplots/error bars/y/both/.code=				\def\pgfplots@errorbars@ymode{3},
+	/pgfplots/error bars/y=none,
 }
 
 % Checks whether the tick position given as #1.#2=log10(T) belongs to
@@ -1265,16 +1283,18 @@
 \long\def\pgfplots@addplotimpl@expression#1#2;{%
 	\pgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITYtrue
 	\pgfplots@addplotimpl@expression@limits{#1}%
-	\axispath \draw[#1] plot #2;%
+	\pgfplots@path@enqueue{\draw[#1] plot #2;}%
 	\pgfplots@end@plot
 }%
 
 \def\pgfplots@addplotimpl@expression@limits#1{%
-	\pgfkeysinstallkeyfilter{/pgf/key filters/equals}{/tikz/domain}%
-	\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/ignore}%
-	\pgfqkeysfiltered
-		{/tikz}%
-		{#1}%
+	%--------------------------------------------------
+	% \pgfkeysinstallkeyfilter{/pgf/key filters/equals}{/tikz/domain}%
+	% \pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/ignore}%
+	% \pgfqkeysfiltered
+	% 	{/tikz}%
+	% 	{#1}%
+	%-------------------------------------------------- 
 	\expandafter\pgfplots@addplotimpl@expression@limits@domain\tikz@plot@domain\relax
 }%
 
@@ -1441,17 +1461,35 @@
 \long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{processing plots coords with trailing path '#3'}%
-	% #2 = plot coordinates {...}
+	\pgfplots@errorbars@enabledfalse
+	\let\pgfplots@errorbar@paths=\relax
+	\ifnum\pgfplots@errorbars@xmode=0
+		\ifnum\pgfplots@errorbars@ymode=0
+		\else
+			\pgfplots@errorbars@enabledtrue
+		\fi
+	\else
+		\pgfplots@errorbars@enabledtrue
+	\fi
 	\ifpgfplots@filtercoords
-		% FIXME : FREE THIS VARIABLE:
 		\pgfplots@filtercoords@and@up@limits plot coordinates {#2};\newplotcmdto\pgfplots@filteredcoordinateplotcmd
-		\def\pgfplots@TMP{\pgfplots@path@impl{\draw[every axis plot,#1]}}%
+		\ifpgfplots@errorbars@enabled
+			\expandafter\pgfplots@path@enqueue\expandafter{\pgfplots@errorbar@paths}%
+		\fi
+		\def\pgfplots@TMP{\pgfplots@path@enqueue@coords{\draw[every axis plot,#1]}}%
 		\expandafter\pgfplots@TMP\pgfplots@filteredcoordinateplotcmd #3;%
 	\else
 		\ifpgfplots@draw@at@end
 			\pgfplots@update@limits{ plot coordinates {#2};}%
+		\else
+			\ifpgfplots@errorbars@enabled
+				\pgfplots@error{Sorry, the case pgfplots@draw@at@end =false and error bars = true not yet implemented FIXME}%
+			\fi
 		\fi
-		\pgfplots@path@impl{\draw[every axis plot,#1]} plot coordinates {#2}#3;%
+		\ifpgfplots@errorbars@enabled
+			\expandafter\pgfplots@path@enqueue\expandafter{\pgfplots@errorbar@paths}%
+		\fi
+		\pgfplots@path@enqueue@coords{\draw[every axis plot,#1]} plot coordinates {#2}#3;%
 	\fi
 	\pgfplots@end@plot
 %\tracingmacros=0\tracingcommands=0
@@ -1466,7 +1504,10 @@
 }
 
 \newif\ifpgfplots@update@limits@for@one@point@ISCLIPPED
-\def\pgf@math@ONE{1.0}%
+\def\pgfplots@math@ONE{1.0}%
+
+\def\pgfplots@update@errorbar@paths#1#2#3#4{%
+}
 
 % Updates the current x and y limits for point (#1,#2).
 %
@@ -1484,7 +1525,9 @@
 %   - no coordinate filters active 
 %   		=> #1 and #2 MAY be macros, but they must be valid TeX
 %   		length (without unit).
-\long\def\pgfplots@update@limits@for@one@point#1#2{%
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\long\def\pgfplots@update@limits@for@one@point#1#2#3#4{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{Updating limits for (#1,#2) ...}%
 	\pgfplots@update@limits@for@one@point@ISCLIPPEDfalse
@@ -1502,11 +1545,11 @@
 				\fi
 			\else
 				\pgfmathlessthan{#1}{\pgfplots@xmin}%
-				\ifx\pgfmathresult\pgf@math@ONE
+				\ifx\pgfmathresult\pgfplots@math@ONE
 					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
 				\fi
 				\pgfmathlessthan{\pgfplots@xmax}{#1}%
-				\ifx\pgfmathresult\pgf@math@ONE
+				\ifx\pgfmathresult\pgfplots@math@ONE
 					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
 				\fi
 			\fi
@@ -1524,11 +1567,11 @@
 				\fi
 			\else
 				\pgfmathlessthan{#2}{\pgfplots@ymin}%
-				\ifx\pgfmathresult\pgf@math@ONE
+				\ifx\pgfmathresult\pgfplots@math@ONE
 					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
 				\fi
 				\pgfmathlessthan{\pgfplots@ymax}{#2}%
-				\ifx\pgfmathresult\pgf@math@ONE
+				\ifx\pgfmathresult\pgfplots@math@ONE
 					\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
 				\fi
 			\fi
@@ -1581,7 +1624,9 @@
 	\edef#2{plot coordinates {\pgfplots@filter@output}}%
 }%
 
-\def\pgfplots@filter@one@coord@pair#1#2{%
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\def\pgfplots@filter@one@coord@pair#1#2#3#4{%
 	\ifx\pgfplots@xfilter\pgfutil@empty
 		\def\pgfplots@filter@tmp@x{#1}%
 	\else
@@ -1600,9 +1645,12 @@
 		\ifx\pgfplots@filter@tmp@y\pgfutil@empty
 			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
 		\else
+			\ifpgfplots@errorbars@enabled
+				\pgfplots@update@errorbar@paths{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}%
+			\fi
 			\ifpgfplots@draw@at@end
 				% update also axis limits:
-				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
+				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{}{}%
 			\else
 				% apply data transformation directly.
 				\ifpgfplots@float@numerics@mode@x
@@ -1623,33 +1671,45 @@
 
 
 % A looping command to loop through plot coordinates.
-% For every point, #3{X}{Y} will be invoked.
+% For every point, #1{X}{Y} will be invoked.
 %
 % No scoping is used during this operation, so you can access outer
 % variables.
 \long\def\pgfplots@foreach@plot@coord@do#1\for plot coordinates #2;\pgfplots@EOI{%
-	\pgfplots@foreach@plot@coord@ITERATE#1\n#2\pgfplots@EOI%
+%\tracingmacros=2\tracingcommands=2
+	\def\pgfplots@foreach@plot@coord@do@CMD{#1}%
+%\message{PROCESSING PLOT COORDS '#2' to call \meaning\pgfplots@foreach@plot@coord@do@CMD}%
+	\pgfplots@foreach@plot@coord@ITERATE#2\pgfplots@EOI%
+%\tracingmacros=0\tracingcommands=0
 }
 
-\def\pgfplots@foreach@plot@coord@ITERATE#1\n{%
-	\pgfutil@ifnextchar;{%
-		\pgfplots@foreach@plot@coord@FINISH@SEMICOLON%
+\def\pgfplots@foreach@plot@coord@ITERATE{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfplots@foreach@plot@coord@FINISH%
 	}{%
-		\pgfutil@ifnextchar\pgfplots@EOI{%
-			\pgfplots@foreach@plot@coord@FINISH%
-		}{%
-			\pgfplots@foreach@plot@coord@NEXT#1\n%
-		}%
+		\pgfplots@foreach@plot@coord@NEXT%
 	}%
 }
 
-\def\pgfplots@foreach@plot@coord@NEXT#1\n(#2,#3){%
-	#1{#2}{#3}%
-	\pgfplots@foreach@plot@coord@ITERATE#1\n
+\def\pgfplots@foreach@plot@coord@NEXT(#1,#2){%
+	\pgfutil@ifnextchar+{%
+		\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE{#1}{#2}%
+	}{%
+		\pgfplots@foreach@plot@coord@do@CMD{#1}{#2}{}{}%
+		\pgfplots@foreach@plot@coord@ITERATE
+	}%
+}
+
+% processing something like '(x,y) +- (error_x,error_y)'
+\def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE#1#2+-{%
+	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@{#1}{#2}%
+}
+\def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@#1#2(#3,#4){%
+	\pgfplots@foreach@plot@coord@do@CMD{#1}{#2}{#3}{#4}%
+	\pgfplots@foreach@plot@coord@ITERATE
 }
 
 \def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
-\def\pgfplots@foreach@plot@coord@FINISH@SEMICOLON;\pgfplots@EOI{}
 
 % INPUT: 
 %   a sequence of points (SMeE,SMeE) (terminated with ';') 
@@ -1660,7 +1720,7 @@
 %   proper sequence of fixed point coordinates which are the result of the
 %   data scaling transformation (\pgfplots@datascaletrafo@x).
 %
-% The output will be written into the macro #2.
+% The output will be written into the macro #3.
 \long\def\pgfplots@apply@data@scaletrafo@to@plot@data plot coordinates #1#2;\to#3{%
 	\let#3=\pgfutil@empty
 	\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
@@ -1675,7 +1735,11 @@
 % for use in \ifx:
 \def\pgfplots@EOI{\pgfplots@EOI}%
 	
-\def\pgfplots@apply@data@scaletrafo@to@one@point#1#2{%
+% #1= x coord
+% #2= y coord
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\def\pgfplots@apply@data@scaletrafo@to@one@point#1#2#3#4{%
 	\ifpgfplots@float@numerics@mode@x
 		\pgfplots@datascaletrafo@x{#1}%
 		\let\pgfplots@filter@tmp@x=\pgfmathresult
@@ -1693,7 +1757,7 @@
 
 
 \long\def\pgfplots@path#1;{%
-	\pgfplots@path@impl{}#1;
+	\pgfplots@path@enqueue{#1;}%
 }
 
 % This thing here shall be used to replace any '\path' where \axispath
@@ -1702,7 +1766,9 @@
 	\axispath\path#1;%
 }
 
-% low-level \axispath implementation.
+% Remembers the plotting command #1 and '#2=plot coordinates {...} ...';
+% for later postprocessing of the coordinates.
+%
 % #1:
 %    the command which is responsable for drawing.
 %    - If #1 is NOT '\pgfutil@empty', we expect #2 to contain only
@@ -1712,12 +1778,22 @@
 %      and process it as-is.
 %
 % #2: see above.
-\long\def\pgfplots@path@impl#1#2;{%
+\long\def\pgfplots@path@enqueue@coords#1#2;{%
 	\ifpgfplots@draw@at@end
 		\pgfplotslistpushback{#1}\to\pgfplots@stored@plot@cmds
 		\pgfplotslistpushback{#2;}\to\pgfplots@stored@plot@data
 	\else
 		#1#2;%
+	\fi
+}
+
+% Remembers the plotting command #1.
+\long\def\pgfplots@path@enqueue#1{%
+	\ifpgfplots@draw@at@end
+		\pgfplotslistpushback{}\to\pgfplots@stored@plot@cmds
+		\pgfplotslistpushback{#1}\to\pgfplots@stored@plot@data
+	\else
+		#1%
 	\fi
 }
 
@@ -3761,6 +3837,7 @@
 	}%
 }%
 
+% temporary (local) variables inside of axis
 \newif\ifpgfplots@autocompute@xlim
 \newif\ifpgfplots@autocompute@ylim
 \newif\ifpgfplots@filtercoords
@@ -3770,6 +3847,7 @@
 \newif\ifpgfplots@draw@at@end
 \newif\ifpgfplots@limits@are@computed
 \newif\ifpgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITY
+\newif\ifpgfplots@errorbars@enabled
 
 \def\pgfplots@environment@opt[#1]{%
 	\begingroup
@@ -3987,7 +4065,7 @@
 % coordinate is valid inside of the TeX box.
 %
 % 2. we also shift each named node's saved anchors to reflect the
-% axis anchor.
+% axis' anchor.
 %
 % Afterwards, everything should be fine.
 \def\pgfplots@finally@correct@child@node@positions{%
