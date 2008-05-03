@@ -738,16 +738,16 @@
 	/pgfplots/error bars/y dir/minus/.code=				\def\pgfplots@errorbars@ydirection{2}\pgfplots@errorbars@enabledtrue,
 	/pgfplots/error bars/y dir/both/.code=				\def\pgfplots@errorbars@ydirection{3}\pgfplots@errorbars@enabledtrue,
 	/pgfplots/error bars/y dir=none,
-	/pgfplots/error bars/mark/.store in=				\pgfplots@errorbars@mark,
-	/pgfplots/error bars/mark={-},
-	/pgfplots/error bars/mark options/.store in=		\pgfplots@errorbars@markopts,
-	/pgfplots/error bars/mark options={rotate=90},
+	/pgfplots/error bars/error mark/.store in=				\pgfplots@errorbars@mark,
+	/pgfplots/error bars/error mark={-},
+	/pgfplots/error bars/error mark options/.store in=		\pgfplots@errorbars@markopts,
+	/pgfplots/error bars/error mark options={rotate=90},
 	/pgfplots/error bars/error bar style/.code={%
 		\pgfkeysalso{/tikz/every error bar/.append style={#1}}%
 	},
 	/tikz/every error bar/.style={thin},
 	/pgfplots/error bars/draw error bar/.code 2 args={%
-\message{/pgfplots/error bars/draw error bar:  working with '#1' -- '#2'.}%
+%\message{/pgfplots/error bars/draw error bar:  working with '#1' -- '#2'.}%
 		\draw #1 -- #2 node[pos=1,sloped,allow upside down] {%
 			\expandafter\tikz\expandafter[\pgfplots@errorbars@markopts]{%
 				\expandafter\pgfuseplotmark\expandafter{\pgfplots@errorbars@mark}%
@@ -1443,7 +1443,7 @@
 \long\def\pgfplots@addplotimpl@expression#1#2;{%
 	\global\pgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITYtrue
 	\pgfplots@addplotimpl@expression@limits{#1}%
-	\pgfplots@addplot@enqueue@coords{}{}{\draw[#1] plot #2;}{}%
+	\pgfplots@addplot@enqueue@coords{}{}{\draw[every axis plot,#1] plot #2;}{}%
 	\pgfplots@end@plot
 }%
 
@@ -1563,8 +1563,10 @@
 % #1: arguments to \addplot[...]
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
-\long\def\pgfplots@addplotimpl@table@START#1#2#3{%
+% #4: trailing path arguments after plot table{...}#4;
+\long\def\pgfplots@addplotimpl@table@START#1#2#3#4;{%
 	\begingroup
+	\pgfplots@PREPARE@COORD@STREAMS{#1}{#4}%
 	\pgfqkeys{/pgfplots/numeric table}{#2}%
 	\ifpgfplots@addplot@table@from@macro
 		\pgfnumtablecopy#3\to\pgfplots@table
@@ -1581,7 +1583,33 @@
 	\else
 		\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
 	\fi
-	\pgfplots@toka={}%
+	%
+	\ifpgfplots@errorbars@enabled
+		\let\addplot@tbl@error@x=\pgfutil@empty
+		\let\addplot@tbl@error@y=\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/numeric table/x error index}\pgfplots@plot@tbl@error@xindex
+		\pgfkeysgetvalue{/pgfplots/numeric table/x error}\pgfplots@plot@tbl@error@x
+		\pgfkeysgetvalue{/pgfplots/numeric table/y error index}\pgfplots@plot@tbl@error@yindex
+		\pgfkeysgetvalue{/pgfplots/numeric table/y error}\pgfplots@plot@tbl@error@y
+		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+			\else
+				\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@error@xindex\of\pgfplots@table\to\addplot@tbl@error@x
+			\fi
+		\else
+			\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@error@x\of\pgfplots@table\to\addplot@tbl@error@x
+		\fi
+		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+			\else
+				\pgfnumtablegetcolumnbyindex\pgfplots@plot@tbl@error@yindex\of\pgfplots@table\to\addplot@tbl@error@y
+			\fi
+		\else
+			\pgfnumtablegetcolumnbyname\pgfplots@plot@tbl@error@y\of\pgfplots@table\to\addplot@tbl@error@y
+		\fi
+	\fi
+	%
+	\pgfplots@coord@stream@start
 	\loop
 	\pgfplotslistcheckempty\addplot@tbl@x
 	\ifpgfplotslistempty
@@ -1592,13 +1620,26 @@
 	\ifpgfplots@loop@CONTINUE
 		\pgfplotslistpopfront\addplot@tbl@x\to\addplot@tbl@cur@x
 		\pgfplotslistpopfront\addplot@tbl@y\to\addplot@tbl@cur@y
-		\edef\pgfplots@TMP{\the\pgfplots@toka(\addplot@tbl@cur@x,\addplot@tbl@cur@y)}%
-		\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+		\ifpgfplots@errorbars@enabled
+			\ifx\addplot@tbl@error@x\pgfutil@empty
+				\let\addplot@tbl@error@cur@x=\pgfutil@empty
+			\else
+				\pgfplotslistpopfront\addplot@tbl@error@x\to\addplot@tbl@error@cur@x
+			\fi
+			\ifx\addplot@tbl@error@y\pgfutil@empty
+				\let\addplot@tbl@error@cur@y=\pgfutil@empty
+			\else
+				\pgfplotslistpopfront\addplot@tbl@error@y\to\addplot@tbl@error@cur@y
+			\fi
+			\edef\pgfplots@TMP{{\addplot@tbl@cur@x}{\addplot@tbl@cur@y}{\addplot@tbl@error@cur@x}{\addplot@tbl@error@cur@y}}%
+			\expandafter\pgfplots@coord@stream@coord\pgfplots@TMP
+		\else
+			\edef\pgfplots@TMP{{\addplot@tbl@cur@x}{\addplot@tbl@cur@y}{}{}}%
+			\expandafter\pgfplots@coord@stream@coord\pgfplots@TMP
+		\fi
 	\repeat
-	\xdef\pgfplots@TMP{plot coordinates {\the\pgfplots@toka}}%
+	\pgfplots@coord@stream@end
 	\endgroup
-	\def\pgfplots@TMPB{\pgfplots@addplotimpl@coordinates{#1}}%
-	\expandafter\pgfplots@TMPB\pgfplots@TMP% this will automatically continue the path statement until the trailing ';'
 }
 
 % #1:  arguments to \addplot[]  (these are used for legend images as well) 
@@ -1617,6 +1658,87 @@
 	\fi
 }
 
+% Initialises 
+% \pgfplots@coord@stream@start
+% \pgfplots@coord@stream@coord
+% \pgfplots@coord@stream@end
+% such that a following coordinate stream is processed properly. The
+% following coordinate stream may come from different input methods.
+%
+% Arguments:
+% #1:  all options of \addplot[...] (the plot style)
+% #3:  any trailing path commands after the 'plot' command as such,
+%      for example \addplot plot coordinates {...} -- (0,0);
+%      would yield #3 =' -- (0,0)'
+%
+\long\def\pgfplots@PREPARE@COORD@STREAMS#1#2{%
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+		\pgfplots@streamerrorbarstart
+	\else
+		\let\pgfplots@recordederrorbar=\pgfutil@empty
+	\fi
+	\ifpgfplots@filtercoords
+		\pgfplots@coord@stream@INIT@process@filtered\pgfplots@coord@stream@recorded
+	\else
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@error{Sorry, the case pgfplots@draw@at@end =false and error bars = true not yet implemented FIXME}%
+		\fi
+		\ifpgfplots@draw@at@end
+			\pgfplots@coord@stream@INIT@updatelimits
+		\else
+			\pgfplots@coord@stream@INIT@recorder
+		\fi
+	\fi
+	% make sure that \pgfplots@coord@stream@end@@ is called at the end
+	% of the lately prepare end-stream method.
+	\expandafter\def\expandafter\pgfplots@coord@stream@end\expandafter{%
+		\pgfplots@coord@stream@end
+		\pgfplots@coord@stream@end@@
+		\pgfplots@end@plot
+	}%
+	\def\pgfplots@coord@stream@end@@{%
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@streamerrorbarend
+		\fi
+		% Idea: use
+		%   \scope[plot specification]
+		%   <any paths for error bars>
+		%   \endscope
+		%   \draw plot coordinates {...};
+		% to share plot specifications between error bars and plot
+		% coordinates. Unfortunately, it is NOT sufficient to use
+		% \tikzset{#1}
+		\edef\pgfplots@TMP{every axis plot,every axis plot no \the\pgfplots@numplots/.try}%
+		\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP,#1}%
+		\ifx\pgfplots@recordederrorbar\pgfutil@empty
+			\edef\pgfplots@TMP{%
+				\noexpand\pgfplots@addplot@enqueue@coords
+				{
+					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+				}%
+				{%
+					\noexpand\draw[current plot style]%
+				}%
+			}%
+		\else
+			\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
+			\edef\pgfplots@TMP{%
+				\noexpand\pgfplots@addplot@enqueue@coords
+				{
+					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+					\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
+				}%
+				{%
+					\noexpand\draw[current plot style]%
+				}%
+			}%
+		\fi
+		\expandafter\pgfplots@TMP\expandafter{\pgfplots@coord@stream@recorded #2;}%
+			{}%
+	}%
+}%
+
 \def\pgfplots@end@plot{%
 	\ifx\pgfplots@execute@at@end@plot\pgfutil@empty
 	\else
@@ -1631,61 +1753,73 @@
 \long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{processing plots coords with trailing path '#3'}%
-	\ifpgfplots@errorbars@enabled
-		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
-		\pgfplots@streamerrorbarstart
-	\else
-		\let\pgfplots@recordederrorbar=\pgfutil@empty
-	\fi
-	\ifpgfplots@filtercoords
-		\pgfplots@filtercoords@and@up@limits plot coordinates {#2};\newplotcmdto\pgfplots@filteredcoordinateplotcmd
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@streamerrorbarend
-		\fi
-		% Idea: use
-		%   \scope[plot specification]
-		%   <any paths for error bars>
-		%   \endscope
-		%   \draw plot coordinates {...};
-		% to share plot specifications between error bars and plot
-		% coordinates. Unfortunately, it is NOT sufficient to use
-		% \tikzset{#1}
-		\pgfplotslist@TOK@a={every axis plot,#1}%
-		\ifx\pgfplots@recordederrorbar\pgfutil@empty
-			\edef\pgfplots@TMP{%
-				\noexpand\pgfplots@addplot@enqueue@coords
-				{
-					\noexpand\def\noexpand\pgfplots@plotstyleopts{\the\pgfplotslist@TOK@a}%
-				}%
-				{%
-					\noexpand\draw[every axis plot,#1]%
-				}%
-			}%
-		\else
-			\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
-			\edef\pgfplots@TMP{%
-				\noexpand\pgfplots@addplot@enqueue@coords
-				{
-					\noexpand\def\noexpand\pgfplots@plotstyleopts{\the\pgfplotslist@TOK@a}%
-					\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
-				}%
-				{%
-					\noexpand\draw[every axis plot,#1]%
-				}%
-			}%
-		\fi
-		\expandafter\pgfplots@TMP\expandafter{\pgfplots@filteredcoordinateplotcmd #3;}%
-			{}%
-	\else
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@error{Sorry, the case pgfplots@draw@at@end =false and error bars = true not yet implemented FIXME}%
-		\fi
-		\ifpgfplots@draw@at@end
-			\pgfplots@update@limits{plot coordinates {#2};}%
-		\fi
-		\pgfplots@addplot@enqueue@coords{}{\draw[every axis plot,#1]}{ plot coordinates {#2}#3;}{}%
-	\fi
-	\pgfplots@end@plot
+	\pgfplots@PREPARE@COORD@STREAMS{#1}{#3}%
+	\pgfplots@coord@stream@foreach{#2}%
+	%--------------------------------------------------
+	% \ifpgfplots@errorbars@enabled
+	% 	\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+	% 	\pgfplots@streamerrorbarstart
+	% \else
+	% 	\let\pgfplots@recordederrorbar=\pgfutil@empty
+	% \fi
+	% \ifpgfplots@filtercoords
+	% 	\pgfplots@coord@stream@INIT@process@filtered\pgfplots@filteredcoordinateplotcmd
+	% 	\pgfplots@coord@stream@foreach{#2}%
+	% %	\pgfplots@processinputcoords@filtered plot coordinates {#2};\newplotcmdto\pgfplots@filteredcoordinateplotcmd
+	% 	\ifpgfplots@errorbars@enabled
+	% 		\pgfplots@streamerrorbarend
+	% 	\fi
+	% 	% Idea: use
+	% 	%   \scope[plot specification]
+	% 	%   <any paths for error bars>
+	% 	%   \endscope
+	% 	%   \draw plot coordinates {...};
+	% 	% to share plot specifications between error bars and plot
+	% 	% coordinates. Unfortunately, it is NOT sufficient to use
+	% 	% \tikzset{#1}
+	% 	\pgfplotslist@TOK@a={every axis plot,#1}%
+	% 	\ifx\pgfplots@recordederrorbar\pgfutil@empty
+	% 		\edef\pgfplots@TMP{%
+	% 			\noexpand\pgfplots@addplot@enqueue@coords
+	% 			{
+	% 				\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+	% 			}%
+	% 			{%
+	% 				\noexpand\draw[every axis plot,#1]%
+	% 			}%
+	% 		}%
+	% 	\else
+	% 		\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
+	% 		\edef\pgfplots@TMP{%
+	% 			\noexpand\pgfplots@addplot@enqueue@coords
+	% 			{
+	% 				\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+	% 				\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
+	% 			}%
+	% 			{%
+	% 				\noexpand\draw[every axis plot,#1]%
+	% 			}%
+	% 		}%
+	% 	\fi
+	% 	\expandafter\pgfplots@TMP\expandafter{\pgfplots@filteredcoordinateplotcmd #3;}%
+	% 		{}%
+	% 		{every axis plot,#1}%
+	% \else
+	% 	\ifpgfplots@errorbars@enabled
+	% 		\pgfplots@error{Sorry, the case pgfplots@draw@at@end =false and error bars = true not yet implemented FIXME}%
+	% 	\fi
+	% 	\ifpgfplots@draw@at@end
+	% 		\pgfplots@update@limits{plot coordinates {#2};}%
+	% 	\fi
+	% 	\pgfplotslist@TOK@a={every axis plot,#1}%
+	% 	\pgfplots@addplot@enqueue@coords
+	% 		{%
+	% 			\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+	% 		}%
+	% 		{\draw[every axis plot,#1]}{ plot coordinates {#2}#3;}{}{every axis plot,#1}%
+	% \fi
+	% \pgfplots@end@plot
+	%-------------------------------------------------- 
 %\tracingmacros=0\tracingcommands=0
 }%
 
@@ -1828,19 +1962,6 @@
 %\tracingmacros=0\tracingcommands=0
 }
 
-% Filters coordinates and writes a new, modified 'plot coordinates'
-% command to macro #2.
-\long\def\pgfplots@filtercoords@and@up@limits#1\newplotcmdto#2{%
-	\let#2=\pgfutil@empty
-	\let\pgfplots@filter@output=#2
-	\pgfplots@foreach@plot@coord@do%
-		\pgfplots@filter@one@coord@pair
-	\for
-	#1%
-	\pgfplots@EOI
-	\edef#2{plot coordinates {\pgfplots@filter@output}}%
-}%
-
 % #3= error for x coord (or empty)
 % #4= error for y coord (or empty)
 \def\pgfplots@filter@one@coord@pair#1#2#3#4{%
@@ -1886,13 +2007,121 @@
 				\fi
 				\pgfplots@process@errorbar@for{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}%
 			\fi
-			\pgfplots@toka=\expandafter{\pgfplots@filter@output}%
-			\edef\pgfplots@filter@output{\the\pgfplots@toka (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)\pgfplots@errorspec}%
-%\pgfplots@message{FILTERING: appended \pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y}%  -> results in \pgfplots@filter@output}%
+			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
+			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)\pgfplots@errorspec}%
+%\pgfplots@message{FILTERING: appended \pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y}%  -> results in \pgfplots@coord@stream@recorded}%
 		\fi
 	\fi
 }
 
+% Internal stream methods.
+%
+% FIXME: REPLACE THIS HERE WITH METHODS OF THE VISUALIZATION FRAMEWORK
+\def\pgfplots@coord@stream@start{}
+\def\pgfplots@coord@stream@end{}
+
+% (#1,#2) : x, y coordinates
+% (#3,#4) : any x, y errors (or empty)
+\def\pgfplots@coord@stream@coord#1#2#3#4{}%
+
+% A looping method which applies
+% \pgfplots@coord@stream@start
+% for each coordinate '(x,y)'  or '(x,y) +- (ex,ey)', call
+%   \pgfplots@coord@stream@coord{x}{y}{ex}{ey}
+% \pgfplots@coord@stream@end
+%
+% #1 a sequence of coordinates of the form 
+%   '(x,y)'
+%   or
+%   '(x,y) +- (ex,ey)'
+%   separated by white-space.
+\long\def\pgfplots@coord@stream@foreach#1{%
+	\pgfplots@coord@stream@start
+	\pgfplots@foreach@plot@coord@do%
+		\pgfplots@coord@stream@coord
+	\for
+	plot coordinates {#1};%
+	\pgfplots@EOI
+	\pgfplots@coord@stream@end
+}%
+
+
+% Processes coordinates and writes a new, modified 'plot coordinates'
+% command to macro #2.
+% #1:  macro name for processed coordinates.
+\def\pgfplots@coord@stream@INIT@process@filtered#1{%
+	\def\pgfplots@coord@stream@start{%
+		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\edef#1{plot coordinates {\pgfplots@coord@stream@recorded}}%
+	}%
+	\let\pgfplots@coord@stream@coord=\pgfplots@filter@one@coord@pair
+}
+
+% Initialises a coordinate stream which simply collects each point
+% into \pgfplots@coord@stream@recorded
+% and updates any axis limits on the fly.
+\def\pgfplots@coord@stream@INIT@updatelimits{%
+	\def\pgfplots@coord@stream@start{%
+		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
+	}%
+	\def\pgfplots@coord@stream@coord##1##2##3##4{%
+		\expandafter\def\expandafter\pgfplots@coord@stream@recorded\expandafter{\pgfplots@coord@stream@recorded (##1,##2)}%
+		\pgfplots@update@limits@for@one@point{##1}{##2}{##3}{##4}%
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\edef\pgfplots@coord@stream@recorded{plot coordinates {\pgfplots@coord@stream@recorded}}%
+	}%
+}
+
+% Initialises a coordinate stream which collects each input point into
+% \pgfplots@coord@stream@recorded.
+\def\pgfplots@coord@stream@INIT@recorder{%
+	\def\pgfplots@coord@stream@start{%
+		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\edef\pgfplots@coord@stream@recorded{plot coordinates {\pgfplots@coord@stream@recorded}}%
+	}%
+	\def\pgfplots@coord@stream@coord##1##2##3##4{%
+		\expandafter\def\expandafter\pgfplots@coord@stream@recorded\expandafter{\pgfplots@coord@stream@recorded (##1,##2)}%
+	}%
+}
+
+\def\pgfplots@coord@stream@INIT@finalize@storedcoords#1{%
+	\def\pgfplots@coord@stream@start{%
+		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\let#1=\pgfplots@data@scaletrafo@result
+	}%
+	\let\pgfplots@coord@stream@coord=\pgfplots@apply@data@scaletrafo@to@one@point
+}
+
+% INPUT: 
+%   a sequence of points (SMeE,SMeE) (terminated with ';') 
+%   where S=sign, M=mantisse, E = exponent.
+%   Such input is generated in the case pgfplots@float@numerics@modetrue
+%   by the coordinate filters.
+% OUTPUT: 
+%   proper sequence of fixed point coordinates which are the result of the
+%   data scaling transformation (\pgfplots@datascaletrafo@x).
+%
+% The output will be written into the macro #3
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\to#3{%
+	\pgfplots@coord@stream@INIT@finalize@storedcoords#3
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+		\pgfplots@streamerrorbarstart
+	\fi
+	\pgfplots@coord@stream@foreach{#1}%
+	\edef#3{plot coordinates {#3}#2;}%
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@streamerrorbarend
+		\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\pgfplots@recordederrorbar}%
+	\fi
+}%
 
 % A looping command to loop through plot coordinates.
 % For every point, #1{X}{Y} will be invoked.
@@ -1935,26 +2164,6 @@
 
 \def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
 
-% INPUT: 
-%   a sequence of points (SMeE,SMeE) (terminated with ';') 
-%   where S=sign, M=mantisse, E = exponent.
-%   Such input is generated in the case pgfplots@float@numerics@modetrue
-%   by the coordinate filters.
-% OUTPUT: 
-%   proper sequence of fixed point coordinates which are the result of the
-%   data scaling transformation (\pgfplots@datascaletrafo@x).
-%
-% The output will be written into the macro #3.
-\long\def\pgfplots@finish@datatrafo@@generate@errorbars plot coordinates #1#2;\to#3{%
-	\let#3=\pgfutil@empty
-	\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
-	\pgfplots@foreach@plot@coord@do
-		\pgfplots@apply@data@scaletrafo@to@one@point
-	\for
-	plot coordinates {#1};%
-	\pgfplots@EOI
-	\edef#3{plot coordinates {\pgfplots@data@scaletrafo@result}#2;}%
-}
 
 % for use in \ifx:
 \def\pgfplots@EOI{\pgfplots@EOI}%
@@ -1984,7 +2193,8 @@
 }
 
 \def\pgfplots@errorbars@finishwithstyleoptions[#1]#2{%
-	\scope[#1]%
+	\scope[%/pgfplots/search path for tikz/.cd,
+		#1,every error bar]%
 	#2%
 	\endscope
 }
@@ -1995,7 +2205,6 @@
 	\edef\pgfplots@yarg{#2}%
 	\edef\pgfplots@error@xarg{#3}%
 	\edef\pgfplots@error@yarg{#4}%
-\message{PROCESSING ERROR BARS FOR (#1,#2) +- (#3,#4)...}%
 	\ifcase\pgfplots@errorbars@xdirection
 	\or
 		\pgfplots@process@errorbar@@for{x}{+}%
@@ -2014,7 +2223,6 @@
 		\pgfplots@process@errorbar@@for{y}{+}% FIXME : INEFFICIENT! Scaling trafo is applied twice!
 		\pgfplots@process@errorbar@@for{y}{-}%
 	\fi
-\message{FINISHED ERROR BARS FOR (#1,#2) +- (#3,#4)...}%
 %	\endgroup
 }
 
@@ -2093,7 +2301,6 @@
 				{(\pgfplots@xarg,\pgfplots@error@coord)}%
 			}%
 		\fi
-\message{errorbar@@for{#1}{#2}: streaming '\pgfplots@TMP'...}%
 		\expandafter\pgfplots@streamerrorbarcoords\pgfplots@TMP
 	\fi
 }
@@ -2124,14 +2331,12 @@
 % #3: see above.
 %
 % #4: commands which should be executed after '#2 #3'.
+%
 \long\def\pgfplots@path@enqueue@coords#1#2#3#4{%
 	\ifpgfplots@draw@at@end
 		\begingroup
 		\globaldefs=1
-		\pgfplotslistpushback{#1}\to\pgfplots@stored@plot@precommands
-		\pgfplotslistpushback{#2}\to\pgfplots@stored@plot@cmds
-		\pgfplotslistpushback{#3}\to\pgfplots@stored@plot@data
-		\pgfplotslistpushback{#4}\to\pgfplots@stored@plot@postcommands
+		\pgfplotslistpushback{#1}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
 		\endgroup
 	\else
 		\begingroup
@@ -4296,6 +4501,22 @@
 \newif\ifpgfplots@limits@are@computed
 \newif\ifpgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITY
 
+% Extracts single components of an entry of
+% \pgfplots@stored@plotlist
+%
+% They are defined as
+% \pgfplots@stored@current@precmd
+% \pgfplots@stored@current@cmd
+% \pgfplots@stored@current@data
+% \pgfplots@stored@current@postcmd
+\def\pgfplots@stored@plotlist@EXTRACTENTRY#1#2#3#4{%
+	\def\pgfplots@stored@current@precmd{#1}%
+	\def\pgfplots@stored@current@cmd{#2}%
+	\def\pgfplots@stored@current@data{#3}%
+	\def\pgfplots@stored@current@postcmd{#4}%
+%	\def\pgfplots@stored@current@style{#5}%
+}
+
 \def\pgfplots@environment@opt[#1]{%
 	\begingroup
 	\pgfplots@install@abbrev@commands
@@ -4319,10 +4540,7 @@
 	\global\pgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITYfalse
 	\global\pgfplotslistnewempty\pgfplots@plotspeclist
 	\global\pgfplotslistnewempty\pgfplots@legend
-	\global\pgfplotslistnewempty\pgfplots@stored@plot@precommands
-	\global\pgfplotslistnewempty\pgfplots@stored@plot@postcommands
-	\global\pgfplotslistnewempty\pgfplots@stored@plot@cmds
-	\global\pgfplotslistnewempty\pgfplots@stored@plot@data
+	\global\pgfplotslistnewempty\pgfplots@stored@plotlist
 	\global\pgfplots@numplots=0
 	\let\pgfplots@already@computed@legend@node=\pgfutil@empty
 	%
@@ -4419,49 +4637,25 @@
 	\ifpgfplots@draw@at@end
 		\def\pgfplots@nextcommand{%
 			\pgfplots@BEGIN@init@and@draw@axis
-			\loop
-			\pgfplotslistcheckempty\pgfplots@stored@plot@cmds
-			\ifpgfplotslistempty
-				\pgfplots@loop@CONTINUEfalse
-			\else
-				\pgfplots@loop@CONTINUEtrue
-			\fi
-			\ifpgfplots@loop@CONTINUE
-				\begingroup
-				\begingroup
-					\globaldefs=1
-					\pgfplotslistpopfront\pgfplots@stored@plot@cmds\to\pgfplots@plotcmd
-					\pgfplotslistpopfront\pgfplots@stored@plot@precommands\to\pgfplots@plotprecmd
-					\pgfplotslistpopfront\pgfplots@stored@plot@postcommands\to\pgfplots@plotpostcmd
-					\pgfplotslistpopfront\pgfplots@stored@plot@data\to\pgfplots@plotdata
-				\endgroup
-\message{Processing stored plot with precommand '\meaning\pgfplots@plotprecmd';  pgfplots@plotcmd '\meaning\pgfplots@plotcmd' postcommand '\meaning\pgfplots@plotpostcmd'}%
-				\pgfplots@plotprecmd
-				\ifx\pgfplots@plotcmd\pgfutil@empty
-					\pgfplots@plotdata%
+			\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@TMP{%
+				\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@TMP
+%\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
+				\pgfplots@stored@current@precmd
+				\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+					\pgfplots@stored@current@data%
 				\else
 					% this code here means we REALLY have a plotting
 					% command!
 					\ifpgfplots@float@numerics@mode
-						\ifpgfplots@errorbars@enabled
-							\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
-							\pgfplots@streamerrorbarstart
-						\fi
-						%
 						% Apply the data scaling transformation
-						\expandafter\pgfplots@finish@datatrafo@@generate@errorbars\pgfplots@plotdata\to\pgfplots@plotdata
-						%
-						\ifpgfplots@errorbars@enabled
-							\pgfplots@streamerrorbarend
-							\expandafter\pgfplots@errorbars@finishwithstyleoptions\expandafter[\pgfplots@plotstyleopts]{\pgfplots@recordederrorbar}%
-						\fi
+						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\to\pgfplots@stored@current@data%
 					\fi
-\message{calling plotcmd and plotdata: pgfplots@plotcmd '\meaning\pgfplots@plotcmd' data '\meaning\pgfplots@plotdata'}%
-					\expandafter\pgfplots@plotcmd\pgfplots@plotdata
+%\message{calling plotcmd and plotdata: pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' data '\meaning\pgfplots@stored@current@data'}%
+					\expandafter\pgfplots@stored@current@cmd\pgfplots@stored@current@data
 				\fi
-				\pgfplots@plotpostcmd
-				\endgroup
-			\repeat
+				\pgfplots@stored@current@postcmd
+			}%
+			\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
 		}%
 	\else
 		\let\pgfplots@nextcommand=\relax
