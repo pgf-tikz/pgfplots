@@ -2932,12 +2932,20 @@
 % POSTCONDITION:
 % - Tick for axis #1 is assigned
 % - \ifpgfplots@determinedefaultvalues@needs@check@uniformtick is set
+%
+% REMARKS:
+% - this algorithms works also if the data range has been transformed
+%   with a LINEAR transformation.
+%   ATTENTION: as of 2008-05-15, the scaling trafo is AFFINE LINEAR.
+%   That means we have to eliminate the 'affine' shifting before the
+%   algorithms works correctly.
 \def\pgfplots@assign@default@tick@foraxis#1{%
 	\begingroup
 	% Shortcut-names:
 	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@float@numerics@mode@#1\endcsname
-	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1\endcsname
-	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1\endcsname
+	% Attention here: use UNSHIFTET scalings, see remark above
+	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1@noshift\endcsname
+	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1@noshift\endcsname
 	\expandafter\let\expandafter\ifpgfplots@cur@is@linear\csname ifpgfplots@#1islinear\endcsname
 	%
 	\let\desirednumticks=\c@pgf@countd
@@ -2983,13 +2991,14 @@
 		\c@pgf@counta=\desirednumticks
 		\advance\c@pgf@counta by-1
 		\divide\H by\c@pgf@counta
-%\pgfplots@message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H=(axis range/(desirednumticks-1)) = \the\H}%
+%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
 		%
 		% SEARCH for the NEXT FEASABLE H.
 		\edef\Hmacro{\pgf@sys@tonumber\H}%
 		\ifpgfplots@cur@is@linear
 			% CASE LINEAR AXIS
 			\ifpgfplots@is@datascaled
+				% This here works if the scaling trafo is linear.
 				\expandafter\pgfplots@data@scale@inverse@trafo\expandafter{\Hmacro}%
 				\let\Hmacro=\pgfmathresult
 			\else
@@ -2997,7 +3006,7 @@
 				\let\Hmacro=\pgfmathresult
 			\fi
 			\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
-%\pgfplots@message{Got T^{-1}(H) = [\H@S] \H@M * 10^\H@E}%
+%\message{Got T^{-1}(H#1) = \Hmacro}%
 			% modify the mantisse:
 			\ifdim\H<2pt
 				\ifdim\H<1.5pt
@@ -3021,14 +3030,15 @@
 					\fi
 				\fi
 			\fi
-			\edef\Hmacro{\the\pgfmathfloat@a@S\pgf@sys@tonumber{\H}e\the\pgfmathfloat@a@E}%
+\pgfplots@message{Computed H#1=\the\H [unscaled]; transforming ... }%
+			\edef\Hmacro{\the\pgfmathfloat@a@S\pgf@sys@tonumber{\H}e\the\pgfmathfloat@a@E}%FIXME
 			\ifpgfplots@is@datascaled
 				\pgfplots@data@scale@trafo\Hmacro
 			\else
 				\pgfmathfloattofixed\Hmacro
 			\fi
 			\let\Hmacro=\pgfmathresult
-%\pgfplots@message{I have computed H=\Hmacro}%
+\pgfplots@message{got H#1=\Hmacro\ [transformed]}%
 			\expandafter\H\Hmacro pt
 			\expandafter\aftergroup\csname pgfplots@determinedefaultvalues@#1isuniformtrue\endcsname
 			%
@@ -3037,6 +3047,11 @@
 			%   xmin = I * H + rest;  |rest| < H
 			% -> I = round(xmin/H)
 			% -> MIN = I * H
+			%
+			% but first: eliminate any 'affine' data scaling!
+			\ifpgfplots@is@datascaled
+				\advance\MIN by\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname pt
+			\fi
 			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
 				{\pgf@sys@tonumber\MIN}%
 				{\pgf@sys@tonumber\H}%
@@ -3048,6 +3063,9 @@
 			\fi
 			\MIN=\H
 			\multiply\MIN by\c@pgf@counta
+			\ifpgfplots@is@datascaled
+				\advance\MIN by-\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname pt
+			\fi
 		\else
 			% CASE LOG AXIS
 			%
@@ -3196,7 +3214,7 @@
 	\let\data@dimen=\pgf@xa
 	\let\data@tmp=\pgf@xb
 	\let\data@dimen@order=\c@pgf@countc
-	\let\data@SHIFT=\c@pgf@countd
+	\let\data@EXPONENT=\c@pgf@countd
 	\expandafter\let\expandafter\pgfplots@min@float\csname pgfplots@#1min\endcsname
 	\expandafter\let\expandafter\pgfplots@max@float\csname pgfplots@#1max\endcsname
 	\expandafter\let\expandafter\pgfplots@actual@trafo\csname pgfplots@datascaletrafo@#1\endcsname
@@ -3244,9 +3262,9 @@
 		\data@dimen@order=3
 	\fi
 	%
-%\pgfplots@message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
-	\data@SHIFT=\data@dimen@order
-	\advance\data@SHIFT by-\data@max@order
+%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
+	\data@EXPONENT=\data@dimen@order
+	\advance\data@EXPONENT by-\data@max@order
 	% Now, I introduce a loop which shall avoid cancellation of
 	% significant digits.
 	%
@@ -3268,15 +3286,16 @@
 	%  (and make sure that T(max) < MAX_VALID_TEX_NUMBER).
 	%
 	\pgfplots@loop@CONTINUEtrue
+	\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname{0}%
 	\loop
+	\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@#1\endcsname{\the\data@EXPONENT}%
+	\pgfplots@actual@trafo{\pgfplots@min@float}%
+	\let\pgfplots@min@fixed=\pgfmathresult
 	\ifpgfplots@loop@CONTINUE
-		\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname{\the\data@SHIFT}%
-		\pgfplots@actual@trafo{\pgfplots@min@float}%
-		\let\pgfplots@min@fixed=\pgfmathresult
 		\pgfplots@actual@trafo{\pgfplots@max@float}%
 		\let\pgfplots@max@fixed=\pgfmathresult
 		\expandafter\data@tmp\pgfplots@max@fixed pt
-%\pgfplots@message{Current trafo SHIFT for #1 direction: \the\data@SHIFT; original #1 limits: [\pgfplots@min@float:\pgfplots@max@float]; current transformed #1 limits: [\pgfplots@min@fixed:\pgfplots@max@fixed]; cancellation check max-min running...}%
+%\message{Current trafo SHIFT for #1 direction: \the\data@EXPONENT; original #1 limits: [\pgfplots@min@float:\pgfplots@max@float]; current transformed #1 limits: [\pgfplots@min@fixed:\pgfplots@max@fixed]; cancellation check max-min running...}%
 		\ifdim\data@tmp<0pt
 			% I need absolute values here:
 			\multiply\data@tmp by-1\relax
@@ -3288,40 +3307,42 @@
 			\ifdim\data@dimen<100pt% I guess if max-min = O(100), we have quite good accuracy
 				\ifdim\data@dimen<0.0001pt
 				\else
-					\advance\data@SHIFT by1
+					\advance\data@EXPONENT by1
 					\pgfplots@loop@CONTINUEtrue
 				\fi
 			\fi
 		\fi
 	\repeat
-	\xdef\pgfplots@TMP{\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname}%
+	\xdef\pgfplots@TMP{\csname pgfplots@data@scale@trafo@EXPONENT@#1\endcsname}%
+	\xdef\pgfplots@TMPB{\pgfplots@min@fixed}%
 	\endgroup
-%\pgfplots@message{Initialising the data scale transformation in direction #1 to \pgfplots@TMP...}%
+%\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@TMP*#1 - \pgfplots@TMPB...}%
 	% COMPLETE INITIALISATION:
 	\ifpgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITY
 		\pgfplots@warning{WARNING: the automatic scaling of input data has been DISABLED to allow unscalable commands. DISABLING THE DATA SCALING LIMITS THE DATA RANGE! I hope I can fix this issue as soon as possible. Please take a look at the manual for more information. If you get 'OVERFLOW' or 'UNDERFLOW' errors, you may need to disable the axispath.}%
 		\def\pgfplots@TMP{0}%
-		\expandafter\let\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname\pgfplots@TMP
-	\else
-		\expandafter\let\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname\pgfplots@TMP
+		\def\pgfplots@TMPB{0}%
 	\fi
+	\expandafter\let\csname pgfplots@data@scale@trafo@EXPONENT@#1\endcsname\pgfplots@TMP
+	\expandafter\let\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname\pgfplots@TMPB%
 	%
 	% ... and apply transformation to any user input
 	%
 	% Transform axis limits:
+%\message{#1-limits BEFORE data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]}%
 	\expandafter\expandafter\csname pgfplots@datascaletrafo@#1\endcsname\expandafter{\csname pgfplots@#1min\endcsname}%
 	\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
 	%
 	\expandafter\expandafter\csname pgfplots@datascaletrafo@#1\endcsname\expandafter{\csname pgfplots@#1max\endcsname}%
 	\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\pgfplots@message{#1-limits after data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]}%
+%\message{#1-limits after data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]}%
 	%
 	% Convert any user-specified ticks:
 	\edef\pgfplots@TMP{\csname pgfplots@#1tick\endcsname}%
 	% this here should also work with 'xtick=\pgfutil@empty', the "No tick" command.
 	\ifx\pgfplots@TMP\pgfutil@empty
 	\else
-%\pgfplots@message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
+%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
 		\pgfplots@toka=\expandafter{\csname pgfplots@datascaletrafo@#1\endcsname}%
 		\edef\pgfplots@TMP{{\csname pgfplots@#1tick\endcsname}\the\pgfplots@toka}%
 		\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@TMP\to\pgfplots@TMPC
@@ -3341,11 +3362,11 @@
 	% Transform any explicit axis unit scalings:
 	\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
 	\else
-%\pgfplots@message{Converting #1 unit scale='\csname pgfplots@#1\endcsname' ... }%
+%\message{Converting #1 unit scale='\csname pgfplots@#1\endcsname' ... }%
 		\expandafter\pgfmathparse\expandafter{\csname pgfplots@#1\endcsname}%
 		\expandafter\expandafter\csname pgfplots@inverse@datascaletrafo@tofixed@#1\endcsname\expandafter{\pgfmathresult}%
 		\expandafter\edef\csname pgfplots@#1\endcsname{\pgfmathresult pt}%
-%\pgfplots@message{to #1='\csname pgfplots@#1\endcsname'.}%
+%\message{to #1='\csname pgfplots@#1\endcsname'.}%
 	\fi
 }
 
@@ -3638,11 +3659,11 @@
 						% transformed range.
 						%
 						% So: set limits to [-1,1] = [-1.0e0,+1.0e0]
-						\csname pgfplots@datascaletrafo@#1\endcsname{21.0e0}%
+						\csname pgfplots@datascaletrafo@#1\endcsname{21.0e0}% FIXME : call createfloat method
 						\let\min=\pgfmathresult
 						\csname pgfplots@datascaletrafo@#1\endcsname{11.0e0}%
 						\let\max=\pgfmathresult
-%\pgfplots@message{[trafo shift = \csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname; setting limits -1:1]}%
+%\pgfplots@message{[trafo shift = \csname pgfplots@data@scale@trafo@EXPONENT@#1\endcsname; setting limits -1:1]}%
 						\expandafter\min@d\min pt
 						\expandafter\max@d\max pt
 					\else
@@ -3818,13 +3839,14 @@
 	\pgfpointxy{\pgfplots@tmpXscale}{\pgfplots@tmpYscale}%
 	\pgfplots@tmpa=\pgf@x
 	\pgfplots@tmpb=\pgf@y
+%\message{initscaling: got x-scaling \the\pgfplots@tmpa, and y-scaling \the\pgfplots@tmpb}%
 	\ifx\pgfplots@x\pgfutil@empty
-		\pgfsetxvec{\pgfpoint{\pgfplots@tmpa}{0pt}}%
+		\pgfsetxvec{\pgfqpoint{\pgfplots@tmpa}{0pt}}%
 	\else
 		\pgfsetxvec{\pgfpoint{\pgfplots@x}{0pt}}%
 	\fi
 	\ifx\pgfplots@y\pgfutil@empty
-		\pgfsetyvec{\pgfpoint{0pt}{\pgfplots@tmpb}}%
+		\pgfsetyvec{\pgfqpoint{0pt}{\pgfplots@tmpb}}%
 	\else
 		\pgfsetyvec{\pgfpoint{0pt}{\pgfplots@y}}%
 	\fi
@@ -3875,7 +3897,7 @@
 % \begingroup
 % \pgf@x=\pgfplots@xcoordmaxTEX\advance\pgf@x by-\pgfplots@xcoordminTEX
 % \pgf@y=\pgfplots@ycoordmaxTEX\advance\pgf@y by-\pgfplots@ycoordminTEX
-% \pgfplots@message{Axis scaling x=\pgfplots@tmpXscale, y=\pgfplots@tmpYscale\ yields lower-left-corner (\pgfplots@xmin,\pgfplots@ymin) = (\the\pgfplots@xcoordminTEX,\the\pgfplots@ycoordminTEX) and upper right (\pgfplots@xmax,\pgfplots@ymax) = (\the\pgfplots@xcoordmaxTEX,\the\pgfplots@ycoordmaxTEX).   Axis dimensions are width=\the\pgf@x, height=\the\pgf@y.}%
+% \message{Axis scaling x=\pgfplots@tmpXscale, y=\pgfplots@tmpYscale\ yields lower-left-corner (\pgfplots@xmin,\pgfplots@ymin) = (\the\pgfplots@xcoordminTEX,\the\pgfplots@ycoordminTEX) and upper right (\pgfplots@xmax,\pgfplots@ymax) = (\the\pgfplots@xcoordmaxTEX,\the\pgfplots@ycoordmaxTEX).   Axis dimensions are width=\the\pgf@x, height=\the\pgf@y.}%
 % \endgroup
 %-------------------------------------------------- 
 }
@@ -4317,7 +4339,7 @@
 	\pgfplots@createlegend
 }
 
-% DATA TRANSFORMATION T(x) = X
+% DATA TRANSFORMATION T(x) = X - xmin
 %
 % Input: 
 %    a number in the original data range, given in **floating** point representation
@@ -4327,7 +4349,12 @@
 % @see
 % \pgfplots@datascaletrafo@fromfixed@x
 \def\pgfplots@datascaletrafo@x#1{%
-	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@EXPONENT@x}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@x}%
+}
+\def\pgfplots@datascaletrafo@x@noshift#1{%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@EXPONENT@x}%
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
@@ -4341,12 +4368,17 @@
 }
 
 \def\pgfplots@datascaletrafo@y#1{%
-	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@EXPONENT@y}%
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@y}%
 }
 \def\pgfplots@datascaletrafo@fromfixed@y#1{%
 	\pgfmathfloatparsenumber{#1}%
 	\expandafter\pgfplots@datascaletrafo@y\expandafter{\pgfmathresult}%
+}
+\def\pgfplots@datascaletrafo@y@noshift#1{%
+	\pgfmathfloatshift{#1}{\pgfplots@data@scale@trafo@EXPONENT@y}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
 % INVERSE transformation x = T^{-1}( X )
@@ -4363,30 +4395,66 @@
 % problems.
 \def\pgfplots@inverse@datascaletrafo@x#1{%
 	\begingroup
-	\pgfmathapproxequalto@{#1}{0.0}%
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+	\let\pgfplots@inverse@datascaletrafo@@shifted=\pgfmathresult
+	\pgfmathapproxequalto@{\pgfplots@inverse@datascaletrafo@@shifted}{0.0}%
 	\ifpgfmathcomparison
 		\pgfmathfloatcreate{0}{0.0}{0}%
 	\else
-		\pgfmathfloatparsenumber{#1}%
-		\edef\pgfplots@data@scale@trafo@SHIFT@x{-\pgfplots@data@scale@trafo@SHIFT@x}%
-		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@x}%
+		\pgfmathfloatparsenumber{\pgfplots@inverse@datascaletrafo@@shifted}%
+		\edef\pgfplots@data@scale@trafo@EXPONENT@x{-\pgfplots@data@scale@trafo@EXPONENT@x}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@EXPONENT@x}%
 	\fi
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 }
-
-\def\pgfplots@inverse@datascaletrafo@y#1{%
+\def\pgfplots@inverse@datascaletrafo@x@noshift#1{%
 	\begingroup
 	\pgfmathapproxequalto@{#1}{0.0}%
 	\ifpgfmathcomparison
 		\pgfmathfloatcreate{0}{0.0}{0}%
 	\else
 		\pgfmathfloatparsenumber{#1}%
-		\edef\pgfplots@data@scale@trafo@SHIFT@y{-\pgfplots@data@scale@trafo@SHIFT@y}%
-		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@SHIFT@y}%
+		\edef\pgfplots@data@scale@trafo@EXPONENT@x{-\pgfplots@data@scale@trafo@EXPONENT@x}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@EXPONENT@x}%
 	\fi
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
+}
+\def\pgfplots@inverse@datascaletrafo@x@onlyshift#1{%
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+}
+
+\def\pgfplots@inverse@datascaletrafo@y#1{%
+	\begingroup
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
+	\let\pgfplots@inverse@datascaletrafo@@shifted=\pgfmathresult
+	\pgfmathapproxequalto@{\pgfplots@inverse@datascaletrafo@@shifted}{0.0}%
+	\ifpgfmathcomparison
+		\pgfmathfloatcreate{0}{0.0}{0}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplots@inverse@datascaletrafo@@shifted}%
+		\edef\pgfplots@data@scale@trafo@EXPONENT@y{-\pgfplots@data@scale@trafo@EXPONENT@y}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@EXPONENT@y}%
+	\fi
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}
+\def\pgfplots@inverse@datascaletrafo@y@noshift#1{%
+	\begingroup
+	\pgfmathapproxequalto@{#1}{0.0}%
+	\ifpgfmathcomparison
+		\pgfmathfloatcreate{0}{0.0}{0}%
+	\else
+		\pgfmathfloatparsenumber{#1}%
+		\edef\pgfplots@data@scale@trafo@EXPONENT@y{-\pgfplots@data@scale@trafo@EXPONENT@y}%
+		\expandafter\pgfmathfloatshift\expandafter{\pgfmathresult}{\pgfplots@data@scale@trafo@EXPONENT@y}%
+	\fi
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}
+\def\pgfplots@inverse@datascaletrafo@y@onlyshift#1{%
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
 }
 
 % Overloaded function.
