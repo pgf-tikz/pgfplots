@@ -34,15 +34,6 @@
 \newtoks\pgfplots@toka
 
 \newcount\pgfplots@ticknum
-%\newcount\pgfplots@tickposnum
-%\newcount\pgfplots@xtickalignnum
-%\newcount\pgfplots@ytickalignnum
-%\newcount\pgfplots@xtickposnum
-%\newcount\pgfplots@ytickposnum
-%\newcount\pgfplots@xaxislinesnum
-%\newcount\pgfplots@yaxislinesnum
-%\newcount\pgfplots@xaxisdiscontnum
-%\newcount\pgfplots@yaxisdiscontnum
 \newif\ifpgfplots@xislinear
 \newif\ifpgfplots@yislinear
 \newcount\pgfplots@numplots
@@ -890,7 +881,7 @@
 				\aftergroup\pgfplots@log@tick@isminor@tick@postrue
 				\edef\pgfmathresult{\pgfmathresult e\the\c@pgf@counta}%
 			\else
-			\aftergroup\pgfplots@log@tick@isminor@tick@posfalse
+				\aftergroup\pgfplots@log@tick@isminor@tick@posfalse
 				\def\pgfmathresult{#1.#2}%
 			\fi
 		\fi
@@ -1029,14 +1020,18 @@
 	\expandafter\let\csname pgfplots@tick@scale@#1\endcsname=\pgfplots@TMP%
 }
 
-\def\pgfplots@show@yticklabel#1#2{{%
+% x-axis tick labels for #1th tick
+% #1: ticknumber
+% #2: the value
+% #3: the axis (x or y)
+\def\pgfplots@show@ticklabel#1#2#3{{%
 	\let\ticknum=#1%
-	\ifpgfplots@float@numerics@mode@y
-		\pgfplots@inverse@datascaletrafo@y{#2}%
+	\csname ifpgfplots@float@numerics@mode@#3\endcsname
+		\csname pgfplots@inverse@datascaletrafo@#3\endcsname{#2}%
 		% FIXME: do that for any linear axis, also if no datascale is
 		% applied!
 		\ifpgfplots@scaled@ticks
-			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\pgfplots@tick@scale@y}%
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#3\endcsname}%
 		\fi
 		% .. and this here provides \tick as fixed point repr:
 		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
@@ -1044,28 +1039,7 @@
 	\else
 		\edef\tick{#2}%
 	\fi
-	\pgfplots@yticklabel
-}}
-
-% x-Achsenbeschriftung zum #1.ten Tick:
-% #1: die ticknum
-% #2: der x wert dafuer
-\def\pgfplots@show@xticklabel#1#2{{%
-	\let\ticknum=#1%
-	\ifpgfplots@float@numerics@mode@x
-		\pgfplots@inverse@datascaletrafo@x{#2}%
-		% FIXME: do that for any linear axis, also if no datascale is
-		% applied!
-		\ifpgfplots@scaled@ticks
-			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\pgfplots@tick@scale@x}%
-		\fi
-		% .. and this here provides \tick as fixed point repr:
-		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
-		\let\tick=\pgfmathresult
-	\else
-		\edef\tick{#2}%
-	\fi
-	\pgfplots@xticklabel
+	\csname pgfplots@#3ticklabel\endcsname
 }}
 
 \def\pgfplots@user@ticklabel@list@x{%
@@ -1200,12 +1174,12 @@
 						\node at 
 							(\pgfplots@ytick@origin+\pgfplots@ytick@offset,\pgfplots@tmpa)
 							[right,every tick label,every y tick label]
-							{\pgfplots@show@yticklabel\pgfplots@ticknum\y};
+							{\pgfplots@show@ticklabel\pgfplots@ticknum\y{y}};
 					\else
 						\node at 
 							(\pgfplots@ytick@origin-\pgfplots@ytick@offset,\pgfplots@tmpa)
 							[left,every tick label,every y tick label]
-							{\pgfplots@show@yticklabel\pgfplots@ticknum\y};
+							{\pgfplots@show@ticklabel\pgfplots@ticknum\y{y}};
 					\fi
 				\fi
 			\fi
@@ -1494,12 +1468,12 @@
 						\node at 
 							(\pgfplots@tmpa,\pgfplots@xtick@origin+\pgfplots@xtick@offset)
 							[above,every tick label,every x tick label]
-							{\pgfplots@show@xticklabel\pgfplots@ticknum\x};
+							{\pgfplots@show@ticklabel\pgfplots@ticknum\x{x}};
 					\else
 						\node at 
 							(\pgfplots@tmpa,\pgfplots@xtick@origin-\pgfplots@xtick@offset)
 							[below,every tick label,every x tick label]
-							{\pgfplots@show@xticklabel\pgfplots@ticknum\x};
+							{\pgfplots@show@ticklabel\pgfplots@ticknum\x{x}};
 					\fi
 				\fi
 			\fi
@@ -1905,9 +1879,9 @@
 %
 % Arguments:
 % #1:  all options of \addplot[...] (the plot style)
-% #3:  any trailing path commands after the 'plot' command as such,
+% #2:  any trailing path commands after the 'plot' command as such,
 %      for example \addplot plot coordinates {...} -- (0,0);
-%      would yield #3 =' -- (0,0)'
+%      would yield #2 =' -- (0,0)'
 %
 \long\def\pgfplots@PREPARE@COORD@STREAMS#1#2{%
 	\ifpgfplots@errorbars@enabled
@@ -1916,6 +1890,12 @@
 	\else
 		\let\pgfplots@recordederrorbar=\pgfutil@empty
 	\fi
+	% Here are the three implemented cases of what is to do with
+	% plots.
+	% 1. filtered coordinates (this included the data scaling trafo!)
+	% 2. postponed drawing with auto-axis limits
+	% 3. immediate drawing without axis limit updating.
+	% In either case, we generate a 'plot coordinates' command.
 	\ifpgfplots@filtercoords
 		\pgfplots@coord@stream@INIT@process@filtered\pgfplots@coord@stream@recorded
 	\else
@@ -1946,10 +1926,14 @@
 		% \tikzset{#1}
 		\edef\pgfplots@TMP{every axis plot,every axis plot no \the\pgfplots@numplots/.try}%
 		\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP,#1}%
+		% Assemble a
+		% \pgfplots@addplot@enqueue@coords{}{}...{}
+		% statement with correct arguments:
 		\ifx\pgfplots@recordederrorbar\pgfutil@empty
 			\edef\pgfplots@TMP{%
 				\noexpand\pgfplots@addplot@enqueue@coords
 				{
+					\noexpand\pgfplots@initzerolevelhandler
 					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
 				}%
 				{%
@@ -1961,6 +1945,7 @@
 			\edef\pgfplots@TMP{%
 				\noexpand\pgfplots@addplot@enqueue@coords
 				{
+					\noexpand\pgfplots@initzerolevelhandler
 					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
 					\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
 				}%
@@ -2594,6 +2579,15 @@
 	\advance\pgfplots@numplots by-1
 }}
 
+% This routine is called at the begin of every plot.
+% It initialised a zero level stream.
+%
+% The default is to use '0' as zero level streams.
+\def\pgfplots@initzerolevelhandler{%
+	\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
+	\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
+}
+
 \long\def\pgfplots@show@small@legendplots#1#2{
 	\begingroup
 	\def\pgfplots@TMPB{#1}%
@@ -2860,8 +2854,8 @@
 		\def\enlargepercent{0.1}% FIXME : pack 10% as default into option 'enlargelimits' or so
 	\fi
 	\pgfmathsubtract@\max\min%
-	\expandafter\pgf@xa\pgfmathresult pt
-	\expandafter\pgf@xb\enlargepercent\pgf@xa
+	\pgf@xa\pgfmathresult pt
+	\pgf@xb\enlargepercent\pgf@xa
 	\ifdim\pgf@xb>0.001pt
 		% the case with 
 		%   enlargeabsolute ~= 0
@@ -3031,7 +3025,8 @@
 				\fi
 			\fi
 %\message{Computed H#1=\the\H [unscaled]; transforming ... }%
-			\edef\Hmacro{\the\pgfmathfloat@a@S\pgf@sys@tonumber{\H}e\the\pgfmathfloat@a@E}%FIXME
+			\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+			\let\Hmacro=\pgfmathresult
 			\ifpgfplots@is@datascaled
 				\pgfplots@data@scale@trafo\Hmacro
 			\else
@@ -3364,7 +3359,7 @@
 	\else
 %\message{Converting #1 unit scale='\csname pgfplots@#1\endcsname' ... }%
 		\expandafter\pgfmathparse\expandafter{\csname pgfplots@#1\endcsname}%
-		\expandafter\expandafter\csname pgfplots@inverse@datascaletrafo@tofixed@#1\endcsname\expandafter{\pgfmathresult}%
+		\expandafter\expandafter\csname pgfplots@inverse@datascaletrafo@tofixed@#1@noshift\endcsname\expandafter{\pgfmathresult}%
 		\expandafter\edef\csname pgfplots@#1\endcsname{\pgfmathresult pt}%
 %\message{to #1='\csname pgfplots@#1\endcsname'.}%
 	\fi
@@ -3379,26 +3374,6 @@
 	\else
 		% EMPTY AXIS:
 		\pgfplots@warning{WARNING: You have a plot with empty range. This may produce errors!}%
-		%--------------------------------------------------
-		% \ifpgfplots@autocompute@xlim
-		% 	\ifpgfplots@float@numerics@mode@x
-		% 		\def\pgfplots@xmin{00.0e0}%
-		% 		\def\pgfplots@xmax{11.0e0}%
-		% 	\else
-		% 		\def\pgfplots@xmin{0}%
-		% 		\def\pgfplots@xmax{1}%
-		% 	\fi
-		% \fi
-		% \ifpgfplots@autocompute@ylim
-		% 	\ifpgfplots@float@numerics@mode@y
-		% 		\def\pgfplots@ymin{00.0e0}%
-		% 		\def\pgfplots@ymax{11.0e0}%
-		% 	\else
-		% 		\def\pgfplots@ymin{0}%
-		% 		\def\pgfplots@ymax{1}%
-		% 	\fi
-		% \fi
-		%-------------------------------------------------- 
 	\fi
 	%
 	\pgfplots@set@default@size@options
@@ -3521,7 +3496,41 @@
 	\ifx\pgfplots@extra@yticklabel\pgfutil@empty
 		\let\pgfplots@extra@yticklabel=\pgfplots@yticklabel
 	\fi
+	%
+	%
+	\pgfplots@prepare@ZERO@coordinates
 }
+
+% This code is mainly interesting for bar plots.
+%
+% It precomputes x = 0 and y = 0 - which is not necessarily
+% trivial in case of data scaling. Furthermore, it applies
+% coordinate clipping to the resulting values and multiplies them
+% with x- and y scale vectors.
+\def\pgfplots@prepare@ZERO@coordinates{%
+	\ifpgfplots@float@numerics@mode@x
+		\pgfplots@datascaletrafo@fromfixed@x{0}%
+		\global\let\pgfplots@ZERO@x=\pgfmathresult
+	\else
+		\gdef\pgfplots@ZERO@x{0}%
+	\fi
+	\pgfmathmax@{\pgfplots@ZERO@x}{\pgfplots@xmin}%
+	\global\let\pgfplots@ZERO@x=\pgfmathresult
+	%
+	\ifpgfplots@float@numerics@mode@y
+		\pgfplots@datascaletrafo@fromfixed@y{0}%
+		\global\let\pgfplots@ZERO@y=\pgfmathresult
+	\else
+		\gdef\pgfplots@ZERO@y{0}%
+	\fi
+	\pgfmathmax@{\pgfplots@ZERO@y}{\pgfplots@ymin}%
+	\global\let\pgfplots@ZERO@y=\pgfmathresult
+	\begin{pgfinterruptboundingbox}%
+	\pgfpointxy{\pgfplots@ZERO@x}{\pgfplots@ZERO@y}%
+	\xdef\pgfplots@ZERO@x{\the\pgf@x}%
+	\xdef\pgfplots@ZERO@y{\the\pgf@y}%
+	\end{pgfinterruptboundingbox}%
+}%
 
 
 % Helper method for initsizes.
@@ -3659,9 +3668,11 @@
 						% transformed range.
 						%
 						% So: set limits to [-1,1] = [-1.0e0,+1.0e0]
-						\csname pgfplots@datascaletrafo@#1\endcsname{21.0e0}% FIXME : call createfloat method
+						\pgfmathfloatcreate{2}{1.0}{0}%
+						\csname pgfplots@datascaletrafo@#1\endcsname{\pgfmathresult}%
 						\let\min=\pgfmathresult
-						\csname pgfplots@datascaletrafo@#1\endcsname{11.0e0}%
+						\pgfmathfloatcreate{1}{1.0}{0}%
+						\csname pgfplots@datascaletrafo@#1\endcsname{\pgfmathresult}%
 						\let\max=\pgfmathresult
 %\pgfplots@message{[trafo shift = \csname pgfplots@data@scale@trafo@EXPONENT@#1\endcsname; setting limits -1:1]}%
 						\expandafter\min@d\min pt
@@ -4339,6 +4350,19 @@
 	\pgfplots@createlegend
 }
 
+\def\pgfplots@datascaletrafo@undoshift@x#1{%
+	\pgfmathsubtract@{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+}%
+\def\pgfplots@datascaletrafo@redoshift@x#1{%
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
+}%
+\def\pgfplots@datascaletrafo@undoshift@y#1{%
+	\pgfmathsubtract@{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
+}%
+\def\pgfplots@datascaletrafo@redoshift@y#1{%
+	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
+}%
+
 % DATA TRANSFORMATION T(x) = X - xmin
 %
 % Input: 
@@ -4421,9 +4445,6 @@
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 }
-\def\pgfplots@inverse@datascaletrafo@x@onlyshift#1{%
-	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@x}%
-}
 
 \def\pgfplots@inverse@datascaletrafo@y#1{%
 	\begingroup
@@ -4440,6 +4461,7 @@
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 }
+% Overloaded function. This one does only apply the scaling, no shift.
 \def\pgfplots@inverse@datascaletrafo@y@noshift#1{%
 	\begingroup
 	\pgfmathapproxequalto@{#1}{0.0}%
@@ -4453,9 +4475,6 @@
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 }
-\def\pgfplots@inverse@datascaletrafo@y@onlyshift#1{%
-	\pgfmathadd@{#1}{\pgfplots@data@scale@trafo@SHIFT@y}%
-}
 
 % Overloaded function.
 %
@@ -4468,6 +4487,18 @@
 }
 \def\pgfplots@inverse@datascaletrafo@tofixed@y#1{%
 	\pgfplots@inverse@datascaletrafo@y{#1}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+
+% Overloaded function.
+%
+% This one does only apply the scale, no shift.
+\def\pgfplots@inverse@datascaletrafo@tofixed@x@noshift#1{%
+	\pgfplots@inverse@datascaletrafo@x@noshift{#1}%
+	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+}
+\def\pgfplots@inverse@datascaletrafo@tofixed@y@noshift#1{%
+	\pgfplots@inverse@datascaletrafo@y@noshift{#1}%
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
@@ -4775,8 +4806,8 @@
 	% determined later-on, dependend on the axis limits.  Since axis
 	% limits are implicitly in units of 1pt, it is reasonable to use
 	% '1pt' here as well.
-	\pgfsetxvec{\pgfpoint{1pt}{0pt}}%
-	\pgfsetyvec{\pgfpoint{0pt}{1pt}}%
+	\pgfsetxvec{\pgfqpoint{1pt}{0pt}}%
+	\pgfsetyvec{\pgfqpoint{0pt}{1pt}}%
 	%
 	\pgfplots@set@options{#1}%
 	%
@@ -4917,11 +4948,11 @@
 		%
 		\pgfplots@tmpa=\pgfplots@xcoordmaxTEX
 		\advance\pgfplots@tmpa by-\pgfplots@xcoordminTEX
-		\pgfsetxvec{\pgfpoint{\pgfplots@tmpa}{0cm}}%
+		\pgfsetxvec{\pgfqpoint{\pgfplots@tmpa}{0cm}}%
 		%
 		\pgfplots@tmpa=\pgfplots@ycoordmaxTEX
 		\advance\pgfplots@tmpa by-\pgfplots@ycoordminTEX
-		\pgfsetyvec{\pgfpoint{0cm}{\pgfplots@tmpa}}%
+		\pgfsetyvec{\pgfqpoint{0cm}{\pgfplots@tmpa}}%
 		%
 		\pgfplots@create@axis@descriptions
 	\endgroup
@@ -5003,7 +5034,7 @@
 		\pgfpointanchor{\tikz@fig@name}{image}%
 		\pgf@xa=\pgf@x
 		\pgf@xb=\pgf@y
-		\pgf@process{\pgfpoint{\pgfplots@saveddimen@picminx}{\pgfplots@saveddimen@picminy}}%
+		\pgf@process{\pgfqpoint{\pgfplots@saveddimen@picminx}{\pgfplots@saveddimen@picminy}}%
 		\advance\pgf@xa by-\pgf@x
 		\advance\pgf@xb by-\pgf@y
 		\pgf@x=\pgf@xa
