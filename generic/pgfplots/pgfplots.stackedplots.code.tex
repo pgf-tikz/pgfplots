@@ -1,0 +1,258 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+%
+% This file contains the implementation for stacked plots.
+%
+% Stacked plots always keep record of the last plotted coordinates.
+% Any new plot will be ADDED on top of the last plotted coordinates.
+% 
+% Terminology: "last plotted coordinates" are called "zero levels"
+% because they actually work like shifts.
+%
+% Programming Structure:
+%
+% 1. We keep TWO lists of coordinates: a list of CURRENT zero level
+% coordinates and a list of NEXT zero level coordinates.
+%
+% The first one will be queried whenever a zero level coordinate is
+% requested.
+%
+% The second one will be used to form zero levels for the next plot.
+%
+% 2. At the beginning and end of each plot, the lists in 1.) are
+% initialised properly.
+%
+% 3. While plot coordinates are processed, the following methods
+% interact with the stacked API:
+% \pgfplots@stacked@preparepoint@inmacro
+% 	-> compute the 'stacked' sum.
+% 	This may need to be done with floating point arithmetics because
+% 	the data scaling trafo is not yet initialised
+%
+% \pgfplots@stacked@finishpoint
+% 	-> takes coordinates as they will be given to Tikz. This method is
+% 	used to 
+% 		- communicate zero level coordinates to Tikz
+% 		- implement the 'closed paths' option (allows filled stacked plots).
+%
+% \pgfplots@stacked@rememberzerolevelpoint@for@next@plot
+% \pgfplots@stacked@getnextzerolevelpoint
+%
+% 4. Zero levels are communicated to Tikz by
+% \pgfplots@stacked@initzerolevelhandler. This routine initialises an
+% input stream for Tikz plot handlers which produces a sequence of
+% zero levels. It is used by [xy]comb and [xy]bar.
+%
+%
+% REMARK:
+% the state of the boolean \ifpgfplots@datascaletrafo@initialised
+% determines whether these routines expect and return floating point
+% numbers or fixed point numbers.
+
+\let\pgfplots@stacked@zerolevelpoint@x=\pgfutil@empty
+\let\pgfplots@stacked@zerolevelpoint@y=\pgfutil@empty
+\newif\ifpgfplots@stacked@isfirstplot
+\newif\ifpgfplots@stacked@isinitialised
+
+% Pre-initialisation.
+% Needs to be called before the first call to
+% \pgfplots@stacked@beginplot.
+\def\pgfplots@stacked@initialise{%
+	\pgfplots@stacked@isfirstplottrue
+	\pgfplots@stacked@isinitialisedtrue
+}%
+
+% Cleanup method. Truncates any global variables to reduce string
+% space.
+\def\pgfplots@stacked@finalize{%
+	\global\pgfplotslistnewempty\pgfplots@stacked@zerolevellist
+	\global\pgfplotslistnewempty\pgfplots@stacked@nextzerolevellist
+	\pgfplots@stacked@isinitialisedfalse
+}%
+
+% (Re)defines the macro \pgfplots@stacked@getnextzerolevelpoint
+% at the beginning of each plot.
+%
+% The macro \pgfplots@stacked@getnextzerolevelpoint fills
+% \pgfplots@stacked@zerolevelpoint@[xy].
+%
+% ATTENTION: call \pgfplots@stacked@initialise before the first call
+% to beginplot!
+\def\pgfplots@stacked@beginplot{%
+%\message{pgfplots@stacked@beginplot: PLOT STARTED.}%
+	\ifpgfplots@stacked@isinitialised
+	\else
+		\pgfplots@error{LOGIC ERROR: please call \string\pgfplots@stacked@initialise.}%
+	\fi
+	\global\pgfplotslistnewempty\pgfplots@stacked@PGFzerolevels
+	\ifpgfplots@stacked@isfirstplot
+		\global\pgfplotslistnewempty\pgfplots@stacked@zerolevellist
+		\def\pgfplots@stacked@zerolevelpoint@x{0}%
+		\def\pgfplots@stacked@zerolevelpoint@y{0}%
+		\ifpgfplots@datascaletrafo@initialised
+			% work with pgfmath if possible - its faster.
+		\else
+			% only work with float if its really necessary - for
+			% example if the scaling trafo which maps to pgfmath is
+			% not yet initialised.
+			\ifpgfplots@float@numerics@mode@x
+				\pgfmathfloatcreate{0}{0.0}{0}%
+				\let\pgfplots@stacked@zerolevelpoint@x=\pgfmathresult
+			\fi
+			\ifpgfplots@float@numerics@mode@y
+				\pgfmathfloatcreate{0}{0.0}{0}%
+				\let\pgfplots@stacked@zerolevelpoint@y=\pgfmathresult
+			\fi
+		\fi
+		\def\pgfplots@stacked@getnextzerolevelpoint{}% will remain constant anyway.
+	\else
+		{\globaldefs=1
+		\pgfplotslistcopy\pgfplots@stacked@nextzerolevellist\to\pgfplots@stacked@zerolevellist
+		}%
+		\def\pgfplots@stacked@getnextzerolevelpoint{%
+			{\globaldefs=1
+			\pgfplotslistpopfront\pgfplots@stacked@zerolevellist\to\pgfmathresult
+			}%
+			\expandafter\pgfplots@stacked@parsezerolevelpoint\pgfmathresult
+		}%
+	\fi
+	\global\pgfplotslistnewempty\pgfplots@stacked@nextzerolevellist
+}%
+
+\def\pgfplots@stacked@parsezerolevelpoint(#1,#2){%
+	\def\pgfplots@stacked@zerolevelpoint@x{#1}%
+	\def\pgfplots@stacked@zerolevelpoint@y{#2}%
+}
+
+\def\pgfplots@stacked@endplot{%
+	\global\pgfplots@stacked@isfirstplotfalse
+%\message{pgfplots@stacked@endplot: PLOT ENDED}%
+}%
+
+\def\pgfplots@stacked@initzerolevelhandler{%
+	\ifpgfplots@stacked@isfirstplot
+		\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
+		\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
+	\else
+		\ifpgfplots@stacked@x
+			\pgfplotxzerolevelstream@@list
+			\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
+		\else
+			\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
+			\pgfplotyzerolevelstream@@list
+		\fi
+	\fi
+}%
+
+\def\pgfplots@stacked@rememberzerolevelpoint@for@next@plot#1{%
+	\edef\pgfplots@TMP{#1}%
+	{\globaldefs=1
+	\expandafter\pgfplotslistpushback\pgfplots@TMP\to\pgfplots@stacked@nextzerolevellist
+	}%
+}
+
+\def\pgfplots@stacked@finishpoint#1#2{%
+	\pgfpointxy{\pgfplots@stacked@zerolevelpoint@x}{\pgfplots@stacked@zerolevelpoint@y}%
+	\ifpgfplots@stacked@x
+		\edef\pgfplots@TMP{\the\pgf@x}%
+	\else
+		\edef\pgfplots@TMP{\the\pgf@y}%
+	\fi
+	{\globaldefs=1
+	\expandafter\pgfplotslistpushback\pgfplots@TMP\to\pgfplots@stacked@PGFzerolevels
+	}%
+}%
+
+\def\pgfplots@stacked@preparepoint@inmacro#1#2{%
+	\pgfplots@stacked@getnextzerolevelpoint
+	\ifpgfplots@stacked@x
+		\ifpgfplots@stacked@plus
+			\let\pgfplots@stacked@op=\pgfmathadd@
+		\else
+			\let\pgfplots@stacked@op=\pgfmathsubtract@
+		\fi
+		\ifpgfplots@float@numerics@mode@x
+			\ifpgfplots@datascaletrafo@initialised
+			\else
+				\ifpgfplots@stacked@plus
+					\let\pgfplots@stacked@op=\pgfmathfloatadd@
+				\else
+					\let\pgfplots@stacked@op=\pgfmathfloatsubtract@
+				\fi
+			\fi
+		\fi
+		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@x}{#1}%
+		\let#1=\pgfmathresult
+	\else
+		\ifpgfplots@stacked@plus
+			\let\pgfplots@stacked@op=\pgfmathadd@
+		\else
+			\let\pgfplots@stacked@op=\pgfmathsubtract@
+		\fi
+		\ifpgfplots@float@numerics@mode@y
+			\ifpgfplots@datascaletrafo@initialised
+			\else
+				\ifpgfplots@stacked@plus
+					\let\pgfplots@stacked@op=\pgfmathfloatadd@
+				\else
+					\let\pgfplots@stacked@op=\pgfmathfloatsubtract@
+				\fi
+			\fi
+		\fi
+		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@y}{#2}%
+		\let#2=\pgfmathresult
+	\fi
+	\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(#1,#2)}%
+}
+
+
+% PGF interfaces:
+\def\pgfplotxzerolevelstream@@list{%
+	\def\pgf@plotxzerolevelstreamstart{%
+		\let\pgfplotxzerolevelstream@@list@@backup=\pgfplots@stacked@PGFzerolevels
+		\gdef\pgf@plotxzerolevelstreamnext{%
+			\pgfplotslistpopfront\pgfplots@stacked@PGFzerolevels\to\pgfmathresult
+			\pgf@x=\pgfmathresult\relax
+		}%
+	}%
+	\def\pgf@plotxzerolevelstreamend{%
+		\let\pgfplots@stacked@PGFzerolevels=\pgfplotxzerolevelstream@@list@@backup
+	}%
+}%
+
+\def\pgfplotyzerolevelstream@@list{%
+	\def\pgf@plotyzerolevelstreamstart{%
+		\let\pgfplotyzerolevelstream@@list@@backup=\pgfplots@stacked@PGFzerolevels
+		\gdef\pgf@plotyzerolevelstreamnext{%
+			\pgfplotslistpopfront\pgfplots@stacked@PGFzerolevels\to\pgfmathresult
+			\pgf@x=\pgfmathresult\relax
+		}%
+	}%
+	\def\pgf@plotyzerolevelstreamend{%
+		\let\pgfplots@stacked@PGFzerolevels=\pgfplotyzerolevelstream@@list@@backup
+	}%
+}%
