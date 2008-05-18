@@ -1840,7 +1840,7 @@
 		\fi
 	\fi
 	%
-	\pgfplots@PREPARE@COORD@STREAMS{#1}{#4}%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	\pgfplots@coord@stream@start
 	\loop
 	\pgfplotslistcheckempty\addplot@tbl@x
@@ -1906,28 +1906,15 @@
 %      for example \addplot plot coordinates {...} -- (0,0);
 %      would yield #2 =' -- (0,0)'
 %
-\long\def\pgfplots@PREPARE@COORD@STREAMS#1#2{%
+\long\def\pgfplots@PREPARE@COORD@STREAM#1#2{%
 	\ifpgfplots@errorbars@enabled
 		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
 		\pgfplots@streamerrorbarstart
 	\else
 		\let\pgfplots@recordederrorbar=\pgfutil@empty
 	\fi
-	% Here are the three implemented cases of what is to do with
-	% plots.
-	% 1. filtered coordinates (this included the data scaling trafo!)
-	% 2. postponed drawing with auto-axis limits
-	% 3. immediate drawing without axis limit updating.
-	% In either case, we generate a 'plot coordinates' command.
-	\ifpgfplots@filtercoords
-		\pgfplots@coord@stream@INIT@process@filtered\pgfplots@coord@stream@recorded
-	\else
-		\ifpgfplots@draw@at@end
-			\pgfplots@coord@stream@INIT@updatelimits
-		\else
-			\pgfplots@coord@stream@INIT@recorder
-		\fi
-	\fi
+	\pgfplots@coord@stream@INIT\pgfplots@coord@stream@recorded
+	%
 	% make sure that \pgfplots@coord@stream@end@@ is called at the end
 	% of the lately prepare end-stream method.
 	\expandafter\def\expandafter\pgfplots@coord@stream@end\expandafter{%
@@ -1993,7 +1980,7 @@
 \long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{processing plots coords with trailing path '#3'}%
-	\pgfplots@PREPARE@COORD@STREAMS{#1}{#3}%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#3}%
 	\pgfplots@coord@stream@foreach{#2}%
 }%
 
@@ -2138,7 +2125,7 @@
 
 % #3= error for x coord (or empty)
 % #4= error for y coord (or empty)
-\def\pgfplots@filter@one@coord@pair#1#2#3#4{%
+\def\pgfplots@process@one@point#1#2#3#4{%
 	\ifx\pgfplots@xfilter\pgfutil@empty
 		\def\pgfplots@filter@tmp@x{#1}%
 	\else
@@ -2157,6 +2144,14 @@
 		\ifx\pgfplots@filter@tmp@y\pgfutil@empty
 			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
 		\else
+			\ifpgfplots@float@numerics@mode@x
+				\pgfmathfloatparsenumber{\pgfplots@filter@tmp@x}%
+				\let\pgfplots@filter@tmp@x=\pgfmathresult
+			\fi
+			\ifpgfplots@float@numerics@mode@y
+				\pgfmathfloatparsenumber{\pgfplots@filter@tmp@y}%
+				\let\pgfplots@filter@tmp@y=\pgfmathresult
+			\fi
 			\ifpgfplots@draw@at@end
 				\ifpgfplots@stackedmode
 					% will use float numerics if necessary:
@@ -2223,54 +2218,27 @@
 }%
 
 % Processes coordinates and writes a new, modified 'plot coordinates'
-% command to macro #2.
+% command to macro #1.
 % #1:  macro name for processed coordinates.
-\def\pgfplots@coord@stream@INIT@process@filtered#1{%
+%
+% Please note that it may be necessary to process the same coordinates
+% once more at the end of an axis - see
+% pgfplots@coord@stream@finalize@storedcoords@START
+\def\pgfplots@coord@stream@INIT#1{%
 	\def\pgfplots@coord@stream@start{%
 		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
 	}%
 	\def\pgfplots@coord@stream@end{%
 		\edef#1{plot coordinates {\pgfplots@coord@stream@recorded}}%
 	}%
-	\let\pgfplots@coord@stream@coord=\pgfplots@filter@one@coord@pair
+	\let\pgfplots@coord@stream@coord=\pgfplots@process@one@point
 }
 
-% Initialises a coordinate stream which simply collects each point
-% into \pgfplots@coord@stream@recorded
-% and updates any axis limits on the fly.
-\def\pgfplots@coord@stream@INIT@updatelimits{%
-	\def\pgfplots@coord@stream@start{%
-		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
-	}%
-	\def\pgfplots@coord@stream@coord##1##2##3##4{%
-		\expandafter\def\expandafter\pgfplots@coord@stream@recorded\expandafter{\pgfplots@coord@stream@recorded (##1,##2)}%
-		\pgfplots@update@limits@for@one@point{##1}{##2}{##3}{##4}%
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@process@errorbar@for{##1}{##2}{##3}{##4}%
-		\fi
-	}%
-	\def\pgfplots@coord@stream@end{%
-		\edef\pgfplots@coord@stream@recorded{plot coordinates {\pgfplots@coord@stream@recorded}}%
-	}%
-}
-
-% Initialises a coordinate stream which collects each input point into
-% \pgfplots@coord@stream@recorded.
-\def\pgfplots@coord@stream@INIT@recorder{%
-	\def\pgfplots@coord@stream@start{%
-		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
-	}%
-	\def\pgfplots@coord@stream@end{%
-		\edef\pgfplots@coord@stream@recorded{plot coordinates {\pgfplots@coord@stream@recorded}}%
-	}%
-	\def\pgfplots@coord@stream@coord##1##2##3##4{%
-		\expandafter\def\expandafter\pgfplots@coord@stream@recorded\expandafter{\pgfplots@coord@stream@recorded (##1,##2)}%
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@process@errorbar@for{##1}{##2}{##3}{##4}%
-		\fi
-	}%
-}
-
+% Takes a sequence of PREPARED coordinates which are given in floating
+% point representation and applies the data scaling trafo.
+%
+% This stream is designed to be done at the end of an axis.
+% See \pgfplots@coord@stream@finalize@storedcoords@START
 \def\pgfplots@coord@stream@INIT@finalize@storedcoords#1{%
 	\def\pgfplots@coord@stream@start{%
 		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
@@ -2317,11 +2285,8 @@
 % No scoping is used during this operation, so you can access outer
 % variables.
 \long\def\pgfplots@foreach@plot@coord@do#1\for plot coordinates #2;\pgfplots@EOI{%
-%\tracingmacros=2\tracingcommands=2
 	\def\pgfplots@foreach@plot@coord@do@CMD{#1}%
-%\message{PROCESSING PLOT COORDS '#2' to call \meaning\pgfplots@foreach@plot@coord@do@CMD}%
 	\pgfplots@foreach@plot@coord@ITERATE#2\pgfplots@EOI%
-%\tracingmacros=0\tracingcommands=0
 }
 
 \def\pgfplots@foreach@plot@coord@ITERATE{%
@@ -4396,38 +4361,6 @@
 			\pgfplots@float@numerics@modetrue
 		\fi
 		\ifpgfplots@float@numerics@mode
-			% Install coordinate filters that
-			% - read input as normalised floating point numbers,
-			% - return [SIGN][MANTISSE]eEXPONENT
-			% Motivation: 
-			% 1. we can compute axis limits using such data
-			% 2. we can remember the floating point representation for 
-			%    the data scaling transformation.
-			% ATTENTION:
-			% this here is a preprocessing step! You will need to
-			% apply the data scaling later!
-			% see 
-			% \pgfplots@finish@datatrafo@@generate@errorbars
-			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1filter\endcsname
-			\ifx\pgfplots@TMP\pgfutil@empty
-				\expandafter\def\csname addplot@float@numerics@#1filter\endcsname##1\to##2{%
-					\pgfmathfloatparsenumber{##1}%
-					\let##2=\pgfmathresult
-				}%
-			\else
-				\expandafter\let\csname pgfplots@#1filter@orig\endcsname=\pgfplots@TMP
-				\expandafter\def\csname addplot@float@numerics@#1filter\endcsname##1\to##2{%
-					\csname pgfplots@#1filter@orig\endcsname##1\to##2\relax
-					\ifx##2\pgfutil@empty
-					\else
-						\expandafter\pgfmathfloatparsenumber\expandafter{##2}%
-						\let##2=\pgfmathresult
-					\fi
-				}%
-			\fi
-			\expandafter\let\expandafter\pgfplots@TMP\csname addplot@float@numerics@#1filter\endcsname
-			\expandafter\let\csname pgfplots@#1filter\endcsname\pgfplots@TMP
-			%
 			% Check for any existing axis limits:
 			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1min\endcsname
 			\ifx\pgfplots@TMP\pgfutil@empty
@@ -4936,7 +4869,6 @@
 % temporary (local) variables inside of axis
 \newif\ifpgfplots@autocompute@xlim
 \newif\ifpgfplots@autocompute@ylim
-\newif\ifpgfplots@filtercoords
 \newif\ifpgfplots@float@numerics@mode@x
 \newif\ifpgfplots@float@numerics@mode@y
 \newif\ifpgfplots@float@numerics@mode
@@ -4999,15 +4931,6 @@
 		\pgfplots@datascaletrafo@initialisedtrue% there is no trafo.
 	\fi
 	%
-	\ifx\pgfplots@xfilter\pgfutil@empty
-	\else
-		\pgfplots@filtercoordstrue
-	\fi
-	\ifx\pgfplots@yfilter\pgfutil@empty
-	\else
-		\pgfplots@filtercoordstrue
-	\fi
-	% 
 	\ifx\pgfplots@xmin\pgfutil@empty
 		\pgfplots@autocompute@xlimtrue
 		\gdef\pgfplots@xmin{16300}%
