@@ -1046,7 +1046,7 @@
 % #3: the axis (x or y)
 \def\pgfplots@show@ticklabel#1#2#3{{%
 	\let\ticknum=#1%
-	\csname ifpgfplots@float@numerics@mode@#3\endcsname
+	\csname ifpgfplots@apply@datatrafo@#3\endcsname
 		\csname pgfplots@inverse@datascaletrafo@#3\endcsname{#2}%
 		% FIXME: do that for any linear axis, also if no datascale is
 		% applied!
@@ -1984,14 +1984,6 @@
 	\pgfplots@coord@stream@foreach{#2}%
 }%
 
-\long\def\pgfplots@update@limits#1{%
-	\pgfplots@foreach@plot@coord@do%
-		\pgfplots@update@limits@for@one@point
-	\for
-	#1%
-	\pgfplots@EOI
-}
-
 \newif\ifpgfplots@update@limits@for@one@point@ISCLIPPED
 \def\pgfplots@math@ONE{1.0}%
 
@@ -2144,40 +2136,43 @@
 		\ifx\pgfplots@filter@tmp@y\pgfutil@empty
 			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
 		\else
-			\ifpgfplots@float@numerics@mode@x
-				\pgfmathfloatparsenumber{\pgfplots@filter@tmp@x}%
-				\let\pgfplots@filter@tmp@x=\pgfmathresult
-			\fi
-			\ifpgfplots@float@numerics@mode@y
-				\pgfmathfloatparsenumber{\pgfplots@filter@tmp@y}%
-				\let\pgfplots@filter@tmp@y=\pgfmathresult
-			\fi
-			\ifpgfplots@draw@at@end
-				\ifpgfplots@stackedmode
-					% will use float numerics if necessary:
-					\pgfplots@stacked@preparepoint@inmacro{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
-				\fi
-				% update also axis limits:
-				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{}{}%
-				\ifpgfplots@errorbars@enabled
-					\pgfplots@process@errorbar@for@with@unfiltered{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}{#1}{#2}%
-				\fi
-			\else
-				% apply data transformation directly.
-				\ifpgfplots@float@numerics@mode@x
-					\pgfplots@datascaletrafo@x\pgfplots@filter@tmp@x
+			\ifpgfplots@apply@datatrafo
+				\ifpgfplots@apply@datatrafo@x
+					\pgfmathfloatparsenumber{\pgfplots@filter@tmp@x}%
 					\let\pgfplots@filter@tmp@x=\pgfmathresult
 				\fi
-				\ifpgfplots@float@numerics@mode@y
-					\pgfplots@datascaletrafo@y\pgfplots@filter@tmp@y
+				\ifpgfplots@apply@datatrafo@y
+					\pgfmathfloatparsenumber{\pgfplots@filter@tmp@y}%
 					\let\pgfplots@filter@tmp@y=\pgfmathresult
 				\fi
-				\ifpgfplots@stackedmode
-					% works with pgfmath:
-					\pgfplots@stacked@preparepoint@inmacro{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
+				\ifpgfplots@datascaletrafo@initialised
+					% apply data transformation directly.
+					\ifpgfplots@apply@datatrafo@x
+						\pgfplots@datascaletrafo@x\pgfplots@filter@tmp@x
+						\let\pgfplots@filter@tmp@x=\pgfmathresult
+					\fi
+					\ifpgfplots@apply@datatrafo@y
+						\pgfplots@datascaletrafo@y\pgfplots@filter@tmp@y
+						\let\pgfplots@filter@tmp@y=\pgfmathresult
+					\fi
+				\fi
+			\fi
+			% All following routines (limit updating/stacking/error
+			% bars) will use float numerics if necessary (controlled
+			% by ifs).
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@preparepoint@inmacro{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
+				\ifpgfplots@datascaletrafo@initialised
+				\else
 					\pgfplots@stacked@finishpoint{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
 				\fi
-				\pgfplots@process@errorbar@for@with@unfiltered{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}{#1}{#2}%
+			\fi
+			\ifpgfplots@autocomputelimits
+				% update also axis limits:
+				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{}{}%
+			\fi
+			\ifpgfplots@errorbars@enabled
+				\pgfplots@process@errorbar@for{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}{#1}{#2}%
 			\fi
 			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
 			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
@@ -2252,7 +2247,7 @@
 % INPUT: 
 %   a sequence of points (SMeE,SMeE) (terminated with ';') 
 %   where S=sign, M=mantisse, E = exponent.
-%   Such input is generated in the case pgfplots@float@numerics@modetrue
+%   Such input is generated in the case pgfplots@apply@datatrafotrue
 %   by the coordinate filters.
 % OUTPUT: 
 %   proper sequence of fixed point coordinates which are the result of the
@@ -2326,13 +2321,13 @@
 % #3= error for x coord (or empty)
 % #4= error for y coord (or empty)
 \def\pgfplots@apply@data@scaletrafo@to@one@point#1#2#3#4{%
-	\ifpgfplots@float@numerics@mode@x
+	\ifpgfplots@apply@datatrafo@x
 		\pgfplots@datascaletrafo@x{#1}%
 		\let\pgfplots@filter@tmp@x=\pgfmathresult
 	\else
 		\def\pgfplots@filter@tmp@x{#1}%
 	\fi
-	\ifpgfplots@float@numerics@mode@y
+	\ifpgfplots@apply@datatrafo@y
 		\pgfplots@datascaletrafo@y{#2}%
 		\let\pgfplots@filter@tmp@y=\pgfmathresult
 	\else
@@ -2361,7 +2356,7 @@
 }
 
 \def\pgfplots@errorbar@draw@float(#1,#2)(#3,#4){%
-	\ifpgfplots@float@numerics@mode@x
+	\ifpgfplots@apply@datatrafo@x
 		\pgfplots@datascaletrafo@x{#1}%
 		\let\pgfplots@xarg=\pgfmathresult%
 		\pgfplots@datascaletrafo@x{#3}%
@@ -2370,7 +2365,7 @@
 		\def\pgfplots@xarg{#1}%
 		\def\pgfplots@error@xarg{#3}%
 	\fi
-	\ifpgfplots@float@numerics@mode@y
+	\ifpgfplots@apply@datatrafo@y
 		\pgfplots@datascaletrafo@y{#2}%
 		\let\pgfplots@yarg=\pgfmathresult%
 		\pgfplots@datascaletrafo@y{#4}%
@@ -2386,7 +2381,7 @@
 
 \def\pgfplots@errorbar@draw#1#2{%
 	\begingroup
-	\ifpgfplots@float@numerics@mode
+	\ifpgfplots@apply@datatrafo
 		\pgfplots@errorbar@draw@float#1#2
 	\else
 		\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}{#1}{#2}\pgfeov%
@@ -2397,16 +2392,12 @@
 % Also provides UNFILTERED arguments x (#5) and y (#6). These are use
 % in case of logplots, because we may need to compute log( x + e_x )
 % or log( y + e_y ).
-\def\pgfplots@process@errorbar@for@with@unfiltered#1#2#3#4#5#6{%
-	\def\pgfplots@xarg@unfiltered{#5}%
-	\def\pgfplots@yarg@unfiltered{#6}%
-	\pgfplots@process@errorbar@for{#1}{#2}{#3}{#4}%
-}
-
-\def\pgfplots@process@errorbar@for#1#2#3#4{%
+\def\pgfplots@process@errorbar@for#1#2#3#4#5#6{%
 %	\begingroup
 	\edef\pgfplots@xarg{#1}%
 	\edef\pgfplots@yarg{#2}%
+	\def\pgfplots@xarg@unfiltered{#5}%
+	\def\pgfplots@yarg@unfiltered{#6}%
 	\edef\pgfplots@error@xarg{#3}%
 	\edef\pgfplots@error@yarg{#4}%
 	\def\pgfplots@TMP{0}%
@@ -2559,7 +2550,7 @@
 		\def\pgfplots@TMP{#1}%
 		\def\pgfplots@TMPB{x}%
 		\ifx\pgfplots@TMP\pgfplots@TMPB
-			\ifpgfplots@draw@at@end
+			\ifpgfplots@autocomputelimits
 				\pgfplots@update@limits@for@one@point{\pgfplots@error@coord}{\pgfplots@yarg}{}{}%
 			\fi
 			\edef\pgfplots@TMP{%
@@ -2567,7 +2558,7 @@
 				{(\pgfplots@error@coord,\pgfplots@yarg)}%
 			}%
 		\else
-			\ifpgfplots@draw@at@end
+			\ifpgfplots@autocomputelimits
 				\pgfplots@update@limits@for@one@point{\pgfplots@xarg}{\pgfplots@error@coord}{}{}%
 			\fi
 			\edef\pgfplots@TMP{%
@@ -3065,7 +3056,7 @@
 \def\pgfplots@assign@default@tick@foraxis#1{%
 	\begingroup
 	% Shortcut-names:
-	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	% Attention here: use UNSHIFTET scalings, see remark above
 	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1@noshift\endcsname
 	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1@noshift\endcsname
@@ -3507,7 +3498,7 @@
 	%
 	\pgfplots@set@default@size@options
 	%
-	\ifpgfplots@float@numerics@mode@x
+	\ifpgfplots@apply@datatrafo@x
 		\let\pgfplots@xmin@unscaled@as@float=\pgfplots@xmin
 		\let\pgfplots@xmax@unscaled@as@float=\pgfplots@xmax
 		\pgfplots@apply@data@scale@trafo@to@options@for x%
@@ -3515,7 +3506,7 @@
 		\let\pgfplots@xmin@unscaled@as@float=\pgfutil@empty
 		\let\pgfplots@xmax@unscaled@as@float=\pgfutil@empty
 	\fi
-	\ifpgfplots@float@numerics@mode@y
+	\ifpgfplots@apply@datatrafo@y
 		\let\pgfplots@ymin@unscaled@as@float=\pgfplots@ymin
 		\let\pgfplots@ymax@unscaled@as@float=\pgfplots@ymax
 		\pgfplots@apply@data@scale@trafo@to@options@for y%
@@ -3524,6 +3515,11 @@
 		\let\pgfplots@ymax@unscaled@as@float=\pgfutil@empty
 	\fi
 	\pgfplots@datascaletrafo@initialisedtrue
+	%
+	% From now on, we can always work with pgfmath.
+	% We simply need to apply the data scaling trafo before doing so.
+	\pgfplots@float@numerics@mode@xfalse
+	\pgfplots@float@numerics@mode@yfalse
 	%
 	\ifpgfplots@xislinear
 		\pgfplots@xminorticksfalse
@@ -3638,7 +3634,7 @@
 % coordinate clipping to the resulting values and multiplies them
 % with x- and y scale vectors.
 \def\pgfplots@prepare@ZERO@coordinates{%
-	\ifpgfplots@float@numerics@mode@x
+	\ifpgfplots@apply@datatrafo@x
 		\pgfplots@datascaletrafo@fromfixed@x{0}%
 		\global\let\pgfplots@ZERO@x=\pgfmathresult
 	\else
@@ -3647,7 +3643,7 @@
 	\pgfmathmax@{\pgfplots@ZERO@x}{\pgfplots@xmin}%
 	\global\let\pgfplots@ZERO@x=\pgfmathresult
 	%
-	\ifpgfplots@float@numerics@mode@y
+	\ifpgfplots@apply@datatrafo@y
 		\pgfplots@datascaletrafo@fromfixed@y{0}%
 		\global\let\pgfplots@ZERO@y=\pgfmathresult
 	\else
@@ -3749,7 +3745,7 @@
 \def\pgfplots@avoid@empty@axis@range@for#1{%
 	% Check if axis limits are empty:
 	\begingroup
-	\expandafter\let\expandafter\if@cur@is@scaled\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\let\expandafter\if@cur@is@scaled\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	\expandafter\let\expandafter\min\csname pgfplots@#1min\endcsname
 	\expandafter\let\expandafter\max\csname pgfplots@#1max\endcsname
 	\let\min@d=\pgf@xa
@@ -4310,7 +4306,7 @@
 
 % Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
 \long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
-	\expandafter\let\expandafter\if@datascaled@cur\csname ifpgfplots@float@numerics@mode@#1\endcsname
+	\expandafter\let\expandafter\if@datascaled@cur\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	\csname ifpgfplots@#1islinear\endcsname
 		\if@datascaled@cur
 			\csname pgfplots@datascaletrafo@fromfixed@#1\endcsname{#2}%
@@ -4352,15 +4348,17 @@
 % See also:
 %     \pgfplots@apply@data@scale@trafo@to@options@for
 \def\pgfplots@prepare@coord@filtering@for#1{%
+	\csname pgfplots@float@numerics@mode@#1false\endcsname
 	\csname ifpgfplots@#1islinear\endcsname
 		\ifpgfplots@disabledatascaling
-			\csname pgfplots@float@numerics@mode@#1false\endcsname
-			\pgfplots@float@numerics@modefalse
+			\csname pgfplots@apply@datatrafo@#1false\endcsname
+			\pgfplots@apply@datatrafofalse
 		\else
+			\csname pgfplots@apply@datatrafo@#1true\endcsname
 			\csname pgfplots@float@numerics@mode@#1true\endcsname
-			\pgfplots@float@numerics@modetrue
+			\pgfplots@apply@datatrafotrue
 		\fi
-		\ifpgfplots@float@numerics@mode
+		\ifpgfplots@apply@datatrafo
 			% Check for any existing axis limits:
 			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1min\endcsname
 			\ifx\pgfplots@TMP\pgfutil@empty
@@ -4867,11 +4865,14 @@
 }%
 
 % temporary (local) variables inside of axis
+\newif\ifpgfplots@autocomputelimits
 \newif\ifpgfplots@autocompute@xlim
 \newif\ifpgfplots@autocompute@ylim
+\newif\ifpgfplots@apply@datatrafo@x
+\newif\ifpgfplots@apply@datatrafo@y
+\newif\ifpgfplots@apply@datatrafo
 \newif\ifpgfplots@float@numerics@mode@x
 \newif\ifpgfplots@float@numerics@mode@y
-\newif\ifpgfplots@float@numerics@mode
 \newif\ifpgfplots@datascaletrafo@initialised
 \newif\ifpgfplots@draw@at@end
 \newif\ifpgfplots@limits@are@computed
@@ -4925,7 +4926,7 @@
 	% --------------------
 	\pgfplots@prepare@coord@filtering@for x
 	\pgfplots@prepare@coord@filtering@for y
-	\ifpgfplots@float@numerics@mode
+	\ifpgfplots@apply@datatrafo
 		\pgfplots@datascaletrafo@initialisedfalse
 	\else
 		\pgfplots@datascaletrafo@initialisedtrue% there is no trafo.
@@ -4967,10 +4968,12 @@
 	\global\pgfplots@limits@are@computedtrue
 	\ifpgfplots@autocompute@xlim
 		\pgfplots@draw@at@endtrue
+		\pgfplots@autocomputelimitstrue
 		\global\pgfplots@limits@are@computedfalse
 	\fi
 	\ifpgfplots@autocompute@ylim
 		\pgfplots@draw@at@endtrue
+		\pgfplots@autocomputelimitstrue
 		\global\pgfplots@limits@are@computedfalse
 	\fi
 	%
@@ -4980,7 +4983,7 @@
 	% either postponed to \end or directly.
 	% --------------------
 	%
-	\ifpgfplots@float@numerics@mode
+	\ifpgfplots@apply@datatrafo
 		% ALWAYS TRUE. This allows to use inline plots because the data
 		% scale transformation will be applied after I know that it should
 		% be disabled.
@@ -5020,7 +5023,7 @@
 				\else
 					% this code here means we REALLY have a plotting
 					% command!
-					\ifpgfplots@float@numerics@mode
+					\ifpgfplots@apply@datatrafo
 						% Apply the data scaling transformation
 						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\to\pgfplots@stored@current@data%
 					\fi
