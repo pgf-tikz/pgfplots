@@ -68,6 +68,7 @@
 \newif\ifpgfplots@scale@only@axis
 \newif\ifpgfplots@stacked@x
 \newif\ifpgfplots@stackedmode
+\newif\ifpgfplots@stacked@reverse
 \newif\ifpgfplots@stacked@plus
 \let\pgfplots@TMP=\pgfutil@empty
 \let\pgfplots@TMPB=\pgfutil@empty
@@ -545,6 +546,10 @@
 	/pgfplots/stack plots/false/.code={\pgfplots@stackedmodefalse},
 	/pgfplots/stack plots/false/.belongs to family=/pgfplots,
 	/pgfplots/stack plots=false,
+	/pgfplots/reverse stacked plots/.is if=pgfplots@stacked@reverse,
+	/pgfplots/reverse stacked plots/.belongs to family=/pgfplots,
+	/pgfplots/reverse stacked plots/.default=true,
+	/pgfplots/reverse stacked plots=true,
 	/pgfplots/stack dir/.is choice,
 	/pgfplots/stack dir/.belongs to family=/pgfplots,
 	/pgfplots/stack dir/plus/.code={\pgfplots@stacked@plustrue},
@@ -1695,17 +1700,17 @@
 	\ifpgfplots@autocompute@xlim
 		\ifpgfplots@float@numerics@mode@x
 			\pgfmathfloatparsenumber{#1}%
-			\let\pgfplots@filter@tmp@x=\pgfmathresult
-			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@current@point@x=\pgfmathresult
+			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@current@point@x}%
 			\global\let\pgfplots@xmin=\pgfmathresult
-			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@filter@tmp@x}%
+			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@current@point@x}%
 			\global\let\pgfplots@xmax=\pgfmathresult
 			%
 			\pgfmathfloatparsenumber{#2}%
-			\let\pgfplots@filter@tmp@x=\pgfmathresult
-			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@filter@tmp@x}%
+			\let\pgfplots@current@point@x=\pgfmathresult
+			\pgfmathfloatmin{\pgfplots@xmin}{\pgfplots@current@point@x}%
 			\global\let\pgfplots@xmin=\pgfmathresult
-			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@filter@tmp@x}%
+			\pgfmathfloatmax{\pgfplots@xmax}{\pgfplots@current@point@x}%
 			\global\let\pgfplots@xmax=\pgfmathresult
 		\else
 			\pgfmathmin{\pgfplots@xmin}{#1}%
@@ -1917,8 +1922,8 @@
 	%
 	% make sure that \pgfplots@coord@stream@end@@ is called at the end
 	% of the lately prepare end-stream method.
-	\expandafter\def\expandafter\pgfplots@coord@stream@end\expandafter{%
-		\pgfplots@coord@stream@end
+	\expandafter\def\expandafter\pgfplots@coord@stream@end@\expandafter{%
+		\pgfplots@coord@stream@end@
 		\pgfplots@coord@stream@end@@
 		\pgfplots@end@plot
 	}%
@@ -1940,19 +1945,26 @@
 		% \pgfplots@addplot@enqueue@coords{}{}...{}
 		% statement with correct arguments:
 		\ifx\pgfplots@recordederrorbar\pgfutil@empty
-			\let\pgfplots@TMPB=\relax
+			\let\pgfplots@TMPB=\pgfutil@empty%
 		\else
 			\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
 			\def\pgfplots@TMPB{%
 				\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
 			}%
 		\fi
+		\ifpgfplots@datascaletrafo@initialised
+			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+			\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+		\else
+			\pgfplots@toka={}%
+		\fi
 		\edef\pgfplots@TMP{%
 			\noexpand\pgfplots@addplot@enqueue@coords
 			{
 				\noexpand\pgfplots@initzerolevelhandler
+				\the\pgfplots@toka% named start/end points
 				\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
-				\pgfplots@TMPB
+				\pgfplots@TMPB% error bar commands
 			}%
 			{%
 				\noexpand\draw[current plot style]%
@@ -2119,41 +2131,41 @@
 % #4= error for y coord (or empty)
 \def\pgfplots@process@one@point#1#2#3#4{%
 	\ifx\pgfplots@xfilter\pgfutil@empty
-		\def\pgfplots@filter@tmp@x{#1}%
+		\def\pgfplots@current@point@x{#1}%
 	\else
-		\let\pgfplots@filter@tmp@x=\pgfutil@empty
-		\pgfplots@xfilter#1\to\pgfplots@filter@tmp@x
+		\let\pgfplots@current@point@x=\pgfutil@empty
+		\pgfplots@xfilter#1\to\pgfplots@current@point@x
 	\fi
 	\ifx\pgfplots@yfilter\pgfutil@empty
-		\def\pgfplots@filter@tmp@y{#2}%
+		\def\pgfplots@current@point@y{#2}%
 	\else
-		\let\pgfplots@filter@tmp@y=\pgfutil@empty
-		\pgfplots@yfilter#2\to\pgfplots@filter@tmp@y
+		\let\pgfplots@current@point@y=\pgfutil@empty
+		\pgfplots@yfilter#2\to\pgfplots@current@point@y
 	\fi
-	\ifx\pgfplots@filter@tmp@x\pgfutil@empty
+	\ifx\pgfplots@current@point@x\pgfutil@empty
 		\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the x-coordinate filter.}%
 	\else
-		\ifx\pgfplots@filter@tmp@y\pgfutil@empty
+		\ifx\pgfplots@current@point@y\pgfutil@empty
 			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
 		\else
 			\ifpgfplots@apply@datatrafo
 				\ifpgfplots@apply@datatrafo@x
-					\pgfmathfloatparsenumber{\pgfplots@filter@tmp@x}%
-					\let\pgfplots@filter@tmp@x=\pgfmathresult
+					\pgfmathfloatparsenumber{\pgfplots@current@point@x}%
+					\let\pgfplots@current@point@x=\pgfmathresult
 				\fi
 				\ifpgfplots@apply@datatrafo@y
-					\pgfmathfloatparsenumber{\pgfplots@filter@tmp@y}%
-					\let\pgfplots@filter@tmp@y=\pgfmathresult
+					\pgfmathfloatparsenumber{\pgfplots@current@point@y}%
+					\let\pgfplots@current@point@y=\pgfmathresult
 				\fi
 				\ifpgfplots@datascaletrafo@initialised
 					% apply data transformation directly.
 					\ifpgfplots@apply@datatrafo@x
-						\pgfplots@datascaletrafo@x\pgfplots@filter@tmp@x
-						\let\pgfplots@filter@tmp@x=\pgfmathresult
+						\pgfplots@datascaletrafo@x\pgfplots@current@point@x
+						\let\pgfplots@current@point@x=\pgfmathresult
 					\fi
 					\ifpgfplots@apply@datatrafo@y
-						\pgfplots@datascaletrafo@y\pgfplots@filter@tmp@y
-						\let\pgfplots@filter@tmp@y=\pgfmathresult
+						\pgfplots@datascaletrafo@y\pgfplots@current@point@y
+						\let\pgfplots@current@point@y=\pgfmathresult
 					\fi
 				\fi
 			\fi
@@ -2161,35 +2173,57 @@
 			% bars) will use float numerics if necessary (controlled
 			% by ifs).
 			\ifpgfplots@stackedmode
-				\pgfplots@stacked@preparepoint@inmacro{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
-				\ifpgfplots@datascaletrafo@initialised
-				\else
-					\pgfplots@stacked@finishpoint{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
+				\pgfplots@stacked@preparepoint@inmacro{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+				\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
+					\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
 				\fi
 			\fi
 			\ifpgfplots@autocomputelimits
 				% update also axis limits:
-				\pgfplots@update@limits@for@one@point{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{}{}%
+				\pgfplots@update@limits@for@one@point{\pgfplots@current@point@x}{\pgfplots@current@point@y}{}{}%
 			\fi
 			\ifpgfplots@errorbars@enabled
-				\pgfplots@process@errorbar@for{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}{#3}{#4}{#1}{#2}%
+				\pgfplots@process@errorbar@for{\pgfplots@current@point@x}{\pgfplots@current@point@y}{#3}{#4}{#1}{#2}%
 			\fi
 			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
-			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
-%\pgfplots@message{FILTERING: appended \pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y}%  -> results in \pgfplots@coord@stream@recorded}%
+			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+%\pgfplots@message{FILTERING: appended \pgfplots@current@point@x,\pgfplots@current@point@y}%  -> results in \pgfplots@coord@stream@recorded}%
 		\fi
 	\fi
 }
 
 % Internal stream methods.
 %
+% Please overwrite \pgfplots@coord@stream@start@,
+% \pgfplots@coord@stream@end@ and \pgfplots@coord@stream@coord@
+% if you implement streams.
+%
 % FIXME: REPLACE THIS HERE WITH METHODS OF THE VISUALIZATION FRAMEWORK
-\def\pgfplots@coord@stream@start{}
-\def\pgfplots@coord@stream@end{}
+\newif\ifpgfplots@coord@stream@isfirst
+\def\pgfplots@coord@stream@start{
+	\pgfplots@coord@stream@isfirsttrue
+	\pgfplots@coord@stream@start@}
+\def\pgfplots@coord@stream@end{\pgfplots@coord@stream@end@}
 
+% Will be invoked for every point coordinate.
+%
+% It invokes \pgfplots@coord@stream@coord@.
+% It is expected to assign \pgfplots@current@point@x and
+% \pgfplots@current@point@y
+%
+% It is expected to
 % (#1,#2) : x, y coordinates
 % (#3,#4) : any x, y errors (or empty)
-\def\pgfplots@coord@stream@coord#1#2#3#4{}%
+\def\pgfplots@coord@stream@coord#1#2#3#4{%
+	\pgfplots@coord@stream@coord@{#1}{#2}{#3}{#4}%
+	\ifpgfplots@coord@stream@isfirst
+		\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
+		\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
+		\pgfplots@coord@stream@isfirstfalse
+	\fi
+	\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
+	\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+}%
 
 % A looping method which applies
 % \pgfplots@coord@stream@start
@@ -2220,13 +2254,14 @@
 % once more at the end of an axis - see
 % pgfplots@coord@stream@finalize@storedcoords@START
 \def\pgfplots@coord@stream@INIT#1{%
-	\def\pgfplots@coord@stream@start{%
+	\def\pgfplots@coord@stream@start@{%
 		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
 	}%
-	\def\pgfplots@coord@stream@end{%
-		\edef#1{plot coordinates {\pgfplots@coord@stream@recorded}}%
+	\def\pgfplots@coord@stream@end@{%
+		\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
+		\edef#1{plot coordinates {\the\pgfplots@toka}}%
 	}%
-	\let\pgfplots@coord@stream@coord=\pgfplots@process@one@point
+	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
 }
 
 % Takes a sequence of PREPARED coordinates which are given in floating
@@ -2235,14 +2270,23 @@
 % This stream is designed to be done at the end of an axis.
 % See \pgfplots@coord@stream@finalize@storedcoords@START
 \def\pgfplots@coord@stream@INIT@finalize@storedcoords#1{%
-	\def\pgfplots@coord@stream@start{%
+	\def\pgfplots@coord@stream@start@{%
 		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
 	}%
-	\def\pgfplots@coord@stream@end{%
+	\def\pgfplots@coord@stream@end@{%
 		\let#1=\pgfplots@data@scaletrafo@result
 	}%
-	\let\pgfplots@coord@stream@coord=\pgfplots@apply@data@scaletrafo@to@one@point
+	\let\pgfplots@coord@stream@coord@=\pgfplots@apply@data@scaletrafo@to@one@point
 }
+
+\def\pgfplots@addplot@get@named@startendpoints@command#1{%
+	\edef#1{%
+		\noexpand\path 
+			(\pgfplots@currentplot@firstcoord@x,\pgfplots@currentplot@firstcoord@y) coordinate (current plot begin)
+			(\pgfplots@currentplot@lastcoord@x,\pgfplots@currentplot@lastcoord@y) coordinate (current plot end)
+		;
+	}%
+}%
 
 % INPUT: 
 %   a sequence of points (SMeE,SMeE) (terminated with ';') 
@@ -2255,6 +2299,14 @@
 %
 % The output will be written into the macro #3
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\to#3{%
+	\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates {#1}#2;\to#3
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\pgfplots@recordederrorbar}%
+	\fi
+	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+	\pgfplots@TMP
+}%
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates #1#2;\to#3{%
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@beginplot
 	\fi
@@ -2267,10 +2319,41 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@endplot
 	\fi
-	\edef#3{plot coordinates {#3}#2;}%
+	\pgfplots@toka=\expandafter{#3}%
+	\pgfplotslist@TOK@a={#2}%
+	\edef#3{plot coordinates {\the\pgfplots@toka}\the\pgfplotslist@TOK@a;}%
 	\ifpgfplots@errorbars@enabled
 		\pgfplots@streamerrorbarend
-		\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\pgfplots@recordederrorbar}%
+	\fi
+}%
+
+% does the same job, but it does not execute any drawing commands.
+%
+% Instead, it generates a macro #4 which - if used as "precommand"
+% befor a draw operation - restores all required options and performs
+% pre-drawing.
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START@dryrun plot coordinates #1#2;\to#3#4{%
+	\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates {#1}#2;\to#3
+	\ifpgfplots@stackedmode
+		\pgfplots@stacked@savestateto\pgfplots@TMP
+		\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP}%
+	\else
+		\pgfplotslist@TOK@a={}%
+	\fi
+	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+	\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+	\ifpgfplots@errorbars@enabled
+		\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
+		\edef#4{%
+			\the\pgfplots@toka
+			\the\pgfplotslist@TOK@a
+			\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\pgfplotslist@TOK@b}%
+		}%
+	\else
+		\edef#4{%
+			\the\pgfplots@toka
+			\the\pgfplotslist@TOK@a
+		}%
 	\fi
 }%
 
@@ -2323,24 +2406,25 @@
 \def\pgfplots@apply@data@scaletrafo@to@one@point#1#2#3#4{%
 	\ifpgfplots@apply@datatrafo@x
 		\pgfplots@datascaletrafo@x{#1}%
-		\let\pgfplots@filter@tmp@x=\pgfmathresult
+		\let\pgfplots@current@point@x=\pgfmathresult
 	\else
-		\def\pgfplots@filter@tmp@x{#1}%
+		\def\pgfplots@current@point@x{#1}%
 	\fi
 	\ifpgfplots@apply@datatrafo@y
 		\pgfplots@datascaletrafo@y{#2}%
-		\let\pgfplots@filter@tmp@y=\pgfmathresult
+		\let\pgfplots@current@point@y=\pgfmathresult
 	\else
-		\def\pgfplots@filter@tmp@y{#2}%
+		\def\pgfplots@current@point@y{#2}%
 	\fi
 	\ifpgfplots@stackedmode
 		% all these calls work with pgfmath; no more floating point
 		% arithmetics are applied.
 		\pgfplots@stacked@getnextzerolevelpoint
-		\pgfplots@stacked@finishpoint{\pgfplots@filter@tmp@x}{\pgfplots@filter@tmp@y}%
-		\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
+		\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+		\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 	\fi
-	\edef\pgfplots@data@scaletrafo@result{\pgfplots@data@scaletrafo@result (\pgfplots@filter@tmp@x,\pgfplots@filter@tmp@y)}%
+	\pgfplots@toka=\expandafter{\pgfplots@data@scaletrafo@result}%
+	\edef\pgfplots@data@scaletrafo@result{\the\pgfplots@toka(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 }
 
 % This thing here shall draw all error bar commands listed in '#2'.
@@ -2580,6 +2664,34 @@
 	\axispath\path#1;%
 }
 
+
+% Will be available as \closedcycle command inside of an axis.
+%
+% It closes the current plot by drawing lines to the last "zero
+% level".
+%
+% That means the current plot is connected orthogonally with the
+% x-axis, allowing fill commands.
+%
+% For stacked plots, \closedcycle is special (it connects with the
+% previous \addplot command).
+%
+% Example:
+% \addplot coordinates {(3,0.5) (4,2) (5,1)} \closedcycle;
+\def\pgfplots@path@closed@cycle{%
+	\ifpgfplots@stackedmode
+		\pgfplots@stacked@path@closed@cycle
+	\else
+		\pgfplots@path@closed@cycle@std
+	\fi
+}
+\def\pgfplots@path@closed@cycle@std{%
+	|- (perpendicular cs: 
+		vertical line through={(current plot begin)}, 
+		horizontal line through={(\pgfplots@ZERO@x,\pgfplots@ZERO@y)})
+	-- cycle
+}%
+
 % Remembers the plotting command #2 and '#3=plot coordinates {...} ...';
 % for later postprocessing of the coordinates.
 %
@@ -2706,6 +2818,18 @@
 		\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
 		\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
 	\fi
+}
+
+\def\pgfplots@try@mirror@plot@handler{%
+	\pgfutil@ifundefined{tikz@plot@handler}{}{%
+		\ifx\tikz@plot@handler\pgfplothandlerconstantlineto
+			\let\tikz@plot@handler=\pgfplothandlerconstantlinetomarkright
+		\else
+			\ifx\tikz@plot@handler\pgfplothandlerconstantlinetomarkright
+				\let\tikz@plot@handler=\pgfplothandlerconstantlineto
+			\fi
+		\fi
+	}%
 }
 
 \long\def\pgfplots@show@small@legendplots#1#2{
@@ -4989,10 +5113,19 @@
 		% be disabled.
 		\pgfplots@draw@at@endtrue
 	\fi
+	\ifpgfplots@stackedmode
+		% Stacked plots require special attention: they are drawn in
+		% REVERSE order.
+		\pgfplots@draw@at@endtrue
+	\else
+		% we have no stacked plots and thus no reversing.
+		\pgfplots@stacked@reversefalse
+	\fi
 	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
 	\let\path=\pgfplots@replacement@for@tikz@path
+	\let\closedcycle=\pgfplots@path@closed@cycle
 	\ifpgfplots@draw@at@end
 		\let\pgfplots@nextcommand=\relax
 	\else
@@ -5014,6 +5147,11 @@
 		\def\pgfplots@nextcommand{%
 			\pgfplots@BEGIN@init@and@draw@axis
 			\pgfplots@stacked@initialise
+			\ifpgfplots@stacked@reverse
+				% This here applies any scaling trafos and assembles a
+				% NEW \pgfplots@stored@plotlist!
+				\pgfplots@stacked@finalize@stored@plots
+			\fi
 			\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@TMP{%
 				\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@TMP
 %\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
@@ -5023,9 +5161,14 @@
 				\else
 					% this code here means we REALLY have a plotting
 					% command!
-					\ifpgfplots@apply@datatrafo
-						% Apply the data scaling transformation
-						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\to\pgfplots@stored@current@data%
+					\ifpgfplots@stacked@reverse
+						% has already been processed above, in
+						% \pgfplots@stacked@finalize@stored@plots.
+					\else
+						\ifpgfplots@apply@datatrafo
+							% Apply the data scaling transformation
+							\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\to\pgfplots@stored@current@data%
+						\fi
 					\fi
 %\message{calling plotcmd and plotdata: pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' data '\meaning\pgfplots@stored@current@data'}%
 					\expandafter\pgfplots@stored@current@cmd\pgfplots@stored@current@data
