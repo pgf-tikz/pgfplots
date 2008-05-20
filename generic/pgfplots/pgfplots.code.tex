@@ -66,6 +66,8 @@
 \newif\ifpgfplots@is@old@list@format
 \newif\ifpgfplots@errorbars@enabled
 \newif\ifpgfplots@scale@only@axis
+\newif\ifpgfplots@xticklabel@interval
+\newif\ifpgfplots@yticklabel@interval
 \newif\ifpgfplots@stacked@x
 \newif\ifpgfplots@stackedmode
 \newif\ifpgfplots@stacked@reverse
@@ -284,6 +286,15 @@
 		\pgfplots@foreach@to@list{#1}\to\pgfplots@yticklabels
 		\let\pgfplots@yticklabel=\pgfplots@user@ticklabel@list@y
 	},
+	/pgfplots/yticklabel/.store in=	\pgfplots@yticklabel,
+	/pgfplots/yticklabel/.belongs to family=/pgfplots/tick,
+	/pgfplots/yticklabel=,
+	/pgfplots/x tick label as interval/.is if=pgfplots@xticklabel@interval,
+	/pgfplots/x tick label as interval/.default=true,
+	/pgfplots/x tick label as interval/.belongs to family=/pgfplots/tick,
+	/pgfplots/y tick label as interval/.is if=pgfplots@yticklabel@interval,
+	/pgfplots/y tick label as interval/.default=true,
+	/pgfplots/y tick label as interval/.belongs to family=/pgfplots/tick,
 	/pgfplots/extra x tick label/.store in=	\pgfplots@extra@xticklabel,
 	/pgfplots/extra x tick label/.belongs to family=/pgfplots/tick,
 	/pgfplots/extra x tick label=,
@@ -305,9 +316,6 @@
 	/pgfplots/xtickten/.store in=		\pgfplots@xtickten,
 	/pgfplots/xtickten/.belongs to family=/pgfplots/tick,
 	/pgfplots/xtickten=,
-	/pgfplots/yticklabel/.store in=	\pgfplots@yticklabel,
-	/pgfplots/yticklabel/.belongs to family=/pgfplots/tick,
-	/pgfplots/yticklabel=,
 	/pgfplots/extra y tick label/.store in=	\pgfplots@extra@yticklabel,
 	/pgfplots/extra y tick label/.belongs to family=/pgfplots/tick,
 	/pgfplots/extra y tick label=,
@@ -1046,17 +1054,62 @@
 }
 
 % x-axis tick labels for #1th tick
-% #1: ticknumber
-% #2: the value
-% #3: the axis (x or y)
-\def\pgfplots@show@ticklabel#1#2#3{{%
-	\let\ticknum=#1%
-	\csname ifpgfplots@apply@datatrafo@#3\endcsname
-		\csname pgfplots@inverse@datascaletrafo@#3\endcsname{#2}%
+% #1: options
+% #2: the axis (x or y)
+% #3: the value
+% #4,#5: coordinates for tikz
+% #6: ticknumber
+\def\pgfplots@show@ticklabel[#1]#2#3(#4,#5)#6{{%
+	\csname ifpgfplots@#2ticklabel@interval\endcsname
+		\pgfmathparse{#4}%
+		\edef\pgfplots@show@ticklabel@coord@x@new{\pgfmathresult pt}%
+		\pgfmathparse{#5}%
+		\edef\pgfplots@show@ticklabel@coord@y@new{\pgfmathresult pt}%
+		%
+		\pgfplots@show@ticklabel@{#2}{#3}%
+		\let\nexttick=\tick
+		\ifx\pgfplots@show@ticklabel@LASTTICK\pgfutil@empty
+			% its the first call. Simply remember arguments and wait
+			% for interval boundary before proceeding.
+		\else
+			% acquire options of first interval boundary:
+			\pgfplots@show@ticklabel@LASTTICK
+			% compute new node position:
+			\pgfmathparse{0.5*(\csname pgfplots@show@ticklabel@coord@#2\endcsname + \csname pgfplots@show@ticklabel@coord@#2@new\endcsname)}%
+			\expandafter\edef\csname pgfplots@show@ticklabel@coord@#2\endcsname{\pgfmathresult pt}%
+			\let\ticknum=\pgfplots@show@ticklabel@num\relax%
+			\let\tick=\pgfplots@show@ticklabel@tick%
+			\pgfplots@toka=\expandafter{\pgfplots@show@ticklabel@opts}%
+			\xdef\pgfplots@TMP{at (\pgfplots@show@ticklabel@coord@x,\pgfplots@show@ticklabel@coord@y) [\the\pgfplots@toka]}%
+			\expandafter\node\pgfplots@TMP
+				{\csname pgfplots@#2ticklabel\endcsname};%
+		\fi
+		\xdef\pgfplots@show@ticklabel@LASTTICK{%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@opts{#1}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@tick{\nexttick}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@x{\pgfplots@show@ticklabel@coord@x@new}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@y{\pgfplots@show@ticklabel@coord@y@new}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@num{\the#6}%
+		}%
+	\else
+		\let\ticknum=#6\relax%
+		\pgfplots@show@ticklabel@{#2}{#3}%
+		\node at (#4,#5) [#1] {\csname pgfplots@#2ticklabel\endcsname};%
+	\fi
+}}
+
+% Defines \tick by applying any necessary math to the (possibly
+% transformed) tick value #2.
+%
+% #1: axis (x or y)
+% #2: tick value.
+\def\pgfplots@show@ticklabel@#1#2{%
+	\csname ifpgfplots@apply@datatrafo@#1\endcsname
+		\csname pgfplots@inverse@datascaletrafo@#1\endcsname{#2}%
 		% FIXME: do that for any linear axis, also if no datascale is
 		% applied!
 		\ifpgfplots@scaled@ticks
-			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#3\endcsname}%
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
 		\fi
 		% .. and this here provides \tick as fixed point repr:
 		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
@@ -1064,8 +1117,7 @@
 	\else
 		\edef\tick{#2}%
 	\fi
-	\csname pgfplots@#3ticklabel\endcsname
-}}
+}%
 
 \def\pgfplots@user@ticklabel@list@x{%
 	\pgfplotslistselect\ticknum\of\pgfplots@xticklabels\to\tick
@@ -1171,6 +1223,7 @@
 		\ifpgfplots@yminorgrids
 			\pgfplots@needsminorlooptrue
 		\fi
+		\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 		\foreach \y in {#1} {	
 			\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\y}}%
 			%
@@ -1196,15 +1249,17 @@
 					\fi
 					% Axis tick labels:
 					\ifnum\pgfplots@ytickposnum=3
-						\node at 
-							(\pgfplots@ytick@origin+\pgfplots@ytick@offset,\pgfplots@tmpa)
-							[right,every tick label,every y tick label]
-							{\pgfplots@show@ticklabel\pgfplots@ticknum\y{y}};
+						\pgfplots@show@ticklabel
+							[right,every tick label,every y tick label]%
+							{y}{\y}%
+							(\pgfplots@ytick@origin+\pgfplots@ytick@offset,\pgfplots@tmpa)%
+							{\pgfplots@ticknum}%
 					\else
-						\node at 
-							(\pgfplots@ytick@origin-\pgfplots@ytick@offset,\pgfplots@tmpa)
-							[left,every tick label,every y tick label]
-							{\pgfplots@show@ticklabel\pgfplots@ticknum\y{y}};
+						\pgfplots@show@ticklabel
+							[left,every tick label,every y tick label]%
+							{y}{\y}%
+							(\pgfplots@ytick@origin-\pgfplots@ytick@offset,\pgfplots@tmpa)%
+							{\pgfplots@ticknum}%
 					\fi
 				\fi
 			\fi
@@ -1465,6 +1520,7 @@
 		\ifpgfplots@xminorgrids
 			\pgfplots@needsminorlooptrue
 		\fi
+		\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 		\foreach \x in {#1} {	
 			\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\x}{0}}%
 			%
@@ -1490,15 +1546,15 @@
 					\fi
 					% Axis tick labels:
 					\ifnum\pgfplots@xtickposnum=3
-						\node at 
-							(\pgfplots@tmpa,\pgfplots@xtick@origin+\pgfplots@xtick@offset)
-							[above,every tick label,every x tick label]
-							{\pgfplots@show@ticklabel\pgfplots@ticknum\x{x}};
+						\pgfplots@show@ticklabel
+							[above,every tick label,every x tick label]%
+							{x}{\x}(\pgfplots@tmpa,\pgfplots@xtick@origin+\pgfplots@xtick@offset)%
+							{\pgfplots@ticknum}%
 					\else
-						\node at 
-							(\pgfplots@tmpa,\pgfplots@xtick@origin-\pgfplots@xtick@offset)
-							[below,every tick label,every x tick label]
-							{\pgfplots@show@ticklabel\pgfplots@ticknum\x{x}};
+						\pgfplots@show@ticklabel
+							[below,every tick label,every x tick label]%
+							{x}{\x}(\pgfplots@tmpa,\pgfplots@xtick@origin-\pgfplots@xtick@offset)%
+							{\pgfplots@ticknum}%
 					\fi
 				\fi
 			\fi
@@ -1555,7 +1611,6 @@
 	\begingroup
 	\globaldefs=1
 	\pgfplotslistpushback#1\to\pgfplots@plotspeclist
-	\advance\pgfplots@numplots by1%
 	\endgroup
 }
 
@@ -1890,7 +1945,7 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@beginplot
 	\fi
-	\pgfplots@rememberplotspec{#1}% also increases \pgfplots@numplots
+	\pgfplots@rememberplotspec{#1}%
 	\def\pgfplots@addplot@nonlegend@options{#2}%
 	\ifx\pgfplots@addplot@nonlegend@options\pgfutil@empty
 	\else
@@ -1961,6 +2016,7 @@
 		\edef\pgfplots@TMP{%
 			\noexpand\pgfplots@addplot@enqueue@coords
 			{
+				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
 				\noexpand\pgfplots@initzerolevelhandler
 				\the\pgfplots@toka% named start/end points
 				\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
@@ -1976,6 +2032,7 @@
 }%
 
 \def\pgfplots@end@plot{%
+	\global\advance\pgfplots@numplots by1\relax%
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@endplot
 	\fi
@@ -2953,6 +3010,7 @@
 			\repeat
 			\pgfplotslist@TOK@b={\matrix[every axis legend]}%
 			\xdef\pgfplots@TMP{%
+				\noexpand\def\noexpand\plotnum{0}%
 				\the\pgfplotslist@TOK@b {%
 					\the\pgfplotslist@TOK@a
 				};%
@@ -5124,6 +5182,7 @@
 	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
+	\def\numplots{\the\pgfplots@numplots}%
 	\let\path=\pgfplots@replacement@for@tikz@path
 	\let\closedcycle=\pgfplots@path@closed@cycle
 	\ifpgfplots@draw@at@end
@@ -5134,6 +5193,8 @@
 	\pgfplots@nextcommand
 }
 \def\endpgfplots@environment@opt{%
+	\xdef\numplots{\the\pgfplots@numplots}%
+	%
 	% restore old \path command:
 	\let\path=\pgfplots@orig@path
 	\let\plot=\pgfplots@orig@plot
@@ -5162,8 +5223,7 @@
 					% this code here means we REALLY have a plotting
 					% command!
 					\ifpgfplots@stacked@reverse
-						% has already been processed above, in
-						% \pgfplots@stacked@finalize@stored@plots.
+						% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
 					\else
 						\ifpgfplots@apply@datatrafo
 							% Apply the data scaling transformation
