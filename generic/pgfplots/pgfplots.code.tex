@@ -1807,16 +1807,34 @@
 	}%
 }
 
-% The plot expression thing does two things.
+% Currently, plot expression is really inefficient:
 %
-% 1. It disables any data scaling transformation,
-% 2. It checks for 'domain' arguments inside of #1 (the options
-% directly following the \addplot command).
-\long\def\pgfplots@addplotimpl@expression#1#2;{%
-	\global\pgfplots@EMERGENCY@FORCE@DATA@TRAFO@TO@IDENTITYtrue
-	\pgfplots@addplotimpl@expression@limits{#1}%
-	\pgfplots@addplot@enqueue@coords{}{}{\draw[every axis plot,#1] plot #2;}{}%
-	\pgfplots@end@plot
+% 1. it invokes the math parser to get all coordinates. Ok, that's
+% what one expects.
+%
+% 2. It collects the result into one large list instead of calling
+% pgfplots' stream methods. That's because \foreach encapsulates its
+% code in at least one TeX-group.
+%
+% 3. It processes the collected list; applying any floating point
+% parser routines - it does NOT know that any numbers are already in
+% TeX-precision!
+%
+% FIXME : configure pgfplots to finish the data scaling trafo! It's
+% perfectly ok if it is simply the identity!
+\long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\edef\pgfplots@plot@data{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat}}%
+	\global\let\pgfplots@TMP=\pgfutil@empty
+	\pgfplots@plot@data{%
+		\pgfmathparse{#2}%
+		\let\pgfplots@current@point@x=\pgfmathresult
+		\pgfmathparse{#3}%
+		\let\pgfplots@current@point@y=\pgfmathresult
+		\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+		\xdef\pgfplots@TMP{\the\pgfplots@toka(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	}%
+	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@TMP}%
 }%
 
 \def\pgfplots@addplotimpl@expression@limits#1{%
@@ -1870,24 +1888,26 @@
 % #2: file name
 % #3: trailing path commands until ';'
 \def\pgfplots@addplotimpl@function#1unction#2#3;{%
-  \def\tikz@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
-  \iftikz@plot@raw@gnuplot%
-    \def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{#2}}%
-  \else%
-    \iftikz@plot@parametric%   
-      \def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
-          set samples \tikz@plot@samples;
-          set parametric;
-          plot [t=\tikz@plot@domain] #2}}%
-    \else%
-      \def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
-          set samples \tikz@plot@samples;
-          plot [x=\tikz@plot@domain] #2}}%
-    \fi%
-  \fi%
-  \def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#3}}%
-  \tikz@plot@data
-  \let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
+	\def\tikz@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\iftikz@plot@raw@gnuplot%
+		\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{#2}}%
+	\else%
+		\iftikz@plot@parametric%   
+			\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
+				set format "\%.7e";
+				set samples \tikz@plot@samples;
+				set parametric;
+				plot [t=\tikz@plot@domain] #2}}%
+		\else%
+			\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
+				set format "\%.7e";
+				set samples \tikz@plot@samples;
+				plot [x=\tikz@plot@domain] #2}}%
+		\fi%
+	\fi%
+	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#3}}%
+	\tikz@plot@data
+	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
 }%
 
 \def\pgfplots@addplotimpl@gnuplotresult#1#2#3{%
