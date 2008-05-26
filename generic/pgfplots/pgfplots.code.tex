@@ -77,6 +77,8 @@
 \let\pgfplots@TMPC=\pgfutil@empty
 \let\pgfnodepartimagebox=\pgfnodeparttextbox
 
+\newif\ifpgfplots@collect@firstplot@astick
+
 \def\pgfplots@errorbars@xdirection{0}% pre-init, see below
 \def\pgfplots@errorbars@ydirection{0}%
 
@@ -888,6 +890,7 @@
 	/pgfplots/ybar interval/.style={%
 		x tick label as interval,
 		xmajorgrids,
+	%	xtick=data,
 		/pgfplots/legend image code/.code={\draw[##1,yshift=-0.2em,bar interval width=0.7,bar interval shift=0.5] plot coordinates {(0cm,0.8em) (5pt,0.6em) (10pt,0.6em)};},
 		bar interval width={#1/\numplots},
 		bar interval shift={(\plotnum+0.5)/\numplots},
@@ -897,6 +900,7 @@
 	/pgfplots/ybar interval/.belongs to family=/pgfplots,
 	/pgfplots/xbar interval/.style={%
 		y tick label as interval,
+	%	ytick=data,
 		ymajorgrids,
 		/pgfplots/legend image code/.code={\draw[##1,yshift=-0.2em,bar interval width=0.7,bar interval shift=0.5] plot coordinates {(0cm,0.8em) (5pt,0.6em) (10pt,0.6em)};},
 		bar interval width={#1/\numplots},
@@ -2140,7 +2144,19 @@
 	\else
 		\pgfplots@execute@at@end@plot
 	\fi
+	\global\let\pgfplots@TMP=\relax
+	\ifpgfplots@collect@firstplot@astick
+		\ifnum\pgfplots@numplots=1\relax
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@firstplot@coords@x}%
+			\pgfplotslist@TOK@b=\expandafter{\pgfplots@firstplot@coords@y}%
+			\xdef\pgfplots@TMP{%
+				\noexpand\def\noexpand\pgfplots@firstplot@coords@x{\the\pgfplotslist@TOK@a}%
+				\noexpand\def\noexpand\pgfplots@firstplot@coords@y{\the\pgfplotslist@TOK@b}%
+			}%
+		\fi
+	\fi
 	\endgroup
+	\pgfplots@TMP% see above
 }
 
 % #1: arguments to \addplot[...]
@@ -2344,6 +2360,22 @@
 			\fi
 			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
 			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+			\ifpgfplots@collect@firstplot@astick
+				\ifnum\pgfplots@numplots=0
+					\ifx\pgfplots@firstplot@coords@x\pgfutil@empty
+						\pgfplots@toka=\expandafter{}%
+					\else
+						\pgfplots@toka=\expandafter{\pgfplots@firstplot@coords@x,}%
+					\fi
+					\edef\pgfplots@firstplot@coords@x{\the\pgfplots@toka\pgfplots@current@point@x}%
+					\ifx\pgfplots@firstplot@coords@y\pgfutil@empty
+						\pgfplots@toka=\expandafter{}%
+					\else
+						\pgfplots@toka=\expandafter{\pgfplots@firstplot@coords@y,}%
+					\fi
+					\edef\pgfplots@firstplot@coords@y{\the\pgfplots@toka\pgfplots@current@point@y}%
+				\fi
+			\fi
 %\pgfplots@message{FILTERING: appended \pgfplots@current@point@x,\pgfplots@current@point@y}%  -> results in \pgfplots@coord@stream@recorded}%
 		\fi
 	\fi
@@ -3575,6 +3607,24 @@
 	%
 }%
 
+% Helper method for 
+%  \pgfplots@apply@data@scale@trafo@to@options@for
+% #1: the ticks ALREADY IN FLOAT FORMAT
+% #2: the trafo macro name 
+% #3: the output macro name
+\long\def\pgfplots@apply@data@scale@trafo@to@user@ticks@isfloat#1#2\to#3{%
+	\let#3=\pgfutil@empty
+	\foreach \pgfplots@TMPB in {#1} {%
+		#2{\pgfplots@TMPB}%
+		\ifx#3\pgfutil@empty
+			\xdef#3{\pgfmathresult}%
+		\else
+			\xdef#3{#3,\pgfmathresult}%
+		\fi
+	}%
+	%
+}%
+
 % helper for \pgfplots@apply@data@scale@trafo@to@options@for.
 \def\pgfplots@compute@number@order@for@trafo@isdimen#1\tocount#2{%
 	\edef\pgfplots@TMP{\pgf@sys@tonumber{#1}}%
@@ -3739,10 +3789,23 @@
 	% this here should also work with 'xtick=\pgfutil@empty', the "No tick" command.
 	\ifx\pgfplots@TMP\pgfutil@empty
 	\else
-%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
 		\pgfplots@toka=\expandafter{\csname pgfplots@datascaletrafo@#1\endcsname}%
-		\edef\pgfplots@TMP{{\csname pgfplots@#1tick\endcsname}\the\pgfplots@toka}%
-		\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@TMP\to\pgfplots@TMPC
+		\def\pgfplots@TMPB{data}%
+		\ifx\pgfplots@TMP\pgfplots@TMPB
+			% we have #1tick = data
+			%
+			% Since we have entered this method, we know that these
+			% coordinate ARE ALREADY in floating point representation.
+			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@firstplot@coords@#1\endcsname
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP}%
+			\edef\pgfplots@TMP{{\the\pgfplotslist@TOK@a}\the\pgfplots@toka}%
+			\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks@isfloat\pgfplots@TMP\to\pgfplots@TMPC
+		\else
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP}%
+%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
+			\edef\pgfplots@TMP{{\the\pgfplotslist@TOK@a}\the\pgfplots@toka}%
+			\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@TMP\to\pgfplots@TMPC
+		\fi
 		\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMPC
 	\fi
 	%
@@ -3785,6 +3848,10 @@
 		\let\pgfplots@xmax@unscaled@as@float=\pgfplots@xmax
 		\pgfplots@apply@data@scale@trafo@to@options@for x%
 	\else
+		\def\pgfplots@TMPB{data}%
+		\ifx\pgfplots@xtick\pgfplots@TMPB
+			\let\pgfplots@xtick=\pgfplots@firstplot@coords@x
+		\fi
 		\let\pgfplots@xmin@unscaled@as@float=\pgfutil@empty
 		\let\pgfplots@xmax@unscaled@as@float=\pgfutil@empty
 	\fi
@@ -3793,6 +3860,10 @@
 		\let\pgfplots@ymax@unscaled@as@float=\pgfplots@ymax
 		\pgfplots@apply@data@scale@trafo@to@options@for y%
 	\else
+		\def\pgfplots@TMPB{data}%
+		\ifx\pgfplots@ytick\pgfplots@TMPB
+			\let\pgfplots@ytick=\pgfplots@firstplot@coords@y
+		\fi
 		\let\pgfplots@ymin@unscaled@as@float=\pgfutil@empty
 		\let\pgfplots@ymax@unscaled@as@float=\pgfutil@empty
 	\fi
@@ -4676,8 +4747,12 @@
 			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1tick\endcsname
 			\ifx\pgfplots@TMP\pgfutil@empty
 			\else
-				\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@TMP}%
-				\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfplots@TMP}%
+				\def\pgfplots@TMPB{data}%
+				\ifx\pgfplots@TMP\pgfplots@TMPB
+				\else
+					\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@TMP}%
+					\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfplots@TMP}%
+				\fi
 			\fi
 			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@extra@#1tick\endcsname
 			\ifx\pgfplots@TMP\pgfutil@empty
@@ -5106,6 +5181,19 @@
 	\global\pgfkeysgetvalue{/pgfplots/xmax}{\pgfplots@xmax}%
 	\global\pgfkeysgetvalue{/pgfplots/ymin}{\pgfplots@ymin}%
 	\global\pgfkeysgetvalue{/pgfplots/ymax}{\pgfplots@ymax}%
+	%
+	\def\pgfplots@TMP{data}%
+	\pgfplots@collect@firstplot@astickfalse
+	\ifx\pgfplots@xtick\pgfplots@TMP
+		\pgfplots@collect@firstplot@asticktrue
+	\fi
+	\ifx\pgfplots@ytick\pgfplots@TMP
+		\pgfplots@collect@firstplot@asticktrue
+	\fi
+	\ifpgfplots@collect@firstplot@astick
+		\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+		\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+	\fi
 }
 
 \def\pgfplots@install@abbrev@commands{
@@ -5265,6 +5353,13 @@
 	% either postponed to \end or directly.
 	% --------------------
 	%
+	% Since I've introduced a public \numplots macro, I should 
+	% make sure it's filled correctly:
+	\pgfplots@draw@at@endtrue
+	%
+	\ifpgfplots@collect@firstplot@astick
+		\pgfplots@draw@at@endtrue
+	\fi
 	\ifpgfplots@apply@datatrafo
 		% ALWAYS TRUE. This allows to use inline plots because the data
 		% scale transformation will be applied after I know that it should
