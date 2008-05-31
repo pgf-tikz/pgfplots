@@ -45,7 +45,30 @@
 	/pgfplots/numeric table/y error index/.initial=,
 	/pgfplots/numeric table/x error/.initial=,
 	/pgfplots/numeric table/y error/.initial=,
+	% columns={name1,name2}
+	% or
+	% columns={[index]2,name2,name3,[index]5}
 	/pgfplots/numeric table/columns/.initial=,
+	/pgfplots/numeric table/column name/.initial=,
+	/pgfplots/numeric table/column type/.initial={c},
+	/pgfplots/numeric table/every table/.style={},
+	/pgfplots/numeric table/every even row/.style={},
+	/pgfplots/numeric table/every odd row/.style={},
+	/pgfplots/numeric table/every last row/.style={},
+	/pgfplots/numeric table/every first row/.style={},
+	/pgfplots/numeric table/every head row/.style={},
+	/pgfplots/numeric table/before row/.initial=,
+	/pgfplots/numeric table/after row/.initial=,
+	/pgfplots/numeric table/begin table/.initial={\begin{tabular}},
+	/pgfplots/numeric table/end table/.initial={\end{tabular}},
+	/pgfplots/numeric table/outfile/.initial=,
+	%
+	% #1: [input] a macro containing the current cell's RAW content
+	% #2: [output] a macro which shall be filled with the final cell's
+	% content.
+	/pgfplots/numeric table/assign cell contents/.code 2 args={%
+		\pgfmathprintnumberto#1#2%
+	},
 }
 
 % \pgfnumtableread[OPTIONS] {FILE} to \name
@@ -91,6 +114,9 @@
 	}%
 }
 
+\def\pgfnumtablegetcolumnnamebyindex#1\of#2\to#3{%
+	\pgfplotslistselect#1\of#2\to#3\relax
+}%
 \def\pgfnumtablegetcolumnbyindex#1\of#2\to#3{%
 	\pgfplotslistselect#1\of#2\to#3\relax
 	\expandafter\pgfnumtablegetcolumnbyname#3\of#2\to{#3}%
@@ -426,19 +452,248 @@
 \def\pgfnumtable@error#1{\PackageError{numtable}{#1}{Please refer to the manual for further information.}}%
 
 
+\def\pgfnumtabletypeset@setkeys{%
+	\pgfqkeys{/pgfplots/numeric table}%
+}%
 
+% Accepts a macro #1 which contains an argument denoting a column
+% name.
+%
+% It checks whether #1 starts with '#', indicating that it is actually
+% a column INDEX. If that is the case,
+% \ifpgfnumtableread@foundcolnames is set to false and the index is
+% returned into #1.
+%
+% Otherwise, \ifpgfnumtableread@foundcolnames is set to true.
+\def\pgfnumtabletypeset@is@colname#1{%
+	\expandafter\pgfnumtabletypeset@is@colname@#1\pgfnumtable@EOI
+	\ifpgfnumtableread@foundcolnames
+	\else
+		\let#1=\pgfnumtable@TMP
+	\fi
+}%
+\def\pgfnumtabletypeset@is@colname@{%
+	\pgfutil@ifnextchar[{%
+		\pgfnumtabletypeset@is@colname@index
+	}{%
+		\pgfnumtableread@foundcolnamestrue
+		\pgfnumtabletypeset@is@colname@name
+	}%
+}
+\def\pgfnumtabletypeset@is@colname@index@@{index}%
+\def\pgfnumtabletypeset@is@colname@index[#1]#2\pgfnumtable@EOI{%
+	\def\pgfnumtable@TMP{#1}%
+	\ifx\pgfnumtable@TMP\pgfnumtabletypeset@is@colname@index@@
+		\pgfnumtableread@foundcolnamesfalse
+		\def\pgfnumtable@TMP{#2}%
+	\else
+		\pgfnumtableread@foundcolnamestrue
+	\fi
+}%
+\def\pgfnumtabletypeset@is@colname@name#1\pgfnumtable@EOI{}%
+
+% TODO
+% - replace grouped list foreach by popfront-loop and use arrays
+%   directly -> group only the pgfkeys eval
 \def\pgfnumtabletypeset@opt[#1]#2{%
 	\begingroup
-	\pgfqkeys{/pgfplots/numeric table}{#1}%
-	\expandafter\pgfplotslistnew\expandafter\pgfnumtable@cols\expandafter{\pgfkeysvalueof{/pgfplots/numeric table/columns}}%
-	\pgfplotslistforeach\pgfnumtable@cols\as\pgfnumtable@colname{%
+	\pgfnumtabletypeset@setkeys{every table,#1}%
+	\pgfkeysgetvalue{/pgfplots/numeric table/columns}{\pgfnumtable@colnames}%
+	\ifx\pgfnumtable@colnames\pgfutil@empty
+		\pgfnumtablegetcolumnlist#2\to\pgfnumtable@colnames
+	\else
+		\expandafter\pgfplotslistnew\expandafter\pgfnumtable@colnames\expandafter{\pgfnumtable@colnames}%
+	\fi
+	\global\pgfplotslistnewempty\pgfnumtabletypeset@final@colnames
+	\global\pgfplotslistnewempty\pgfnumtabletypeset@final@coltypes
+	\global\pgfplotslistnewempty\pgfnumtabletypeset@final@cols
+	\pgfplotslistforeach\pgfnumtable@colnames\as\pgfnumtable@colname{%
+		\pgfnumtabletypeset@is@colname\pgfnumtable@colname
+		\ifpgfnumtableread@foundcolnames
+		\else
+			\pgfnumtablegetcolumnnamebyindex\pgfnumtable@colname\of#2\to\pgfnumtable@colname
+		\fi
 		\pgfnumtablegetcolumnbyname\pgfnumtable@colname\of#2\to\pgfnumtable@col
-		\pgfqkeys{/pgfplots/numeric table}{column \pgfnumtable@col\ style/.try}%
+		\pgfnumtabletypeset@setkeys{columns/\pgfnumtable@colname/.try}%
+		\pgfkeysgetvalue{/pgfplots/numeric table/column name}{\pgfnumtable@colname@out}%
+		\ifx\pgfnumtable@colname@out\pgfutil@empty
+			\let\pgfnumtable@colname@out=\pgfnumtable@colname
+		\fi
+		{\globaldefs=1
+		\expandafter\pgfplotslistpushback\pgfnumtable@colname@out\to\pgfnumtabletypeset@final@colnames
+		}%
+		\pgfkeysgetvalue{/pgfplots/numeric table/column type}{\pgfnumtable@coltype}%
+		{\globaldefs=1
+		\expandafter\pgfplotslistpushback\pgfnumtable@coltype\to\pgfnumtabletypeset@final@coltypes
+		}%
+		%
 		\pgfplotslistnewempty\pgfnumtable@col@processed
 		\pgfplotslistforeachungrouped\pgfnumtable@col\as\pgfnumtable@entry{%
-			% FIXME
+			\pgfkeysvalueof{/pgfplots/numeric table/assign cell contents/.@cmd}\pgfnumtable@entry\pgfmathresult\pgfeov
+			\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfnumtable@col@processed
+		}%
+		{\globaldefs=1
+		\expandafter\pgfplotslistpushback\expandafter{\pgfnumtable@col@processed}\to\pgfnumtabletypeset@final@cols
 		}%
 	}%
+	%
+	% Ok, I have now everything which will come into the final table.
+	%
+	% But I have it column-oriented; I need to transpose the storage.
+	%
+	% The following code assembles a
+	% \begin{tabular}{}
+	% ...
+	% \end{tabular}
+	% statement piece after piece.
+	%
+%\message{I have now \meaning\pgfnumtabletypeset@final@colnames, and \meaning\pgfnumtabletypeset@final@cols.}%
+	% Step 1: column names.
+	\let\c@pgfnumtable@numcols=\c@pgf@counta
+	\let\c@pgfnumtable@numrows=\c@pgf@countd
+	\let\c@pgfnumtable@rowindex=\c@pgf@countc
+	\let\c@pgfnumtable@colindex=\c@pgf@countb
+	\pgfplotslistsize\pgfnumtabletypeset@final@colnames\to\c@pgfnumtable@numcols
+	\c@pgfnumtable@colindex=0\relax
+	% STEP 1.1: collect column types:
+	\def\pgfnumtable@resulttypes{}%
+	\pgfplotslistforeachungrouped\pgfnumtabletypeset@final@coltypes\as\pgfnumtable@coltype{%
+		\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@resulttypes}%
+		\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@coltype}%
+		\edef\pgfnumtable@resulttypes{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+	}%
+	\pgfkeysgetvalue{/pgfplots/numeric table/begin table}{\pgfnumtable@entry}%
+	\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@entry}%
+	\ifx\pgfnumtable@resulttypes\pgfutil@empty
+		\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a}%
+	\else
+		\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@resulttypes}%
+		\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a{\the\pgfplotslist@TOK@b}}%
+	\fi
+	% Step 1.2: Collect FIRST ROW
+	\begingroup
+	\pgfnumtabletypeset@setkeys{every head row}%
+	\pgfkeysgetvalue{/pgfplots/numeric table/before row}{\pgfnumtable@before}%
+	\pgfkeysgetvalue{/pgfplots/numeric table/after row}{\pgfnumtable@after}%
+	\global\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@before}%
+	\global\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@after}%
+	\endgroup
+	\edef\pgfnumtable@after{\the\pgfplotslist@TOK@b}%
+	\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@result}%
+	% insert 'before row' here:
+	\edef\pgfnumtable@result{\the\pgfplotslist@TOK@b\the\pgfplotslist@TOK@a}%
+	%
+	\pgfplotslistforeachungrouped\pgfnumtabletypeset@final@colnames\as\pgfnumtable@colname@out{%
+		\advance\c@pgfnumtable@colindex by1\relax
+		\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+		\ifnum\c@pgfnumtable@colindex=\c@pgfnumtable@numcols\relax
+			\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@colname@out \\}%
+		\else
+			\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@colname@out &}%
+		\fi
+		\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+	}%
+	% insert 'after row' here:
+	\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+	\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@after}%
+	\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+	%
+%\message{I have now \meaning\pgfnumtable@result.}%
+	% Step 2: column contents.
+	% I will first convert \pgfnumtabletypeset@final@cols into an array.
+	\c@pgfnumtable@colindex=0\relax
+	\pgfplotsarraynewempty\pgfnumtabletypeset@final@cols@array
+	\pgfplotslistforeachungrouped\pgfnumtabletypeset@final@cols\as\pgfnumtable@col@processed{%
+		\expandafter\pgfplotsarraypushback\expandafter{\pgfnumtable@col@processed}\to\pgfnumtabletypeset@final@cols@array
+	}%
+	% init numrows:
+	\pgfplotsarrayselect\c@pgfnumtable@colindex\of\pgfnumtabletypeset@final@cols@array\to\pgfnumtable@col@processed
+	\pgfplotslistsize\pgfnumtable@col@processed\to\c@pgfnumtable@numrows
+	%
+	% Now, we loop over every column as long as there are still rows
+	% left. We assemble rows while we go.
+	%
+	\c@pgfnumtable@rowindex=0\relax
+	\ifnum\c@pgfnumtable@colindex<\c@pgfnumtable@numcols
+		\pgfplots@loop@CONTINUEtrue
+	\else
+		\pgfplots@loop@CONTINUEfalse
+	\fi
+	\loop
+	\ifpgfplots@loop@CONTINUE
+		\pgfplotsarrayselect\c@pgfnumtable@colindex\of\pgfnumtabletypeset@final@cols@array\to\pgfnumtable@col@processed
+		\pgfplotslistcheckempty\pgfnumtable@col@processed
+		\ifpgfplotslistempty
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\ifnum\c@pgfnumtable@colindex=0\relax
+				% Install styles for the next row.
+				\begingroup
+				\ifodd\c@pgfnumtable@rowindex
+					\pgfplotslist@TOK@a={every even row}%
+				\else
+					\pgfplotslist@TOK@a={every odd row}%
+				\fi
+				\ifnum\c@pgfnumtable@rowindex=0\relax
+					\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every first row}%
+				\fi
+				% misuse as temporary variable:
+				\c@pgfnumtable@colindex=\c@pgfnumtable@rowindex
+				\advance\c@pgfnumtable@colindex by1\relax
+				\ifnum\c@pgfnumtable@colindex=\c@pgfnumtable@numrows
+					\edef\pgfnumtable@TMP{\the\pgfplotslist@TOK@a,every row no \the\c@pgfnumtable@rowindex/.try,every last row}%
+				\else
+					\edef\pgfnumtable@TMP{\the\pgfplotslist@TOK@a,every row no \the\c@pgfnumtable@rowindex/.try}%
+				\fi
+				\expandafter\pgfnumtabletypeset@setkeys\expandafter{\pgfnumtable@TMP}%
+				\pgfkeysgetvalue{/pgfplots/numeric table/before row}{\pgfnumtable@before}%
+				\pgfkeysgetvalue{/pgfplots/numeric table/after row}{\pgfnumtable@after}%
+				\global\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@before}%
+				\global\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@after}%
+				\endgroup
+				\edef\pgfnumtable@after{\the\pgfplotslist@TOK@b}%
+				\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@result}%
+				% insert 'before row' here:
+				\edef\pgfnumtable@result{\the\pgfplotslist@TOK@b\the\pgfplotslist@TOK@a}%
+			\fi
+			%
+			%
+			\pgfplotslistpopfront\pgfnumtable@col@processed\to\pgfnumtable@entry
+			\pgfplotsarrayletentry\c@pgfnumtable@colindex\of\pgfnumtabletypeset@final@cols@array=\pgfnumtable@col@processed
+			\advance\c@pgfnumtable@colindex by1\relax
+			\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+			\ifnum\c@pgfnumtable@colindex=\c@pgfnumtable@numcols\relax
+				\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@entry \\}%
+			\else
+				\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@entry &}%
+			\fi
+			\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+			\ifnum\c@pgfnumtable@colindex=\c@pgfnumtable@numcols\relax
+				\c@pgfnumtable@colindex=0\relax
+				% insert 'after row' here:
+				\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+				\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@after}%
+				\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+				\advance\c@pgfnumtable@rowindex by1\relax
+			\fi
+%\message{I have now \meaning\pgfnumtable@result.}%
+		\fi
+	\repeat
+	\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+	\pgfkeysgetvalue{/pgfplots/numeric table/end table}{\pgfnumtable@entry}%
+	\pgfplotslist@TOK@b=\expandafter{\pgfnumtable@entry}%
+	\edef\pgfnumtable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
+	\pgfnumtable@result
+	\pgfkeysgetvalue{/pgfplots/numeric table/outfile}{\pgfnumtable@entry}%
+	\ifx\pgfnumtable@entry\pgfutil@empty
+	\else
+		\begingroup
+		\expandafter\immediate\expandafter\openout\expandafter1\expandafter=\pgfnumtable@entry\relax
+		\pgfplotslist@TOK@a=\expandafter{\pgfnumtable@result}%
+		\immediate\write1{\the\pgfplotslist@TOK@a}%
+		\immediate\closeout1
+		\endgroup
+	\fi
 	\endgroup
 }%
 
