@@ -56,7 +56,7 @@
 	% or
 	% columns={[index]2,name2,name3,[index]5}
 	/pgfplots/numeric table/columns/.initial=,
-	/pgfplots/numeric table/column name/.initial=,
+	/pgfplots/numeric table/column name/.initial=\pgfkeysnovalue,
 	/pgfplots/numeric table/column type/.initial={c},
 	/pgfplots/numeric table/every table/.style={},
 	/pgfplots/numeric table/every even row/.style={},
@@ -64,18 +64,30 @@
 	/pgfplots/numeric table/every last row/.style={},
 	/pgfplots/numeric table/every first row/.style={},
 	/pgfplots/numeric table/every head row/.style={},
+	/pgfplots/numeric table/every first column/.style={},
+	/pgfplots/numeric table/every last column/.style={},
+	/pgfplots/numeric table/every even column/.style={},
+	/pgfplots/numeric table/every odd column/.style={},
 	/pgfplots/numeric table/before row/.initial=,
 	/pgfplots/numeric table/after row/.initial=,
 	/pgfplots/numeric table/begin table/.initial={\begin{tabular}},
 	/pgfplots/numeric table/end table/.initial={\end{tabular}},
 	/pgfplots/numeric table/outfile/.initial=,
 	%
-	% #1: [input] a macro containing the current cell's RAW content
-	% #2: [output] a macro which shall be filled with the final cell's
-	% content.
-	/pgfplots/numeric table/assign cell contents/.code 2 args={%
-		\pgfmathprintnumberto#1#2%
+	% will be redefined by |assign cell content| for every cell:
+	/pgfplots/numeric table/@cell content/.initial=,
+	%
+	% #1: the cells content as it has been found in the input table
+	% this command key should somehow fill |cell content|.
+	/pgfplots/numeric table/assign cell content/.code={%
+		\pgfmathprintnumberto{#1}\pgfmathresult%
+		\pgfkeyslet{/pgfplots/numeric table/@cell content}\pgfmathresult
 	},
+	/pgfplots/numeric table/string type/.style={%
+		/pgfplots/numeric table/assign cell content/.style={%
+			/pgfplots/numeric table/@cell content={##1}%
+		}%
+	},%
 }
 
 % \pgfplotstableread[OPTIONS] {FILE} to \name
@@ -531,6 +543,11 @@
 	\fi
 }%
 \def\pgfplotstabletypeset@is@colname@name#1\pgfplotstable@EOI{}%
+\def\pgfplotstabletypeset@getfinalentry#1#2{%
+	\pgfkeysvalueof{/pgfplots/numeric table/assign cell content/.@cmd}#1\pgfeov
+	\pgfkeysgetvalue{/pgfplots/numeric table/@cell content}{#2}%
+}%
+\def\pgfplotstabletypeset@nocolname{\pgfkeysnovalue}
 
 % TODO
 % - replace grouped list foreach by popfront-loop and use arrays
@@ -547,6 +564,12 @@
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@colnames
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@coltypes
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@cols
+	\let\c@pgfplotstable@numcols=\c@pgf@counta
+	\let\c@pgfplotstable@numrows=\c@pgf@countd
+	\let\c@pgfplotstable@rowindex=\c@pgf@countc
+	\let\c@pgfplotstable@colindex=\c@pgf@countb
+	\pgfplotslistsize\pgfplotstable@colnames\to\c@pgfplotstable@numcols
+	\c@pgfplotstable@colindex=0\relax
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
 		\pgfplotstabletypeset@is@colname\pgfplotstable@colname
 		\ifpgfplotstableread@foundcolnames
@@ -554,9 +577,26 @@
 			\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#2\to\pgfplotstable@colname
 		\fi
 		\pgfplotstablegetcolumnbyname\pgfplotstable@colname\of#2\to\pgfplotstable@col
-		\pgfplotstabletypeset@setkeys{columns/\pgfplotstable@colname/.try}%
+		%
+		% Set keys for columns!
+		\ifodd\c@pgfplotstable@colindex
+			\pgfplotslist@TOK@a={every odd column}%
+		\else
+			\pgfplotslist@TOK@a={every even column}%
+		\fi
+		\ifnum\c@pgfplotstable@colindex=0\relax
+			\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every first column}%
+		\fi
+		\global\advance\c@pgfplotstable@colindex by1\relax
+		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
+			\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every last column}%
+		\fi
+		\pgfplotslist@TOK@b=\expandafter{\pgfplotstable@colname}%
+		\edef\pgfplotstable@TMP{\the\pgfplotslist@TOK@a,columns/\the\pgfplotslist@TOK@b/.try}%
+		\expandafter\pgfplotstabletypeset@setkeys\expandafter{\pgfplotstable@TMP}%
+		%
 		\pgfkeysgetvalue{/pgfplots/numeric table/column name}{\pgfplotstable@colname@out}%
-		\ifx\pgfplotstable@colname@out\pgfutil@empty
+		\ifx\pgfplotstable@colname@out\pgfplotstabletypeset@nocolname
 			\let\pgfplotstable@colname@out=\pgfplotstable@colname
 		\fi
 		{\globaldefs=1
@@ -569,8 +609,8 @@
 		%
 		\pgfplotslistnewempty\pgfplotstable@col@processed
 		\pgfplotslistforeachungrouped\pgfplotstable@col\as\pgfplotstable@entry{%
-			\pgfkeysvalueof{/pgfplots/numeric table/assign cell contents/.@cmd}\pgfplotstable@entry\pgfmathresult\pgfeov
-			\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@col@processed
+			\expandafter\pgfplotstabletypeset@getfinalentry\expandafter{\pgfplotstable@entry}{\pgfplotstable@entry}%
+			\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
 		}%
 		{\globaldefs=1
 		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
@@ -589,11 +629,6 @@
 	%
 %\message{I have now \meaning\pgfplotstabletypeset@final@colnames, and \meaning\pgfplotstabletypeset@final@cols.}%
 	% Step 1: column names.
-	\let\c@pgfplotstable@numcols=\c@pgf@counta
-	\let\c@pgfplotstable@numrows=\c@pgf@countd
-	\let\c@pgfplotstable@rowindex=\c@pgf@countc
-	\let\c@pgfplotstable@colindex=\c@pgf@countb
-	\pgfplotslistsize\pgfplotstabletypeset@final@colnames\to\c@pgfplotstable@numcols
 	\c@pgfplotstable@colindex=0\relax
 	% STEP 1.1: collect column types:
 	\def\pgfplotstable@resulttypes{}%
@@ -670,9 +705,9 @@
 				% Install styles for the next row.
 				\begingroup
 				\ifodd\c@pgfplotstable@rowindex
-					\pgfplotslist@TOK@a={every even row}%
-				\else
 					\pgfplotslist@TOK@a={every odd row}%
+				\else
+					\pgfplotslist@TOK@a={every even row}%
 				\fi
 				\ifnum\c@pgfplotstable@rowindex=0\relax
 					\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every first row}%
