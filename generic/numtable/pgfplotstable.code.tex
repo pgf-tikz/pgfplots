@@ -57,6 +57,38 @@
 	% columns={[index]2,name2,name3,[index]5}
 	/pgfplots/numeric table/columns/.initial=,
 	/pgfplots/numeric table/column name/.initial=\pgfkeysnovalue,
+	%
+	% this thing here allows to MODIFY 'column name'.
+	%
+	% Argument #1 is the current column name, that means after
+	% evaluating 'column name'. If this key changes anything, it
+	% should write its result back into 'column name'.
+	%
+	% That means you can use 'column name' to assign the name as such
+	% and 'assign column name' to generate final TeX code (for example
+	% to insert \multicolumn{1}{c}{#1} or so).
+	/pgfplots/numeric table/assign column name/.code={},
+	%
+	% A style which inserts \multicolumn{1}{#1}{<column name>} for
+	% each column name.
+	% The column name as such can be set with the 'column name' option.
+	/pgfplots/numeric table/multicolumn names/.style={%
+		/pgfplots/numeric table/assign column name/.code={%
+			\pgfkeyssetvalue{/pgfplots/numeric table/column name}{\multicolumn{1}{#1}{##1}}%
+		}%
+	},
+	/pgfplots/numeric table/multicolumn names/.default=c,
+	%
+	% A style which can be used together with the 'dcolumn' package by
+	% David Carlisle.
+	% #1: the dcolumn type, defaults to 'D{.}{.}{2}'
+	% #2: the column name type, defaults to 'c'
+	/pgfplots/numeric table/dcolumn/.style 2 args={%
+		/pgf/number format/assume math mode,
+		column type={#1},
+		multicolumn names=#2,
+	},
+	/pgfplots/numeric table/dcolumn/.default={D{.}{.}{2}}{c},
 	/pgfplots/numeric table/column type/.initial={c},
 	/pgfplots/numeric table/every table/.style={},
 	/pgfplots/numeric table/every even row/.style={},
@@ -174,6 +206,10 @@
 % LaTeX!
 %
 % You will need to reconfigure the tables.
+%
+% Inside of \pgfplotstabletypeset, the macros \pgfplotstablecol and
+% \pgfplotstablerow will expand to the current column index and row
+% index.
 \def\pgfplotstabletypeset{%
 	\pgfutil@ifnextchar[{%	
 		\pgfplotstabletypeset@opt
@@ -554,6 +590,12 @@
 	\pgfkeysvalueof{/pgfplots/numeric table/assign cell content/.@cmd}#1\pgfeov
 	\pgfkeysgetvalue{/pgfplots/numeric table/@cell content}{#2}%
 }%
+
+% processes the option 'assign column name'
+\def\pgfplotstabletypeset@assign@final@colname#1#2{%
+	\pgfkeysvalueof{/pgfplots/numeric table/assign column name/.@cmd}#1\pgfeov
+	\pgfkeysgetvalue{/pgfplots/numeric table/column name}{#2}%
+}
 \def\pgfplotstabletypeset@nocolname{\pgfkeysnovalue}
 
 % checks if #1 contains invalid chars for pgfkeys and sets
@@ -576,6 +618,10 @@
 %   directly -> group only the pgfkeys eval
 \def\pgfplotstabletypeset@opt[#1]#2{%
 	\begingroup
+	\def\pgfplotstablecol{\the\c@pgfplotstable@colindex}%
+	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
+%	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
+%	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
 	\pgfplotstableset{every table,#1}%
 	\pgfkeysgetvalue{/pgfplots/numeric table/columns}{\pgfplotstable@colnames}%
 	\ifx\pgfplotstable@colnames\pgfutil@empty
@@ -593,6 +639,7 @@
 	\pgfplotslistsize\pgfplotstable@colnames\to\c@pgfplotstable@numcols
 	\c@pgfplotstable@colindex=0\relax
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
+		\c@pgfplotstable@rowindex=0\relax
 		\pgfplotstabletypeset@is@colname\pgfplotstable@colname
 		\ifpgfplotstableread@foundcolnames
 		\else
@@ -626,6 +673,7 @@
 		\ifx\pgfplotstable@colname@out\pgfplotstabletypeset@nocolname
 			\let\pgfplotstable@colname@out=\pgfplotstable@colname
 		\fi
+		\expandafter\pgfplotstabletypeset@assign@final@colname\expandafter{\pgfplotstable@colname@out}\pgfplotstable@colname@out
 		{\globaldefs=1
 		\expandafter\pgfplotslistpushback\pgfplotstable@colname@out\to\pgfplotstabletypeset@final@colnames
 		}%
@@ -638,6 +686,7 @@
 		\pgfplotslistforeachungrouped\pgfplotstable@col\as\pgfplotstable@entry{%
 			\expandafter\pgfplotstabletypeset@getfinalentry\expandafter{\pgfplotstable@entry}{\pgfplotstable@entry}%
 			\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+			\advance\c@pgfplotstable@rowindex by1\relax
 		}%
 		{\globaldefs=1
 		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
@@ -672,7 +721,7 @@
 		\pgfplotslist@TOK@b=\expandafter{\pgfplotstable@resulttypes}%
 		\edef\pgfplotstable@result{\the\pgfplotslist@TOK@a{\the\pgfplotslist@TOK@b}}%
 	\fi
-	% Step 1.2: Collect FIRST ROW
+	% Step 1.2: Collect FIRST ROW (column names)
 	\begingroup
 	\pgfplotstableset{every head row}%
 	\pgfkeysgetvalue{/pgfplots/numeric table/before row}{\pgfplotstable@before}%
@@ -785,7 +834,6 @@
 	\pgfkeysgetvalue{/pgfplots/numeric table/end table}{\pgfplotstable@entry}%
 	\pgfplotslist@TOK@b=\expandafter{\pgfplotstable@entry}%
 	\edef\pgfplotstable@result{\the\pgfplotslist@TOK@a\the\pgfplotslist@TOK@b}%
-	\pgfplotstable@result
 	\pgfkeysgetvalue{/pgfplots/numeric table/outfile}{\pgfplotstable@entry}%
 	\ifx\pgfplotstable@entry\pgfutil@empty
 	\else
@@ -796,6 +844,7 @@
 		\immediate\closeout1
 		\endgroup
 	\fi
+	\pgfplotstable@result
 	\endgroup
 }%
 
