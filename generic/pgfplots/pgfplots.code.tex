@@ -402,6 +402,8 @@
 	/pgfplots/tickwidth/.store in=		\pgfplots@tickwidth,
 	/pgfplots/tickwidth/.belongs to family=/pgfplots/tick,
 	/pgfplots/tickwidth=0.15cm,
+	/pgfplots/minor tick num/.initial=0,
+	/pgfplots/minor tick num/.belongs to family=/pgfplots/tick,
 	/pgfplots/minor tick length/.estore in=\pgfplots@subtickwidth,
 	/pgfplots/minor tick length/.belongs to family=/pgfplots/tick,
 	/pgfplots/major tick length/.estore in=\pgfplots@tickwidth,
@@ -1368,6 +1370,21 @@
 		\ifpgfplots@yminorgrids
 			\pgfplots@needsminorlooptrue
 		\fi
+		\ifpgfplots@needsminorloop
+			\ifpgfplots@yislinear
+				\begingroup
+				\c@pgf@counta=\pgfplots@minor@tick@num\relax
+				\advance\c@pgf@counta by1\relax
+				\pgfplots@tmpb=\pgfplots@tick@distance@y pt
+				\divide\pgfplots@tmpb by\c@pgf@counta
+				\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpb}}%
+				\pgfmath@smuggleone\pgfmathresult
+				\endgroup
+				\let\pgfplots@minor@tick@dist=\pgfmathresult
+			\else
+				\def\pgfplots@minor@tick@num{9}%
+			\fi
+		\fi
 		\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 		\foreach \y in {#1} {	
 			\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\y}}%
@@ -1420,9 +1437,13 @@
 			% in log:
 			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
 			\ifpgfplots@needsminorloop
-				\foreach \i in {1,...,9} {
+				\foreach \i in {1,...,\pgfplots@minor@tick@num} {
 					% this code here is scoped inside of \foreach.
-					\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\logi\i}}%
+					\ifpgfplots@yislinear
+						\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\i*\pgfplots@minor@tick@dist}}%
+					\else
+						\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\logi\i}}%
+					\fi
 					\advance\pgfplots@tmpa by\pgfplots@tmpb
 					\ifdim\pgfplots@tmpa<\pgfplots@ycoordminTEX
 					\else
@@ -1665,6 +1686,21 @@
 		\ifpgfplots@xminorgrids
 			\pgfplots@needsminorlooptrue
 		\fi
+		\ifpgfplots@needsminorloop
+			\ifpgfplots@xislinear
+				\begingroup
+				\c@pgf@counta=\pgfplots@minor@tick@num\relax
+				\advance\c@pgf@counta by1\relax
+				\pgfplots@tmpb=\pgfplots@tick@distance@x pt
+				\divide\pgfplots@tmpb by\c@pgf@counta
+				\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpb}}%
+				\pgfmath@smuggleone\pgfmathresult
+				\endgroup
+				\let\pgfplots@minor@tick@dist=\pgfmathresult
+			\else
+				\def\pgfplots@minor@tick@num{9}%
+			\fi
+		\fi
 		\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 		\foreach \x in {#1} {	
 			\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\x}{0}}%
@@ -1716,8 +1752,13 @@
 			% in log:
 			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
 			\ifpgfplots@needsminorloop
-				\foreach \i in {1,...,9} {
-					\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\logi\i}{0}}%
+				\foreach \i in {1,...,\pgfplots@minor@tick@num} {
+	%				\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\logi\i}{0}}%
+					\ifpgfplots@yislinear
+						\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\i*\pgfplots@minor@tick@dist}{0}}%
+					\else
+						\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\logi\i}{0}}%
+					\fi
 					\advance\pgfplots@tmpa by\pgfplots@tmpb
 					\ifdim\pgfplots@tmpa<\pgfplots@xcoordminTEX
 					\else
@@ -3261,6 +3302,41 @@
 	\endgroup
 }
 
+% Checks whether the linear tick sequence #1 is a uniform tick.
+%
+% It also assigns pgfplots@tick@distance@#1  as the distance.
+%
+% see \pgfplots@checkisuniformLOGtick for details.
+\def\pgfplots@checkisuniformLINEARtick#1{%
+	\begingroup
+	\global\pgfplots@isuniformticktrue
+	\pgfplots@checkuniform@isfirsttrue
+	\global\let\pgfplots@TMPB=\pgfutil@empty
+	\global\let\pgfplots@TMP=\relax
+	\foreach \x in {#1}{%
+		\ifx\pgfplots@TMPB\pgfutil@empty
+		\else
+			\pgfmathsubtract@\x\pgfplots@TMPB
+			\ifpgfplots@checkuniform@isfirst
+				% remember first distance h = x_1 - x_0
+				\global\let\pgfplots@TMP=\pgfmathresult
+				\global\pgfplots@checkuniform@isfirstfalse
+			\else
+				% check whether x_i - x_{i-1} = h
+				\pgfmathapproxequalto@\pgfmathresult\pgfplots@TMP%
+				\ifpgfmathcomparison
+				\else
+					\global\pgfplots@isuniformtickfalse
+					\breakforeach
+				\fi
+			\fi
+		\fi
+		\global\let\pgfplots@TMPB=\x%
+	}%
+	\endgroup
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@TMP
+}
+
 \def\skipsuffixzero#1.#2|{
 	{%
 	\def\pgfplots@TMP{#2}%
@@ -3642,10 +3718,12 @@
 		\advance\MINH by\H
 %\pgfplots@message{final H=\the\H}%
 		\xdef\pgfplots@TMP{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
+		\xdef\pgfplots@TMPB{\pgf@sys@tonumber{\H}}%
 		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
 	\fi
 	\endgroup
 	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMP
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@TMPB
 %\pgfplots@message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1mode=\the\csname pgfplots@#1mode\endcsname,  #1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
 }
 
@@ -3935,11 +4013,16 @@
 	\pgfplots@float@numerics@mode@xfalse
 	\pgfplots@float@numerics@mode@yfalse
 	%
+	\pgfkeysgetvalue{/pgfplots/minor tick num}\pgfplots@minor@tick@num
 	\ifpgfplots@xislinear
-		\pgfplots@xminorticksfalse
+		\ifnum\pgfplots@minor@tick@num=0\relax
+			\pgfplots@xminorticksfalse
+		\fi
 	\fi
 	\ifpgfplots@yislinear
-		\pgfplots@yminorticksfalse
+		\ifnum\pgfplots@minor@tick@num=0\relax
+			\pgfplots@yminorticksfalse
+		\fi
 	\fi
 	%
 	\pgfplots@init@enlarge@limit@booleans
@@ -3980,6 +4063,12 @@
 	\fi
 	\ifpgfplots@determinedefaultvalues@needs@check@uniformtick
 		\ifpgfplots@xislinear
+			\expandafter\pgfplots@checkisuniformLINEARtick\expandafter{\pgfplots@xtick}%
+			\ifpgfplots@isuniformtick
+				\pgfplots@determinedefaultvalues@xisuniformtrue
+			\else
+				\pgfplots@determinedefaultvalues@xisuniformfalse
+			\fi
 		\else
 			\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@xtick}%
 			\ifpgfplots@isuniformtick
@@ -4002,6 +4091,12 @@
 	\fi
 	\ifpgfplots@determinedefaultvalues@needs@check@uniformtick
 		\ifpgfplots@yislinear
+			\expandafter\pgfplots@checkisuniformLINEARtick\expandafter{\pgfplots@ytick}%
+			\ifpgfplots@isuniformtick
+				\pgfplots@determinedefaultvalues@yisuniformtrue
+			\else
+				\pgfplots@determinedefaultvalues@yisuniformfalse
+			\fi
 		\else
 			\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@ytick}%
 			\ifpgfplots@isuniformtick
