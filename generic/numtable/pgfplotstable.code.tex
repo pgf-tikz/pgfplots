@@ -40,6 +40,9 @@
 \newwrite\pgfplotstable@outfile
 \newif\ifpgfplotstabletypesetdebug
 
+% should always be false; use only in grouped internal macros
+\newif\ifpgfplots@table@options@areset
+
 \input pgfplotstable.coltype.code.tex
 
 \pgfkeys{%
@@ -57,6 +60,13 @@
 	/pgfplots/table/y error index/.initial=,
 	/pgfplots/table/x error/.initial=,
 	/pgfplots/table/y error/.initial=,
+	/pgfplots/table/col sep/.is choice,
+	/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},
+	/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},
+	/pgfplots/table/col sep/semicolon/.code	= {\def\pgfplotstableread@COLSEP@CASE{2}},
+	/pgfplots/table/col sep/colon/.code		= {\def\pgfplotstableread@COLSEP@CASE{3}},
+	/pgfplots/table/col sep/braces/.code	= {\def\pgfplotstableread@COLSEP@CASE{4}},
+	/pgfplots/table/col sep=space,
 	% columns={name1,name2}
 	% or
 	% columns={[index]2,name2,name3,[index]5}
@@ -243,8 +253,13 @@
 }
 \def\pgfplotstabletypesetfile@opt[#1]#2{%
 	\begingroup
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplots@table@options@aresettrue
+		\pgfplotstableset{/pgfplots/table/every table,#1}%
+	\fi
 	\pgfplotstableread{#2}\pgfplotstabletypesetfile@opt@@
-	\pgfplotstabletypeset[#1]\pgfplotstabletypesetfile@opt@@
+	\pgfplotstabletypeset\pgfplotstabletypesetfile@opt@@
 	\endgroup
 }%
 
@@ -274,10 +289,9 @@
 
 \def\pgfplotstableread@impl@#1#2#3{%
 	\begingroup
-	\def\pgfplotstable@TMP{#1}%
-	\ifx\pgfplotstable@TMP\pgfutil@empty
+	\ifpgfplots@table@options@areset
 	\else
-		\pgfqkeys{/pgfplots/table}{#1}%
+		\pgfplotstableset{/pgfplots/table/every table,#1}%
 	\fi
 %\pgfplots@message{ATTEMPTING TO READ #2}%
 	\openin1=#2\relax
@@ -350,7 +364,8 @@
 			\ifnum\pgfplotstableread@numcols=0\relax
 				\pgfplotstableread@curcol=0\relax
 				\pgfplotstableread@curline@contains@colnamesfalse
-				\expandafter\pgfplotstableread@impl@countcols@and@identifynames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
+				%\expandafter\pgfplotstableread@impl@countcols@and@identifynames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 				\pgfplotstableread@numcols=\pgfplotstableread@curcol
 				\pgfplotstableread@curcol=0\relax
 				% Create empty column lists:
@@ -376,17 +391,20 @@
 				\ifpgfplotstableread@curline@contains@colnames
 					\pgfplotstableread@foundcolnamestrue
 					\pgfplotstableread@curcol=0\relax
-					\expandafter\pgfplotstableread@impl@collectcolnames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+					\pgfplotstableread@impl@DO\pgfplotstableread@impl@collectcolnames@NEXT\pgfplotstable@LINE
+					%\expandafter\pgfplotstableread@impl@collectcolnames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 				\else
 					\pgfplotstableread@foundcolnamesfalse
 					\pgfplotstableread@curcol=0\relax
 					% Leave column name lists empty...
-					\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+					\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+					%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 				\fi
 %\pgfplots@message{After reading first row: found '\the\pgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames'}%
 			\else
 				\pgfplotstableread@curcol=0\relax
-				\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+				%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 			\fi
 			\ifnum\pgfplotstableread@curcol=\pgfplotstableread@numcols
 			\else
@@ -451,32 +469,81 @@
 
 \def\pgfplotstable@EOI{\pgfplotstable@EOI}%
 
+%%%%%%%%%%%%%%%
 
-\def\pgfplotstableread@impl@nextrow@ITERATE{%
+% A loop command which processes every single entry in a raw data row #2 
+% and invokes the macro #1{<arg>}  for each found column entry.
+%
+% Columns are separated by the /pgfplots/table/col sep character.
+%
+% #1: a command which takes precisely one argument. It will be called
+% for each found column entry
+%
+% #2: a macro containing a raw data line with <col sep> separated
+% entries.
+\def\pgfplotstableread@impl@DO#1#2{%
+	\let\pgfplotstableread@impl@ITERATE@NEXT@=#1\relax
+	\ifcase\pgfplotstableread@COLSEP@CASE\relax
+		% SPACE:
+		\expandafter\pgfplotstableread@impl@ITERATE#2\pgfplotstable@EOI
+	\or
+		% COMMA:
+		\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@COMMA
+		\expandafter\pgfplotstableread@impl@ITERATE#2,\pgfplotstable@EOI
+	\or
+		% SEMICOLON:
+		\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@SEMICOLON
+		\expandafter\pgfplotstableread@impl@ITERATE#2;\pgfplotstable@EOI
+	\or
+		% COLON:
+		\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@COLON
+		\expandafter\pgfplotstableread@impl@ITERATE#2:\pgfplotstable@EOI
+	\or
+		% BRACE:
+		\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@BRACE
+		\expandafter\pgfplotstableread@impl@ITERATE#2\pgfplotstable@EOI
+	\fi
+}%
+\def\pgfplotstableread@impl@ITERATE{%
 	\pgfutil@ifnextchar\pgfplotstable@EOI{%
 		\pgfplotstableread@impl@gobble
 	}{%
-		\pgfplotstableread@impl@nextrow@NEXT
+		\pgfplotstableread@impl@ITERATE@NEXT
 	}%
-}
-\long\def\pgfplotstableread@impl@nextrow@NEXT#1 {%
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT#1 {%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@COMMA#1,{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@SEMICOLON#1;{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@COLON#1:{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@BRACE#1{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+%%%%%%%%%%%%
+
+
+\long\def\pgfplotstableread@impl@nextrow@NEXT#1{%
 %\pgfplots@message{Inserting '#1' at (\the\pgfplotstableread@lineno, \the\pgfplotstableread@curcol).}%
 	\def\pgfplotstableread@TMP{\pgfplotslistpushback#1\to}%
 	\expandafter\pgfplotstableread@TMP\csname numtable@col@\the\pgfplotstableread@curcol\endcsname
 	\advance\pgfplotstableread@curcol by1\relax
-	\pgfplotstableread@impl@nextrow@ITERATE
 }
 
 
 
-\def\pgfplotstableread@impl@collectcolnames@ITERATE{%
-	\pgfutil@ifnextchar\pgfplotstable@EOI{%
-		\pgfplotstableread@impl@gobble
-	}{%
-		\pgfplotstableread@impl@collectcolnames@NEXT
-	}%
-}
-\long\def\pgfplotstableread@impl@collectcolnames@NEXT#1 {%
+\long\def\pgfplotstableread@impl@collectcolnames@NEXT#1{%
 %\pgfplots@message{Got column name no \the\pgfplotstableread@curcol\ as '#1'}%
 	\pgfutil@ifundefined{pgfplotstableread@impl@COLNAME@#1}{%
 		\def\pgfplotstable@TMP{#1}%
@@ -487,22 +554,12 @@
 	\expandafter\def\csname pgfplotstableread@impl@COLNAME@#1\endcsname{foo}% remember this name.
 	\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@TMP}\to\pgfplotstable@colnames
 	\advance\pgfplotstableread@curcol by1\relax
-	\pgfplotstableread@impl@collectcolnames@ITERATE
 }
 
 
 
 
-\def\pgfplotstableread@impl@countcols@and@identifynames@ITERATE{%
-	\pgfutil@ifnextchar\pgfplotstable@EOI{%
-		\pgfplotstableread@impl@gobble
-	}{%
-		\pgfplotstableread@impl@countcols@and@identifynames@NEXT
-	}%
-}
-
-
-\long\def\pgfplotstableread@impl@countcols@and@identifynames@NEXT#1 {%
+\long\def\pgfplotstableread@impl@countcols@and@identifynames@NEXT#1{%
 	\advance\pgfplotstableread@curcol by1\relax
 	\ifpgfplotstable@search@header
 		\ifpgfplotstableread@curline@contains@colnames
@@ -511,7 +568,6 @@
 %\ifpgfplotstableread@curline@contains@colnames\pgfplots@message{'#1' is a column name!}\else\pgfplots@message{'#1' is NO column name!}\fi
 		\fi
 	\fi
-	\pgfplotstableread@impl@countcols@and@identifynames@ITERATE
 }
 \def\pgfplotstableread@isnumber@plus{+}
 \def\pgfplotstableread@isnumber@minus{-}
@@ -654,7 +710,10 @@
 	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
 %	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
 %	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
-	\pgfplotstableset{every table,#1}%
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset{/pgfplots/table/every table,#1}%
+	\fi
 	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
 	\ifx\pgfplotstable@colnames\pgfutil@empty
 		\pgfplotstablegetcolumnlist#2\to\pgfplotstable@colnames
