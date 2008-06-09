@@ -633,12 +633,14 @@
 	/pgfplots/stack dir/minus/.code={\pgfplots@stacked@plusfalse},
 	/pgfplots/stack dir/minus/.belongs to family=/pgfplots,
 	/pgfplots/stack dir=plus,
-	/pgfplots/xfilter/.store in=	\pgfplots@xfilter,
+	/pgfplots/x filter/.code={},
+	/pgfplots/x filter/.belongs to family=/pgfplots,
+	/pgfplots/y filter/.code={},
+	/pgfplots/y filter/.belongs to family=/pgfplots,
+	/pgfplots/xfilter/.initial=,% DEPRECATED
 	/pgfplots/xfilter/.belongs to family=/pgfplots,
-	/pgfplots/xfilter=,
-	/pgfplots/yfilter/.store in=	\pgfplots@yfilter,
+	/pgfplots/yfilter/.initial=,% DEPRECATED
 	/pgfplots/yfilter/.belongs to family=/pgfplots,
-	/pgfplots/yfilter=,
 	/pgfplots/width/.store in=		\pgfplots@width,
 	/pgfplots/width/.belongs to family=/pgfplots,
 	/pgfplots/width=,
@@ -2424,21 +2426,24 @@
 %\tracingmacros=0\tracingcommands=0
 }
 
+\def\pgfplots@invoke@xfilter#1{%
+	\pgfkeysvalueof{/pgfplots/x filter/.@cmd}#1\pgfeov%
+}%
+\def\pgfplots@invoke@yfilter#1{%
+	\pgfkeysvalueof{/pgfplots/y filter/.@cmd}#1\pgfeov%
+}%
+
 % #3= error for x coord (or empty)
 % #4= error for y coord (or empty)
 \def\pgfplots@process@one@point#1#2#3#4{%
-	\ifx\pgfplots@xfilter\pgfutil@empty
-		\def\pgfplots@current@point@x{#1}%
-	\else
-		\let\pgfplots@current@point@x=\pgfutil@empty
-		\pgfplots@xfilter#1\to\pgfplots@current@point@x
-	\fi
-	\ifx\pgfplots@yfilter\pgfutil@empty
-		\def\pgfplots@current@point@y{#2}%
-	\else
-		\let\pgfplots@current@point@y=\pgfutil@empty
-		\pgfplots@yfilter#2\to\pgfplots@current@point@y
-	\fi
+	\pgfplots@prepare@xcoord{#1}%
+	\expandafter\pgfplots@invoke@xfilter\expandafter{\pgfmathresult}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\pgfplots@prepare@ycoord{#2}%
+	\expandafter\pgfplots@invoke@yfilter\expandafter{\pgfmathresult}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
 	\ifx\pgfplots@current@point@x\pgfutil@empty
 		\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the x-coordinate filter.}%
 	\else
@@ -4893,6 +4898,17 @@
 % See also:
 %     \pgfplots@apply@data@scale@trafo@to@options@for
 \def\pgfplots@prepare@coord@filtering@for#1{%
+	\expandafter\def\csname pgfplots@prepare@#1coord\endcsname##1{%
+		\def\pgfmathresult{##1}%
+	}%
+	\pgfkeysgetvalue{/pgfplots/#1filter}\pgfplots@TMP
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\expandafter\let\csname pgfplots@#1filter@backwcompat\endcsname=\pgfplots@TMP
+		\pgfplots@toka={WARNING: /pgfplots/#1filter is deprecated. Please use /pgfplots/#1 filter/.code={\def\pgfmathresult{\#1}}}%
+		\pgfplots@warning{\the\pgfplots@toka}%
+		\pgfkeys{/pgfplots/#1 filter/.code={\csname pgfplots@#1filter@backwcompat\endcsname{##1}\to\pgfmathresult}}%
+	\fi
 	\csname pgfplots@float@numerics@mode@#1false\endcsname
 	\csname ifpgfplots@#1islinear\endcsname
 		\ifpgfplots@disabledatascaling
@@ -4953,25 +4969,30 @@
 				\expandafter\edef\csname pgfplots@extra@#1tick\endcsname{\pgfplots@TMP}%
 			\fi
 			%
-			\expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1filter\endcsname
-			\ifx\pgfplots@TMP\pgfutil@empty
-				\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
-					\pgfmathlog@{##1}%
-					\let##2=\pgfmathresult
-				}%
-			\else
-				\expandafter\let\csname pgfplots@#1filter@orig\endcsname=\pgfplots@TMP
-				\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
-					\pgfmathlog@{##1}%
-					\ifx\pgfmathresult\pgfutil@empty
-						\let##2=\pgfutil@empty
-					\else
-						\expandafter\expandafter\csname pgfplots@#1filter@orig\endcsname\pgfmathresult\to##2\relax
-					\fi
-				}%
-			\fi
-			\expandafter\let\expandafter\pgfplots@TMP\csname addplot@log@compute@#1filter\endcsname
-			\expandafter\let\csname pgfplots@#1filter\endcsname\pgfplots@TMP
+			\expandafter\def\csname pgfplots@prepare@#1coord\endcsname##1{%
+				\pgfmathlog@{##1}%
+			}%
+			%--------------------------------------------------
+			% \expandafter\let\expandafter\pgfplots@TMP\csname pgfplots@#1filter\endcsname
+			% \ifx\pgfplots@TMP\pgfutil@empty
+			% 	\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
+			% 		\pgfmathlog@{##1}%
+			% 		\let##2=\pgfmathresult
+			% 	}%
+			% \else
+			% 	\expandafter\let\csname pgfplots@#1filter@orig\endcsname=\pgfplots@TMP
+			% 	\expandafter\def\csname addplot@log@compute@#1filter\endcsname##1\to##2{%
+			% 		\pgfmathlog@{##1}%
+			% 		\ifx\pgfmathresult\pgfutil@empty
+			% 			\let##2=\pgfutil@empty
+			% 		\else
+			% 			\expandafter\expandafter\csname pgfplots@#1filter@orig\endcsname\pgfmathresult\to##2\relax
+			% 		\fi
+			% 	}%
+			% \fi
+			% \expandafter\let\expandafter\pgfplots@TMP\csname addplot@log@compute@#1filter\endcsname
+			% \expandafter\let\csname pgfplots@#1filter\endcsname\pgfplots@TMP
+			%-------------------------------------------------- 
 		\fi
 	\fi
 }
