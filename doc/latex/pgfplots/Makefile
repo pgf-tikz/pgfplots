@@ -11,6 +11,7 @@ pgfplotstable: pgfplotstable.pdf
 	@$(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
+	@echo ""
 	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
 	
 FORCE:
