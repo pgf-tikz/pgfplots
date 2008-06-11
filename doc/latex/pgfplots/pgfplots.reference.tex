@@ -658,6 +658,12 @@ The number is printed using the current number printing options, see section~\re
 	Inside of any of the axis environments, associated style, option or command, |\numplots| expands to the total number of  plots.
 \end{command}
 
+\begin{command}{\coordindex}
+	Inside of an |\addplot| command, this macro expands to the number of the actual coordinate (starting with~$0$).
+
+	It is useful together with |x filter| or |y filter| to (de-)select coordinates.
+\end{command}
+
 \begin{command}{\pgfplotstableread\marg{file}}
 	Please refer to the manual of \PGFPlotstable, |pgfplotstable.pdf|, which is part of the \PGFPlots-bundle.
 \end{command}
@@ -3154,6 +3160,8 @@ So far, the data scale transformation applies only to normal axis (logarithmic s
 \begin{pgfplotsxykey}{\x\ filter/.code=\marg{...}} % FIXME create a xycodekey environment
 The code keys |x filter| and |y filter| allow coordinate filtering. A coordinate filter gets an input coordinate as |#1|, applies some operation and writes the result into the macro |\pgfmathresult|. If |\pgfmathresult| is empty afterwards, the coordinate is discarded.
 
+It is allowed if filters do not |\pgfmathresult|. In this case, the unfiltered coordinate will be used.
+
 Coordinate filters are useful in automatic processing system, where \PGFPlots\ is used to display automatically generated plots. You may not want to filter your coordinates by hand, so these options provide a tool to do this automatically.
 
 The following filter adds $0.5$ to every $x$ coordinate.
@@ -3170,28 +3178,23 @@ The following filter adds $0.5$ to every $x$ coordinate.
 \end{codeexample}
 Please refer to~\cite[pgfmath manual]{tikz} for details about the math engine of \PGF. Please keep in mind that the math engine works with limited \TeX\ precision.
 
-%--------------------------------------------------
-% The following example uses \TeX\ comparisons to decided whether $\log(y) < -13$. If that is the case, the point is discarded.
-% \begin{codeexample}[]
-% \begin{tikzpicture}
-% \begin{loglogaxis}[y filter/.code={%
-% 	\ifdim#1pt<-13pt
-% 		\def\pgfmathresult{}%
-% 	\else
-% 		\def\pgfmathresult{#1}%
-% 	\fi}]
-% \addplot coordinates {
-% 	(100,1e-4)
-% 	(200,5e-5)
-% 	(400,2.5e-5)
-% 	(800,1e-6)
-% 	(1600,1e-7)
-% 	(3200,1e-8)
-% };
-% \end{loglogaxis}
-% \end{tikzpicture}
-% \end{codeexample}
-%-------------------------------------------------- 
+During evaluation of the filter, the macro |\coordindex| contains the number of the current coordinate (starting with~$0$). Thus, the following filter discards all coordinates after the $5$th and before the $10$th.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	samples=20,
+	x filter/.code={
+		\ifnum\coordindex>4\relax
+			\ifnum\coordindex<11\relax
+				\def\pgfmathresult{}
+			\fi
+		\fi
+	}]
+\addplot (\x,\x^2);
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+There is also a style key which simplifies selection by index, see below.
 
 	\PGFPlots\ invokes the filter with argument |#1| set to the input coordinate. For $x$-filters, this is the $x$-coordinate as it is specified to \lstinline!\addplot!, for $y$-filters it is the $y$-coordinate.
 
@@ -3199,6 +3202,21 @@ Please refer to~\cite[pgfmath manual]{tikz} for details about the math engine of
 
 	The arguments to coordinate filters are not transformed. You may need to call coordinate parsing routines.
 \end{pgfplotsxykey}
+
+\begin{stylekey}{/pgfplots/skip coords between index=\marg{begin}\marg{end}}
+	A style which appends an |x filter| which discards selected coordinates. The selection is done by index where indexing starts with~$0$, see |\coordindex|. Every coordinate with index $\meta{begin} \le i < \meta{end}$ will be skipped.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	samples=20,
+	skip coords between index={5}{11},
+	skip coords between index={15}{18}]
+
+\addplot (\x,\x^2);
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{stylekey}
 
 \begin{pgfplotskey}{execute at begin plot=\marg{commands}}
 This axis option allows to invoke \marg{commands} at the beginning of each \lstinline!\addplot! command. The argument \marg{commands} can be any \TeX\ content.
