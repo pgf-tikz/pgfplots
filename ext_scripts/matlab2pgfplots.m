@@ -17,6 +17,10 @@ function matlab2pgfplots(varargin )
 % Linestyles and markers will follow as an option. However, pgfplots has its
 % own line styles which may be appropriate.
 %
+% Although pgfplots can also handle bar and area plots, this script is not yet
+% capable of converting them. Feel free to modify it and send the final version
+% to me!
+%
 % OPTIONS are key value pairs. Known options are
 % - 'fig',HANDLE
 %		a figure handle (default is 'gcf').
@@ -32,6 +36,7 @@ function matlab2pgfplots(varargin )
 % See
 %   http://tug.ctan.org/tex-archive/graphics/pgf/contrib/pgfplots/
 % for details about pgfplots.
+%
 %
 %
 % Copyright Christian Feuersaenger 2008
