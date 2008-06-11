@@ -638,6 +638,15 @@
 	/pgfplots/x filter/.belongs to family=/pgfplots,
 	/pgfplots/y filter/.code={},
 	/pgfplots/y filter/.belongs to family=/pgfplots,
+	/pgfplots/skip coords between index/.style 2 args={%
+		/pgfplots/x filter/.append code={%
+			\ifnum\coordindex<#1\relax
+			\else
+				\ifnum\coordindex<#2\relax
+					\let\pgfmathresult=\pgfutil@empty
+				\fi
+			\fi}
+	},
 	/pgfplots/xfilter/.initial=,% DEPRECATED
 	/pgfplots/xfilter/.belongs to family=/pgfplots,
 	/pgfplots/yfilter/.initial=,% DEPRECATED
@@ -2221,6 +2230,8 @@
 % #2:  arguments to \addplot plot[] (these are set directly in \addplot)
 \def\pgfplots@start@plot@with@options#1#2{%
 	\begingroup
+	\def\pgfplots@current@point@coordindex{0}% can be used inside of coordinate filters.
+	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
 	\ifx\pgfplots@execute@at@begin@plot\pgfutil@empty
 	\else
 		\pgfplots@execute@at@begin@plot
@@ -2479,22 +2490,19 @@
 %\tracingmacros=0\tracingcommands=0
 }
 
-\def\pgfplots@invoke@xfilter#1{%
-	\pgfkeysvalueof{/pgfplots/x filter/.@cmd}#1\pgfeov%
-}%
-\def\pgfplots@invoke@yfilter#1{%
-	\pgfkeysvalueof{/pgfplots/y filter/.@cmd}#1\pgfeov%
+\def\pgfplots@invoke@filter#1#2{%
+	\pgfkeysvalueof{/pgfplots/#2 filter/.@cmd}#1\pgfeov%
 }%
 
 % #3= error for x coord (or empty)
 % #4= error for y coord (or empty)
 \def\pgfplots@process@one@point#1#2#3#4{%
 	\pgfplots@prepare@xcoord{#1}%
-	\expandafter\pgfplots@invoke@xfilter\expandafter{\pgfmathresult}%
+	\expandafter\pgfplots@invoke@filter\expandafter{\pgfmathresult}{x}%
 	\let\pgfplots@current@point@x=\pgfmathresult
 	%
 	\pgfplots@prepare@ycoord{#2}%
-	\expandafter\pgfplots@invoke@yfilter\expandafter{\pgfmathresult}%
+	\expandafter\pgfplots@invoke@filter\expandafter{\pgfmathresult}{y}%
 	\let\pgfplots@current@point@y=\pgfmathresult
 	%
 	\ifx\pgfplots@current@point@x\pgfutil@empty
@@ -2561,6 +2569,15 @@
 %\pgfplots@message{FILTERING: appended \pgfplots@current@point@x,\pgfplots@current@point@y}%  -> results in \pgfplots@coord@stream@recorded}%
 		\fi
 	\fi
+	%
+	% increase \pgfplots@current@point@coordindex:
+	\begingroup
+	\c@pgf@counta=\pgfplots@current@point@coordindex
+	\advance\c@pgf@counta by1\relax
+	\edef\pgfmathresult{\the\c@pgf@counta}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let\pgfplots@current@point@coordindex=\pgfmathresult
 }
 
 % Internal stream methods.
