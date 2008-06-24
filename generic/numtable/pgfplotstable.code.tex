@@ -46,6 +46,9 @@
 
 \input pgfplotstable.coltype.code.tex
 
+% keys which are NOT predefined:
+% /pgfplots/table/alias/<col alias>/.initial={<real col>}
+% /pgfplots/table/columns/<col name>/.style={}
 \pgfkeys{%
 	/pgfplots/table/header/.is if=pgfplotstable@search@header,
 	/pgfplots/table/header=true,
@@ -223,8 +226,25 @@
 
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
 	\pgfutil@ifundefined{\string#2@#1}{%
-		\pgfplots@error{Sorry, could not retrieve column '#1' from table...}%
-		\pgfplotslistnewempty#3
+		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
+		\ifpgfutil@in@
+			\def\pgfplotstable@TMP{/pgfplots/table/alias/{#1}}%
+		\else
+			\def\pgfplotstable@TMP{/pgfplots/table/alias/#1}%
+		\fi
+		\pgfkeysifdefined{\pgfplotstable@TMP}{%
+			\pgfkeysgetvalue{\pgfplotstable@TMP}{\pgfplotstable@TMPB}%
+			\let\pgfplotstable@TMP=\pgfplotstable@TMPB
+			\pgfutil@ifundefined{\string#2@\pgfplotstable@TMP}{%
+				\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@TMP' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
+				\pgfplotslistnewempty#3
+			}{%
+				\expandafter\let\expandafter#3\csname\string#2@\pgfplotstable@TMP\endcsname
+			}%
+		}{%
+			\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'.}%
+			\pgfplotslistnewempty#3
+		}%
 	}{%
 		\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
 	}%
@@ -240,11 +260,23 @@
 
 \def\pgfplotstablecopy#1\to#2{%
 	\let#2=#1%
+	\pgfplotstablegetname#2\pgfplotstable@TMP
+	\expandafter\let\csname\string#1@@table@name\endcsname=\pgfplotstable@TMP
 	\pgfplotslistforeachungrouped#1\as\pgfplotstable@TMP{%
 		\def\pgfplotstable@TMPB{%
 			\expandafter\let\csname\string#2@\pgfplotstable@TMP\endcsname}%
 		\expandafter\pgfplotstable@TMPB\csname\string#1@\pgfplotstable@TMP\endcsname
 	}%
+}
+
+% Returns the file name of table '#1' into macro #2.
+\def\pgfplotstablegetname#1#2{%
+	\expandafter\let\expandafter#2\csname\string#1@@table@name\endcsname
+}
+	
+% expands to the table file name of table '#1'
+\def\pgfplotstablenameof#1{%
+	\csname\string#1@@table@name\endcsname
 }
 
 % Typesets a table.
@@ -365,6 +397,7 @@
 	% Now, we can access the global variables!
 	% copy them to #3.
 	\let#3=\pgfplotstable@colnames
+	\expandafter\def\csname\string#3@@table@name\endcsname{#2}%
 	\c@pgfplotstable@counta=0\relax%
 	\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@TMP{%
 		\def\pgfplotstable@TMPB{%

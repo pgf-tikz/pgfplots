@@ -1900,7 +1900,7 @@
 \def\pgfplots@rememberplotspec#1{%
 	\begingroup
 	\globaldefs=1
-	\pgfplotslistpushback#1\to\pgfplots@plotspeclist
+	\pgfplotslistpushback{#1}\to\pgfplots@plotspeclist
 	\endgroup
 }
 
@@ -2185,7 +2185,15 @@
 	\ifpgfplotslistempty
 		\pgfplots@loop@CONTINUEfalse
 	\else
-		\pgfplots@loop@CONTINUEtrue
+		% This here is just for sanity checking: if the 'y' column is 
+		% - for whatever reasons - invalid; provide good error
+		%   recovery.
+		\pgfplotslistcheckempty\addplot@tbl@y
+		\ifpgfplotslistempty
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\pgfplots@loop@CONTINUEtrue
+		\fi
 	\fi
 	\ifpgfplots@loop@CONTINUE
 		\pgfplotslistpopfront\addplot@tbl@x\to\addplot@tbl@cur@x
@@ -2225,7 +2233,6 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@beginplot
 	\fi
-	\pgfplots@rememberplotspec{#1}%
 	\def\pgfplots@addplot@nonlegend@options{#2}%
 	\ifx\pgfplots@addplot@nonlegend@options\pgfutil@empty
 	\else
@@ -2260,54 +2267,63 @@
 	\expandafter\def\expandafter\pgfplots@coord@stream@end@\expandafter{%
 		\pgfplots@coord@stream@end@
 		\pgfplots@coord@stream@end@@
-		\pgfplots@end@plot
 	}%
 	\def\pgfplots@coord@stream@end@@{%
 		\ifpgfplots@errorbars@enabled
 			\pgfplots@streamerrorbarend
 		\fi
-		% Idea: use
-		%   \scope[plot specification]
-		%   <any paths for error bars>
-		%   \endscope
-		%   \draw plot coordinates {...};
-		% to share plot specifications between error bars and plot
-		% coordinates. Unfortunately, it is NOT sufficient to use
-		% \tikzset{#1}
-		\edef\pgfplots@TMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
-		\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP,#1,/pgfplots/every axis plot post}%
-		% Assemble a
-		% \pgfplots@addplot@enqueue@coords{}{}...{}
-		% statement with correct arguments:
-		\ifx\pgfplots@recordederrorbar\pgfutil@empty
-			\let\pgfplots@TMPB=\pgfutil@empty%
+		\ifpgfplots@coord@stream@isfirst
+			\pgfplots@warning{Warning: empty plot silently dropped.}%
 		\else
-			\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
-			\def\pgfplots@TMPB{%
-				\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
+			% Idea: use
+			%   \scope[plot specification]
+			%   <any paths for error bars>
+			%   \endscope
+			%   \draw plot coordinates {...};
+			% to share plot specifications between error bars and plot
+			% coordinates. Unfortunately, it is NOT sufficient to use
+			% \tikzset{#1}
+			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
+			\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+			% warning: rememberplotspec calls list macros which
+			% overwrite \pgfplotslist@TOK@a
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+			% ATTENTION: do NOT call list macros from here on!
+			%
+			% Assemble a
+			% \pgfplots@addplot@enqueue@coords{}{}...{}
+			% statement with correct arguments:
+			\ifx\pgfplots@recordederrorbar\pgfutil@empty
+				\let\pgfplots@TMPB=\pgfutil@empty%
+			\else
+				\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
+				\def\pgfplots@TMPB{%
+					\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
+				}%
+			\fi
+			\ifpgfplots@datascaletrafo@initialised
+				\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+				\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+			\else
+				\pgfplots@toka={}%
+			\fi
+			\edef\pgfplots@TMP{%
+				\noexpand\pgfplots@addplot@enqueue@coords
+				{
+					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
+					\noexpand\pgfplots@initzerolevelhandler
+					\the\pgfplots@toka% named start/end points
+					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
+					\pgfplots@TMPB% error bar commands
+				}%
+				{%
+					\noexpand\draw[current plot style]%
+				}%
 			}%
+			\expandafter\pgfplots@TMP\expandafter{\pgfplots@coord@stream@recorded #2;}%
+				{}%
+			\pgfplots@end@plot
 		\fi
-		\ifpgfplots@datascaletrafo@initialised
-			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
-			\pgfplots@toka=\expandafter{\pgfplots@TMP}%
-		\else
-			\pgfplots@toka={}%
-		\fi
-		\edef\pgfplots@TMP{%
-			\noexpand\pgfplots@addplot@enqueue@coords
-			{
-				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
-				\noexpand\pgfplots@initzerolevelhandler
-				\the\pgfplots@toka% named start/end points
-				\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
-				\pgfplots@TMPB% error bar commands
-			}%
-			{%
-				\noexpand\draw[current plot style]%
-			}%
-		}%
-		\expandafter\pgfplots@TMP\expandafter{\pgfplots@coord@stream@recorded #2;}%
-			{}%
 	}%
 }%
 
@@ -2578,9 +2594,9 @@
 %
 % FIXME: REPLACE THIS HERE WITH METHODS OF THE VISUALIZATION FRAMEWORK
 \newif\ifpgfplots@coord@stream@isfirst
-\def\pgfplots@coord@stream@start{
+\def\pgfplots@coord@stream@start{%
 	\pgfplots@coord@stream@isfirsttrue
-	\pgfplots@coord@stream@start@}
+	\pgfplots@coord@stream@start@}%
 \def\pgfplots@coord@stream@end{\pgfplots@coord@stream@end@}
 
 % Will be invoked for every point coordinate.
@@ -2597,10 +2613,22 @@
 	\ifpgfplots@coord@stream@isfirst
 		\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
 		\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
-		\pgfplots@coord@stream@isfirstfalse
+		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
+		\else
+			\ifx\pgfplots@currentplot@firstcoord@y\pgfutil@empty
+			\else
+				\pgfplots@coord@stream@isfirstfalse
+			\fi
+		\fi
 	\fi
-	\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
-	\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+	\else
+		\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
+	\fi
+	\ifx\pgfplots@current@point@y\pgfutil@empty
+	\else
+		\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+	\fi
 }%
 
 % A looping method which applies
@@ -5670,8 +5698,8 @@
 	\pgfplots@nextcommand
 }
 \def\endpgfplots@environment@opt{%
-	\pgfkeysvalueof{/pgfplots/before end axis/.@cmd}\pgfeov%
 	\xdef\numplots{\the\pgfplots@numplots}%
+	\pgfkeysvalueof{/pgfplots/before end axis/.@cmd}\pgfeov%
 	%
 	% restore old \path command:
 	\let\path=\pgfplots@orig@path
