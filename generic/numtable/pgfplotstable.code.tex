@@ -49,6 +49,7 @@
 % keys which are NOT predefined:
 % /pgfplots/table/alias/<col alias>/.initial={<real col>}
 % /pgfplots/table/columns/<col name>/.style={}
+% /pgfplots/table/columns/[index]<col index>/.style={}
 \pgfkeys{%
 	/pgfplots/table/header/.is if=pgfplotstable@search@header,
 	/pgfplots/table/header=true,
@@ -73,6 +74,42 @@
 					\pgfplotstableuserowfalse
 				\fi
 			\fi}
+	},
+	/pgfplots/table/select equal part entry of/.style 2 args={%
+		/pgfplots/table/row predicate/.code={%
+			\pgfplotstableuserowtrue
+			\begingroup
+			% this group re-uses counters as temporary variables.
+			\c@pgfplotstable@colindex=\pgfplotstablerows\relax
+			\divide\c@pgfplotstable@colindex by#2\relax
+			\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
+			%--------------------------------------------------
+			% % This here should create empty cells such that
+			% % remaining entries are spread
+			% \c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
+			% \multiply\c@pgfplotstable@rowindex by#2\relax
+			% \ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
+			% 	\c@pgfplotstable@colindex=\pgfplotstablerows\relax
+			% 	\advance\c@pgfplotstable@colindex by-\c@pgfplotstable@rowindex
+			% 	\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize				
+			% 	\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
+			% 	\c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
+			% 	\multiply\c@pgfplotstable@rowindex by#2\relax
+			% 	\xdef\pgfplotstablerows{\the\c@pgfplotstable@rowindex}% communicate total number of modified rows here!
+			% \fi
+			%-------------------------------------------------- 
+			\multiply\c@pgfplotstable@colindex by#1\relax
+			\ifnum##1<\c@pgfplotstable@colindex\relax
+				\aftergroup\pgfplotstableuserowfalse
+			\else
+				\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize\relax
+				\ifnum##1<\c@pgfplotstable@colindex\relax
+				\else
+					\aftergroup\pgfplotstableuserowfalse
+				\fi
+			\fi
+			\endgroup
+		}%
 	},
 	/pgfplots/table/col sep/.is choice,
 	/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},
@@ -789,8 +826,8 @@
 	%-------------------------------------------------- 
 	\def\pgfplotstablecol{\the\c@pgfplotstable@colindex}%
 	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
-%	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
-%	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
+	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
+	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
 	\ifpgfplots@table@options@areset
 	\else
 		\pgfplotstableset{/pgfplots/table/every table,#1}%
@@ -809,6 +846,7 @@
 	\let\c@pgfplotstable@rowindex=\c@pgf@countc
 	\let\c@pgfplotstable@colindex=\c@pgf@countb
 	\pgfplotslistsize\pgfplotstable@colnames\to\c@pgfplotstable@numcols
+	\c@pgfplotstable@numrows=-1\relax
 	\c@pgfplotstable@colindex=0\relax
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
 		\c@pgfplotstable@rowindex=0\relax
@@ -819,6 +857,16 @@
 		\fi
 		\pgfplotstablegetcolumnbyname\pgfplotstable@colname\of#2\to\pgfplotstable@col
 		%
+		% Init number of *input* rows here. This may not be the same
+		% as the number of *output* rows (see the row predicate
+		% below).
+		%
+		% Accessable with \pgfplotstablerows in style keys.
+		\ifnum\c@pgfplotstable@numrows=-1\relax
+			\pgfplotslistsize\pgfplotstable@col\to\c@pgfplotstable@numrows
+			\global\c@pgfplotstable@numrows=\c@pgfplotstable@numrows
+		\fi
+		%
 		% Set keys for columns!
 		\ifodd\c@pgfplotstable@colindex
 			\pgfplotslist@TOK@a={every odd column}%
@@ -828,6 +876,9 @@
 		\ifnum\c@pgfplotstable@colindex=0\relax
 			\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every first column}%
 		\fi
+		\edef\pgfplotstable@TMP{\the\pgfplotslist@TOK@a,columns/{[index]\the\c@pgfplotstable@colindex}/.try,column indices/\the\c@pgfplotstable@colindex/.try}%
+		\pgfplotslist@TOK@a=\expandafter{\pgfplotstable@TMP}%
+		%
 		\global\advance\c@pgfplotstable@colindex by1\relax
 		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
 			\pgfplotslist@TOK@a=\expandafter{\the\pgfplotslist@TOK@a,every last column}%
@@ -865,6 +916,13 @@
 			\fi
 			\advance\c@pgfplotstable@rowindex by1\relax
 		}%
+		%--------------------------------------------------
+		% \pgfutil@loop
+		% \ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
+		% 	\pgfplotslistpushback\to\pgfplotstable@col@processed
+		% 	\advance\c@pgfplotstable@rowindex by1\relax
+		% \pgfutil@repeat
+		%-------------------------------------------------- 
 		{\globaldefs=1
 		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
 		}%
