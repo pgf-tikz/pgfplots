@@ -83,21 +83,17 @@
 			\c@pgfplotstable@colindex=\pgfplotstablerows\relax
 			\divide\c@pgfplotstable@colindex by#2\relax
 			\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
-			%--------------------------------------------------
-			% % This here should create empty cells such that
-			% % remaining entries are spread
-			% \c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
-			% \multiply\c@pgfplotstable@rowindex by#2\relax
-			% \ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
-			% 	\c@pgfplotstable@colindex=\pgfplotstablerows\relax
-			% 	\advance\c@pgfplotstable@colindex by-\c@pgfplotstable@rowindex
-			% 	\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize				
-			% 	\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
-			% 	\c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
-			% 	\multiply\c@pgfplotstable@rowindex by#2\relax
-			% 	\xdef\pgfplotstablerows{\the\c@pgfplotstable@rowindex}% communicate total number of modified rows here!
-			% \fi
-			%-------------------------------------------------- 
+			% This here should create empty cells such that
+			% remaining entries are distributed equally:
+			\c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
+			\multiply\c@pgfplotstable@rowindex by#2\relax
+			\ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
+				\c@pgfplotstable@colindex=\pgfplotstablerows\relax
+				\advance\c@pgfplotstable@colindex by-\c@pgfplotstable@rowindex
+				\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize				
+				\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
+			\fi
+			%
 			\multiply\c@pgfplotstable@colindex by#1\relax
 			\ifnum##1<\c@pgfplotstable@colindex\relax
 				\aftergroup\pgfplotstableuserowfalse
@@ -157,8 +153,13 @@
 		},%
 		/pgfplots/table/column type={>{$}r<{$}@{}>{$}l<{$}},
 		/pgfplots/table/assign cell content/.code={%
-			\pgfmathprintnumberto{##1}\pgfmathresult%
-			\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+			\def\pgfmathresult{##1}%
+			\ifx\pgfmathresult\pgfutil@empty
+				\pgfutil@in@false
+			\else
+				\pgfmathprintnumberto{##1}\pgfmathresult%
+				\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+			\fi
 			\ifpgfutil@in@
 			\else
 				\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult&}%
@@ -202,14 +203,22 @@
 	% #1: the cells content as it has been found in the input table
 	% this command key should somehow fill |cell content|.
 	/pgfplots/table/assign cell content/.code={%
-		\pgfmathprintnumberto{#1}\pgfmathresult%
+		\def\pgfmathresult{#1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfmathprintnumberto{#1}\pgfmathresult%
+		\fi
 		\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
 	},
 	%
 	% this here is the default formatting. It uses
 	% \pgfmathprintnumber.
 	/pgfplots/table/assign cell content as number/.code={%
-		\pgfmathprintnumberto{#1}\pgfmathresult%
+		\def\pgfmathresult{#1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfmathprintnumberto{#1}\pgfmathresult%
+		\fi
 		\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
 	},
 	/pgfplots/table/string type/.style={%
@@ -813,6 +822,17 @@
 
 }%
 
+\def\pgfplotstable@insertemptycells@forbalance{%
+	\pgfutil@loop
+	\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
+		% let's hope @getfinalentry handles empty strings!
+		\pgfplotstabletypeset@getfinalentry{}{\pgfplotstable@entry}%
+		\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+		\pgfplotslistpushback\to\pgfplotstable@col@processed
+		\advance\c@pgfplotstable@counta by1\relax
+	\pgfutil@repeat
+}
+
 % TODO
 % - replace grouped list foreach by popfront-loop and use arrays
 %   directly -> group only the pgfkeys eval
@@ -846,6 +866,7 @@
 	\let\c@pgfplotstable@rowindex=\c@pgf@countc
 	\let\c@pgfplotstable@colindex=\c@pgf@countb
 	\pgfplotslistsize\pgfplotstable@colnames\to\c@pgfplotstable@numcols
+	\def\pgfplotstable@firstnumrows{-1}%
 	\c@pgfplotstable@numrows=-1\relax
 	\c@pgfplotstable@colindex=0\relax
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
@@ -909,23 +930,35 @@
 		}%
 		%
 		\pgfplotslistnewempty\pgfplotstable@col@processed
+		\c@pgfplotstable@counta=0 
 		\pgfplotslistforeachungrouped\pgfplotstable@col\as\pgfplotstable@entry{%
 			\pgfplotstableuserowtrue
 			\edef\pgfplotstable@TMP{\noexpand\pgfkeysvalueof{/pgfplots/table/row predicate/.@cmd}\the\c@pgfplotstable@rowindex}%
 			\pgfplotstable@TMP\pgfeov
 			\ifpgfplotstableuserow
-				\expandafter\pgfplotstabletypeset@getfinalentry\expandafter{\pgfplotstable@entry}{\pgfplotstable@entry}%
-				\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+				\ifnum\pgfplotstable@firstnumrows=-1\relax
+				\else
+					\ifnum\c@pgfplotstable@counta=\pgfplotstable@firstnumrows
+						\pgfplotslist@TOK@a=\expandafter{\pgfplotstable@entry}%
+						\pgfplotslist@TOK@b=\expandafter{\pgfplotstable@colname@out}%
+						\pgfplots@warning{Unbalanced cell with content '\the\pgfplotslist@TOK@a' of column '\the\pgfplotslist@TOK@b' has been skipped: row count \the\c@pgfplotstable@counta+1 > \pgfplotstable@firstnumrows (which is the number of rows in the first column)}%
+						\pgfplotstableuserowfalse
+					\fi
+				\fi
+				\ifpgfplotstableuserow
+					\expandafter\pgfplotstabletypeset@getfinalentry\expandafter{\pgfplotstable@entry}{\pgfplotstable@entry}%
+					\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+					\advance\c@pgfplotstable@counta by1\relax
+				\fi
 			\fi
 			\advance\c@pgfplotstable@rowindex by1\relax
 		}%
-		%--------------------------------------------------
-		% \pgfutil@loop
-		% \ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
-		% 	\pgfplotslistpushback\to\pgfplotstable@col@processed
-		% 	\advance\c@pgfplotstable@rowindex by1\relax
-		% \pgfutil@repeat
-		%-------------------------------------------------- 
+		\ifnum\pgfplotstable@firstnumrows=-1\relax
+			\xdef\pgfplotstable@firstnumrows{\the\c@pgfplotstable@counta}%
+		\else
+			% balance columns:
+			\pgfplotstable@insertemptycells@forbalance
+		\fi
 		{\globaldefs=1
 		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
 		}%
@@ -1028,6 +1061,8 @@
 		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
 		\pgfplotslistcheckempty\pgfplotstable@col@processed
 		\ifpgfplotslistempty
+			% assume that each column has the same number of entries
+			% (normalised tables):
 			\pgfplots@loop@CONTINUEfalse
 		\else
 			\ifnum\c@pgfplotstable@colindex=0\relax
