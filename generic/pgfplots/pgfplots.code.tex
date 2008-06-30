@@ -61,6 +61,7 @@
 \newif\ifpgfplots@xmajorgrids
 \newif\ifpgfplots@yminorgrids
 \newif\ifpgfplots@ymajorgrids
+\newif\ifpgfplots@separate@axis@lines
 \newif\ifpgfplots@scaled@ticks
 \newif\ifpgfplots@identify@log@minor@tick@pos
 \newif\ifpgfplots@disablelogfilter
@@ -240,22 +241,32 @@
 	/pgfplots/every tick/.style={very thin,gray},
 	/pgfplots/every tick/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every tick}},
 	/pgfplots/every tick/.belongs to family=/pgfplots/style commands,
-	/pgfplots/inner axis line style/.style={
-		/pgfplots/every inner x axis line/.append style={#1},
-		/pgfplots/every inner y axis line/.append style={#1}%
-	},
 	/pgfplots/every inner x axis line/.style={},
 	/pgfplots/every inner y axis line/.style={},
+	/pgfplots/every outer x axis line/.style={},
+	/pgfplots/every outer y axis line/.style={},
+	/pgfplots/x axis line style/.style={
+		/pgfplots/every outer x axis line/.append style={#1},
+		/pgfplots/every inner x axis line/.append style={#1},
+	},
+	/pgfplots/y axis line style/.style={
+		/pgfplots/every outer y axis line/.append style={#1},
+		/pgfplots/every inner y axis line/.append style={#1},
+	},
 	/pgfplots/outer axis line style/.style={
 		/pgfplots/every outer x axis line/.append style={#1},
 		/pgfplots/every outer y axis line/.append style={#1}%
+	},
+	/pgfplots/inner axis line style/.style={
+		/pgfplots/every inner x axis line/.append style={#1},
+		/pgfplots/every inner y axis line/.append style={#1}%
 	},
 	/pgfplots/axis line style/.style={
 		/pgfplots/inner axis line style={#1},
 		/pgfplots/outer axis line style={#1}%
 	},
-	/pgfplots/every outer x axis line/.style={},
-	/pgfplots/every outer y axis line/.style={},
+	/pgfplots/separate axis lines/.is if=pgfplots@separate@axis@lines,
+	/pgfplots/separate axis lines/.default=true,
 	/pgfplots/every minor tick/.style={},
 	/pgfplots/every minor tick/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every minor tick}},
 	/pgfplots/every minor tick/.belongs to family=/pgfplots/style commands,
@@ -1611,7 +1622,69 @@
 	\fi
 }%
 
-\def\pgfplots@drawaxis@outerlines{%
+% Ok, we don't mind whether edges with thick lines look ugly. We just
+% draw separate lines. This here is necessary if we want arrow heads.
+\def\pgfplots@drawaxis@outerlines@separate{%
+	\ifpgfplots@hide@x
+	\else
+		\begin{scope}[/pgfplots/every outer x axis line,
+			xdiscont,decoration={pre length=\xdisstart, post length=\xdisend}]
+		\ifcase\pgfplots@xaxislinesnum
+			\draw decorate { 
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordminTEX) 
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordminTEX) };
+			\draw decorate {
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordmaxTEX)
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordmaxTEX) };
+
+		\or
+			\draw decorate { 
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordminTEX) 
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordminTEX) };
+		\or 
+		\or
+			\draw decorate {
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordmaxTEX)
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordmaxTEX) };
+
+		\fi
+		\end{scope}
+	\fi
+	\ifpgfplots@hide@y
+	\else
+		\begin{scope}[/pgfplots/every outer y axis line,
+			ydiscont,decoration={pre length=\ydisstart, post length=\ydisend}]
+		\ifcase\pgfplots@yaxislinesnum
+			\draw decorate { 
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordminTEX) 
+				--	(\pgfplots@xcoordminTEX,\pgfplots@ycoordmaxTEX) };
+			\draw decorate {
+					(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordminTEX)
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordmaxTEX) };
+
+		\or
+			\draw decorate { 
+					(\pgfplots@xcoordminTEX,\pgfplots@ycoordminTEX) 
+				--	(\pgfplots@xcoordminTEX,\pgfplots@ycoordmaxTEX) };
+		\or 
+		\or
+			\draw decorate {
+					(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordminTEX)
+				--	(\pgfplots@xcoordmaxTEX,\pgfplots@ycoordmaxTEX) };
+
+		\fi
+		\end{scope}
+	\fi
+}%
+
+% This here is complicated: we try to create good edges and draw a
+% SINGLE path for the partial or complete rectangle
+%
+%  -----
+%  |   |
+%  |   |
+%  -----
+\def\pgfplots@drawaxis@outerlines@cycledpath{%
 	\draw[
 		/pgfplots/every outer x axis line, % FIXME! these outer styles need much more attention :-(
 		/pgfplots/every outer y axis line]
@@ -1657,6 +1730,14 @@
 	\fi% can't use cycle here!
 \fi
 	; %	-- cycle;
+}%
+
+\def\pgfplots@drawaxis@outerlines{%
+	\ifpgfplots@separate@axis@lines
+		\pgfplots@drawaxis@outerlines@separate
+	\else
+		\pgfplots@drawaxis@outerlines@cycledpath
+	\fi
 }%
 
 \def\pgfplots@drawaxis@lines{%

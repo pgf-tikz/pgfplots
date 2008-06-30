@@ -1,20 +1,140 @@
 \section{Import/Export from other formats}
-There are two (experimental) scripts which may be used to generate \LaTeX-code with plot coordinates or to simplify format conversion. They are not necessary to run \PGFPlots.
+This section contains information of how to single pictures into separate \pdf\ graphics files (or \eps\ graphics files). Furthermore, it explains a matlab (tm) script which allows to convert from matlab to \PGFPlots.
 
-\subsection{pgf2pdf.sh}
-This is a unix \texttt{bash}--script which attempts to simplify the workflow of creating PDF-Dokuments for single plots.
+\subsection{Export to \pdf/\eps}
+It is possible to export images to single \pdf-documents using routines of \pgfname\ and/or \Tikz.
 
-\PGF\ provides a method to externalize graphics, meaning to write specific portions of the \LaTeX-file to separate PDF/EPS-files. The script pgf2pdf.sh assumes that portions which need externalization are in files `\texttt{.pgf}' and should be converted to PDF/EPS. Two ways are supported: 
+\subsubsection{Using the Externalization framework of \pgfname\ ``by hand''}
+The first way to export \TeX-pictures to single graphics files is to use the externalization framework of \pgfname.
+The basic idea is to encapsulate the desired parts with
+
+|\beginpgfgraphicnamed|\marg{output file name}
+
+\meta{picture contents}
+
+|\endpgfgraphicnamed|. 
+
+\noindent Furthermore, one needs to tell \pgfname\ the name of the main document using
+
+|\pgfrealjobname|\marg{the real job's name}
+
+\noindent in the preamble. This enables two different modes: 
 \begin{enumerate}
-	\item Run \LaTeX\ on the complete document and write only the portion of interest,
-	\item Run \LaTeX\ \emph{only} on the `\texttt{.pgf}'-file. This mode requires a \TeX-file which defines all required commands and includes all required packages (a header).
-\end{enumerate}
+	\item The first is the normal typesetting mode. \LaTeX\ checks whether a file named \marg{output file name} with one of the accepted file extensions exists -- if that is the case, the graphics file is included with |\pgfimage| and the \meta{picture contents} is skipped. If no such file exists, the \meta{picture contents} is typeset normally. This mode is applied if |\jobname| equals \marg{the real job's name}.
+	\item The second mode applies if |\jobname| equals \marg{output file name}, it initiases the ``conversion mode'' which is used to write the graphics file \marg{output file name}. In this case, \emph{only} \meta{picture contents} is written to |\jobname|, the complete rest of the \LaTeX\ is processed as normal, but it is silently discarded.
 
-If you are interested in externalized graphics, you should read\cite[Section~54]{tikz}. You may also type
-\begin{lstlisting}
-	pgf2pdf.sh --help.
-\end{lstlisting}
-This script is experimental.
+	This mode needs to be started manually with |pdflatex --jobname |\meta{output file name} for every externalized graphics file.
+\end{enumerate}
+A complete example may look as follows.
+\begin{codeexample}[code only]
+\documentclass{article}
+
+\usepackage{pgfplots}
+
+\pgfrealjobname{test}
+
+\begin{document}
+	\begin{figure}
+		\beginpgfgraphicnamed{testfigure}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot (\x,\x^2);
+		\end{axis}
+		\end{tikzpicture}
+		\endpgfgraphicnamed
+	\caption{Our first external graphics example}
+	\end{figure}
+
+	\begin{figure}
+		\beginpgfgraphicnamed{testfigure2}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot (\x,\x^3);
+		\end{axis}
+		\end{tikzpicture}
+		\endpgfgraphicnamed
+	\caption{A second graphics}
+	\end{figure}
+\end{document}
+\end{codeexample}
+\noindent The file is named |test.tex|, and it is processed (for example) with
+\begin{codeexample}[code only]
+pdflatex test	
+\end{codeexample}
+\noindent Now, we type
+\begin{codeexample}[code only]
+pdflatex --jobname testfigure test	
+pdflatex --jobname testfigure2 test	
+\end{codeexample}
+\noindent to enter conversion mode. This last calls will \emph{only} write the contents of our named graphics environments, one for \marg{testfigure} and one for \marg{testfigure2} into the respective output files |testfigure.pdf| and |testfigure2.pdf|.
+
+In summary, one needs |\pgfrealjobname| and calls |pdflatex --jobname |\marg{graphics file} for every externalized graphics environment. Please note that it is absolutely necessary to use the syntax above, \emph{not} |\begin{pgfgraphicnamed}|.
+
+These steps are explained in much more detail in Section``Externalizing Graphics'' of~\cite{tikz}.  This reference also contains information about how to typeset such a document without \pgfname\ installed.
+
+I once attempted to write a unix \texttt{bash}--script |pgf2pdf.sh| which simplifies these steps in case that every externalized graphics environment is placed into a separate file |.pgf|. Interested readers find it in the installation tree.
+
+\subsubsection{Using the automatic Externalization framework of \Tikz}
+It is also possible to externalize graphics with the high-level library
+
+|\usetikzlibrary{external}|
+
+\noindent which comes with (recent versions of) \Tikz\footnote{At the time of this writing, it is only available in the CVS~$2.0$ version of \pgfname, sorry.}. It is a front-end for |\beginpgfgraphicnamed| which automatically encapsulates every picture in your document with the required externalization commands and performs commands to generate all required graphics files.
+\begin{enumerate}
+	\item Every |\begin{tikzpicture}| $\dotsc$ |\end{tikzpicture}| gets a file name. The file name can be assigned manually with |\tikzsetnextfilename|\marg{output file name} or automatically, in which case \meta{tex file name}|-figure|\meta{number} is used with an increasing \meta{number}.
+	
+	\item The library issues the required calls to |pdflatex --jobname |\marg{output file name} automatically, using the write18 system call of \TeX. It is the same framework which can be used to call |gnuplot|.
+\end{enumerate}
+The only steps which are necessary is to use
+
+|\tikzexternalize|\marg{the job's real file name}
+
+\noindent as above. No further modification to the document is necessary. Now, the example file |test.tex| of the last subsection reads as follows:
+\begin{codeexample}[code only]
+\documentclass{article}
+
+\usepackage{pgfplots}
+
+\usetikzlibrary{external}
+\tikzexternalize{test}
+
+\begin{document}
+	\begin{figure}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot (\x,\x^2);
+		\end{axis}
+		\end{tikzpicture}
+	\caption{Our first external graphics example}
+	\end{figure}
+
+	\begin{figure}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot (\x,\x^3);
+		\end{axis}
+		\end{tikzpicture}
+	\caption{A second graphics}
+	\end{figure}
+\end{document}
+\end{codeexample}
+\noindent To enable the system calls, we type
+\begin{codeexample}[code only]
+pdflatex --shell-escape test
+\end{codeexample}
+\noindent and \LaTeX\ will now generate the required graphics files |test-figure0.pdf| and |test-figure1.pdf| automatically.
+
+The command |\tikzset{external/force remake}| somewhere in the document can be used to remake every following picture automatically. Of course, it is also possible to simply delete every figure.
+
+The library can also be configured to produce a list of figures in case system calls are undesired (or unavailable). In that case, |pdflatex --jobname |\marg{output file name} needs to be invoked for every file name listed in \marg{real file name}|.figlist|. This step can be done within a script.
+
+The command |\tikzsetexternalprefix|\marg{file prefix} can be used to prepend a directory name to every figure, for example with
+\begin{codeexample}[code only]
+\tikzsetexternalprefix{figures/}
+\end{codeexample}
+\noindent to produce |figures/test-figure0.pdf| and |figures/test-figure1.pdf| in our example.
+
+The complete reference documentation and remaining options are documented in the documentation for the ``PDF externalization library'' of~\cite{tikz}. This reference also contains information about how to typeset such a document without \pgfname\ installed.
 
 \subsection{matlab2pgfplots.m}
 This is a matlab (tm) script which attempts to convert a matlab figure to \PGFPlots.
