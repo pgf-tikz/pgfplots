@@ -50,6 +50,7 @@
 % /pgfplots/table/alias/<col alias>/.initial={<real col>}
 % /pgfplots/table/columns/<col name>/.style={}
 % /pgfplots/table/display columns/<col index>/.style={}
+% /pgfplots/table/create on use/<col name>/.style={create options}
 \pgfkeys{%
 	/pgfplots/table/header/.is if=pgfplotstable@search@header,
 	/pgfplots/table/header=true,
@@ -388,24 +389,44 @@
 
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
 	\pgfutil@ifundefined{\string#2@#1}{%
+		% Oh, there is no column '#1' in table '#2'!
+		%
+		% Ok, then check for the 'create on use' and the 'alias'
+		% features...
+		% 1. create on use:
 		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
+		%
 		\ifpgfutil@in@
-			\def\pgfplotstable@TMP{/pgfplots/table/alias/{#1}}%
+			\def\pgfplotstable@TMP{/pgfplots/table/create on use/{#1}}%
 		\else
-			\def\pgfplotstable@TMP{/pgfplots/table/alias/#1}%
+			\def\pgfplotstable@TMP{/pgfplots/table/create on use/#1}%
 		\fi
-		\pgfkeysifdefined{\pgfplotstable@TMP}{%
-			\pgfkeysgetvalue{\pgfplotstable@TMP}{\pgfplotstable@TMPB}%
-			\let\pgfplotstable@TMP=\pgfplotstable@TMPB
-			\pgfutil@ifundefined{\string#2@\pgfplotstable@TMP}{%
-				\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@TMP' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
-				\pgfplotslistnewempty#3
-			}{%
-				\expandafter\let\expandafter#3\csname\string#2@\pgfplotstable@TMP\endcsname
-			}%
+		\pgfkeysifdefined{\pgfplotstable@TMP/.@cmd}{%	
+			% aah - a 'create on use' style exists. Apply it!
+			\expandafter\pgfplotstablecreatecol\expandafter[\pgfplotstable@TMP]{#1}{#2}%
+			% and return the newly generated col:
+			\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
 		}{%
-			\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}%
-			\pgfplotslistnewempty#3
+			% ok, then it is either an alias or it is simply not
+			% existant.
+			\ifpgfutil@in@
+				\def\pgfplotstable@TMP{/pgfplots/table/alias/{#1}}%
+			\else
+				\def\pgfplotstable@TMP{/pgfplots/table/alias/#1}%
+			\fi
+			\pgfkeysifdefined{\pgfplotstable@TMP}{%
+				\pgfkeysgetvalue{\pgfplotstable@TMP}{\pgfplotstable@TMPB}%
+				\let\pgfplotstable@TMP=\pgfplotstable@TMPB
+				\pgfutil@ifundefined{\string#2@\pgfplotstable@TMP}{%
+					\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@TMP' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
+					\pgfplotslistnewempty#3
+				}{%
+					\expandafter\let\expandafter#3\csname\string#2@\pgfplotstable@TMP\endcsname
+				}%
+			}{%
+				\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}%
+				\pgfplotslistnewempty#3
+			}%
 		}%
 	}{%
 		\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
@@ -1323,7 +1344,8 @@
 		\expandafter\pgfplotslistnew\expandafter\pgfplotstable@colnames\expandafter{\pgfplotstable@colnames}%
 	\fi
 	\pgfplotslistnewempty\pgfplotstable@colnames@real
-	\def\pgfplotstable@newcolname{#2}%
+	\pgfplotslist@TOK@a=\expandafter{#2}% this should handle macro names in '#2'.
+	\edef\pgfplotstable@newcolname{\the\pgfplotslist@TOK@a}%
 	\global\pgfplotstablecreatecol@isreallynewtrue
 	\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
 		\pgfplotstable@is@colname\pgfplotstable@colname
@@ -1406,11 +1428,12 @@
 		\advance\c@pgfplotstable@rowindex by1\relax
 	\pgfutil@repeat
 	\global\let\pgfplotstable@TMP=\pgfplotstable@newcol
+	\global\let\pgfplotstable@TMPB=\pgfplotstable@newcolname
 	\endgroup
 	\ifpgfplotstablecreatecol@isreallynew
-		\pgfplotslistpushback{#2}\to#3
+		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@TMPB}\to#3
 	\fi
-	\expandafter\let\csname\string#3@#2\endcsname=\pgfplotstable@TMP
+	\expandafter\let\csname\string#3@\pgfplotstable@TMPB\endcsname=\pgfplotstable@TMP
 }%
 
 \endinput

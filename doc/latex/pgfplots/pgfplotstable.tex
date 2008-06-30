@@ -164,11 +164,13 @@ level,dof,error1,error2,info,{grad(log(dof),log(error1))},quot(error1)
 \end{key}
 
 \begin{pgfplotstablealiaskey}
-	Assigns an \meta{alias} for the column denoted by \meta{real col name}. Afterwards, accessing \meta{alias} will use the data associated with column \meta{real col name}.
+	Assigns the new name \meta{new col name} for the column denoted by \meta{real col name}. Afterwards, accessing \meta{new col name} will use the data associated with column \meta{real col name}.
 
-	You can use |columns/|\meta{alias}|/.style| to assign styles for the alias, not for the original column name.
+	You can use |columns/|\meta{new col name}|/.style| to assign styles for the alias, not for the original column name.
 
-	If there exists both an alias and a column of the same name, the column name will be preferred.
+	If there exists both an alias and a column of the same name, the column name will be preferred. Furthermore, if there exists a |create on use| statement with the same name, this one will also be preferred.
+
+	In case \meta{new col name} contains characters which are required for key settings, you need to use braces around it: ``|alias/{name=wi/th,special}/.initial={othername}|''.
 \end{pgfplotstablealiaskey}
 
 \begin{pgfplotstablecolumnkey}
@@ -377,15 +379,15 @@ A style which is installed for every column with odd column index (starting with
 
 
 \section{Configuring row appearance}
-\begin{key}{/pgfplots/before row=\marg{\TeX\ code}}	
+\begin{key}{/pgfplots/table/before row=\marg{\TeX\ code}}	
 	Contains \TeX\ code which will be installed before the first cell in a row.
 \end{key}
 
-\begin{key}{/pgfplots/after row=\marg{\TeX\ code}}	
+\begin{key}{/pgfplots/table/after row=\marg{\TeX\ code}}	
 	Contains \TeX\ code which will be installed after the last cell in a row (i.e. after |\\|).
 \end{key}
 
-\begin{stylekey}{/pgfplots/every even row}
+\begin{stylekey}{/pgfplots/table/every even row}
 	A style which is installed for each row with even row index. The first row is supposed to be a ``head'' row and does not count. Indexing starts with~$0$.
 {
 \pgfplotstableset{
@@ -445,19 +447,19 @@ A style which is installed for every column with odd column index (starting with
 }
 \end{stylekey}
 
-\begin{stylekey}{/pgfplots/every odd row}	
+\begin{stylekey}{/pgfplots/table/every odd row}	
 	A style which is installed for each row with odd row index. The first row is supposed to be a ``head'' row and does not count. Indexing starts with~$0$.
 \end{stylekey}
 
-\begin{stylekey}{/pgfplots/every head row}	
+\begin{stylekey}{/pgfplots/table/every head row}	
 	A style which is installed for each first row in the tabular. This can be used to adjust options for column names or to add extra lines/colours.
 \end{stylekey}
 
-\begin{stylekey}{/pgfplots/every first row}	
+\begin{stylekey}{/pgfplots/table/every first row}	
 	A style which is installed for each first \emph{data} row, i.e. after the head row.
 \end{stylekey}
 
-\begin{stylekey}{/pgfplots/every last row}	
+\begin{stylekey}{/pgfplots/table/every last row}	
 	A style which is installed for each last \emph{data} row.
 \end{stylekey}
 
@@ -925,14 +927,14 @@ Typesets the exponent as subscript for any number displayed in scientific format
 \end{key}
 
 \section{Changing tables}
-After tables have been loaded from disk, it is possible to change their contents. The methods are quite limited up to now and they reflect mostly what I needed in my applications. Nevertheless, the approaches are quite general and can be customized.
+After tables have been loaded from disk, it is possible to change their contents. The methods are limited up to now and they reflect mostly what I needed in my applications. Nevertheless, the approaches are quite general and can be customized.
 
 \begin{command}{\pgfplotstablecreatecol[\meta{options}]\marg{new col name}\marg{\textbackslash table}}
 Creates a new column named \marg{new col name} and appends it to table \marg{\textbackslash table}.
 
-This command is quite technical, but it offers a flexible framework to generate new columns. It has been designed to create new columns using the already existing values -- for example using logical or numerical methods to combine existing values. It provides fast access to a row's value and the next row's value.
+This command is technical, but it offers a flexible framework to generate new columns. It has been designed to create new columns using the already existing values -- for example using logical or numerical methods to combine existing values. It provides fast access to a row's value and the next row's value.
 
-The following documentation is for all who want to write specialised columns. It is not particularly difficult; it is just technical and it requires some knowledge of |pgfkeys|. If you don't like it, you can resort to some predefined column generation styles - and enable those styles in \marg{options}.
+The following documentation is for all who want to \emph{write} specialised columns. It is not particularly difficult; it is just technical and it requires some knowledge of |pgfkeys|. If you don't like it, you can resort to some predefined column generation styles - and enable those styles in \marg{options}.
 
 The column entries will be created using the command keys |create col/assign next| and |create col/assign last|.
 
@@ -985,14 +987,39 @@ There is one more speciality: you can use |columns=|\marg{column list} to reduce
 The default implementation of |assign next| is to produce empty strings. The default implementation of |assign last| is to invoke |assign next|, so in case you never really use the next row's value, you won't need to touch |assign last|.
 \end{command}
 
+\begin{pgfplotstablecreateonusekey}
+	Allows ``lazy creation'' of the column \meta{col name}. Whenever the column \meta{col name} is queried by name, for example in an |\pgfplotstabletypeset| command, and such a column does not exist already, it is created on-the-fly.
+
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/quot1/.style={create col/quotient={error1}}}
+
+\pgfplotstabletypesetfile[
+	columns={error1,quot1},
+	columns/error1/.style={sci,sci zerofill},
+	columns/quot1/.style={dec sep align}]
+{pgfplotstable.example1.dat}
+\end{codeexample}
+	The example above queries |quot1| which does not yet exist in the input file. Therefor, it is checked whether a |create on use| style for |quot1| exists. This is the case, so it is used to create the missing column.
+
+	A |create on use| specification is translated into 
+	
+	|\pgfplotstablecreatecol[|\meta{create options}|]|\marg{col name}\marg{the table}.
+
+	This feature allows some lazyness, because you can omit the lengthy table modifications. However, lazyness may cost something: in the example above, the generated column will be \emph{lost} after returning from |\pgfplotstabletypesetfile|.
+
+	The |create on use| has higher priority than |alias|.
+
+	In case \meta{col name} contains characters which are required for key settings, you need to use braces around it: ``|create on use/{name=wi/th,special}/.style={...}|''.
+\end{pgfplotstablecreateonusekey}
+
 \begin{stylekey}{/pgfplots/table/create col/expr=\marg{math expression}}
 	A style for use in |\pgfplotstablecreatecol| which uses \marg{math expression} to assign contents for the new column.
 
 \begin{codeexample}[]
 \pgfplotstableread{pgfplotstable.example1.dat}\table
 \pgfplotstablecreatecol[
-	create col/expr={\thisrow{level}*2}%
-]
+	create col/expr={\thisrow{level}*2}]
 	{new}\table
 
 \pgfplotstabletypeset[
@@ -1006,7 +1033,9 @@ The default implementation of |assign next| is to produce empty strings. The def
 
 	\paragraph{Attention:} Currently, |expr| uses the math parser of \PGF. Although very powerful, it has never been intended for scientific applications. Its $5.5$ fixed point arithmetic has its limitations.
 
-	There is limited support for float point arithmetics, but that is far from complete and every elementary operation needs to be programmed by hand. See some of the following numerical styles.
+	There is limited support for float point arithmetics, but that is far from complete and every elementary operation needs to be programmed by hand. Some of the following numerical styles employ these routines, they have been included into the \PGF\ math library (but not into the parser).
+
+	Furthermore, you can create new columns using the |fp| package which allows precise fixed point arithmetics.
 \end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/create col/quotient=\marg{column name}}
@@ -1024,8 +1053,8 @@ The default implementation of |assign next| is to produce empty strings. The def
 	columns/error1/.style={sci,sci zerofill},
 	columns/error2/.style={sci,sci zerofill},
 	columns/quot1/.style={dec sep align},
-	columns/quot2/.style={dec sep align},
-]\table
+	columns/quot2/.style={dec sep align}]
+\table
 \end{codeexample}
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-7}$ ($7$ significant digits in the mantisse).
 \end{stylekey}
@@ -1052,10 +1081,11 @@ The default implementation of |assign next| is to produce empty strings. The def
 	columns/error1/.style={sci,sci zerofill},
 	columns/error2/.style={sci,sci zerofill},
 	columns/slopes1/.style={dec sep align},
-	columns/slopes2/.style={dec sep align},
-]\table
+	columns/slopes2/.style={dec sep align}]
+\table
 \end{codeexample}
-\begin{codeexample}[width=8cm]
+
+\begin{codeexample}[]
 \pgfplotstableread
 	{pgfplotstable.example1.dat}\table
 \pgfplotstablecreatecol
@@ -1067,8 +1097,8 @@ The default implementation of |assign next| is to produce empty strings. The def
 	columns/level/.style={int detect},
 	columns/error1/.style=
 		{sci,sci zerofill,sci subscript},
-	columns/slopes1/.style={dec sep align},
-]\table
+	columns/slopes1/.style={dec sep align}]
+\table
 \end{codeexample}
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-6}$ ($6$ significant digits in the mantisse).
 \end{keylist}
