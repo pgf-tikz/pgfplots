@@ -35,7 +35,6 @@
 % FIXME: reduce number of variables!
 \newtoks\pgfplots@toka
 
-\newcount\pgfplots@ticknum
 \newif\ifpgfplots@xislinear
 \newif\ifpgfplots@yislinear
 \newcount\pgfplots@numplots
@@ -44,7 +43,6 @@
 \newdimen\pgfplots@ycoordminTEX
 \newdimen\pgfplots@ycoordmaxTEX
 \newdimen\pgfplots@tmpa
-\newdimen\pgfplots@tmpb
 \newif\ifpgfplots@warn@for@filter@discards
 \newif\ifpgfplots@isuniformtick
 \newif\ifpgfplots@addplot@table@from@macro
@@ -1329,7 +1327,7 @@
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@tick{\nexttick}%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@x{\pgfplots@show@ticklabel@coord@x@new}%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@y{\pgfplots@show@ticklabel@coord@y@new}%
-			\noexpand\def\noexpand\pgfplots@show@ticklabel@num{\the#5}%
+			\noexpand\edef\noexpand\pgfplots@show@ticklabel@num{#5}%
 		}%
 	\else
 		\let\ticknum=#5\relax%
@@ -1851,9 +1849,9 @@
 				\begingroup
 				\c@pgf@counta=\pgfplots@minor@tick@num\relax
 				\advance\c@pgf@counta by1\relax
-				\pgfplots@tmpb=\csname pgfplots@tick@distance@#2\endcsname pt
-				\divide\pgfplots@tmpb by\c@pgf@counta
-				\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpb}}%
+				\pgfplots@tmpa=\csname pgfplots@tick@distance@#2\endcsname pt
+				\divide\pgfplots@tmpa by\c@pgf@counta
+				\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpa}}%
 				\pgfmath@smuggleone\pgfmathresult
 				\endgroup
 				\let\pgfplots@minor@tick@dist=\pgfmathresult
@@ -1886,20 +1884,24 @@
 			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
 			\ifpgfplots@needsminorloop
 				\foreach \i in {1,...,\pgfplots@minor@tick@num} {
+					\begingroup
 					\ifcase#3\relax
 						\ifpgfplots@islinear
-							\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\i*\pgfplots@minor@tick@dist}{0}}%
+							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\i*\pgfplots@minor@tick@dist}{0}}%
 						\else
-							\pgfextractx{\pgfplots@tmpb}{\pgfpointxy{\logi\i}{0}}%
+							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\logi\i}{0}}%
 						\fi
 					\or
 						\ifpgfplots@islinear
-							\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\i*\pgfplots@minor@tick@dist}}%
+							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\i*\pgfplots@minor@tick@dist}}%
 						\else
-							\pgfextracty{\pgfplots@tmpb}{\pgfpointxy{0}{\logi\i}}%
+							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\logi\i}}%
 						\fi
 					\fi
-					\advance\pgfplots@tmpa by\pgfplots@tmpb
+					\edef\pgfmathresult{\the\pgfplots@tmpa}%
+					\pgfmath@smuggleone\pgfmathresult
+					\endgroup
+					\advance\pgfplots@tmpa by\pgfmathresult
 					\ifdim\pgfplots@tmpa<\csname pgfplots@#2coordminTEX\endcsname
 					\else
 						\ifdim\pgfplots@tmpa>\csname pgfplots@#2coordmaxTEX\endcsname
@@ -2133,7 +2135,7 @@
 			\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
 		\fi
 		\edef\pgfplots@tick@origin{\pgfmathresult pt}%
-		\pgfplots@ticknum=0
+		\def\pgfplots@ticknum{0}%
 		\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 		\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
 			\expandafter\pgfplots@parse@prepared@major@tickpos\pgfplots@curtickpos\pgfplots@tmpa\pgfplots@curtickpos
@@ -2146,7 +2148,12 @@
 					{#1}{\pgfplots@curtickpos}(\pgfplots@tick@origin,\pgfplots@tmpa)%
 					{\pgfplots@ticknum}%
 			\fi
-			\advance\pgfplots@ticknum by1
+			\begingroup
+			\c@pgf@counta=\pgfplots@ticknum\relax
+			\advance\c@pgf@counta by1
+			\edef\pgfplots@ticknum{\the\c@pgf@counta}%
+			\pgfmath@smuggleone\pgfplots@ticknum
+			\endgroup
 		}%
 		\endgroup
 		\pgfplots@draw@tick@scale@label@for #1%
@@ -3953,8 +3960,8 @@
 		% ticks MIN,MIN+H,...,MAX.
 		\let\MINH=\pgf@xa
 		\let\H=\pgf@xb
-		\let\MAX=\pgfplots@tmpa
-		\let\MIN=\pgfplots@tmpb
+		\let\MAX=\pgf@ya
+		\let\MIN=\pgf@yb
 		% compute step size 'H':
 		\expandafter\MAX\csname pgfplots@#1max\endcsname pt
 		\advance\MAX by0.001pt% avoid round errors
@@ -4596,67 +4603,73 @@
 % Arguments: 
 % #1: the output argument for the SCALE.
 \def\pgfplots@initsizes@getXscale\into#1{%
-	\expandafter\pgfplots@tmpa\pgfplots@width\relax
+	\begingroup
+	\pgf@xa=\pgfplots@width\relax
 	% EXPECTED WIDTH = X = \pgfplots@width
 	% ACTUAL WIDTH = c + x * (xmax-xmin)
 	% where c is a CONSTANT (for the axis labels/tick labels).
 	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
 	%
-	% \pgfplots@tmpa := X-c:
+	% \pgf@xa := X-c:
 	\ifpgfplots@scale@only@axis
 	\else
-		\advance\pgfplots@tmpa by-45pt% FIXME determine 'c' correctly!
+		\advance\pgf@xa by-45pt% FIXME determine 'c' correctly!
 	\fi
-	\ifdim\pgfplots@tmpa<0pt
+	\ifdim\pgf@xa<0pt
 		\pgfplots@error{Error: Plot width `\pgfplots@width' is too small. This can't be realised while maintaining constant width for y-labels. Sorry, label width are only approximate. You will need to adjust your width.}%
-		\pgfplots@tmpa=0pt
+		\pgf@xa=0pt
 	\fi
-	% \pgfplots@tmpb := x*(xmax-xmin):
-	\pgfplots@tmpb=\pgfplots@xcoordmaxTEX
-	\advance\pgfplots@tmpb by-\pgfplots@xcoordminTEX
+	% \pgf@xb := x*(xmax-xmin):
+	\pgf@xb=\pgfplots@xcoordmaxTEX
+	\advance\pgf@xb by-\pgfplots@xcoordminTEX
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgfplots@tmpa}%
-		{\pgf@sys@tonumber\pgfplots@tmpb}%
+		{\pgf@sys@tonumber\pgf@xa}%
+		{\pgf@sys@tonumber\pgf@xb}%
 	}%
-	\let#1=\pgfmathresult
 %\pgfplots@message{pgfplots.sty: Computing 'x' such that 'width = c + x*(xmax-xmin)';
 %	c=estimated, 
-%	width-c =\the\pgfplots@tmpa,  
-%	x*(xmax[=\the\pgfplots@xcoordmaxTEX] - xmin[=\the\pgfplots@xcoordminTEX)]) = \the\pgfplots@tmpb  
+%	width-c =\the\pgf@xa,  
+%	x*(xmax[=\the\pgfplots@xcoordmaxTEX] - xmin[=\the\pgfplots@xcoordminTEX)]) = \the\pgf@xb  
 %	-> x-scale =#1 }%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let#1=\pgfmathresult
 }
 
 % The same as \pgfplots@initsizes@getXscale, just for the height.
 \def\pgfplots@initsizes@getYscale\into#1{%
-	\expandafter\pgfplots@tmpa\pgfplots@height\relax
+	\begingroup
+	\expandafter\pgf@xa\pgfplots@height\relax
 	% EXPECTED WIDTH = X = \pgfplots@width
 	% ACTUAL WIDTH = c + x * (xmax-xmin)
 	% where c is a CONSTANT (for the axis labels/tick labels).
 	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
 	%
-	% \pgfplots@tmpa := X-c:
+	% \pgf@xa := X-c:
 	\ifpgfplots@scale@only@axis
 	\else
-		\advance\pgfplots@tmpa by-45pt\relax% FIXME determine 'c' correctly!
+		\advance\pgf@xa by-45pt\relax% FIXME determine 'c' correctly!
 	\fi
-	\ifdim\pgfplots@tmpa<0pt
+	\ifdim\pgf@xa<0pt
 		\pgfplots@error{Error: Plot height `\pgfplots@height' is too small. This can't be realised while maintaining constant height for x-labels. Sorry, label heights are only approximate. You will need to adjust your height.}%
-		\pgfplots@tmpa=0pt
+		\pgf@xa=0pt
 	\fi
-	% \pgfplots@tmpb := x*(xmax-xmin):
-	\pgfplots@tmpb=\pgfplots@ycoordmaxTEX
-	\advance\pgfplots@tmpb by-\pgfplots@ycoordminTEX
+	% \pgf@xb := x*(xmax-xmin):
+	\pgf@xb=\pgfplots@ycoordmaxTEX
+	\advance\pgf@xb by-\pgfplots@ycoordminTEX
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgfplots@tmpa}%
-		{\pgf@sys@tonumber\pgfplots@tmpb}%
+		{\pgf@sys@tonumber\pgf@xa}%
+		{\pgf@sys@tonumber\pgf@xb}%
 	}%
-	\let#1=\pgfmathresult
 %\pgfplots@message{pgfplots.sty: Computing 'y' such that 'height = c + y*(ymax-ymin)';
 %	height=\pgfplots@height,
 %	c=estimated,
-%	height-c =\the\pgfplots@tmpa,  
-%	y*(ymax[=\the\pgfplots@ycoordmaxTEX] - ymin[=\the\pgfplots@ycoordminTEX)]) = \the\pgfplots@tmpb  
+%	height-c =\the\pgf@xa,  
+%	y*(ymax[=\the\pgfplots@ycoordmaxTEX] - ymin[=\the\pgfplots@ycoordminTEX)]) = \the\pgf@xb  
 %	-> y-scale =#1 }%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let#1=\pgfmathresult
 }
 
 
@@ -4897,16 +4910,15 @@
 	%
 	% Apply scaling:
 	\pgfpointxy{\pgfplots@tmpXscale}{\pgfplots@tmpYscale}%
-	\pgfplots@tmpa=\pgf@x
-	\pgfplots@tmpb=\pgf@y
-%\message{initscaling: got x-scaling \the\pgfplots@tmpa, and y-scaling \the\pgfplots@tmpb}%
+	\edef\pgfplots@tmpscale@x{\the\pgf@x}%
+	\edef\pgfplots@tmpscale@y{\the\pgf@y}%
 	\ifx\pgfplots@x\pgfutil@empty
-		\pgfsetxvec{\pgfqpoint{\pgfplots@tmpa}{0pt}}%
+		\pgfsetxvec{\pgfqpoint{\pgfplots@tmpscale@x}{0pt}}%
 	\else
 		\pgfsetxvec{\pgfpoint{\pgfplots@x}{0pt}}%
 	\fi
 	\ifx\pgfplots@y\pgfutil@empty
-		\pgfsetyvec{\pgfqpoint{0pt}{\pgfplots@tmpb}}%
+		\pgfsetyvec{\pgfqpoint{0pt}{\pgfplots@tmpscale@y}}%
 	\else
 		\pgfsetyvec{\pgfpoint{0pt}{\pgfplots@y}}%
 	\fi
