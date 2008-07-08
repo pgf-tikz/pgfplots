@@ -25,6 +25,7 @@
 \usepackage{array}
 \usepackage{colortbl}
 \usepackage{booktabs}
+\usepackage{eurosym}
 
 \pgfqkeys{/codeexample}{%
 	every codeexample/.style={
@@ -386,6 +387,8 @@ A style which is installed for every column with odd column index (starting with
 
 
 \section{Configuring row appearance}
+The following styles allow to configure the final table code \emph{after any cell contents have been assigned}.
+
 \begin{key}{/pgfplots/table/before row=\marg{\TeX\ code}}	
 	Contains \TeX\ code which will be installed before the first cell in a row.
 \end{key}
@@ -470,6 +473,79 @@ A style which is installed for every column with odd column index (starting with
 	A style which is installed for each last \emph{data} row.
 \end{stylekey}
 
+\section{Determining cell contents}
+\begin{codekey}{/pgfplots/table/assign cell content}
+	Allows to redefine the algorithm which assigns cell contents. The argument |#1| is the (unformatted) contents of the input table. 
+	
+	The resulting output needs to be written to |/pgfplots/table/@cell content|.
+
+	Please note that you may need special attention for |#1=|\marg{}, i.e. the empty string. This may happen if a column has less rows than the first column. \PGFPlotstable\ will balance columns automatically in this case, inserting enough empty cells to match the number of rows of the first column.
+
+	Please note further that if any column has more entries than the first column, these entries will be skipped and a warning message will be issued into the log file.
+
+	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
+\end{codekey}
+
+\begin{key}{/pgfplots/table/assign cell content as number}
+	This here is the default implementation of |assign cell contents|. 
+	
+	It invokes |\pgfmathprintnumberto| and writes the result into |@cell content|.
+\end{key}
+
+\begin{stylekey}{/pgfplots/table/string type}
+	A style which redefines |assign cell contents| to allow (a) text column(s).
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/set content=\marg{content}}
+	A style which redefines |assign cell contents| to always return the value \marg{content}.
+\end{stylekey}
+
+\begin{codekey}{/pgfplots/table/postproc cell content}
+	Allows to \emph{modify} the already assigned cell content, possibly content-dependend. Ideas could be to draw negative numbers in red, typeset single entries in bold face or insert replacement text.
+
+	This key is evaluated \emph{after} |assign cell content|. Its semantics is to modify an existing |@cell content| value.
+
+	There may be more than one |postproc cell content| command, if you use |.append code| or |.append style| to define them:
+\begin{codeexample}[]
+% \usepackage{eurosym}
+\pgfplotstabletypesetfile[
+	columns={dof,info},
+	columns/info/.style={
+		postproc cell content/.append style={
+			/pgfplots/table/@cell content/.add={$\bf}{$}},
+		postproc cell content/.append style={
+			/pgfplots/table/@cell content/.add={}{\EUR{}}}
+	}]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+	The code above modifies |@cell content| successively. First, ``|$\bf ... $|'' is inserted, then ``|...\EUR|''. It should be noted that |pgfkeys| handles |.style| and |.code| in (quasi) the same way -- both are simple code keys and can be used as such. You can combine both with |.append style| and |.append code|. Please refer to~\cite[section about pgfkeys]{tikz} for details.
+
+	As in |assign cell contents|, the code can evaluate helper macros like |\pgfplotstablerow| to change only particular entries. Furthermore, the argument ``|#1|'' expands to the \emph{unformatted} input argument which was found in the input table. This allows complete context based formatting options. Please remember that empty strings may appear due to column balancing -- introduce special treatment if necessary.
+
+	There is one special case which occurs if |@cell content| itsself contains the cell separation character `|&|'. In this case, |postproc cell contents| is invoked \emph{separately} for each part before and after the ampersand and the ampersand is inserted afterwards. This allows compatibility with special styles which create artificial columns in the output (which is allowed, see |dec sep align|). To allow separate treatment of each part, you can use the macro |\pgfplotstablepartno|. It is defined only during the evaluation of |postproc cell content| and it evaluates to the current part index (starting with~$0$). If there is no ampersand in your text, the value will always be~$0$.
+
+	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
+
+	The following example can be used to insert a dash, $-$, in a slope column:
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/slopes1/.style=
+		{create col/gradient loglog={dof}{error1}}}
+
+\pgfplotstabletypesetfile[
+	columns={dof,error1,slopes1},
+	columns/error1/.style={sci,sci zerofill},
+	columns/slopes1/.style={
+		postproc cell content/.append code={%
+			\ifnum\pgfplotstablerow=0
+				\pgfkeyssetvalue{/pgfplots/table/@cell content}{\ensuremath{-}}%
+			\fi
+		}%
+	}]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+\end{codekey}
+
 \begin{codekey}{/pgfplots/table/row predicate}
 	A boolean predicate which allows to select particular rows of the input table. The argument |#1| contains the current row's index (starting with~$0$, not counting comment lines or column names).
 
@@ -490,7 +566,7 @@ A style which is installed for every column with odd column index (starting with
 ]
 	{pgfplotstable.example1.dat}
 \end{codeexample}
-	Please note that |row predicate| is applied \emph{before} any other option which affects row appearance. For example, the even/odd styles refer to those rows which are selected. In fact, you can use |row predicate| to truncate the complete table before it as actually processed. 
+	Please note that |row predicate| is applied \emph{before} any other option which affects row appearance. It is evaluated before |assign cell contents|. For example, the even/odd row styles refer to those rows for which the predicate returns |true|. In fact, you can use |row predicate| to truncate the complete table before it as actually processed. 
 	
 	During |row predicate|, the macro |\pgfplotstablerows| contains the total number of \emph{input} rows.
 	
@@ -539,30 +615,6 @@ A style which is installed for every column with odd column index (starting with
 	If the available number of rows is not dividable by \marg{part count}, the remaining entries are distributed equally among the first parts.
 \end{stylekey}
 
-\section{Determining cell contents}
-\begin{codekey}{/pgfplots/table/assign cell content}
-	Allows to redefine the algorithm which assigns cell contents. The argument |#1| is the (unformatted) contents of the input table. 
-	
-	The resulting output needs to be written to |/pgfplots/table/@cell content|.
-
-	Please note that you may need special attention for |#1=|\marg{}, i.e. the empty string. This may happen if a column has less rows than the first column. \PGFPlotstable\ will balance columns automatically in this case, inserting enough empty cells to match the number of rows of the first column.
-
-	Please note further that if any column has more entries than the first column, these entries will be skipped and a warning message will be issued into the log file.
-\end{codekey}
-
-\begin{key}{/pgfplots/table/assign cell content as number}
-	This here is the default implementation of |assign cell contents|. 
-	
-	It invokes |\pgfmathprintnumberto| and writes the result into |@cell content|.
-\end{key}
-
-\begin{stylekey}{/pgfplots/table/string type}
-	A style which redefines |assign cell contents| to allow (a) text column(s).
-\end{stylekey}
-
-\begin{stylekey}{/pgfplots/table/set content=\marg{content}}
-	A style which redefines |assign cell contents| to always return the value \marg{content}.
-\end{stylekey}
 
 \section{Customizing and getting the tabular code}
 \begin{stylekey}{/pgfplots/table/every table}

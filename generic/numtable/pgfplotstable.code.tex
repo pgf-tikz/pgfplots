@@ -232,6 +232,9 @@
 			/pgfplots/table/@cell content={#1}%
 		}%
 	},%
+	%
+	/pgfplots/table/postproc cell content/.code={},
+	%
 	/pgfplots/table/font/.initial=,
 	/pgfplots/table/.unknown/.code={%
 		\pgfqkeys{/pgf/number format}{\pgfkeyscurrentname=#1}%
@@ -414,6 +417,7 @@
 		},%
 	},%
 }
+\pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent@EMPTY
 
 % \pgfplotstableread[OPTIONS] {FILE} to \name
 %
@@ -1038,10 +1042,55 @@
 	\fi
 }%
 \def\pgfplotstabletypeset@is@colname@name#1\pgfplotstable@EOI{}%
+
 \def\pgfplotstabletypeset@getfinalentry#1#2{%
+	\begingroup
+	\def\pgfplotstablepartno{0}%
 	\pgfkeysvalueof{/pgfplots/table/assign cell content/.@cmd}#1\pgfeov
-	\pgfkeysgetvalue{/pgfplots/table/@cell content}{#2}%
+	\pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent
+	\ifx\pgfplotstable@postproccellcontent\pgfplotstable@postproccellcontent@EMPTY
+	\else
+		% apply postprocessing to final cell content.
+		% This is complicated if there is an '&' in '@cell content',
+		% so handle that specially!
+		%
+		% FIXME also support more than one '&' ?
+		\def\pgfplotstabletypeset@rawinput{#1}%
+		\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+		\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+		\ifpgfutil@in@
+			\expandafter\pgfplotstabletypeset@postproc@separately\pgfmathresult\pgfplotstable@EOI
+		\else
+			\pgfplotstable@postproccellcontent#1\pgfeov
+		\fi
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let#2=\pgfmathresult
 }%
+
+% This routine invokes 'postproc cell content' for columns which
+% contain the column separate '&'.
+%
+% #1&#2 is the formatted number, the result of 'dec sep align
+% #3 is the (unformatted) input number.
+\def\pgfplotstabletypeset@postproc@separately#1&#2\pgfplotstable@EOI{%
+	\def\pgfmathresult{#1}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfplotstable@entry@a
+	%
+	\def\pgfplotstablepartno{1}%
+	\def\pgfmathresult{#2}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+	\pgfplotslist@TOK@a=\expandafter{\pgfplotstable@entry@a}%
+	\pgfplotslist@TOK@b=\expandafter{\pgfmathresult}%
+	\edef\pgfmathresult{\the\pgfplotslist@TOK@a&\the\pgfplotslist@TOK@b}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+}
 
 % processes the option 'assign column name'
 \def\pgfplotstabletypeset@assign@final@colname#1#2{%
