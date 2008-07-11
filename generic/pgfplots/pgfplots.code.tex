@@ -27,6 +27,7 @@
 \input pgfplotsliststructure.code.tex
 \input pgfplotsarray.code.tex
 \input pgfplotstable.code.tex
+\input pgfplotsutil.code.tex
 \input pgfplotsoldpgfsupp_loader.code.tex
 \input pgfplots.stackedplots.code.tex
 
@@ -114,8 +115,6 @@
 		\fi
 	\fi
 }%
-
-\def\pgfplots@EOI{\pgfplots@EOI}%
 
 % Sets the boolean \ifpgfplots@is@old@list@format  to true if and only
 % if the input is a list in the format '{first\\second\\}'.
@@ -322,7 +321,9 @@
 	/pgfplots/every x tick label/.style={},
 	/pgfplots/every x tick label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every x tick label}},
 	/pgfplots/every x tick label/.belongs to family=/pgfplots/style commands,
-	/pgfplots/every extra x tick/.style={},
+	/pgfplots/every extra x tick/.style={
+		/pgfplots/log identify minor tick positions=true,
+	},
 	/pgfplots/every extra x tick/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every extra x tick}},
 	/pgfplots/every extra x tick/.belongs to family=/pgfplots/style commands,
 	/pgfplots/extra x tick style/.belongs to family=/pgfplots/style commands,
@@ -335,7 +336,9 @@
 	/pgfplots/every y tick label/.style={},
 	/pgfplots/every y tick label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every y tick label}},
 	/pgfplots/every y tick label/.belongs to family=/pgfplots/style commands,
-	/pgfplots/every extra y tick/.style={},
+	/pgfplots/every extra y tick/.style={
+		/pgfplots/log identify minor tick positions=true,
+	},
 	/pgfplots/every extra y tick/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every extra y tick}},
 	/pgfplots/every extra y tick/.belongs to family=/pgfplots/style commands,
 	/pgfplots/extra y tick style/.belongs to family=/pgfplots/style commands,
@@ -453,7 +456,7 @@
 	/pgfplots/log plot exponent style/.belongs to family=/pgfplots/tick,
 	/pgfplots/log identify minor tick positions/.is if=pgfplots@identify@log@minor@tick@pos,
 	/pgfplots/log identify minor tick positions/.belongs to family=/pgfplots/tick,
-	/pgfplots/log identify minor tick positions=true,
+	/pgfplots/log identify minor tick positions=false,
 	/pgfplots/log number format code/.code={{%
 		\pgfmathlogtologten@{#1}%
 		\ifpgfplots@identify@log@minor@tick@pos
@@ -3163,9 +3166,6 @@
 
 \def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
 
-
-% for use in \ifx:
-\def\pgfplots@EOI{\pgfplots@EOI}%
 	
 % #1= x coord
 % #2= y coord
@@ -4143,8 +4143,9 @@
 			% And prefer j=1 if that is possible (otherwise minor
 			% ticks are not useful).
 			\pgfmathmultiply@{\Hmacro}{\reciproclogten}%
+			\let\Hmacrobaseten=\pgfmathresult
 			\expandafter\H\pgfmathresult pt
-%\message{ [ H / log(10) = \pgfmathresult}%
+%\message{ [ H / log(10) = \pgfmathresult ]}%
 			\ifdim\H<2pt
 				\H=1pt
 			\else
@@ -4219,7 +4220,85 @@
 		\fi
 		\MINH=\MIN
 		\advance\MINH by\H
-%\pgfplots@message{final H=\the\H}%
+		% Ok, now it can happen that only ONE tick label is placed in
+		% this range.
+		% That's useless, so check for it.
+		%
+		% That's the case if
+		%    MIN < ORIGMIN && MAX < MIN+2 H 
+		% MIN < ORIGMIN by construction (ok, MIN <= ORIGMIN by
+		% construction, but I don't care about this case). 
+		% So: check only the second condition.
+		\pgfplots@tmpa=\MINH
+		\advance\pgfplots@tmpa by\H
+		\ifdim\MAX<\pgfplots@tmpa
+			\expandafter\aftergroup\csname pgfplots@determinedefaultvalues@#1isuniformfalse\endcsname
+			% ok, do something special.
+			%
+			% The idea is now to place ticks at
+			% 10^{i*h} with properly choosen 'h'.
+			%
+			% So: apply basically the SAME code as above for linear
+			% axis, just everything log 10!  And keep in mind that all
+			% coordinates are actually given as natural logarithms.
+			\pgfmathfloatparsenumber{\Hmacrobaseten}%
+			\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
+			% Determine properly snapped mantisse...
+			\ifdim\H<2pt
+				\ifdim\H<1.5pt
+					\H=1.0pt
+				\else
+					\H=2.0pt
+				\fi
+			\else
+				\ifdim\H<4.9999pt
+					\ifdim\H<3.5pt
+						\H=2.0pt\relax
+					\else
+						\H=5.0pt\relax
+					\fi
+				\else
+					\ifdim\H<7.5pt
+						\H=5.0pt\relax
+					\else
+						\H=1.0pt\relax
+						\advance\pgfmathfloat@a@E by1
+					\fi
+				\fi
+			\fi
+			\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+			\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+			\let\Hmacro=\pgfmathresult
+			\H=\Hmacro pt%
+			% Ok, our step size h for 10^{i*h} is ready!
+%\message{determined step size 10^{\Hmacro}}%
+			% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
+			% compute I such that
+			%   10^{min} = 10^{I * H + rest};  |rest| < H
+			% -> I = round(xmin/H)
+			% -> MIN = I * H
+			% BUT EVERYTHING to log(10) basis!
+			\expandafter\MIN\csname pgfplots@#1min\endcsname pt
+			\MIN=\reciproclogten\MIN\relax
+			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+				{\pgf@sys@tonumber\MIN}%
+				{\Hmacro}%
+			}%
+			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+			\ifdim\MIN<0pt
+				% the truncation rounds TOWARDS 0 which is not what I want.
+				\advance\c@pgf@counta by-1
+			\fi
+			\MIN=\H\relax
+			\multiply\MIN by\c@pgf@counta\relax
+			%
+			% convert back to basis 'e':
+			\MIN=\logten\MIN\relax
+			\H=\logten\H\relax
+			\MINH=\MIN\relax
+			\advance\MINH by\H\relax
+		\fi
+%\pgfplots@message{final H=\the\H.}%
 		\xdef\pgfplots@TMP{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
 		\xdef\pgfplots@TMPB{\pgf@sys@tonumber{\H}}%
 		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
@@ -4227,7 +4306,7 @@
 	\endgroup
 	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@TMP
 	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@TMPB
-%\pgfplots@message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1mode=\the\csname pgfplots@#1mode\endcsname,  #1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
+%\pgfplots@message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
 }
 
 % Helper method for 
@@ -6023,15 +6102,11 @@
 %\pgfplots@message{tikzstyle{#2}=[#1]}%
 }
 
-\def\pgfplots@preset@keys{%
-  \def\pgfplots@at{\pgfqpoint{\the\tikz@lastx}{\the\tikz@lasty}}%
-}
-
 % backwards compatibility:
 \let\prettyprintnumber=\pgfmathprintnumber%
 
 \def\pgfplots@set@options#1{%
-	\pgfplots@preset@keys
+	\def\pgfplots@at{\pgfqpoint{\the\tikz@lastx}{\the\tikz@lasty}}%
 	%
 	% Temporarily assign families to 'name' and 'alias' options.
 	% This allows to get the names - they should not be appended to
