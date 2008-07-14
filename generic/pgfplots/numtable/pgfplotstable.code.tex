@@ -148,7 +148,7 @@
 	/pgfplots/table/multicolumn names/.default=c,
 	/pgfplots/table/dec sep align/.style={%
 		/pgf/number format/assume math mode,
-		/pgf/number format/set decimal separator/.add={&}{},
+		/pgf/number format/@dec sep mark={&},
 		/pgfplots/table/assign column name/.code={%
 			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
 		},%
@@ -156,7 +156,32 @@
 		/pgfplots/table/assign cell content/.code={%
 			\def\pgfmathresult{##1}%
 			\ifx\pgfmathresult\pgfutil@empty
-				\pgfutil@in@false
+				\def\pgfmathresult{&}%
+			%	\pgfutil@in@false
+			\else
+				\pgfmathprintnumberto{##1}\pgfmathresult%
+			%	\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+			\fi
+			%\ifpgfutil@in@
+			%\else
+			%	\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult&}%
+			%\fi
+			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+		},
+	},
+	/pgfplots/table/dec sep align/.default=c,
+	/pgfplots/table/sci sep align/.style={%
+		/pgf/number format/assume math mode,
+		/pgf/number format/@sci exponent mark={&},
+		/pgfplots/table/assign column name/.code={%
+			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
+		},%
+		/pgfplots/table/column type={>{$}r<{$}@{}>{$}l<{$}},
+		/pgfplots/table/assign cell content/.code={%
+			\def\pgfmathresult{##1}%
+			\ifx\pgfmathresult\pgfutil@empty
+				\def\pgfmathresult{&}%
+				\pgfutil@in@true
 			\else
 				\pgfmathprintnumberto{##1}\pgfmathresult%
 				\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
@@ -168,7 +193,7 @@
 			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
 		},
 	},
-	/pgfplots/table/dec sep align/.default=c,
+	/pgfplots/table/sci sep align/.default=c,
 	%
 	% A style which can be used together with the 'dcolumn' package by
 	% David Carlisle.
@@ -284,19 +309,40 @@
 	},%
 	/pgfplots/table/create col/quotient/.style={%
 		/pgfplots/table/columns={#1},
-		/pgfplots/table/create col/assign first/.code={%
-			\pgfmathfloatparsenumber{\thisrow{#1}}%
-			\let\pgfmathaccuma=\pgfmathresult
-			\def\pgfmathresult{}% leave first empty.
-			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
 		},%
 		/pgfplots/table/create col/assign/.code={%
-			\let\pgfmatharga=\pgfmathaccuma
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
 			\pgfmathfloatparsenumber{\thisrow{#1}}%
 			\let\pgfmathargb=\pgfmathresult
 			\let\pgfmathaccuma=\pgfmathargb
 			\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
 			\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		}%
+	},%
+	%
+	% Produces 'log2( \prevrow{#1}/\thisrow{#1} )
+	%
+	% Assumeing that every row contains error(h) = O(h^alpha)
+	% and h_this = h_prev/2, this result in 'alpha', the convergence
+	% rate.
+	/pgfplots/table/create col/dyadic refinement rate/.style={%
+		/pgfplots/table/columns={#1},
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathargb=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathargb
+			\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
+			\pgfmathlog@float{\pgfmathresult}%
+			\pgfmathmultiply@{1.442695}{\pgfmathresult}%
 			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
 		}%
 	},%
@@ -1518,8 +1564,10 @@
 	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
 	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
 	%
+	\def\prevrow##1{\csname pgfplotstablecreate@prev@##1\endcsname}%
 	\def\thisrow##1{\csname pgfplotstablecreate@cur@##1\endcsname}%
 	\def\nextrow##1{\csname pgfplotstablecreate@next@##1\endcsname}%
+	\def\getprevrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@prev@##1\endcsname}%
 	\def\getthisrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@cur@##1\endcsname}%
 	\def\getnextrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@next@##1\endcsname}%
 	%
@@ -1540,10 +1588,14 @@
 					% the table is completely empty. break.
 					\pgfplots@loop@CONTINUEfalse
 				\else
+					\expandafter\let\csname pgfplotstablecreate@prev@\pgfplotstable@colname\endcsname=\pgfutil@empty
 					\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@colname\endcsname\to\pgfplotstable@entry
 					\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@entry
 				\fi
 			\else
+				\expandafter\let\expandafter\pgfplotstable@prev\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname
+				\expandafter\let\csname pgfplotstablecreate@prev@\pgfplotstable@colname\endcsname=\pgfplotstable@prev
+				%
 				\expandafter\let\expandafter\pgfplotstable@next\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname
 				\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@next
 			\fi
