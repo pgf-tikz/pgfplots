@@ -267,16 +267,17 @@
 		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@TMP
 		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 		\else
-			\ifpgfplots@apply@datatrafo
-				% Apply the data scaling transformation, but do NOT
-				% issue any drawing commands (-> use the ...@dryrun
-				% version)
-				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START@dryrun\pgfplots@stored@current@data\to\pgfplots@stored@current@data\pgfplots@stored@current@precmdapp%
-				% save any intermediate results as "precmd":
-				\pgfplotslist@TOK@b=\expandafter{\pgfplots@stored@current@precmd}%
-				\pgfplotslist@TOK@a=\expandafter{\pgfplots@stored@current@precmdapp}%
-				\edef\pgfplots@stored@current@precmd{\the\pgfplotslist@TOK@b\the\pgfplotslist@TOK@a}%
-			\fi
+			% Apply the data scaling transformation and compute
+			% stacked coordinates, but do NOT
+			% issue any drawing commands:
+			\expandafter\pgfplots@stacked@finalize@stored@coords@START\pgfplots@stored@current@data
+				\to
+				{\pgfplots@stored@current@data}%
+				{\pgfplots@stored@current@precmdappend}%
+			% store preparation commands into "precmd":
+			\pgfplotslist@TOK@b=\expandafter{\pgfplots@stored@current@precmd}%
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@stored@current@precmdappend}%
+			\edef\pgfplots@stored@current@precmd{\the\pgfplotslist@TOK@b\the\pgfplotslist@TOK@a}%
 		\fi
 		% Now, we need to insert all stored entities into the new,
 		% reversed list. We only expand them ONCE.
@@ -295,8 +296,97 @@
 	}%
 	% Now, overwrite the original list:
 	\global\let\pgfplots@stored@plotlist=\pgfplots@stored@plotlist@reversed
+	\global\let\pgfplots@stored@plotlist@reversed=\relax
 	\endgroup
 }%
+
+% This command finalizes the stored plot data. It records a coordinate
+% stream into '#3' and assembles a macro '#4' which contains all
+% preparation commands to ensure the functionality of
+% \pgfplots@stacked@finalize@stored@plots
+%
+% Instead, it generates a macro #4 which - if used as "precommand"
+% befor a draw operation - restores all required options and performs
+% pre-drawing.
+\long\def\pgfplots@stacked@finalize@stored@coords@START plot coordinates #1#2;\to#3#4{%
+	\pgfplots@stacked@beginplot
+	\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#3
+	\pgfplots@coord@stream@foreach{#1}%
+	\pgfplots@stacked@endplot
+	\pgfplots@stacked@savestateto\pgfplots@TMP
+	\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP\def\pgfplots@stacked@stored@postpath{#2}}%
+	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+	\pgfplots@toka=\expandafter{\pgfplots@TMP}%
+	\edef#4{%
+		\the\pgfplots@toka
+		\the\pgfplotslist@TOK@a
+	}%
+}%
+\def\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#1{%
+	\def\pgfplots@coord@stream@start@{%
+		\gdef#1{\pgfplotstreamstart}%
+	}%
+	\def\pgfplots@coord@stream@end@{%
+		\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+	}%
+	\ifpgfplots@apply@datatrafo
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\pgfplots@apply@data@scaletrafo@to@one@point{##1}{##2}{##3}{##4}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\else
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\def\pgfplots@current@point@x{##1}%
+			\def\pgfplots@current@point@y{##2}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\fi
+	\def\pgfplots@coord@stream@finalize@currentpt{%
+		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+		\edef\pgfmathresult{{\the\pgf@x}{\the\pgf@y}}%
+		\pgfplotslist@TOK@a=\expandafter{#1}%
+		\pgfplotslist@TOK@b=\expandafter{\pgfmathresult}%
+		\xdef#1{\the\pgfplotslist@TOK@a
+			\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint\the\pgfplotslist@TOK@b}}%
+	}%
+}
+
+% This command gets called after the sequence reversal has been done.
+% It unpacks everything prepared by 
+% \pgfplots@stacked@finalize@stored@coords@START
+% and draws the plot (and markers).
+\def\pgfplots@stacked@draw@reversed@plot{%
+	\pgfplots@stored@current@cmd[current plot style]
+	\pgfextra
+		\tikzset{every plot/.try}%
+		\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+		\pgfplots@basiclevel@plothandler
+		% this here contains a recorded plot stream, see above. 
+		\pgfplots@stored@current@data
+		%
+		\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+		\ifx\tikz@plot@mark\pgfutil@empty
+		\else
+			\global\let\pgfplots@recorded@marker@stream=\pgfplots@stored@current@data
+		\fi
+		\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
+		\tikz@make@last@position{\pgfplotlastpoint}%  
+	\expandafter
+	\endpgfextra
+	\pgfplots@stacked@stored@postpath
+	;
+	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
+	\else
+		\pgfplots@stored@current@cmd[current plot style]
+		\pgfextra 
+			\pgfplots@install@plotmark@handler
+			\pgfplots@recorded@marker@stream 
+		\endpgfextra
+		;
+	\fi
+	\gdef\pgfplots@recorded@marker@stream{}% clear
+}%
+
 
 \def\pgfplots@stacked@path@closed@cycle{%
 	\pgfplots@stacked@closedcycle@impl

@@ -86,53 +86,9 @@
 \def\pgfplots@errorbars@xdirection{0}% pre-init, see below
 \def\pgfplots@errorbars@ydirection{0}%
 
-\def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
-\def\pgfplots@warning#1{\pgfplots@message{! Package pgfplots Warning: #1}}%
-\def\pgfplots@message#1{%
-	\immediate\write16{#1}%
-}%
-
 \def\axisdefaultwidth{240pt}
 \def\axisdefaultheight{207pt}
 
-
-% Assigns list contents #2 to a list macro #1.
-%
-% The list contents may be provided in one of two formats:
-% a) in the (deprecated) list format 'first\\second\\thirst\\'
-% or
-% b) in the PGF foreach list format 'first,second,third'.
-\def\pgfplots@assign@list#1#2{%
-	\def\pgfplots@TMP{#2}%
-	\ifx\pgfplots@TMP\pgfutil@empty
-		\pgfplotslistnewempty#1%
-	\else
-		\pgfplots@check@backwards@compatible@list@format #2\\\pgfplots@EOI
-		\ifpgfplots@is@old@list@format
-			\pgfplotslistnew#1{#2}%
-		\else
-			\pgfplots@foreach@to@list{#2}\to#1
-		\fi
-	\fi
-}%
-
-% Sets the boolean \ifpgfplots@is@old@list@format  to true if and only
-% if the input is a list in the format '{first\\second\\}'.
-%
-% This format is deprecated, but is still provided for backwards
-% compatibility.
-%
-% Usage:
-% \pgfplots@check@backwards@compatible@list@format <argument>'\\'\pgfplots@EOI
-% you NEED to append '\\\pgfplots@EOI' at the end.
-\def\pgfplots@check@backwards@compatible@list@format#1\\#2\pgfplots@EOI{%
-	\def\pgfplots@TMP{#2}%
-	\ifx\pgfplots@TMP\pgfutil@empty
-		\pgfplots@is@old@list@formatfalse
-	\else
-		\pgfplots@is@old@list@formattrue
-	\fi
-}%
 
 
 
@@ -641,7 +597,9 @@
 	/pgfplots/extra description/.code=,
 	/pgfplots/extra description/.belongs to family=/pgfplots/descriptions,
 % axis options:
-	/pgfplots/at/.code={\tikz@scan@one@point\pgfplots@set@at#1},
+	/pgfplots/at/.code={%
+		\pgfplots@assert@tikzinternal@exists{tikz@scan@one@point}%
+		\tikz@scan@one@point\pgfplots@set@at#1},
 	/pgfplots/at/.belongs to family=/pgfplots,
 	/pgfplots/clip limits/.is if=pgfplots@clip@limits,
 	/pgfplots/clip limits/.default=true,
@@ -2373,6 +2331,10 @@
 % perfectly ok if it is simply the identity!
 \long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	%
+	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
+	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
+	%
 	\edef\pgfplots@plot@data{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat}}%
 	\global\let\pgfplots@TMP=\pgfutil@empty
 	\pgfplots@plot@data{%
@@ -2409,25 +2371,32 @@
 % #2: file name
 % #3: trailing path commands until ';'
 \def\pgfplots@addplotimpl@function#1unction#2#3;{%
-	\def\tikz@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
+	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
+	\pgfplots@gettikzinternal@keyval{samples}{tikz@plot@samples}{25}%
+	\pgfplots@gettikzinternal@keyval{domain}{tikz@plot@domain}{-5:5}%
+	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
+	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
+	%
+	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
 	\iftikz@plot@raw@gnuplot%
-		\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{#2}}%
+		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#2}}%
 	\else%
 		\iftikz@plot@parametric%   
-			\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
+			\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 				\pgfplots@gnuplot@format;
 				set samples \tikz@plot@samples;
 				set parametric;
 				plot [t=\tikz@plot@domain] #2}}%
 		\else%
-			\def\tikz@plot@data{\pgfplotgnuplot[\tikz@plot@filename]{%
+			\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 				\pgfplots@gnuplot@format;
 				set samples \tikz@plot@samples;
 				plot [x=\tikz@plot@domain] #2}}%
 		\fi%
 	\fi%
 	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#3}}%
-	\tikz@plot@data
+	\pgfplots@plot@data
 	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
 }%
 
@@ -2640,35 +2609,42 @@
 			% Assemble a
 			% \pgfplots@addplot@enqueue@coords{}{}...{}
 			% statement with correct arguments:
-			\ifx\pgfplots@recordederrorbar\pgfutil@empty
-				\let\pgfplots@TMPB=\pgfutil@empty%
-			\else
-				\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
-				\def\pgfplots@TMPB{%
-					\noexpand\pgfplots@errorbars@finishwithstyleoptions[\the\pgfplotslist@TOK@a]{\the\pgfplotslist@TOK@b}%
-				}%
-			\fi
 			\ifpgfplots@datascaletrafo@initialised
 				\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
 				\pgfplots@toka=\expandafter{\pgfplots@TMP}%
 			\else
 				\pgfplots@toka={}%
 			\fi
-			\edef\pgfplots@TMP{%
+			\pgfplotslist@TOK@b=\expandafter{\pgfplots@coord@stream@recorded #2;}%
+			\begingroup% allow usage of more temporary token registers FIXME
+			\ifx\pgfplots@recordederrorbar\pgfutil@empty
+				\let\pgfplots@TMPB=\pgfutil@empty%
+			\else
+				\toks255=\expandafter{\pgfplots@recordederrorbar}%
+				\def\pgfplots@TMPB{%
+					\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\toks255 }%
+				}%
+			\fi
+			\xdef\pgfplots@TMP{%
 				\noexpand\pgfplots@addplot@enqueue@coords
-				{
+				{% precommand:
 					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
 					\noexpand\pgfplots@initzerolevelhandler
-					\the\pgfplots@toka% named start/end points
+					\the\pgfplots@toka% named start/end points (if already available)
 					\noexpand\tikzstyle{current plot style}=[\the\pgfplotslist@TOK@a]%
 					\pgfplots@TMPB% error bar commands
 				}%
-				{%
-					\noexpand\draw[current plot style]%
+				{% draw command:
+					\noexpand\draw%
+				}%
+				{% coordinates which need to be processed in \endaxis:
+					\the\pgfplotslist@TOK@b
+				}%
+				{% postcommand
 				}%
 			}%
-			\expandafter\pgfplots@TMP\expandafter{\pgfplots@coord@stream@recorded #2;}%
-				{}%
+			\endgroup
+			\pgfplots@TMP
 			\pgfplots@end@plot
 		\fi
 	}%
@@ -2961,6 +2937,9 @@
 				\pgfplots@stacked@preparepoint@inmacro{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
 				\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
 					\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+				\else
+					% the finishpoint routine will be invoked at
+					% \endaxis.
 				\fi
 			\fi
 			% update also axis / data limits:
@@ -3084,21 +3063,82 @@
 	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
 }
 
+\newif\ifpgfplots@record@marker@stream
 % Takes a sequence of PREPARED coordinates which are given in floating
-% point representation and applies the data scaling trafo.
+% point representation and applies the data scaling trafo (if
+% necessary).
+%
+% Any coordinate will be plotted with the selected PGF plot handler.
 %
 % This stream is designed to be done at the end of an axis.
 % See \pgfplots@coord@stream@finalize@storedcoords@START
+%
+% #1 : a macro which will be filled with a pgf plot stream for the
+% marker points.
 \def\pgfplots@coord@stream@INIT@finalize@storedcoords#1{%
+	%
+	% Init the plot handlers:
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	\ifx\tikz@plot@mark\pgfutil@empty
+		% mark=none : no need to waste time collecting marker
+		% positions.
+		\pgfplots@record@marker@streamfalse
+	\else
+		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
+			% only marks: draw markers directly; no need for the
+			% two-pass-approach.
+			\let\pgfplots@basiclevel@plothandler=\relax
+			\pgfplots@install@plotmark@handler
+			\pgfplots@record@marker@streamfalse
+		\else
+			% ok, mark!=none and we also have a plot handler.
+			% So, collect mark positions!
+			\pgfplots@record@marker@streamtrue
+		\fi
+	\fi
+	\gdef#1{}%
+	%
+	% Now, set up coordinate streams.
 	\def\pgfplots@coord@stream@start@{%
+		\pgfplots@basiclevel@plothandler
+		\pgfplotstreamstart
 		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
+		\ifpgfplots@record@marker@stream
+			\gdef#1{\pgfplotstreamstart}%
+		\fi
 	}%
 	\def\pgfplots@coord@stream@end@{%
-		\let#1=\pgfplots@data@scaletrafo@result
+		\pgfplotstreamend
+		\ifpgfplots@record@marker@stream
+			\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+		\fi
 	}%
-	\let\pgfplots@coord@stream@coord@=\pgfplots@apply@data@scaletrafo@to@one@point
+	\ifpgfplots@apply@datatrafo
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\pgfplots@apply@data@scaletrafo@to@one@point{##1}{##2}{##3}{##4}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\else
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\def\pgfplots@current@point@x{##1}%
+			\def\pgfplots@current@point@y{##2}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\fi
+	\def\pgfplots@coord@stream@finalize@currentpt{%
+		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+		\ifpgfplots@record@marker@stream
+			\edef\pgfmathresult{{\the\pgf@x}{\the\pgf@y}}%
+			\pgfplotslist@TOK@a=\expandafter{#1}%
+			\pgfplotslist@TOK@b=\expandafter{\pgfmathresult}%
+			\xdef#1{\the\pgfplotslist@TOK@a
+				\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint\the\pgfplotslist@TOK@b}}%
+		\fi
+		\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
+	}%
 }
-
 \def\pgfplots@addplot@get@named@startendpoints@command#1{%
 	\edef#1{%
 		\noexpand\pgfcoordinate{current plot begin}{\noexpand\pgfqpointxy{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@firstcoord@y}}%
@@ -3116,62 +3156,59 @@
 %   data scaling transformation (\pgfplots@datascaletrafo@x).
 %
 % The output will be written into the macro #3
-\long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\to#3{%
-	\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates {#1}#2;\to#3
-	\ifpgfplots@errorbars@enabled
-		\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\pgfplots@recordederrorbar}%
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\pgfplots@EOI{%
+	\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
+	\pgfplots@stored@current@cmd[current plot style]
+	\pgfextra
+	\tikzset{every plot/.try}%
+	\ifpgfplots@apply@datatrafo
+		\ifpgfplots@stackedmode
+			\pgfplots@stacked@beginplot
+		\fi
+		\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
+		\pgfplots@coord@stream@foreach{#1}%
+		\ifpgfplots@stackedmode
+			\pgfplots@stacked@endplot
+		\fi
+		\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+		\pgfplots@TMP
+	\else
+		\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
+		\pgfplots@coord@stream@foreach{#1}%
 	\fi
-	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
-	\pgfplots@TMP
-}%
-\long\def\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates #1#2;\to#3{%
-	\ifpgfplots@stackedmode
-		\pgfplots@stacked@beginplot
+	\tikz@make@last@position{\pgfplotlastpoint}%  
+	\endpgfextra
+	#2;
+	% FIXME: inefficient! Use \scope to set variables:
+	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
+	\else
+		\pgfplots@stored@current@cmd[current plot style]
+		\pgfextra 
+			\pgfplots@install@plotmark@handler
+			\pgfplots@recorded@marker@stream 
+		\endpgfextra
+		;
 	\fi
-	\pgfplots@coord@stream@INIT@finalize@storedcoords#3
-	\ifpgfplots@errorbars@enabled
-		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
-		\pgfplots@streamerrorbarstart
-	\fi
-	\pgfplots@coord@stream@foreach{#1}%
-	\ifpgfplots@stackedmode
-		\pgfplots@stacked@endplot
-	\fi
-	\pgfplots@toka=\expandafter{#3}%
-	\pgfplotslist@TOK@a={#2}%
-	\edef#3{plot coordinates {\the\pgfplots@toka}\the\pgfplotslist@TOK@a;}%
-	\ifpgfplots@errorbars@enabled
-		\pgfplots@streamerrorbarend
-	\fi
+	\gdef\pgfplots@recorded@marker@stream{}% clear
 }%
 
-% does the same job, but it does not execute any drawing commands.
-%
-% Instead, it generates a macro #4 which - if used as "precommand"
-% befor a draw operation - restores all required options and performs
-% pre-drawing.
-\long\def\pgfplots@coord@stream@finalize@storedcoords@START@dryrun plot coordinates #1#2;\to#3#4{%
-	\pgfplots@coord@stream@finalize@storedcoords@START@ plot coordinates {#1}#2;\to#3
-	\ifpgfplots@stackedmode
-		\pgfplots@stacked@savestateto\pgfplots@TMP
-		\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP}%
+\def\pgfplots@install@plotmark@handler{%
+	\pgfplots@assert@tikzinternal@exists{tikz@options}%
+	% note: I can't check on tikz@transform because it can be
+	% '\relax'.
+	\pgfplots@gettikzinternal@keyval{mark indices}{tikz@mark@list}{}%
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	% do not reset \tikz@options: draw color may be acquired
+	% from 'current plot style'
+	%\let\tikz@options=\pgfutil@empty%
+	\let\tikz@transform=\pgfutil@empty%
+	\tikzset{every plot/.try,every mark}%
+	\tikz@options
+	\ifx\tikz@mark@list\pgfutil@empty%
+		\pgfplothandlermark{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}%
 	\else
-		\pgfplotslist@TOK@a={}%
-	\fi
-	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
-	\pgfplots@toka=\expandafter{\pgfplots@TMP}%
-	\ifpgfplots@errorbars@enabled
-		\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
-		\edef#4{%
-			\the\pgfplots@toka
-			\the\pgfplotslist@TOK@a
-			\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\pgfplotslist@TOK@b}%
-		}%
-	\else
-		\edef#4{%
-			\the\pgfplots@toka
-			\the\pgfplotslist@TOK@a
-		}%
+		\pgfplothandlermarklisted{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}{\tikz@mark@list}%
 	\fi
 }%
 
@@ -3238,8 +3275,8 @@
 		\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
 		\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 	\fi
-	\pgfplots@toka=\expandafter{\pgfplots@data@scaletrafo@result}%
-	\edef\pgfplots@data@scaletrafo@result{\the\pgfplots@toka(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+%	\pgfplots@toka=\expandafter{\pgfplots@data@scaletrafo@result}%
+%	\edef\pgfplots@data@scaletrafo@result{\the\pgfplots@toka(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 }
 
 % This thing here shall draw all error bar commands listed in '#2'.
@@ -3615,15 +3652,16 @@
 }
 
 \def\pgfplots@try@mirror@plot@handler{%
-	\pgfutil@ifundefined{tikz@plot@handler}{}{%
-		\ifx\tikz@plot@handler\pgfplothandlerconstantlineto
-			\let\tikz@plot@handler=\pgfplothandlerconstantlinetomarkright
-		\else
-			\ifx\tikz@plot@handler\pgfplothandlerconstantlinetomarkright
-				\let\tikz@plot@handler=\pgfplothandlerconstantlineto
-			\fi
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	% this method assigns '\tikz@plot@handler'.
+	% That's ok and does not introduce incompatibilities.
+	\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerconstantlineto
+		\let\tikz@plot@handler=\pgfplothandlerconstantlinetomarkright
+	\else
+		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerconstantlinetomarkright
+			\let\tikz@plot@handler=\pgfplothandlerconstantlineto
 		\fi
-	}%
+	\fi
 }
 
 \long\def\pgfplots@show@small@legendplots#1#2{
@@ -6169,7 +6207,12 @@
 \let\prettyprintnumber=\pgfmathprintnumber%
 
 \def\pgfplots@set@options#1{%
-	\def\pgfplots@at{\pgfqpoint{\the\tikz@lastx}{\the\tikz@lasty}}%
+	\pgfutil@ifundefined{tikz@lastx}{%
+		% no warning. Its not that important anyway, I think.
+		\def\pgfplots@at{\pgfpointorigin}%
+	}{%
+		\def\pgfplots@at{\pgfqpoint{\the\tikz@lastx}{\the\tikz@lasty}}%
+	}%
 	%
 	% Temporarily assign families to 'name' and 'alias' options.
 	% This allows to get the names - they should not be appended to
@@ -6571,6 +6614,7 @@
 			\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@TMP{%
 				\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@TMP
 %\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
+				% The precmd processed any error bars.
 				\pgfplots@stored@current@precmd
 				\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 					\pgfplots@stored@current@data%
@@ -6579,14 +6623,10 @@
 					% command!
 					\ifpgfplots@stacked@reverse
 						% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
+						\pgfplots@stacked@draw@reversed@plot
 					\else
-						\ifpgfplots@apply@datatrafo
-							% Apply the data scaling transformation
-							\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\to\pgfplots@stored@current@data%
-						\fi
+						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 					\fi
-%\message{calling plotcmd and plotdata: pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' data '\meaning\pgfplots@stored@current@data'}%
-					\expandafter\pgfplots@stored@current@cmd\pgfplots@stored@current@data
 				\fi
 				\pgfplots@stored@current@postcmd
 			}%

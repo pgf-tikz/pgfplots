@@ -41,3 +41,101 @@
 		\expandafter\pgfplotsqaftergroupeach@
 	\fi
 }
+
+% Assigns list contents #2 to a list macro #1.
+%
+% The list contents may be provided in one of two formats:
+% a) in the (deprecated) list format 'first\\second\\thirst\\'
+% or
+% b) in the PGF foreach list format 'first,second,third'.
+\def\pgfplots@assign@list#1#2{%
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+		\pgfplotslistnewempty#1%
+	\else
+		\pgfplots@check@backwards@compatible@list@format #2\\\pgfplots@EOI
+		\ifpgfplots@is@old@list@format
+			\pgfplotslistnew#1{#2}%
+		\else
+			\pgfplots@foreach@to@list{#2}\to#1
+		\fi
+	\fi
+}%
+
+% Sets the boolean \ifpgfplots@is@old@list@format  to true if and only
+% if the input is a list in the format '{first\\second\\}'.
+%
+% This format is deprecated, but is still provided for backwards
+% compatibility.
+%
+% Usage:
+% \pgfplots@check@backwards@compatible@list@format <argument>'\\'\pgfplots@EOI
+% you NEED to append '\\\pgfplots@EOI' at the end.
+\def\pgfplots@check@backwards@compatible@list@format#1\\#2\pgfplots@EOI{%
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+		\pgfplots@is@old@list@formatfalse
+	\else
+		\pgfplots@is@old@list@formattrue
+	\fi
+}%
+
+\def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
+\def\pgfplots@warning#1{\pgfplots@message{! Package pgfplots Warning: #1}}%
+\def\pgfplots@message#1{%
+	\immediate\write16{#1}%
+}%
+\def\pgfplots@assert@tikzinternal@exists#1{%
+	\pgfutil@ifundefined{#1}{%
+		\pgfplots@error{Sorry, pgfplots relies on the existance of the tikz internal macro '#1'.
+		 Unfortunately, this does no longer exist ... you will need to get an updated version of pgfplots to fix this problem.}%
+		\expandafter\let\csname #1\endcsname=\pgfutil@empty
+	}{}%
+}%
+
+
+% A future-version compatibility method which checks whether the
+% macro '#2' exists.
+%
+% We assume that '#2' usually contains the value of the tikz key '#1'.
+% Example:
+% /tikz/variable is usually stored into '\tikz@plot@var'.
+%
+% However, this may change in future versions.
+%
+% So, we do the following:
+% 1. check whether '#2' exists, if yet: ok.
+% 2. if not, check whether the value is stored directly into '/tikz/#1'.
+% 3. if not, check whether the value is stored directly into '/pgf/#1'.
+% 4. If everything fails, provide an error message.
+%
+% #1: a tikz key without key prefix (/tikz/ and /pgf/ will be prepended).
+% #2: a macro name WITHOUT backslash.
+% #3: the default value if everything fails.
+\def\pgfplots@gettikzinternal@keyval#1#2#3{%
+	\pgfutil@ifundefined{#2}{%
+		\pgfkeysifdefined{/tikz/#1}{%
+			\pgfkeysgetvalue{/tikz/#1}\pgfplots@TMP
+			\expandafter\let\csname #1\endcsname=\pgfplots@TMP
+		}{%
+			\pgfkeysifdefined{/pgf/#1}{%
+				\pgfkeysgetvalue{/pgf/#1}\pgfplots@TMP
+				\expandafter\let\csname #1\endcsname=\pgfplots@TMP
+			}{%
+				\expandafter\def\csname #1\endcsname{#3}%
+				{\pgfplots@toka={#3}%
+				\pgfplots@warning{Sorry, could not find value of '/tikz/#1'. Assuming '\the\pgfplots@toka'.}%
+				}%
+			}%
+		}%
+	}{}%
+}%
+
+\def\pgfplots@getcurrent@plothandler#1{%
+	\pgfutil@ifundefined{tikz@plot@handler}{%
+		\pgfplots@error{Sorry, can't get the current plot handler. It appears that tikz and pgfplots is no longer compatible!? You will need to get a newer version of pgfplots.}%
+		\let#1=\pgfplothandlerlineto
+	}{%
+		\let#1=\tikz@plot@handler
+	}%
+}%
