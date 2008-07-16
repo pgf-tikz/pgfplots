@@ -76,6 +76,8 @@
 \newif\ifpgfplots@stackedmode
 \newif\ifpgfplots@stacked@reverse
 \newif\ifpgfplots@stacked@plus
+\newif\ifpgfplots@use@aftergroup@as@fast@list
+\newif\ifpgfplots@plot@file@skipfirst
 \let\pgfplots@TMP=\pgfutil@empty
 \let\pgfplots@TMPB=\pgfutil@empty
 \let\pgfplots@TMPC=\pgfutil@empty
@@ -1122,6 +1124,10 @@
 		x tick label as interval,
 		xticklabel={$\pgfmathprintnumber{\tick}$ -- $\pgfmathprintnumber{\nexttick}$}
 	},
+	/pgfplots/use aftergroup stack as fast list/.is if=pgfplots@use@aftergroup@as@fast@list,
+	/pgfplots/use aftergroup stack as fast list/.default=true,
+	/pgfplots/plot file/skip first/.is if=pgfplots@plot@file@skipfirst,
+	/pgfplots/plot file/skip first/.default=true,
 }
 
 \newif\ifpgfplots@log@tick@isminor@tick@pos
@@ -2416,8 +2422,63 @@
 	\fi
 }
 
+%--------------------------------------------------
+% \def\pgfplots@addplotimpl@file#1ile{%
+% 	\pgfplots@addplotimpl@table{#1}table[x index=0,y index=1,header=false]%
+% }%
+%-------------------------------------------------- %
+
+% #1: arguments to \addplot[...]
+% #2: the file name
+% #3: any additional path arguments
 \def\pgfplots@addplotimpl@file#1ile{%
-	\pgfplots@addplotimpl@table{#1}table[x index=0,y index=1,header=false]%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@file@opt{#1}%
+	}{%
+		\pgfplots@addplotimpl@file@opt{#1}[]%
+	}%
+}
+
+% \addplot[#1] file[#2] {#3} #4;
+\def\pgfplots@addplotimpl@file@opt#1[#2]#3#4;{%
+	\begingroup
+	\def\pgfplots@TMP{#2}%
+	\ifx\pgfplots@TMP\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/plot file}{#2}%
+	\fi
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplots@coord@stream@start
+	\openin1=#3
+	\ifeof1
+		\pgfplots@warning{sorry, plot file{#3} could not be opened!?}%
+	\else
+		\pgfplots@addplotimpl@file@readall
+	\fi
+	\pgfplots@coord@stream@end
+	\endgroup
+}%
+\def\pgfplots@addplotimpl@file@readall{%
+	\read1 to\pgfplots@file@LINE
+	\expandafter\pgfplotstableread@checkspecial@line\pgfplots@file@LINE\pgfplotstable@EOI
+	\ifpgfplotstableread@skipline
+	\else
+		\ifpgfplots@plot@file@skipfirst
+			% Silently skip first data row, assuming it is a header.
+			\pgfplots@plot@file@skipfirstfalse
+		\else
+			\expandafter\pgfplots@addplotimpl@file@parsesingle\pgfplots@file@LINE\pgfplots@EOI
+		\fi
+	\fi
+	\ifeof1
+	\else
+		\expandafter
+		\pgfplots@addplotimpl@file@readall
+	\fi
+}%
+
+\def\pgfplots@addplotimpl@file@parsesingle#1 #2 #3\pgfplots@EOI{%
+	\pgfplots@coord@stream@coord{#1}{#2}{}{}%
 }%
 
 \def\pgfplots@addplotimpl@table#1table{%
@@ -2543,9 +2604,6 @@
 	\else
 		\pgfplots@execute@at@begin@plot
 	\fi
-	\ifpgfplots@stackedmode
-		\pgfplots@stacked@beginplot
-	\fi
 	\def\pgfplots@addplot@nonlegend@options{#1}%
 	\ifx\pgfplots@addplot@nonlegend@options\pgfutil@empty
 	\else
@@ -2570,27 +2628,36 @@
 %      would yield #2 =' -- (0,0)'
 %
 \long\def\pgfplots@PREPARE@COORD@STREAM#1#2{%
-	\ifpgfplots@errorbars@enabled
-		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
-		\pgfplots@streamerrorbarstart
-	\else
-		\let\pgfplots@recordederrorbar=\pgfutil@empty
-	\fi
-	\pgfplots@coord@stream@INIT\pgfplots@coord@stream@recorded
-	%
-	% make sure that \pgfplots@coord@stream@end@@ is called at the end
-	% of the lately prepare end-stream method.
-	\expandafter\def\expandafter\pgfplots@coord@stream@end@\expandafter{%
-		\pgfplots@coord@stream@end@
-		\pgfplots@coord@stream@end@@
+	\def\pgfplots@coord@stream@start@{%
+		\ifpgfplots@use@aftergroup@as@fast@list
+			\begingroup
+			\aftergroup\pgfplotsaftergroupcollectinto
+			\aftergroup\pgfplots@coord@stream@recorded
+		\fi
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+			\pgfplots@streamerrorbarstart
+		\else
+			\let\pgfplots@recordederrorbar=\pgfutil@empty
+		\fi
+		\ifpgfplots@stackedmode
+			\pgfplots@stacked@beginplot
+		\fi
+		%
+		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
+		%
 	}%
-	\def\pgfplots@coord@stream@end@@{%
+	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
+	\def\pgfplots@coord@stream@end@{%
 		\ifpgfplots@errorbars@enabled
 			\pgfplots@streamerrorbarend
 		\fi
 		\ifpgfplots@coord@stream@isfirst
 			\pgfplots@warning{Empty plot silently dropped.}%
 		\else
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@endplot
+			\fi
 			% Idea: use
 			%   \scope[plot specification]
 			%   <any paths for error bars>
@@ -2615,16 +2682,17 @@
 			\else
 				\pgfplots@toka={}%
 			\fi
-			\pgfplotslist@TOK@b=\expandafter{\pgfplots@coord@stream@recorded #2;}%
-			\begingroup% allow usage of more temporary token registers FIXME
 			\ifx\pgfplots@recordederrorbar\pgfutil@empty
 				\let\pgfplots@TMPB=\pgfutil@empty%
 			\else
-				\toks255=\expandafter{\pgfplots@recordederrorbar}%
+				\pgfplotslist@TOK@b=\expandafter{\pgfplots@recordederrorbar}%
 				\def\pgfplots@TMPB{%
-					\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\toks255 }%
+					\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\pgfplotslist@TOK@b}%
 				}%
 			\fi
+			% assembe a \pgfplots@addplot@enqueue@coords command ...
+			% BEGIN HERE ...
+			% vvvvvvvvvv
 			\xdef\pgfplots@TMP{%
 				\noexpand\pgfplots@addplot@enqueue@coords
 				{% precommand:
@@ -2637,14 +2705,44 @@
 				{% draw command:
 					\noexpand\draw%
 				}%
+			}%
+			\ifpgfplots@use@aftergroup@as@fast@list
+				\aftergroup\pgfplots@EOI%
+				% WARNING: this artificial group destroys
+				%  \pgfplots@currentplot@firstcoord@[xy]
+				%  \pgfplots@currentplot@lastcoord@[xy]
+				% and other intermediate values (which is ok)
+				\ifpgfplots@collect@firstplot@astick
+					\ifnum\pgfplots@numplots=0\relax
+						% safe this information outside of the group:
+						\pgfplotslist@TOK@a=\expandafter{\pgfplots@firstplot@coords@x}%
+						\pgfplotslist@TOK@b=\expandafter{\pgfplots@firstplot@coords@y}%
+						\xdef\pgfplots@TMPB{%
+							\noexpand\def\noexpand\pgfplots@firstplot@coords@x{\the\pgfplotslist@TOK@a}%
+							\noexpand\def\noexpand\pgfplots@firstplot@coords@y{\the\pgfplotslist@TOK@b}%
+						}%
+					\fi
+				\fi
+				\endgroup
+				%^^^^^^^^
+				% this issues 
+				%  \def\pgfplots@coord@stream@recorded{(x,y)(x,y)....}
+				% command HERE
+				\pgfplots@TMPB
+			\fi
+			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
+			\pgfplotslist@TOK@b={#2;}%
+			\pgfplotslist@TOK@a=\expandafter{\pgfplots@TMP}%
+			\xdef\pgfplots@TMP{%
+				\the\pgfplotslist@TOK@a
 				{% coordinates which need to be processed in \endaxis:
-					\the\pgfplotslist@TOK@b
+					plot coordinates {\the\pgfplots@toka}\the\pgfplotslist@TOK@b
 				}%
 				{% postcommand
 				}%
 			}%
-			\endgroup
 			\pgfplots@TMP
+			%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 			\pgfplots@end@plot
 		\fi
 	}%
@@ -2652,9 +2750,6 @@
 
 \def\pgfplots@end@plot{%
 	\global\advance\pgfplots@numplots by1\relax%
-	\ifpgfplots@stackedmode
-		\pgfplots@stacked@endplot
-	\fi
 	\ifx\pgfplots@execute@at@end@plot\pgfutil@empty
 	\else
 		\pgfplots@execute@at@end@plot
@@ -2947,8 +3042,15 @@
 			\ifpgfplots@errorbars@enabled
 				\pgfplots@process@errorbar@for{\pgfplots@current@point@x}{\pgfplots@current@point@y}{#3}{#4}{#1}{#2}%
 			\fi
-			\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
-			\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+			%
+			\ifpgfplots@use@aftergroup@as@fast@list
+				\xdef\pgfplots@TMP{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+				\expandafter\pgfplotsqaftergroupeach\expandafter{\pgfplots@TMP}%
+			\else
+				\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
+				\edef\pgfplots@coord@stream@recorded{\the\pgfplots@toka (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+			\fi
+			%
 			\ifpgfplots@collect@firstplot@astick
 				\ifnum\pgfplots@numplots=0
 					\ifx\pgfplots@firstplot@coords@x\pgfutil@empty
@@ -2965,7 +3067,6 @@
 					\edef\pgfplots@firstplot@coords@y{\the\pgfplots@toka\pgfplots@current@point@y}%
 				\fi
 			\fi
-%\pgfplots@message{FILTERING: appended \pgfplots@current@point@x,\pgfplots@current@point@y}%  -> results in \pgfplots@coord@stream@recorded}%
 		\fi
 	\fi
 	%
@@ -3004,23 +3105,23 @@
 \def\pgfplots@coord@stream@coord#1#2#3#4{%
 	\pgfplots@coord@stream@coord@{#1}{#2}{#3}{#4}%
 	\ifpgfplots@coord@stream@isfirst
-		\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
-		\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
 		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
 		\else
 			\ifx\pgfplots@currentplot@firstcoord@y\pgfutil@empty
 			\else
+				\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
+				\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
 				\pgfplots@coord@stream@isfirstfalse
 			\fi
 		\fi
 	\fi
 	\ifx\pgfplots@current@point@x\pgfutil@empty
 	\else
-		\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
-	\fi
-	\ifx\pgfplots@current@point@y\pgfutil@empty
-	\else
-		\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+		\else
+			\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
+			\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+		\fi
 	\fi
 }%
 
@@ -3044,24 +3145,6 @@
 	\pgfplots@EOI
 	\pgfplots@coord@stream@end
 }%
-
-% Processes coordinates and writes a new, modified 'plot coordinates'
-% command to macro #1.
-% #1:  macro name for processed coordinates.
-%
-% Please note that it may be necessary to process the same coordinates
-% once more at the end of an axis - see
-% pgfplots@coord@stream@finalize@storedcoords@START
-\def\pgfplots@coord@stream@INIT#1{%
-	\def\pgfplots@coord@stream@start@{%
-		\let\pgfplots@coord@stream@recorded=\pgfutil@empty
-	}%
-	\def\pgfplots@coord@stream@end@{%
-		\pgfplots@toka=\expandafter{\pgfplots@coord@stream@recorded}%
-		\edef#1{plot coordinates {\the\pgfplots@toka}}%
-	}%
-	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
-}
 
 \newif\ifpgfplots@record@marker@stream
 % Takes a sequence of PREPARED coordinates which are given in floating
@@ -3102,17 +3185,47 @@
 	%
 	% Now, set up coordinate streams.
 	\def\pgfplots@coord@stream@start@{%
+		\ifpgfplots@apply@datatrafo
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@beginplot
+			\fi
+		\fi
 		\pgfplots@basiclevel@plothandler
 		\pgfplotstreamstart
 		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
 		\ifpgfplots@record@marker@stream
-			\gdef#1{\pgfplotstreamstart}%
+			\ifpgfplots@use@aftergroup@as@fast@list
+				\begingroup
+				\aftergroup\pgfplotsaftergroupcollectinto
+				\aftergroup\pgfplots@recorded@marker@stream@@%
+				\aftergroup\pgfplotstreamstart
+			\else
+				\gdef#1{\pgfplotstreamstart}%
+			\fi
 		\fi
 	}%
 	\def\pgfplots@coord@stream@end@{%
+		\ifpgfplots@apply@datatrafo
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@endplot
+			\fi
+			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
+			\pgfplots@TMP
+		\fi
 		\pgfplotstreamend
 		\ifpgfplots@record@marker@stream
-			\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+			\ifpgfplots@use@aftergroup@as@fast@list
+				\aftergroup\pgfplotstreamend
+				\aftergroup\pgfplots@EOI%
+				\endgroup
+				%^^^^^^^^
+				% this issues a
+				%  \def\pgfplots@recorded@marker@stream@@{recorded stream data}
+				% command HERE
+				\global\let\pgfplots@recorded@marker@stream=\pgfplots@recorded@marker@stream@@
+			\else
+				\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+			\fi
 		\fi
 	}%
 	\ifpgfplots@apply@datatrafo
@@ -3127,17 +3240,36 @@
 			\pgfplots@coord@stream@finalize@currentpt
 		}%
 	\fi
-	\def\pgfplots@coord@stream@finalize@currentpt{%
-		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
-		\ifpgfplots@record@marker@stream
-			\edef\pgfmathresult{{\the\pgf@x}{\the\pgf@y}}%
-			\pgfplotslist@TOK@a=\expandafter{#1}%
-			\pgfplotslist@TOK@b=\expandafter{\pgfmathresult}%
-			\xdef#1{\the\pgfplotslist@TOK@a
-				\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint\the\pgfplotslist@TOK@b}}%
-		\fi
-		\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
-	}%
+	\ifpgfplots@use@aftergroup@as@fast@list
+		\def\pgfplots@coord@stream@finalize@currentpt{%
+			\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+			\ifpgfplots@record@marker@stream
+				\aftergroup\pgfplotstreampoint
+				\aftergroup{%
+				\aftergroup\pgfqpoint
+				\aftergroup{%
+				\expandafter\pgfplotsqaftergroupeach\expandafter{\the\pgf@x}%
+				\aftergroup}%
+				\aftergroup{%
+				\expandafter\pgfplotsqaftergroupeach\expandafter{\the\pgf@y}%
+				\aftergroup}%
+				\aftergroup}%
+			\fi
+			\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
+		}%
+	\else
+		\def\pgfplots@coord@stream@finalize@currentpt{%
+			\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+			\ifpgfplots@record@marker@stream
+				\edef\pgfmathresult{{\the\pgf@x}{\the\pgf@y}}%
+				\pgfplotslist@TOK@a=\expandafter{#1}%
+				\pgfplotslist@TOK@b=\expandafter{\pgfmathresult}%
+				\xdef#1{\the\pgfplotslist@TOK@a
+					\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint\the\pgfplotslist@TOK@b}}%
+			\fi
+			\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
+		}%
+	\fi
 }
 \def\pgfplots@addplot@get@named@startendpoints@command#1{%
 	\edef#1{%
@@ -3161,21 +3293,8 @@
 	\pgfplots@stored@current@cmd[current plot style]
 	\pgfextra
 	\tikzset{every plot/.try}%
-	\ifpgfplots@apply@datatrafo
-		\ifpgfplots@stackedmode
-			\pgfplots@stacked@beginplot
-		\fi
-		\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
-		\pgfplots@coord@stream@foreach{#1}%
-		\ifpgfplots@stackedmode
-			\pgfplots@stacked@endplot
-		\fi
-		\pgfplots@addplot@get@named@startendpoints@command\pgfplots@TMP
-		\pgfplots@TMP
-	\else
-		\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
-		\pgfplots@coord@stream@foreach{#1}%
-	\fi
+	\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
+	\pgfplots@coord@stream@foreach{#1}%
 	\tikz@make@last@position{\pgfplotlastpoint}%  
 	\endpgfextra
 	#2;
