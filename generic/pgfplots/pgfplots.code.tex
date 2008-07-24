@@ -41,7 +41,6 @@
 \newdimen\pgfplots@ycoordmaxTEX
 \newif\ifpgfplots@warn@for@filter@discards
 \newif\ifpgfplots@isuniformtick
-\newif\ifpgfplots@addplot@table@from@macro
 \newif\ifpgfplots@clip@limits
 \newif\ifpgfplots@enlargelimits
 \newif\ifpgfplots@enlargelimits@rel@thresh
@@ -1239,8 +1238,8 @@
 \long\def\pgfplots@foreach@to@list#1\to#2{%
 	\global\pgfplotslistnewempty\pgfplots@glob@TMPa
 	\begingroup
-	\foreach \i in {#1} {%
-		\expandafter\pgfplotslistpushbackglobal\i\to\pgfplots@glob@TMPa
+	\foreach \pgfplots@i in {#1} {%
+		\expandafter\pgfplotslistpushbackglobal\pgfplots@i\to\pgfplots@glob@TMPa
 	}%
 	\endgroup
 	\pgfplotslistcopy\pgfplots@glob@TMPa\to#2\relax
@@ -1884,7 +1883,7 @@
 				\def\pgfplots@minor@tick@num{9}%
 			\fi
 		\fi
-		\foreach \x in {#1} {	
+		\foreach \x in {#1} {%
 			\ifcase#3\relax
 				\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\x}{0}}%
 			\or
@@ -1904,21 +1903,21 @@
 			\fi
 			% X-Axis ticks bottom and top
 			% in log:
-			%  log( i*10^k ) = log\i + k\log10 -> draw ticks for i=1..9
+			%  log( i*10^k ) = log\pgfplots@i + k\log10 -> draw ticks for i=1..9
 			\ifpgfplots@needsminorloop
-				\foreach \i in {1,...,\pgfplots@minor@tick@num} {
+				\foreach \pgfplots@i in {1,...,\pgfplots@minor@tick@num} {%
 					\begingroup
 					\ifcase#3\relax
 						\ifpgfplots@islinear
-							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\i*\pgfplots@minor@tick@dist}{0}}%
+							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\pgfplots@i*\pgfplots@minor@tick@dist}{0}}%
 						\else
-							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\logi\i}{0}}%
+							\pgfextractx{\pgfplots@tmpa}{\pgfpointxy{\logi\pgfplots@i}{0}}%
 						\fi
 					\or
 						\ifpgfplots@islinear
-							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\i*\pgfplots@minor@tick@dist}}%
+							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\pgfplots@i*\pgfplots@minor@tick@dist}}%
 						\else
-							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\logi\i}}%
+							\pgfextracty{\pgfplots@tmpa}{\pgfpointxy{0}{\logi\pgfplots@i}}%
 						\fi
 					\fi
 					\edef\pgfmathresult{\the\pgfplots@tmpa}%
@@ -2473,17 +2472,11 @@
 	}%
 }%
 
-\def\pgfplots@addplotimpl@table@f#1#2from{%
-	\pgfplots@addplot@table@from@macrotrue
-	\pgfplots@addplotimpl@table@START{#1}{#2}%
-}
-
 \def\pgfplots@addplotimpl@table@getopts#1[#2]{%
 	\pgfutil@ifnextchar f{%
-		\pgfplots@addplotimpl@table@f{#1}{#2}%
+		\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
 	}{%
-		\pgfplots@addplot@table@from@macrofalse
-		\pgfplots@addplotimpl@table@START{#1}{#2}%
+		\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
 	}%
 }
 
@@ -2491,14 +2484,15 @@
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
-\long\def\pgfplots@addplotimpl@table@START#1#2#3#4;{%
+\long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{%
 	\begingroup
+	% FIXME : this thing here has runtime O(N^2) !
+	% I fear it is faster to simply reload the data .... !?
+	%
+	% well, for a lot of columns which are used in different contexts
+	% and few rows, this here IS more efficient.
 	\pgfplotstableset{#2}%
-	\ifpgfplots@addplot@table@from@macro
-		\pgfplotstablecopy#3\to\pgfplots@table
-	\else
-		\pgfplotstableread{#3} to \pgfplots@table
-	\fi
+	\pgfplotstablecopy#3\to\pgfplots@table
 	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
 		\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\addplot@tbl@x
 	\else
@@ -2576,6 +2570,69 @@
 	\pgfplots@coord@stream@end
 	\endgroup
 }
+
+
+\long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{%
+	\pgfplotsapplistXXglobalnewempty
+	\begingroup
+	\pgfplotstableset{#2}%
+	\ifpgfplots@errorbars@enabled
+		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
+		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
+		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
+		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors
+	\else
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener
+	\fi
+	\endgroup
+	%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplotsapplistXXgloballet\pgfplots@coordlist
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
+}
+\def\pgfplots@addplotimpl@table@fromfile@listener{%
+	\pgfplots@addplotimpl@table@fromfile@listener@
+	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
+}
+\def\pgfplots@addplotimpl@table@fromfile@listener@{%
+	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+		\pgfplotstablereadgetvalueofcolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@current@point@x}%
+	\else
+		\pgfplotstablereadgetvalueofcolname{\pgfplots@plot@tbl@x}{\pgfplots@current@point@x}%
+	\fi
+	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+		\pgfplotstablereadgetvalueofcolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@current@point@y}%
+	\else
+		\pgfplotstablereadgetvalueofcolname{\pgfplots@plot@tbl@y}{\pgfplots@current@point@y}%
+	\fi
+}%
+\def\pgfplots@addplotimpl@table@fromfile@listener@witherrors{%
+	\pgfplots@addplotimpl@table@fromfile@listener@
+	%
+	\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+		\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+			\let\addplot@tbl@error@cur@x=\pgfutil@empty
+		\else
+			\pgfplotstablereadgetvalueofcolindex{\pgfplots@plot@tbl@error@xindex}{\addplot@tbl@error@cur@x}%
+		\fi
+	\else
+		\pgfplotstablereadgetvalueofcolname{\pgfplots@plot@tbl@error@x}{\addplot@tbl@error@cur@x}%
+	\fi
+	\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+		\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+			\let\addplot@tbl@error@cur@y=\pgfutil@empty
+		\else
+			\pgfplotstablereadgetvalueofcolindex{\pgfplots@plot@tbl@error@yindex}{\addplot@tbl@error@cur@y}%
+		\fi
+	\else
+		\pgfplotstablereadgetvalueofcolname{\pgfplots@plot@tbl@error@y}{\addplot@tbl@error@cur@y}%
+	\fi
+	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\addplot@tbl@error@cur@x,\addplot@tbl@error@cur@y)}%
+	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
+}%
 
 % #1:  arguments to \addplot plot[#1]
 %   -> these are called 'behavior' options in the manual; they are set
@@ -2745,12 +2802,15 @@
 }%
 
 \def\pgfplots@streamerrorbar@recordto#1{%
-	\def\pgfplots@streamerrorbarstart{\let#1=\pgfutil@empty}%
-	\def\pgfplots@streamerrorbarend{}%
+	\def\pgfplots@streamerrorbarstart{%
+		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@
+	}%
+	\def\pgfplots@streamerrorbarend{%
+		\pgfplotsapplistXlet#1=\pgfplots@streamerrorbar@recordto@@
+		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@% clear
+	}%
 	\def\pgfplots@streamerrorbarcoords##1##2{%
-		\expandafter\def\expandafter#1\expandafter{#1%
-			\pgfplots@errorbar@draw{##1}{##2}%
-		}%
+		\pgfplotsapplistXpushback{\pgfplots@errorbar@draw{##1}{##2}}\to\pgfplots@streamerrorbar@recordto@@
 	}%
 }
 \def\pgfplots@streamerrorbar@directdraw{%

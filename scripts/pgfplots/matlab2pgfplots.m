@@ -315,6 +315,7 @@ end
 fwrite( FID, [ ...
 	'\end{axis}' ENDL ...
 	'\end{tikzpicture}%' ENDL ] );
+fclose(FID);
 
 end
 

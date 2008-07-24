@@ -43,6 +43,7 @@
 
 % should always be false; use only in grouped internal macros
 \newif\ifpgfplots@table@options@areset
+\newif\ifpgfplots@tableread@to@listener
 
 \input pgfplotstable.coltype.code.tex
 
@@ -548,6 +549,18 @@
 %
 % The table data is stored columnwise in lists and can be accessed
 % with the other methods of this package.
+%
+% \pgfplotstableread[<options>]{<file>}{<\macro>}
+% \pgfplotstableread[<options>]{<file>} to listener{<\macro>}
+%
+% The 'to listener' variant does NOT assemble a table data structure.
+% Instead, it processes the input table row-wise and invokes <\macro>
+% after each complete row. During the evaluation of <\macro>, the
+% following methods can be used:
+% \pgfplotstablereadvalueofcolindex{<index>}
+% \pgfplotstablereadvalueofcolname{<name>}
+% \pgfplotstablereadgetvalueofcolindex{<index>}{<\macro>}
+% \pgfplotstablereadgetvalueofcolname{<name>}{<\macro>}
 \def\pgfplotstableread{%
 	\pgfutil@ifnextchar[{%
 		\pgfplotstableread@impl
@@ -734,6 +747,12 @@
 \newif\ifpgfplotstableread@curline@contains@colnames
 \newif\ifpgfplotstableread@foundcolnames
 \newif\ifpgfplotstableread@skipline
+
+% Accept one of
+% \pgfplotstableread[#1]{<file>}{<\macro>}
+% \pgfplotstableread[#1]{<file>} to listener{<\macro>}
+% or
+% \pgfplotstableread[#1]{<file>} to {<\macro>} (DEPRECATED)
 \def\pgfplotstableread@impl[#1]#2{%
 	\pgfutil@ifnextchar t{%
 		\pgfplotstableread@impl@@{#1}{#2}%
@@ -746,8 +765,17 @@
 % >> \pgfplotstableread[]{file} to \macro
 % That ' to ' is really ugly. This here is for backwards
 % compatibility:
-\def\pgfplotstableread@impl@@#1#2to #3{%
+\def\pgfplotstableread@impl@@#1#2to {%
+	\pgfutil@ifnextchar l{%
+		\pgfplotstableread@impl@@listener{#1}{#2}%
+	}{%
+		\pgfplotstableread@impl@{#1}{#2}%
+	}%
+}%
+\def\pgfplotstableread@impl@@listener#1#2listener#3{%
+	\pgfplots@tableread@to@listenertrue
 	\pgfplotstableread@impl@{#1}{#2}{#3}%
+	\pgfplots@tableread@to@listenerfalse
 }%
 
 \def\pgfplotstableread@impl@#1#2#3{%
@@ -776,49 +804,56 @@
 	\pgfplotstableread@lineno=0
 	\pgfplotstableread@usablelineno=0
 	\pgfplotstableread@numcols=0
-	\pgfplotslistnewempty\pgfplotstable@colnames
+	\global\pgfplotslistnewempty\pgfplotstable@colnames
 	\ifeof1
 		\pgfplotstable@error{Could not read table file '#2'.}%
 		\global\pgfplotslistnewempty\pgfplotstable@colnames
 	\else
+		\ifpgfplots@tableread@to@listener
+			\let\pgfplotstable@listener=#3
+			\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
+		\fi
 		%
 		\pgfplotstableread@loop@over@lines
 		\closein1
 		%
+		\pgfplotstableread@finish
+	\fi
+	\endgroup
+	\ifpgfplots@tableread@to@listener
+		% there are no data structures in this case.
+	\else
+		% Now, we can access the global variables!
+		% copy them to #3.
+		\let#3=\pgfplotstable@colnames
+		\expandafter\def\csname\string#3@@table@name\endcsname{#2}%
+		\c@pgfplotstable@counta=0\relax%
+		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@loc@TMPa{%
+			\def\pgfplotstable@loc@TMPb{%
+				\expandafter\let\csname\string#3@\pgfplotstable@loc@TMPa\endcsname}%
+			\expandafter\pgfplotstable@loc@TMPb\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname
+	%\message{Column '\pgfplotstable@loc@TMPa' has entries: \expandafter\meaning\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname}%
+			\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname=\pgfutil@empty
+			\advance\c@pgfplotstable@counta by1\relax
+		}%
+	\fi
+	\global\let\pgfplotstable@colnames=\pgfutil@empty
+}
+
+\def\pgfplotstableread@finish{%
+	\ifpgfplots@tableread@to@listener
+	\else
 		\ifpgfplotstableread@foundcolnames
 		\else
 			\pgfplotstableread@create@column@names@with@numbers
 		\fi
-		% Well, now write the identified data to #3:
-		%
-		% make all temporaries global:
-		\global\let\pgfplotstable@colnames=\pgfplotstable@colnames
-		\pgfplotstableread@curcol=0\relax
+		\pgfplotstableread@curcol=0\relax%
 		\pgfutil@loop
 		\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols
-	%\pgfplots@message{ASSIGNING COLUMN NO \the\pgfplotstableread@curcol / \the\pgfplotstableread@numcols}%
-			% TMPa := column list content
-			\expandafter\let\expandafter\pgfplotstable@loc@TMPa\csname pgfp@numtable@col@\the\pgfplotstableread@curcol\endcsname
-			% global := TMPa
-			\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\pgfplotstableread@curcol\endcsname=\pgfplotstable@loc@TMPa
-			\advance\pgfplotstableread@curcol by1\relax
+			\expandafter\pgfplotsapplistXflushbuffers\csname pgfp@numtable@glob@col@\the\pgfplotstableread@curcol\endcsname
+			\advance\pgfplotstableread@curcol by1
 		\pgfutil@repeat
 	\fi
-	\endgroup
-	% Now, we can access the global variables!
-	% copy them to #3.
-	\let#3=\pgfplotstable@colnames
-	\expandafter\def\csname\string#3@@table@name\endcsname{#2}%
-	\c@pgfplotstable@counta=0\relax%
-	\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@loc@TMPa{%
-		\def\pgfplotstable@loc@TMPb{%
-			\expandafter\let\csname\string#3@\pgfplotstable@loc@TMPa\endcsname}%
-		\expandafter\pgfplotstable@loc@TMPb\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname
-%\message{Column '\pgfplotstable@loc@TMPa' has entries: \expandafter\meaning\csname pgfp@numtable@col@\the\c@pgfplotstable@counta\endcsname}%
-		\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname=\pgfutil@empty
-		\advance\c@pgfplotstable@counta by1\relax
-	}%
-	\global\let\pgfplotstable@colnames=\pgfutil@empty
 }
 
 \def\pgfplotstableread@loop@over@lines{%
@@ -837,9 +872,9 @@
 			% \fi
 			%-------------------------------------------------- 
 %\pgfplots@message{READING LINE \the\pgfplotstableread@lineno: '\meaning\pgfplotstable@LINE'.}%
+			\pgfplotstableread@curline@contains@colnamesfalse
 			\ifnum\pgfplotstableread@numcols=0\relax
 				\pgfplotstableread@curcol=0\relax
-				\pgfplotstableread@curline@contains@colnamesfalse
 				\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
 				%\expandafter\pgfplotstableread@impl@countcols@and@identifynames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 				\pgfplotstableread@numcols=\pgfplotstableread@curcol
@@ -886,6 +921,13 @@
 			\else
 				\pgfplotstable@error{ERROR: the input table has an unexpected number of columns in row '\the\pgfplotstableread@lineno'. Expected: '\the\pgfplotstableread@numcols'; got '\the\pgfplotstableread@curcol. Maybe the input table is corrupted?}%
 			\fi
+			\ifpgfplots@tableread@to@listener
+				\ifpgfplotstableread@curline@contains@colnames
+				\else
+					% report row!
+					\pgfplotstable@listener
+				\fi
+			\fi
 			\advance\pgfplotstableread@usablelineno by1\relax
 		\fi
 		\fi
@@ -928,7 +970,8 @@
 \def\pgfplotstableread@create@column@lists{%
 	\pgfutil@loop
 	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols
-		\expandafter\pgfplotslistnewempty\csname pgfp@numtable@col@\the\pgfplotstableread@curcol\endcsname
+		\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+		\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@\the\pgfplotstableread@curcol\endcsname
 		\advance\pgfplotstableread@curcol by1\relax
 	\pgfutil@repeat
 }
@@ -937,7 +980,7 @@
 	\pgfplotstableread@curcol=0\relax
 	\pgfutil@loop
 	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols
-		\expandafter\pgfplotslistpushback\the\pgfplotstableread@curcol\to\pgfplotstable@colnames
+		\expandafter\pgfplotslistpushbackglobal\the\pgfplotstableread@curcol\to\pgfplotstable@colnames
 		\advance\pgfplotstableread@curcol by1\relax
 	\pgfutil@repeat
 }
@@ -1010,11 +1053,24 @@
 }%
 %%%%%%%%%%%%
 
+% these values are only usable for a read-listener.
+\def\pgfplotstablereadvalueofcolindex#1{\csname pgfplotstblread@colcontent@no#1\endcsname}%
+\def\pgfplotstablereadvalueofcolname#1{\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name#1\endcsname\endcsname}%
+\def\pgfplotstablereadgetvalueofcolindex#1#2{%
+	\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no#1\endcsname}%
+\def\pgfplotstablereadgetvalueofcolname#1#2{%
+	\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name#1\endcsname\endcsname}%
+
+\long\def\pgfplotstableread@impl@nextrow@NEXT@listener#1{%
+	\expandafter\def\csname pgfplotstblread@colcontent@no\the\pgfplotstableread@curcol\endcsname{#1}%
+	\advance\pgfplotstableread@curcol by1\relax
+}
 
 \long\def\pgfplotstableread@impl@nextrow@NEXT#1{%
 %\pgfplots@message{Inserting '#1' at (\the\pgfplotstableread@lineno, \the\pgfplotstableread@curcol).}%
-	\def\pgfplotstableread@TMP{\pgfplotslistpushback#1\to}%
-	\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@col@\the\pgfplotstableread@curcol\endcsname
+	\pgfplotslist@assembleentry{#1}\into\t@pgfplots@tokc
+	\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+	\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\the\pgfplotstableread@curcol\endcsname
 	\advance\pgfplotstableread@curcol by1\relax
 }
 
@@ -1029,7 +1085,14 @@
 		\edef\pgfplotstable@loc@TMPa{#1--index\the\pgfplotstableread@curcol}%
 	}%
 	\expandafter\def\csname pgfplotstableread@impl@COLNAME@#1\endcsname{foo}% remember this name.
-	\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames
+	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames
+	\ifpgfplots@tableread@to@listener
+		% create an associative container colindex -> colname
+		% for use in a listener.
+		\def\pgfplots@loc@TMPb{%
+			\expandafter\def\csname pgfplotstblread@colindex@for@name#1\endcsname}%
+		\expandafter\pgfplots@loc@TMPb\expandafter{\the\pgfplotstableread@curcol}%
+	\fi
 	\advance\pgfplotstableread@curcol by1\relax
 }
 
