@@ -54,6 +54,8 @@
 \newif\ifpgfplots@xmajorgrids
 \newif\ifpgfplots@yminorgrids
 \newif\ifpgfplots@ymajorgrids
+\newif\ifpgfplots@clip@marker@paths
+\newif\ifpgfplots@axis@on@top
 \newif\ifpgfplots@separate@axis@lines
 \newif\ifpgfplots@scaled@ticks
 \newif\ifpgfplots@identify@log@minor@tick@pos
@@ -1118,6 +1120,10 @@
 	},
 	/pgfplots/plot file/skip first/.is if=pgfplots@plot@file@skipfirst,
 	/pgfplots/plot file/skip first/.default=true,
+	/pgfplots/clip marker paths/.is if=pgfplots@clip@marker@paths,
+	/pgfplots/clip marker paths/.default=true,
+	/pgfplots/axis on top/.is if=pgfplots@axis@on@top,
+	/pgfplots/axis on top/.default=true,
 }
 
 \newif\ifpgfplots@log@tick@isminor@tick@pos
@@ -1390,15 +1396,6 @@
 	\tick
 }
 
-\def\axisdefaultticklabel{%
-	$\pgfmathprintnumber{\tick}$%
-}
-
-\def\axisdefaultticklabellog{%
-	\pgfkeysgetvalue{/pgfplots/log number format code/.@cmd}\pgfplots@log@label@style
-	\expandafter\pgfplots@log@label@style\tick\pgfeov
-}
-	
 
 % #1 axis (x or y)
 % #2 the label
@@ -3182,11 +3179,18 @@
 		\pgfplots@record@marker@streamfalse
 	\else
 		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
-			% only marks: draw markers directly; no need for the
-			% two-pass-approach.
-			\let\pgfplots@basiclevel@plothandler=\relax
-			\pgfplots@install@plotmark@handler
-			\pgfplots@record@marker@streamfalse
+			\ifpgfplots@clip@marker@paths
+				% only marks: draw markers directly; no need for the
+				% two-pass-approach.
+				\let\pgfplots@basiclevel@plothandler=\relax
+				\pgfplots@install@plotmark@handler
+				\pgfplots@record@marker@streamfalse
+			\else
+				% collect mark positions... they will be drawn after
+				% the clipped axis range. Clipping will only be
+				% applied to their *positions*, not their paths.
+				\pgfplots@record@marker@streamtrue
+			\fi
 		\else
 			% ok, mark!=none and we also have a plot handler.
 			% So, collect mark positions!
@@ -3241,10 +3245,6 @@
 		}%
 	\fi
 	%
-	% this here is a helper method to allow \xdef of the append-list.
-	\def\pgfplots@fin##1##2{%
-		\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint{##1}{##2}}%
-	}%
 	\def\pgfplots@coord@stream@finalize@currentpt{%
 		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
 		\ifpgfplots@record@marker@stream
@@ -3280,15 +3280,9 @@
 }%
 
 % INPUT: 
-%   a sequence of points (SMeE,SMeE) (terminated with ';') 
-%   where S=sign, M=mantisse, E = exponent.
-%   Such input is generated in the case pgfplots@apply@datatrafotrue
-%   by the coordinate filters.
-% OUTPUT: 
-%   proper sequence of fixed point coordinates which are the result of the
-%   data scaling transformation (\pgfplots@datascaletrafo@x).
+% 	either floating point or fixed point coordinates (depending on the
+% 	state of the \ifpgfplots@apply@datatrafo boolean)
 %
-% The output will be written into the macro #3
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\pgfplots@EOI{%
 	\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
 	\pgfplots@stored@current@cmd[current plot style]
@@ -3301,13 +3295,33 @@
 	#2;
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
-		% FIXME: inefficient! Use \scope to set variables of 'current plot style' !?
-		\pgfplots@stored@current@cmd[current plot style]
-		\pgfextra 
-			\pgfplots@install@plotmark@handler
-			\pgfplots@recorded@marker@stream 
-		\endpgfextra
-		;
+		\ifpgfplots@clip@marker@paths
+			% Draw markers on top of the plot lines:
+			%
+			% FIXME: inefficient! Use \scope to set variables of 'current plot style' !?
+			\pgfplots@stored@current@cmd[current plot style]
+			\pgfextra 
+				\pgfplots@install@plotmark@handler
+				\pgfplots@recorded@marker@stream 
+			\endpgfextra
+			;
+		\else
+			% sigh... ok, store the marker list (once more again).
+			% They need to be drawn after the clipped area.
+			\pgfkeysgetvalue{/tikz/current plot style/.@cmd}{\pgfplots@loc@TMPa}%
+			\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
+			\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@cmd[current plot style]}%
+			\t@pgfplots@tokc=\expandafter{\pgfplots@recorded@marker@stream}%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\pgfkeys{/tikz/current plot style/.code={\the\t@pgfplots@toka}}%
+				\the\t@pgfplots@tokb
+				\noexpand\pgfextra
+				\noexpand\pgfplots@install@plotmark@handler
+				\the\t@pgfplots@tokc
+				\noexpand\endpgfextra
+				;}%
+			\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@loc@TMPa}\to\pgfplots@stored@markerlist
+		\fi
 	\fi
 	\gdef\pgfplots@recorded@marker@stream{}% clear
 }%
@@ -5397,10 +5411,10 @@
 	% INIT.
 	%
 	%
-	\pgfpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\pgfqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
 	\pgfplots@xcoordminTEX=\pgf@x
 	\pgfplots@ycoordminTEX=\pgf@y
-	\pgfpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\pgfqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
 	\pgfplots@xcoordmaxTEX=\pgf@x
 	\pgfplots@ycoordmaxTEX=\pgf@y
 	%
@@ -5476,10 +5490,10 @@
 	% 3. The user supplied 'x' and or 'y'. Simply use them, its
 	% accurate.
 	%
-	\pgfpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\pgfqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
 	\pgfplots@xcoordminTEX=\pgf@x
 	\pgfplots@ycoordminTEX=\pgf@y
-	\pgfpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\pgfqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
 	\ifx\pgfplots@rectangle@width\pgfutil@empty
 		\pgfplots@xcoordmaxTEX=\pgf@x
 	\else
@@ -5800,6 +5814,50 @@
 	\beforeforegroundpath{}%
 }
 
+\def\pgfplots@draw@axis{%
+	\ifpgfplots@hide@x\else
+		% compute tick position lists
+		% 	\pgfplots@prepared@tick@positions@minor@x
+		% and
+		% 	\pgfplots@prepared@tick@positions@major@x
+		\expandafter\pgfplots@prepare@ticks@for\expandafter{\pgfplots@xtick}{x}{0}%
+		\pgfplots@drawgridlines@for{x}{0}%
+	\fi
+	\ifpgfplots@hide@y\else
+		\expandafter\pgfplots@prepare@ticks@for\expandafter{\pgfplots@ytick}{y}{1}%
+		\pgfplots@drawgridlines@for{y}{1}%
+	\fi
+	%
+	\ifpgfplots@hide@x\else
+		\pgfplots@drawticklines@for{x}{0}%
+	\fi
+	\ifpgfplots@hide@y\else
+		\pgfplots@drawticklines@for{y}{1}%
+	\fi
+	%
+	\pgfplots@drawaxis@lines
+	%
+	\ifpgfplots@hide@x\else
+		\pgfplots@drawticklabels@for{x}{0}%
+	\fi
+	\ifpgfplots@hide@y\else
+		\pgfplots@drawticklabels@for{y}{1}%
+	\fi
+		%
+	\ifpgfplots@hide@x\else
+		\ifx\pgfplots@extra@xtick\pgfutil@empty
+		\else
+			\expandafter\pgfplots@draw@extra@ticks@for\expandafter x\expandafter0\expandafter{\pgfplots@extra@xtick}%
+		\fi
+	\fi
+	\ifpgfplots@hide@y\else
+		\ifx\pgfplots@extra@ytick\pgfutil@empty
+		\else
+			\expandafter\pgfplots@draw@extra@ticks@for\expandafter y\expandafter1\expandafter{\pgfplots@extra@ytick}%
+		\fi
+	\fi
+}%
+
 \def\pgfplots@BEGIN@init@and@draw@axis{%
 	\pgfplots@determinedefaultvalues
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
@@ -5811,46 +5869,9 @@
 		\pgfsetbaseline{\pgf@picminy}%
 		%
 		\scope
-		\ifpgfplots@hide@x\else
-			% compute tick position lists
-			% 	\pgfplots@prepared@tick@positions@minor@x
-			% and
-			% 	\pgfplots@prepared@tick@positions@major@x
-			\expandafter\pgfplots@prepare@ticks@for\expandafter{\pgfplots@xtick}{x}{0}%
-			\pgfplots@drawgridlines@for{x}{0}%
-		\fi
-		\ifpgfplots@hide@y\else
-			\expandafter\pgfplots@prepare@ticks@for\expandafter{\pgfplots@ytick}{y}{1}%
-			\pgfplots@drawgridlines@for{y}{1}%
-		\fi
-		%
-		\ifpgfplots@hide@x\else
-			\pgfplots@drawticklines@for{x}{0}%
-		\fi
-		\ifpgfplots@hide@y\else
-			\pgfplots@drawticklines@for{y}{1}%
-		\fi
-		%
-		\pgfplots@drawaxis@lines
-		%
-		\ifpgfplots@hide@x\else
-			\pgfplots@drawticklabels@for{x}{0}%
-		\fi
-		\ifpgfplots@hide@y\else
-			\pgfplots@drawticklabels@for{y}{1}%
-		\fi
-			%
-		\ifpgfplots@hide@x\else
-			\ifx\pgfplots@extra@xtick\pgfutil@empty
-			\else
-				\expandafter\pgfplots@draw@extra@ticks@for\expandafter x\expandafter0\expandafter{\pgfplots@extra@xtick}%
-			\fi
-		\fi
-		\ifpgfplots@hide@y\else
-			\ifx\pgfplots@extra@ytick\pgfutil@empty
-			\else
-				\expandafter\pgfplots@draw@extra@ticks@for\expandafter y\expandafter1\expandafter{\pgfplots@extra@ytick}%
-			\fi
+		\ifpgfplots@axis@on@top
+		\else
+			\pgfplots@draw@axis
 		\fi
 		\clip
 						(\pgfplots@xcoordminTEX,	\pgfplots@ycoordminTEX) 
@@ -5860,6 +5881,26 @@
 
 \def\pgfplots@END@init@and@draw@axis{%
 	\endscope%
+	%
+	\ifpgfplots@axis@on@top
+		\pgfplots@draw@axis
+	\else
+	\fi
+	%
+	% whats the better sequence for \ifpgfplots@axis@on@top and \ifpgfplots@clip@marker@paths !? 
+	% This here looks better, I think... markers should not be obscured by descriptions.
+	\ifpgfplots@clip@marker@paths
+	\else
+		\pgfplotslistforeach\pgfplots@stored@markerlist\as\pgfplots@loc@TMPa{%
+			\pgfplots@loc@TMPa
+		}%
+		\global\pgfplotslistnewempty\pgfplots@stored@markerlist% clear.
+	\fi
+	%
+	\begingroup
+	\pgfkeysvalueof{/pgfplots/after end axis/.@cmd}\pgfeov%
+	\endgroup
+	%
 }
 
 % Writes output to \pgfmathresult
@@ -6443,6 +6484,11 @@
 		\or2.197224
 		\fi
 	}%
+	\def\axisdefaultticklabel{$\pgfmathprintnumber{\tick}$}%
+	\def\axisdefaultticklabellog{%
+		\pgfkeysgetvalue{/pgfplots/log number format code/.@cmd}\pgfplots@log@label@style
+		\expandafter\pgfplots@log@label@style\tick\pgfeov
+	}%
 	%
 	\let\legend=\pgfplots@command@legend
 	\let\addlegendentry=\pgfplots@addlegendentry
@@ -6639,10 +6685,11 @@
 	%  All plotting commands have been read.
 	%  -> apply postponed drawing commands!
 	% --------------------
-	\ifpgfplots@draw@at@end
+	\ifpgfplots@draw@at@end% ALWAYS TRUE - this is obsolete
 		\def\pgfplots@nextcommand{%
 			\pgfplots@BEGIN@init@and@draw@axis
 			\pgfplots@stacked@initialise
+			\global\pgfplotslistnewempty\pgfplots@stored@markerlist
 			\ifpgfplots@stacked@reverse
 				% This here applies any scaling trafos and assembles a
 				% NEW \pgfplots@stored@plotlist!
@@ -6662,6 +6709,7 @@
 						% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
 						\pgfplots@stacked@draw@reversed@plot
 					\else
+						% modifies \pgfplots@stored@markerlist if necessary.
 						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 					\fi
 				\fi
@@ -6674,10 +6722,6 @@
 	\fi
 	\pgfplots@nextcommand
 	\pgfplots@END@init@and@draw@axis
-	%
-	\begingroup
-	\pgfkeysvalueof{/pgfplots/after end axis/.@cmd}\pgfeov%
-	\endgroup
 	%
 	%
 	\begingroup
