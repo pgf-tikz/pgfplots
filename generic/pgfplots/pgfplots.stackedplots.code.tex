@@ -306,24 +306,44 @@
 % pre-drawing.
 \long\def\pgfplots@stacked@finalize@stored@coords@START plot coordinates #1#2;\to#3#4{%
 	\pgfplots@stacked@beginplot
-	\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#3
+	\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto{#3}{\pgfplots@recorded@marker@stream}%
 	\pgfplots@coord@stream@foreach{#1}%
 	\pgfplots@stacked@endplot
 	\pgfplots@stacked@savestateto\pgfplots@loc@TMPa
 	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\def\pgfplots@stacked@stored@postpath{#2}}%
 	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
 	\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfplots@record@marker@stream
+		\t@pgfplots@tokb=\expandafter{\pgfplots@recorded@marker@stream}%
+	\else
+		\t@pgfplots@tokb={}%
+	\fi
 	\edef#4{%
 		\the\t@pgfplots@tokc
+		\noexpand\gdef\noexpand\pgfplots@recorded@marker@stream{\the\t@pgfplots@tokb}%
 		\the\t@pgfplots@toka
 	}%
 }%
-\def\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#1{%
+
+% #1: for coordinates
+% #2: for markers
+\def\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#1#2{%
+	\pgfplots@record@marker@streamtrue
+	%
 	\def\pgfplots@coord@stream@start@{%
 		\gdef#1{\pgfplotstreamstart}%
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXnewempty\pgfplots@stacked@record@mark@cmds
+			\pgfplotsapplistXpushback\pgfplotstreamstart\to\pgfplots@stacked@record@mark@cmds
+		\fi
 	}%
 	\def\pgfplots@coord@stream@end@{%
 		\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXpushback\pgfplotstreamend\to\pgfplots@stacked@record@mark@cmds
+			\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfplots@stacked@record@mark@cmds
+			\global\let#2=\pgfplots@loc@TMPa
+		\fi
 	}%
 	\ifpgfplots@apply@datatrafo
 		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
@@ -343,7 +363,24 @@
 		\t@pgfplots@toka=\expandafter{#1}%
 		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
 		\xdef#1{\the\t@pgfplots@toka
-			\noexpand\pgfplotstreampoint{\noexpand\pgfqpoint\the\t@pgfplots@tokb}}%
+			\noexpand\pgfplots@stream\the\t@pgfplots@tokb}%
+		%
+		\ifpgfplots@record@marker@stream
+			\ifdim\pgf@x<\pgfplots@xcoordminTEX
+			\else
+				\ifdim\pgf@x>\pgfplots@xcoordmaxTEX
+				\else
+					\ifdim\pgf@y<\pgfplots@ycoordminTEX
+					\else
+						\ifdim\pgf@y>\pgfplots@ycoordmaxTEX
+						\else
+							\edef\pgfmathresult{\noexpand\pgfplots@stream{\the\pgf@x}{\the\pgf@y}}%
+							\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfplots@stacked@record@mark@cmds%
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
 	}%
 }
 
@@ -360,25 +397,25 @@
 		% this here contains a recorded plot stream, see above. 
 		\pgfplots@stored@current@data
 		%
-		\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
-		\ifx\tikz@plot@mark\pgfutil@empty
-		\else
-			\global\let\pgfplots@recorded@marker@stream=\pgfplots@stored@current@data
-		\fi
 		\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
 		\tikz@make@last@position{\pgfplotlastpoint}%  
 	\expandafter
 	\endpgfextra
 	\pgfplots@stacked@stored@postpath
 	;
+	% this here has been assigned by the precommand as well.
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
-		\pgfplots@stored@current@cmd[current plot style]
-		\pgfextra 
-			\pgfplots@install@plotmark@handler
-			\pgfplots@recorded@marker@stream 
-		\endpgfextra
-		;
+		\ifpgfplots@clip@marker@paths
+			\pgfplots@stored@current@cmd[current plot style]
+			\pgfextra 
+				\pgfplots@install@plotmark@handler
+				\pgfplots@recorded@marker@stream 
+			\endpgfextra
+			;
+		\else
+			\pgfplots@stored@REMEMBER@MARK@COMMAND
+		\fi
 	\fi
 	\gdef\pgfplots@recorded@marker@stream{}% clear
 }%
