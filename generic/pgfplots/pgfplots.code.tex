@@ -1134,6 +1134,9 @@
 	/pgfplots/clip marker paths/.default=true,
 	/pgfplots/axis on top/.is if=pgfplots@axis@on@top,
 	/pgfplots/axis on top/.default=true,
+	/pgfplots/every crossref picture/.style={%
+		baseline,yshift=0.3em
+	},
 }
 
 \newif\ifpgfplots@log@tick@isminor@tick@pos
@@ -2713,6 +2716,7 @@
 			% warning: rememberplotspec calls list macros which
 			% overwrite \t@pgfplots@toka
 			\t@pgfplots@toka=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+			\xdef\pgfplots@last@plot@style{\the\t@pgfplots@toka}% store it for \label commands.
 			% ATTENTION: do NOT call list macros from here on!
 			%
 			\ifpgfplots@datascaletrafo@initialised
@@ -6559,6 +6563,52 @@
 	\let\pgfplots@already@computed@legend@node=\pgfutil@empty
 }
 
+% The implementation for \label{foo} after \addplot. It allows to
+% \ref{foo} (it inserts the 'legend image code').
+%
+% I only need to overwrite '\label'; the rest is done by LaTeX.
+%
+% THIS IS INCOMPATIBLE WITH plain TeX and ConTeXt! Don't use it, it
+% doesn't hurt.
+\def\pgfplots@plot@label#1{%
+	\ifx\pgfplots@last@plot@style\pgfutil@empty
+		\pgfplots@error{Can't create \string\label{#1}: it needs to be called after \string\addplot.}%
+	\else
+		\begingroup
+		% I'd like to get all options which are INDEPENDENT of
+		% pgfplots. Idea: expand all /pgfplots-keys and collect
+		% everything which belongs NOT to /pgfplots. This is the
+		% completely expanded rest. At least, I hope so and it appears
+		% to work.
+		\pgfkeysinstallkeyfilter
+			{/pgf/key filters/and}
+				{{/pgf/key filters/is descendant of=/pgfplots}%
+				 {/pgf/key filters/defined}}%
+		\def\pgfplots@label@tikzopts{}%
+		\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@label@tikzopts}%
+		\def\pgfplots@loc@TMPa{\pgfqkeysfiltered{/tikz}}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@last@plot@style}%
+		%
+		\pgfkeysgetvalue{/pgfplots/every crossref picture/.@cmd}{\pgfplots@crossref@pic}%
+		\pgfkeysgetvalue{/pgfplots/legend image code/.@cmd}{\pgfplots@curlegendcode}%
+		\t@pgfplots@toka=\expandafter{\pgfplots@curlegendcode current plot style\pgfeov}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@label@tikzopts}%
+		\t@pgfplots@tokc=\expandafter{\pgfplots@crossref@pic\pgfeov}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\begingroup
+			\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@tokb}}%
+			\noexpand\pgfkeysdef{/pgfplots/every crossref picture}{\the\t@pgfplots@tokc}%
+			\noexpand\tikz[/pgfplots/every crossref picture]{\the\t@pgfplots@toka}%
+			\noexpand\endgroup%
+		}%
+		\pgfplots@command@to@string{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPa}%
+		\global\let\pgfplots@glob@TMPb=\pgfplots@loc@TMPa
+		\endgroup
+		\let\@currentlabel=\pgfplots@glob@TMPb
+		\pgfplots@original@LaTeX@label{#1}%
+	\fi
+}%
+
 \def\pgfplots@environment@opt[#1]{%
 	\begingroup
 	\pgfplots@install@abbrev@commands
@@ -6680,6 +6730,12 @@
 		% we have no stacked plots and thus no reversing.
 		\pgfplots@stacked@reversefalse
 	\fi
+	%
+	\pgfutil@ifundefined{label}{\relax}{%
+		\let\pgfplots@original@LaTeX@label=\label
+		\let\label=\pgfplots@plot@label
+	}%
+	\global\let\pgfplots@last@plot@style=\pgfutil@empty
 	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
