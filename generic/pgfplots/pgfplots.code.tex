@@ -2260,7 +2260,7 @@
 			% the space after ']' is required here:
 			% FIXME: 
 			% - \addplot[]plot coordinates is NOT allowed!?
-			\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec]
+			\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec]%
 		}%
 	}%
 }
@@ -2412,12 +2412,6 @@
 		\pgfplots@addplotimpl@file{#1}ile{#3}#2;%
 	\fi
 }
-
-%--------------------------------------------------
-% \def\pgfplots@addplotimpl@file#1ile{%
-% 	\pgfplots@addplotimpl@table{#1}table[x index=0,y index=1,header=false]%
-% }%
-%-------------------------------------------------- %
 
 % #1: arguments to \addplot[...]
 % #2: the file name
@@ -2585,75 +2579,91 @@
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
 \long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{%
+	%--------------------------------------------------
+	% \begingroup
+	% \pgfplotstableset{#2}%
+	% \pgfplotstableread{#3}\pgfplots@table
+	% \pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
+	% \endgroup
+	%-------------------------------------------------- 
+	\pgfplotsapplistXXglobalnewempty
 	\begingroup
-	% FIXME : the other implementation (below) is CORRECT and WORKS
-	% FAST. The problem: it does not support the
-	% pgfplotstable-peculiarities like 'create on use' or 'alias'!
 	\pgfplotstableset{#2}%
-	\pgfplotstableread{#3}\pgfplots@table
-	\pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
+	\let\pgfplots@table@PTR@x=\pgfutil@empty
+	\let\pgfplots@table@PTR@y=\pgfutil@empty
+	\ifpgfplots@errorbars@enabled
+		\let\pgfplots@table@ERRPTR@x=\pgfutil@empty
+		\let\pgfplots@table@ERRPTR@y=\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
+		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
+		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
+		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors
+	\else
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener
+	\fi
 	\endgroup
+	%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplotsapplistXXgloballet\pgfplots@coordlist
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
 }
-
-%--------------------------------------------------
-% {
-% 	\pgfplotsapplistXXglobalnewempty
-% 	\begingroup
-% 	\pgfplotstableset{#2}%
-% 	\ifpgfplots@errorbars@enabled
-% 		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
-% 		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
-% 		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
-% 		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
-% 		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors
-% 	\else
-% 		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener
-% 	\fi
-% 	\endgroup
-% 	%
-% 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
-% 	\pgfplotsapplistXXgloballet\pgfplots@coordlist
-% 	\pgfplotsapplistXXglobalclear
-% 	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
-% }
-%-------------------------------------------------- 
 \def\pgfplots@addplotimpl@table@fromfile@listener{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
 }
 \def\pgfplots@addplotimpl@table@fromfile@listener@{%
-	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
-		\pgfplotstablereadgetcolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@current@point@x}%
-	\else
-		\pgfplotstablereadgetcolname{\pgfplots@plot@tbl@x}{\pgfplots@current@point@x}%
+	\ifx\pgfplots@table@PTR@x\pgfutil@empty
+		% this here is only evaluated ONCE.
+		\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@table@PTR@x}%
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@x}{\pgfplots@table@PTR@x}%
+		\fi
+		\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@table@PTR@y}%
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@y}{\pgfplots@table@PTR@y}%
+		\fi
 	\fi
-	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
-		\pgfplotstablereadgetcolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@current@point@y}%
-	\else
-		\pgfplotstablereadgetcolname{\pgfplots@plot@tbl@y}{\pgfplots@current@point@y}%
-	\fi
+	\pgfplotstablereadevalptr\pgfplots@table@PTR@x\pgfplots@current@point@x
+	\pgfplotstablereadevalptr\pgfplots@table@PTR@y\pgfplots@current@point@y
 }%
 \def\pgfplots@addplotimpl@table@fromfile@listener@witherrors{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	%
-	\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
-		\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
-			\let\addplot@tbl@error@cur@x=\pgfutil@empty
+	\ifx\pgfplots@table@ERRPTR@x\pgfutil@empty
+		% this here is only evaluated ONCE.
+		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+				\def\pgfplots@table@ERRPTR@x{x}%
+			\else
+				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@xindex}{\pgfplots@table@ERRPTR@x}%
+			\fi
 		\else
-			\pgfplotstablereadgetcolindex{\pgfplots@plot@tbl@error@xindex}{\addplot@tbl@error@cur@x}%
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@x}{\pgfplots@table@ERRPTR@x}%
 		\fi
-	\else
-		\pgfplotstablereadgetcolname{\pgfplots@plot@tbl@error@x}{\addplot@tbl@error@cur@x}%
+		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+				\def\pgfplots@table@ERRPTR@y{x}%
+			\else
+				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@yindex}{\pgfplots@table@ERRPTR@y}%
+			\fi
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@y}{\pgfplots@table@ERRPTR@y}%
+		\fi
 	\fi
-	\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
-		\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
-			\let\addplot@tbl@error@cur@y=\pgfutil@empty
-		\else
-			\pgfplotstablereadgetvalueofcolindex{\pgfplots@plot@tbl@error@yindex}{\addplot@tbl@error@cur@y}%
-		\fi
+	\if x\pgfplots@table@ERRPTR@x
+		\let\addplot@tbl@error@cur@x=\pgfutil@empty
 	\else
-		\pgfplotstablereadgetvalueofcolname{\pgfplots@plot@tbl@error@y}{\addplot@tbl@error@cur@y}%
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@x\addplot@tbl@error@cur@x
+	\fi
+	\if x\pgfplots@table@ERRPTR@y
+		\let\addplot@tbl@error@cur@y=\pgfutil@empty
+	\else
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@y\addplot@tbl@error@cur@y
 	\fi
 	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\addplot@tbl@error@cur@x,\addplot@tbl@error@cur@y)}%
 	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%

@@ -578,6 +578,8 @@
 		% 1. create on use:
 		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
 		%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
 		\ifpgfutil@in@
 			\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/{#1}}%
 		\else
@@ -803,8 +805,13 @@
 		\global\pgfplotslistnewempty\pgfplotstable@colnames
 	\else
 		\ifpgfplots@tableread@to@listener
-			\let\pgfplotstable@listener=#3
+			\let\pgfplotstable@listener=#3%
 			\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
+			\let\pgfplotstablereadgetcolindex=\pgfplotstablereadgetcolindex@
+			\let\pgfplotstablereadgetcolname=\pgfplotstablereadgetcolname@
+			\let\pgfplotstablereadgetptrtocolname=\pgfplotstablereadgetptrtocolname@
+			\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
+			\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
 		\fi
 		%
 		\pgfplotstableread@loop@over@lines
@@ -1044,13 +1051,98 @@
 	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
 	\pgfplotstableread@impl@ITERATE
 }%
-%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% these values are only usable for a read-listener.
-\def\pgfplotstablereadgetcolindex#1#2{%
-	\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no#1\endcsname}%
-\def\pgfplotstablereadgetcolname#1#2{%
-	\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name#1\endcsname\endcsname}%
+% these values are only usable for a read-listener, that means:
+% when using
+%
+% \pgfplotstableread{<file>} to listener<\macro>
+%
+% -> <\macro> can than use the methods
+%
+% \pgfplotstablereadgetcolindex{<index>}{<\content>}
+% performs \let\content=<content of column no <index> >
+\def\pgfplotstablereadgetcolindex@#1#2{%
+	\pgfutil@ifundefined{pgfplotstblread@colcontent@no#1}{%
+		\pgfplots@error{Sorry, the requested column number '#1' in table '\pgfplotstableread@filename' does not exist!? Please verify you used the correct index 0 <= i < N.}%
+		\let#2=\pgfutil@empty
+	}{%
+		\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no#1\endcsname
+	}%
+}%
+
+% \pgfplotstablereadgetcolname{<index>}{<name>}
+% performs \let\content=<content of column named <name> >
+\def\pgfplotstablereadgetcolname@#1#2{%
+	\pgfplotstablereadgetptrtocolname{#1}{\pgfplots@loc@TMPa}%
+	\pgfplotstablereadevalptr\pgfplots@loc@TMPa{#2}%
+}%
+
+% \pgfplotstablereadgetptrtocolname{<name>}{\ptr}
+% Creates some sort of "pointer" to the column named <name>. This
+% pointer can than be used every time a new line has been reported to
+% the listener. IT works like this:
+%
+% \let\ptr=\pgfutil@empty
+% \def\macro{%
+% 	\ifx\ptr\empty
+% 		\pgfplotstablereadgetptrtocolname{<my col>}{\ptr}%
+% 	\fi
+% 	\pgfplotstablereadevalptr{\ptr}{\content}%
+% 	-> do something with \content!
+% }
+% 	
+% \pgfplotstableread{<file>} to listener<\macro>
+%
+% -> will evaluate \macro foreach row.
+\def\pgfplotstablereadgetptrtocolname@#1#2{%
+	\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}{%
+		% Oh, there is no column '#1'!
+		%
+		% Check for the 'alias' feature!
+		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
+		%
+		\ifpgfutil@in@
+			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/{#1}}%
+		\else
+			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
+		\fi
+		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
+			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
+			\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
+			\pgfutil@ifundefined{pgfplotstblread@colindex@for@name\pgfplotstable@loc@TMPa}{%
+				\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename'. The original request was for '#1', which does not exist either.}%
+				\def#2{0}%
+			}{%
+				\edef#2{\csname pgfplotstblread@colindex@for@name\pgfplotstable@loc@TMPa\endcsname}%
+			}%
+		}{%
+			\ifpgfutil@in@
+				\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/{#1}}%
+			\else
+				\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
+			\fi
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
+				\pgfplots@error{Sorry, '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here.}%
+			}{%
+				\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstableread@filename'. Please check spelling (or introduce name aliases).}%
+			}%
+			\def#2{0}%
+		}%
+	}{%
+		\edef#2{\csname pgfplotstblread@colindex@for@name#1\endcsname}%
+	}%
+}%
+
+% As \pgfplotstablereadgetptrtocolname, but this here access columns
+% by index.
+\def\pgfplotstablereadgetptrtocolindex@#1#2{\def#2{#1}}%
+
+% \pgfplotstablereadevalptr{<\ptr>}{<\content}
+% writes the current value of <\ptr> to <\content>. The pointer <\ptr>
+% must be initialised with \pgfplotstablereadgetptrtocolname
+\let\pgfplotstablereadevalptr@=\pgfplotstablereadgetcolindex@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \long\def\pgfplotstableread@impl@nextrow@NEXT@listener#1{%
 	\expandafter\def\csname pgfplotstblread@colcontent@no\the\pgfplotstableread@curcol\endcsname{#1}%
