@@ -352,7 +352,10 @@
 			\let\pgfmathaccuma=\pgfmathargb
 			\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
 			\pgfmathlog@float{\pgfmathresult}%
-			\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+			\fi
 			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
 		}%
 	},%
@@ -369,7 +372,10 @@
 			\let\pgfmathaccuma=\pgfmathargb
 			\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
 			\pgfmathlog@float{\pgfmathresult}%
-			\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+			\fi
 			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
 		}%
 	},%
@@ -569,6 +575,12 @@
 	\let#2=#1
 }
 
+% Returns a column vector in form of \pgfplotslist
+% into #3.
+%
+% #1: the column name (not a macro)
+% #2: the table structure
+% #3: the output macro name.
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
 	\pgfutil@ifundefined{\string#2@#1}{%
 		% Oh, there is no column '#1' in table '#2'!
@@ -576,15 +588,12 @@
 		% Ok, then check for the 'create on use' and the 'alias'
 		% features...
 		% 1. create on use:
-		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
 		%
 		% WARNING : this code has been REPLICATED in
 		% *** \pgfplotstablereadgetptrtocolname ***
-		\ifpgfutil@in@
-			\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/{#1}}%
-		\else
-			\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
-		\fi
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
 		\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%	
 			% aah - a 'create on use' style exists. Apply it!
 			\expandafter\pgfplotstablecreatecol\expandafter[\pgfplotstable@loc@TMPa]{#1}{#2}%
@@ -593,11 +602,7 @@
 		}{%
 			% ok, then it is either an alias or it is simply not
 			% existant.
-			\ifpgfutil@in@
-				\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/{#1}}%
-			\else
-				\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
-			\fi
+			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
 			\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
 				\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
 				\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
@@ -614,6 +619,53 @@
 		}%
 	}{%
 		\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
+	}%
+}
+
+% Retrieves the column *NAME* '#1' of table #2 and writes it into
+% '#3'.
+%
+% If there is no such column, column aliases will be checked. Finally
+% if there are no aliases, the command fails with an error.
+%
+% The 'create on use' statements can't be used in this context.
+% @see \pgfplotstablegetcolumnbyname
+%
+% #1: a column name (not a macro)
+% #2: the table structure
+% #3: a macro name which will be filled with the (probably modified)
+% column name into #2.
+\def\pgfplotstableresolvecolname#1\of#2\to#3{%
+	\pgfutil@ifundefined{\string#2@#1}{%
+		% Oh, there is no column '#1' in table '#2'!
+		%
+		% Ok, then check for the 'alias' feature ...
+		%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
+		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
+			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
+			\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
+			\pgfutil@ifundefined{\string#2@\pgfplotstable@loc@TMPa}{%
+				\def\pgfplotstable@loc@TMPb{/pgfplots/table/create on use/#1}%
+				\pgfkeysifdefined{\pgfplotstable@loc@TMPb/.@cmd}{%
+					\pgfplots@error{Sorry, '\pgfplotstable@loc@TMPb' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here.}%
+				}{%
+					\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
+				}%
+				\let#3=\pgfutil@empty
+			}{%
+				\let#3=\pgfplotstable@loc@TMPa
+			}%
+		}{%
+			\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}%
+			\let#3=\pgfutil@empty
+		}%
+	}{%
+		\def#3{#1}%
 	}%
 }
 
@@ -1096,17 +1148,19 @@
 %
 % -> will evaluate \macro foreach row.
 \def\pgfplotstablereadgetptrtocolname@#1#2{%
+	% Implementation note: it is necessary to replicate code becuase
+	% in this context, the table structure is NOT available.
 	\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}{%
 		% Oh, there is no column '#1'!
 		%
 		% Check for the 'alias' feature!
-		\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI
 		%
-		\ifpgfutil@in@
-			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/{#1}}%
-		\else
-			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
-		\fi
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		%
+		\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
 		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
 			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
 			\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
@@ -1117,12 +1171,8 @@
 				\edef#2{\csname pgfplotstblread@colindex@for@name\pgfplotstable@loc@TMPa\endcsname}%
 			}%
 		}{%
-			\ifpgfutil@in@
-				\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/{#1}}%
-			\else
-				\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
-			\fi
-			\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
+			\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
 				\pgfplots@error{Sorry, '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here.}%
 			}{%
 				\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstableread@filename'. Please check spelling (or introduce name aliases).}%
@@ -1765,14 +1815,15 @@
 			\expandafter\pgfplotslistsize\csname\string#3@\pgfplotstable@colname\endcsname\to\c@pgfplotstable@numrows
 		\fi
 		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
+			\expandafter\pgfplotstableresolvecolname\expandafter{\pgfplotstable@colname}\of#3\to\pgfplotstable@real@colname
 			\ifpgfplotstable@isfirstrow
-				\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@colname\endcsname
+				\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@real@colname\endcsname
 				\ifpgfplotslistempty
 					% the table is completely empty. break.
 					\pgfplots@loop@CONTINUEfalse
 				\else
 					\expandafter\let\csname pgfplotstablecreate@prev@\pgfplotstable@colname\endcsname=\pgfutil@empty
-					\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@colname\endcsname\to\pgfplotstable@entry
+					\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@real@colname\endcsname\to\pgfplotstable@entry
 					\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@entry
 				\fi
 			\else
@@ -1782,12 +1833,12 @@
 				\expandafter\let\expandafter\pgfplotstable@next\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname
 				\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@next
 			\fi
-			\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@colname\endcsname
+			\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@real@colname\endcsname
 			\ifpgfplotslistempty
 				\expandafter\let\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname=\pgfutil@empty
 				\pgfplotstable@islastrowtrue
 			\else
-				\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@colname\endcsname\to\pgfplotstable@entry
+				\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@real@colname\endcsname\to\pgfplotstable@entry
 				\expandafter\let\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname=\pgfplotstable@entry
 			\fi
 		}%
