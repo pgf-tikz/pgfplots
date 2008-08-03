@@ -68,10 +68,16 @@ mv plain generic latex context tex/ || exit 1
 # 2. I misunderstood the 'source' tree.
 # So: shuffle this around:
 for A in latex context; do
-	mkdir -p source/$A/pgfplots || exit 1
-	mv source/pgfplots/$A/* source/$A/pgfplots || exit 1
+	case $A in
+		context)
+			TARGET=source/context/third/pgfplots;;
+		*)	
+			TARGET=source/$A/pgfplots;;
+	esac
+	mkdir -p $TARGET || exit 1
+	mv source/pgfplots/$A/* $TARGET || exit 1
 	rmdir source/pgfplots/$A || exit 1
-	cd source/$A/pgfplots || exit 1
+	cd $TARGET || exit 1
 	zip -q -m -r pgfplotstests.zip . || exit 1
 	cd - 1>/dev/null
 done
