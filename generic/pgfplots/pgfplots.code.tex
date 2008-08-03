@@ -57,7 +57,8 @@
 \newif\ifpgfplots@clip@marker@paths
 \newif\ifpgfplots@axis@on@top
 \newif\ifpgfplots@separate@axis@lines
-\newif\ifpgfplots@scaled@ticks
+\newif\ifpgfplots@scaled@ticks@x
+\newif\ifpgfplots@scaled@ticks@y
 \newif\ifpgfplots@identify@log@minor@tick@pos
 \newif\ifpgfplots@disablelogfilter
 \newif\ifpgfplots@disabledatascaling
@@ -368,10 +369,15 @@
 	/pgfplots/ytickten=,
 	/pgfplots/tick scale label code/.code={$\cdot 10^{#1}$},
 	/pgfplots/tick scale label code/.belongs to family=/pgfplots/tick,
-	/pgfplots/scaled ticks/.is if=pgfplots@scaled@ticks,
-	/pgfplots/scaled ticks/.default=false,
-	/pgfplots/scaled ticks/.belongs to family=/pgfplots/tick,
-	/pgfplots/scaled ticks=true,
+	/pgfplots/scaled x ticks/.is if=pgfplots@scaled@ticks@x,
+	/pgfplots/scaled x ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/scaled x ticks=true,
+	/pgfplots/scaled y ticks/.is if=pgfplots@scaled@ticks@y,
+	/pgfplots/scaled y ticks/.belongs to family=/pgfplots/tick,
+	/pgfplots/scaled y ticks=true,
+	/pgfplots/scaled ticks/.style={%
+		/pgfplots/scaled x ticks=#1,
+		/pgfplots/scaled y ticks=#1},
 	/pgfplots/scale ticks above exponent/.store in=	\pgfplots@scale@ticks@above@exponent,
 	/pgfplots/scale ticks above exponent/.belongs to family=/pgfplots/tick,
 	/pgfplots/scale ticks above exponent=3,
@@ -1170,6 +1176,16 @@
 	/pgfplots/every crossref picture/.style={%
 		baseline,yshift=0.3em
 	},
+	/pgfplots/x coord trafo/.code={},
+	/pgfplots/x coord inv trafo/.code={},
+	/pgfplots/y coord trafo/.code={},
+	/pgfplots/y coord inv trafo/.code={},
+}
+
+{
+\pgfkeysdef{/pgfplots/empty command key}{}%
+\pgfkeysgetvalue{/pgfplots/empty command key/.@cmd}\pgfplots@loc@TMPa
+\global\let\pgfplots@empty@command@key=\pgfplots@loc@TMPa
 }
 
 \def\pgfplots@cmdkey@alias#1=#2;{%
@@ -1425,16 +1441,29 @@
 \def\pgfplots@show@ticklabel@#1#2{%
 	\csname ifpgfplots@apply@datatrafo@#1\endcsname
 		\csname pgfplots@inverse@datascaletrafo@#1\endcsname{#2}%
-		% FIXME: do that for any linear axis, also if no datascale is
-		% applied!
-		\ifpgfplots@scaled@ticks
+		\pgfplots@if{pgfplots@scaled@ticks@#1}{%
 			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
-		\fi
+		}\relax
 		% .. and this here provides \tick as fixed point repr:
 		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 		\let\tick=\pgfmathresult
 	\else
 		\edef\tick{#2}%
+		\pgfplots@if{pgfplots@#1islinear}{%
+			\pgfplots@if{pgfplots@scaled@ticks@#1}{%
+				\pgfmathfloatparsenumber{#2}%
+				\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+				\let\tick=\pgfmathresult
+			}{}%
+		}{}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/#1 coord inv trafo/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\let\pgfmathresult=\tick%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\tick}\pgfeov
+		\let\tick=\pgfmathresult
 	\fi
 }%
 
@@ -1571,7 +1600,7 @@
 
 \def\pgfplots@draw@tick@scale@label@for#1{%
 	\csname ifpgfplots@#1islinear\endcsname
-		\ifpgfplots@scaled@ticks
+		\pgfplots@if{pgfplots@scaled@ticks@#1}{%
 			\begingroup
 				\xdef\pgfplots@glob@TMPa{\csname pgfplots@tick@scale@#1\endcsname}%
 				\expandafter\c@pgf@counta\pgfplots@glob@TMPa\relax
@@ -1596,7 +1625,7 @@
 					/pgfplots/every #1 tick scale label]
 				{\pgfplots@tick@scale@labels};
 			\fi
-		\fi
+		}{\relax}%
 	\fi
 }
 
@@ -1655,7 +1684,8 @@
 % #3: tick position list
 \def\pgfplots@draw@extra@ticks@for#1#2#3{%
 	\begingroup
-	\pgfplots@scaled@ticksfalse
+	\pgfplots@scaled@ticks@xfalse
+	\pgfplots@scaled@ticks@yfalse
 	\csname pgfplots@#1minorticksfalse\endcsname
 	\csname pgfplots@#1minorgridsfalse\endcsname
 	\expandafter\let\expandafter\axis@TMP\csname pgfplots@extra@#1ticklabel\endcsname
@@ -2159,9 +2189,9 @@
 	\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
 	\ifpgfplots@major
 		\ifpgfplots@islinear
-			\ifpgfplots@scaled@ticks
+			\pgfplots@if{pgfplots@scaled@ticks@#1}{%
 				\pgfplots@init@scaled@tick@for{#1}%
-			\fi
+			}\relax%
 		\fi
 		\begingroup
 		\pgfkeys{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
@@ -6018,20 +6048,41 @@
 	\let\pgfmathresult=\pgfplots@glob@TMPa
 }
 
+% Writes output to \pgfmathresult
+% #1: the input ticks
+% #2: the transformation command key as macro
+\def\pgfplots@filter@input@ticks@with@highleveltrafo#1#2{%
+	\let\pgfplots@glob@TMPa=\pgfutil@empty
+	\foreach \pgfplots@loc@TMPb in {#1} {%
+		\expandafter#2\expandafter{\pgfplots@loc@TMPb}\pgfeov%
+		\ifx\pgfplots@glob@TMPa\pgfutil@empty
+			\xdef\pgfplots@glob@TMPa{\pgfmathresult}%
+		\else
+			\xdef\pgfplots@glob@TMPa{\pgfplots@glob@TMPa,\pgfmathresult}%
+		\fi
+	}%
+	\let\pgfmathresult=\pgfplots@glob@TMPa
+}
+
 \tikzdeclarecoordinatesystem{axis}{\pgfplots@evalute@tikz@coord@system@interface#1\pgfplots@coord@end}
 
 
 % Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
 \long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
+	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
+	\def\pgfmathresult{#2}%
+	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
+	\else
+		\expandafter\pgfplots@loc@TMPc\expandafter{\pgfmathresult}\pgfeov
+	\fi
+	\let\pgfplots@loc@TMPc=\pgfmathresult% FIXME: is that necessary? I doubt it... but just to make sure...
 	\expandafter\let\expandafter\if@datascaled@cur\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	\csname ifpgfplots@#1islinear\endcsname
 		\if@datascaled@cur
-			\csname pgfplots@datascaletrafo@fromfixed@#1\endcsname{#2}%
-		\else
-			\def\pgfmathresult{#2}%
+			\csname pgfplots@datascaletrafo@fromfixed@#1\endcsname{\pgfplots@loc@TMPc}%
 		\fi
 	\else
-		\pgfmathlog@{#2}%
+		\pgfmathlog@{\pgfplots@loc@TMPc}%
 	\fi
 }
 
@@ -6040,10 +6091,10 @@
 	\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}%
 	\let\pgfplots@evaluate@tikz@coord@x=\pgfmathresult
 	\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
-	\xdef\pgfplots@glob@TMPa{\pgfplots@evaluate@tikz@coord@x pt}%
-	\xdef\pgfplots@glob@TMPb{\pgfmathresult pt}%
+	\xdef\pgfplots@glob@TMPa{\pgfplots@evaluate@tikz@coord@x}%
+	\xdef\pgfplots@glob@TMPb{\pgfmathresult}%
 	\endgroup
-	\pgfpointxy{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
+	\pgfqpointxy{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
 }
 
 % In case of (semi-) logplots, this command will 
@@ -6052,11 +6103,9 @@
 %
 % All subsequent commands will then work with logarithmic coordinates.
 %
-% @see pgfmathlog.sty for details about the implementation of log().
-%
 % PRECONDITION: 
 % - The user input options have been set correctly, 
-% - the option processing has not yet begun
+% - the options have been set, but are not applied
 %
 % POSTCONDITION: 
 % - any user input for log-axis has been replaced by its log
@@ -6065,9 +6114,57 @@
 % See also:
 %     \pgfplots@apply@data@scale@trafo@to@options@for
 \def\pgfplots@prepare@coord@filtering@for#1{%
-	\expandafter\def\csname pgfplots@prepare@#1coord\endcsname##1{%
-		\def\pgfmathresult{##1}%
-	}%
+	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
+	\expandafter\let\csname pgfplots@highlevel@trafo@#1\endcsname=\pgfplots@loc@TMPc
+	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
+		% no high-level external coord trafos.
+		% Simply use identity:
+		\expandafter\def\csname pgfplots@prepare@#1coord\endcsname##1{%
+			\def\pgfmathresult{##1}%
+		}%
+	\else
+		% Apply external coordinate trafo to all input values:
+		\expandafter\edef\csname pgfplots@prepare@#1coord\endcsname##1{%
+			\noexpand\def\noexpand\pgfmathresult{##1}%
+			\expandafter\noexpand\csname pgfplots@highlevel@trafo@#1\endcsname{##1}\noexpand\pgfeov
+		}%
+		%
+		% The transformation is now \pgfplots@loc@TMPc
+		%
+		% any user-specified axis limits:
+		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1min\endcsname
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\pgfplots@loc@TMPc\expandafter{\pgfplots@loc@TMPa}\pgfeov%
+			\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+		\fi
+		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1max\endcsname
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\pgfplots@loc@TMPc\expandafter{\pgfplots@loc@TMPa}\pgfeov%
+			\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+		\fi
+		%
+		% any user specified axis ticks:
+		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\def\pgfplots@loc@TMPb{data}%
+			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\else
+				\expandafter\pgfplots@filter@input@ticks@with@highleveltrafo\expandafter{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPc}%
+				\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfmathresult}%
+			\fi
+		\fi
+		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@extra@#1tick\endcsname
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\pgfplots@filter@input@ticks@with@highleveltrafo\expandafter{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPc}%
+			\expandafter\edef\csname pgfplots@extra@#1tick\endcsname{\pgfmathresult}%
+		\fi
+		%
+	\fi
+	%
 	\pgfkeysgetvalue{/pgfplots/#1filter}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
