@@ -28,7 +28,7 @@ function matlab2pgfplots(varargin )
 % 		a boolean indicating whether line styles, markers and colors shall be exported (default 1).
 % - 'axes',0|1
 % 		a boolean indicating whether axis ticks, tick labels and limits shall be exported (default 0).
-% - 'maxpoints',100
+% - 'maxpoints',100000
 %       an integer denoting the maximum number of points exported to tex. If the actual number is larger,
 %       the data will be interpolated to 'maxpoints'. The interpolation assumes
 %       parametric plots if x and y are not monotonically increasing.
@@ -217,7 +217,7 @@ for i = 1:length(lineobjs)
 		case ':'
 			linestyle = 'densely dotted';
 		case '-:'
-			linestyle = 'dash pattern=on 2pt off 3pt on 1pt off 3pt]';
+			linestyle = 'dash pattern={on 2pt off 3pt on 1pt off 3pt}';
 		case '--'
 			linestyle = 'densely dashed';
 		end
