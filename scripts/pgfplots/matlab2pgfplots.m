@@ -41,6 +41,7 @@ function matlab2pgfplots(varargin )
 %
 % Copyright Christian Feuersaenger 2008
 %
+% This script requires Matlab version 7.4 (or above).
 parser = inputParser;
 
 parser.addRequired( 'outfile', @(x) ischar(x) );
