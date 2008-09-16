@@ -33,6 +33,8 @@
 \newwrite\pgfplotstable@outfile
 \newif\ifpgfplotstabletypesetdebug
 \newif\ifpgfplotstableuserow
+\newif\ifpgfplotstabletypeset@includeoutfiles
+\newif\ifpgfplotstabletypeset@force@remake
 
 % should always be false; use only in grouped internal macros
 \newif\ifpgfplots@table@options@areset
@@ -237,6 +239,10 @@
 	/pgfplots/table/begin table/.initial={\begin{tabular}},
 	/pgfplots/table/end table/.initial={\end{tabular}},
 	/pgfplots/table/outfile/.initial=,
+	/pgfplots/table/include outfiles/.is if=pgfplotstabletypeset@includeoutfiles,
+	/pgfplots/table/include outfiles/.default=true,
+	/pgfplots/table/force remake/.is if=pgfplotstabletypeset@force@remake,
+	/pgfplots/table/force remake/.default=true,
 	/pgfplots/table/debug/.is if=pgfplotstabletypesetdebug,
 	%
 	% will be redefined by |assign cell content| for every cell:
@@ -647,9 +653,7 @@
 % BACKWARDS COMPATIBILITY
 \let\pgfnumtableread=\pgfplotstableread
 
-\def\pgfplotstablegetcolumnlist#1\to#2{%
-	\let#2=#1
-}
+\def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
 
 % Returns a column vector in form of \pgfplotslist
 % into #3.
@@ -857,8 +861,29 @@
 		\pgfplots@table@options@aresettrue
 		\pgfplotstableset{/pgfplots/table/every table={#2},#1}%
 	\fi
-	\pgfplotstableread{#2}\pgfplotstabletypesetfile@opt@@
-	\pgfplotstabletypeset\pgfplotstabletypesetfile@opt@@
+	\ifpgfplotstabletypeset@force@remake
+		\pgfplotstabletypeset@includeoutfilesfalse
+	\else
+		\ifpgfplotstabletypeset@includeoutfiles
+			\pgfplotstabletypeset@includeoutfilesfalse
+			\pgfkeysgetvalue{/pgfplots/table/outfile}\pgfplotstable@outfilename
+			\ifx\pgfplotstable@outfilename\pgfutil@empty
+			\else
+				\openin1=\pgfplotstable@outfilename\relax
+				\ifeof1 
+				\else
+					\pgfplotstabletypeset@includeoutfilestrue
+				\fi
+				\closein1
+			\fi
+		\fi
+	\fi
+	\ifpgfplotstabletypeset@includeoutfiles
+		\input \pgfplotstable@outfilename\relax	
+	\else
+		\pgfplotstableread{#2}\pgfplotstabletypesetfile@opt@@
+		\pgfplotstabletypeset\pgfplotstabletypesetfile@opt@@
+	\fi
 	\endgroup
 }%
 
@@ -1535,6 +1560,59 @@
 		\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every table={\the\t@pgfplots@toka}}%
 		\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa,#1}%
 	\fi
+	\pgfkeysgetvalue{/pgfplots/table/outfile}\pgfplotstable@outfilename
+	\ifpgfplotstabletypeset@force@remake
+		\pgfplotstabletypeset@includeoutfilesfalse
+	\else
+		\ifpgfplotstabletypeset@includeoutfiles
+			\pgfplotstabletypeset@includeoutfilesfalse
+			\ifx\pgfplotstable@outfilename\pgfutil@empty
+			\else
+				\openin1=\pgfplotstable@outfilename\relax
+				\ifeof1 \else\pgfplotstabletypeset@includeoutfilestrue \fi
+				\closein1
+			\fi
+		\fi
+	\fi
+	\ifpgfplotstabletypeset@includeoutfiles
+		\input \pgfplotstable@outfilename\relax
+	\else
+	%
+	% Prepare outfile and debug options:
+	\let\pgfplotstable@notify@finished@line=\pgfutil@empty
+	%
+	% FLUSH assumes that \pgfplotstable@curline is finished. It
+	% appends all its contents as-is to \pgfplotstable@result.
+	%
+	% Furthermore, it calls \pgfplotstable@notify@finished@line which
+	% in turn may invoke additional output routines for the debug and
+	% outfile options.
+	%
+	% Finally, it resets \pgfplotstable@curline.
+	\def\pgfplotstable@curline@FLUSH{%
+		\pgfplotstable@notify@finished@line
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+		\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\let\pgfplotstable@curline=\pgfutil@empty
+	}%
+	\ifpgfplotstabletypesetdebug
+		\immediate\write16{------- PGFPLOTSTABLE DEBUG MODE: --------}%
+		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\immediate\write16{\the\t@pgfplots@toka\pgfplots@PERCENT@TEXT}%
+		}%
+	\fi
+	\ifx\pgfplotstable@outfilename\pgfutil@empty
+	\else
+		\immediate\openout\pgfplotstable@outfile=\pgfplotstable@outfilename\relax
+		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\immediate\write\pgfplotstable@outfile{\the\t@pgfplots@toka\pgfplots@PERCENT@TEXT}%
+		}%
+	\fi
+	%
+	% Start operation:
 	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
 	\ifx\pgfplotstable@colnames\pgfutil@empty
 		\pgfplotstablegetcolumnlist#2\to\pgfplotstable@colnames
@@ -1667,22 +1745,25 @@
 		\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
 		\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 	}%
-	\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
-	\ifx\pgfplotstable@resulttypes\pgfutil@empty
-		\edef\pgfplotstable@result{\the\t@pgfplots@toka}%
-	\else
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
-		\edef\pgfplotstable@result{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
-	\fi
+	\let\pgfplotstable@result=\pgfutil@empty
 	%
 	\pgfkeysgetvalue{/pgfplots/table/font}{\pgfplotstable@font}%
 	\ifx\pgfplotstable@font\pgfutil@empty
 	\else
 		\t@pgfplots@toka=\expandafter{\pgfplotstable@font}%
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@result}%
-		\edef\pgfplotstable@result{\noexpand\begingroup\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\edef\pgfplotstable@curline{\noexpand\begingroup\the\t@pgfplots@toka}%
+		\pgfplotstable@curline@FLUSH
 	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
+	\ifx\pgfplotstable@resulttypes\pgfutil@empty
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
+	\else
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+	\fi
+	\pgfplotstable@curline@FLUSH
 	%
 
 	% Step 1.2: Collect FIRST ROW (column names)
@@ -1700,23 +1781,25 @@
 	\pgfplots@glob@TMPc
 	% insert 'before row' here:
 	\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-	\t@pgfplots@tokb=\expandafter{\pgfplotstable@result}%
-	\edef\pgfplotstable@result{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+	\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
 	%
 	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
 		\advance\c@pgfplotstable@colindex by1\relax
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out \\}%
 		\else
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out &}%
 		\fi
-		\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 	}%
 	% insert 'after row' here:
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-	\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+	\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+	%
+	\pgfplotstable@curline@FLUSH
 	%
 %\message{I have now \meaning\pgfplotstable@result.}%
 	% Step 2: column contents.
@@ -1780,57 +1863,51 @@
 				\pgfplots@glob@TMPc
 				% insert 'before row' here:
 				\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@result}%
-				\edef\pgfplotstable@result{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
 			\fi
 			%
 			%
 			\pgfplotslistpopfront\pgfplotstable@col@processed\to\pgfplotstable@entry
 			\pgfplotsarrayletentry\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array=\pgfplotstable@col@processed
 			\advance\c@pgfplotstable@colindex by1\relax
-			\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 			\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
 				\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry \\}%
 			\else
 				\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry &}%
 			\fi
-			\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 			\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
 				\c@pgfplotstable@colindex=0\relax
 				% insert 'after row' here:
-				\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 				\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-				\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 				\advance\c@pgfplotstable@rowindex by1\relax
+				\pgfplotstable@curline@FLUSH
 			\fi
 %\message{I have now \meaning\pgfplotstable@result.}%
 		\fi
 	\pgfutil@repeat
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 	\pgfkeysgetvalue{/pgfplots/table/end table}{\pgfplotstable@entry}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry}%
-	\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+	\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+	\pgfplotstable@curline@FLUSH
+	%
 	\ifx\pgfplotstable@font\pgfutil@empty
 	\else
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@result\endgroup}%
-		\edef\pgfplotstable@result{\the\t@pgfplots@toka}%
+		\edef\pgfplotstable@curline{\noexpand\endgroup}%
+		\pgfplotstable@curline@FLUSH
 	\fi
-	\ifpgfplotstabletypesetdebug
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
-		\immediate\write16{------- PGFPLOTSTABLE DEBUG MODE: --------}%
-		\immediate\write16{{\the\t@pgfplots@toka}}%
-	\fi
-	\pgfkeysgetvalue{/pgfplots/table/outfile}{\pgfplotstable@entry}%
-	\ifx\pgfplotstable@entry\pgfutil@empty
+	\ifx\pgfplotstable@outfilename\pgfutil@empty
 	\else
-		\begingroup
-		\immediate\openout\pgfplotstable@outfile=\pgfplotstable@entry\relax
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
-		\immediate\write\pgfplotstable@outfile{\the\t@pgfplots@toka}%
 		\immediate\closeout\pgfplotstable@outfile
-		\endgroup
 	\fi
+%\message{I have now \meaning\pgfplotstable@result.}%
 	\pgfplotstable@result
+	\fi
 	\endgroup
 }%
 
