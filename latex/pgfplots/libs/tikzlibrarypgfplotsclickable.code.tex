@@ -23,8 +23,31 @@
 \edef\pgfplotscatcodeDQ{\the\catcode`\"}%
 \catcode`\"=12
 
-\RequirePackage[pdftex]{insdljs}
-\RequirePackage[pdftex]{eforms}% this here creates \begin{Form} and \end{Form} in \AtBeginDocument etc.
+% ATTENTION:
+% The eforms package creates \begin{Form} and \end{Form} in \AtBeginDocument and \AtEndDocument!
+\def\pgfplots@glob@TMPa{pgfsys-pdftex.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[pdftex]{insdljs}
+	\RequirePackage[pdftex]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-dvipdfm.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[dvipdfm]{insdljs}
+	\RequirePackage[dvipdfm]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-dvips.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[dvips]{insdljs}
+	\RequirePackage[dvips]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-textures.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[textures]{insdljs}
+	\RequirePackage[textures]{eforms}
+\else
+	\RequirePackage{insdljs}
+	\RequirePackage{eforms}
+\fi\fi\fi\fi
 
 % Work-around for a bug in \begindljs of acrotex:
 % if " is active, \begindljs will be wrong.
@@ -254,9 +277,6 @@ function sprintf( ) {
 /*********************************************************************************/
 
 
-// Noch zu tun:
-// - steigungen ausrechnen lassen?
-
 var lastMouseX = -1;
 var lastMouseY = -1;
 var posOnMouseDownX = -1;
@@ -396,6 +416,20 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 	}
 }
 \end{insDLJS}
+%--------------------------------------------------
+% function hideClickableTextfields() {
+% 	for (var i = 0; i < this.numFields; i++) {
+% 		var fieldName = this.getNthFieldName(i);
+% 		console.println("checking Field " + fieldName + " ... ");
+% 		if( fieldName.substr( 0, 13 ) == "clickableplot" && fieldName.indexOf( "-result", 12 ) >= 0 ) {
+% 			console.println("hiding Field " + fieldName + " ... ");
+% 			this.getField( fieldName ).display = display.hidden;
+% 		}
+% 	}
+% }
+% hideClickableTextfields();
+%-------------------------------------------------- 
+
 
 \newif\ifpgfplots@clickable
 \newif\ifpgfplots@annot@printable
@@ -462,29 +496,30 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 		\pgfpointdiff{\lowerleftinnercorner}{\upperrightinnercorner}%
 		\edef\pgfplots@clickable@wd{\the\pgf@x}%
 		\edef\pgfplots@clickable@ht{\the\pgf@y}%
+		\edef\pgfplots@clickable@expanded@args{% FIXME : is that a good idea to do!? Are user-args exandable?
+			{\pgfplots@clickable@wd}%
+			{\pgfplots@clickable@ht}%
+			{clickableplot\pgfplots@clickable@no}%
+			{{
+				xmin:\pgfplots@clickable@xmin, 
+				xmax:\pgfplots@clickable@xmax,
+				ymin:\pgfplots@clickable@ymin,
+				ymax:\pgfplots@clickable@ymax,
+				xscale:"\ifpgfplots@xislinear linear\else log\fi",
+				yscale:"\ifpgfplots@yislinear linear\else log\fi"
+			}}%
+			{{
+				pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
+				slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
+				fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
+				textFont:\pgfkeysvalueof{/pgfplots/annot/font},
+				textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
+				printable: \ifpgfplots@annot@printable true\else false\fi
+			}}%
+		}%
 		\pgfinterruptboundingbox%
 		\pgftext[left,bottom,at=\lowerleftinnercorner]
-			{\pgfplots@create@clickable@plotarea
-				{\pgfplots@clickable@wd}%
-				{\pgfplots@clickable@ht}%
-				{clickableplot\pgfplots@clickable@no}%
-				{{
-					xmin:\pgfplots@clickable@xmin, 
-					xmax:\pgfplots@clickable@xmax,
-					ymin:\pgfplots@clickable@ymin,
-					ymax:\pgfplots@clickable@ymax,
-					xscale:"\ifpgfplots@xislinear linear\else log\fi",
-					yscale:"\ifpgfplots@yislinear linear\else log\fi"
-				}}%
-				{{
-					pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
-					slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
-					fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
-					textFont:\pgfkeysvalueof{/pgfplots/annot/font},
-					textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
-					printable: \ifpgfplots@annot@printable true\else false\fi
-				}}%
-			}%
+			{\expandafter\pgfplots@create@clickable@plotarea\pgfplots@clickable@expanded@args}%
 		\endpgfinterruptboundingbox%
 		\begingroup
 			\c@pgf@counta=\pgfplots@clickable@no\relax
@@ -501,7 +536,6 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 % #4: the plotLimits object (see javascript docs)
 % #5: the displayOpts object (see javascript docs)
 \def\pgfplots@create@clickable@plotarea#1#2#3#4#5{%
-%\message{HIER WIRD DAS INITIALISIERT}%
 %\tracingmacros=2\tracingcommands=2
 	%\leavevmode
 	%--------------------------------------------------
@@ -526,7 +560,12 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 	\def\textFieldDefaults{%
 		\W{1}% border width
 		\S{B}% border style ( one of SDBIU )
-		\F{2}% "display" bitflag. 2^2= hidden (see "Annotation Flags" in pdf reference)
+		%\F{2}% "display" bitflag. 2^1= hidden (see "Annotation Flags" in pdf reference)
+		%ATTENTION: \F 2 (hidden) produces INCOMPATIBILITIES with figure environment!?
+		%           Work-around: force zero-width fields; each
+		%           read-only without border or appearance stuff.
+		%           Hope that works without visible artefacts.
+		\Ff{1}% "Field characteristics" bitflag. 2^0 = "read-only"
 	}%
 	\pushButton[
 		%\A{/S/JavaScript/JS(processAnnotatedPlot("#3", #4, #5);)}%
