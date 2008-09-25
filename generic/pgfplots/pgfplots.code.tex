@@ -57,8 +57,6 @@
 \newif\ifpgfplots@clip@marker@paths
 \newif\ifpgfplots@axis@on@top
 \newif\ifpgfplots@separate@axis@lines
-\newif\ifpgfplots@scaled@ticks@x
-\newif\ifpgfplots@scaled@ticks@y
 \newif\ifpgfplots@identify@log@minor@tick@pos
 \newif\ifpgfplots@disablelogfilter
 \newif\ifpgfplots@disabledatascaling
@@ -136,6 +134,18 @@
 		\pgfkeysvalueof{#1/.@cmd}\pgfeov
 	}{}%
 }%
+
+\def\pgfplots@scaled@ticks@setargs#1#2{%
+	\pgfutil@in@{:}{#2}%
+	\ifpgfutil@in@
+		\pgfplots@scaled@ticks@setargs@{#1}#2\pgfplots@EOI
+	\else
+		\pgfkeysalso{/pgfplots/scaled #1 ticks/#2}%
+	\fi
+}%
+\def\pgfplots@scaled@ticks@setargs@#1#2:#3\pgfplots@EOI{%
+	\pgfkeysalso{/pgfplots/scaled #1 ticks/#2={#3}}%
+}
 
 \pgfkeys{%
 	/pgfplots/search path for tikz/.unknown/.code={%
@@ -367,12 +377,30 @@
 	/pgfplots/ytickten/.store in=		\pgfplots@ytickten,
 	/pgfplots/ytickten/.belongs to family=/pgfplots/tick,
 	/pgfplots/ytickten=,
-	/pgfplots/tick scale label code/.code={$\cdot 10^{#1}$},
-	/pgfplots/tick scale label code/.belongs to family=/pgfplots/tick,
-	/pgfplots/scaled x ticks/.is if=pgfplots@scaled@ticks@x,
+	/pgfplots/xtick scale label code/.code={$\cdot 10^{#1}$},
+	/pgfplots/xtick scale label code/.belongs to family=/pgfplots/tick,
+	/pgfplots/ytick scale label code/.code={$\cdot 10^{#1}$},
+	/pgfplots/ytick scale label code/.belongs to family=/pgfplots/tick,
+	/pgfplots/tick scale label code/.style={%
+		/pgfplots/xtick scale label code={#1},
+		/pgfplots/ytick scale label code={#1}%
+	},%
+	/pgfplots/scaled x ticks/.code={\pgfplots@scaled@ticks@setargs{x}{#1}},
+	/pgfplots/scaled x ticks/false/.code=		{\def\pgfplots@scaled@ticks@x@choice{0}},
+	/pgfplots/scaled x ticks/true/.code=		{\def\pgfplots@scaled@ticks@x@choice{1}},
+	/pgfplots/scaled x ticks/base 10/.code=		{\def\pgfplots@scaled@ticks@x@choice{2}\def\pgfplots@scaled@ticks@x@arg{#1}},
+	/pgfplots/scaled x ticks/real/.code=		{%
+		\def\pgfplots@scaled@ticks@x@choice{3}\def\pgfplots@scaled@ticks@x@arg{#1}%
+		\pgfkeys{/pgfplots/xtick scale label code/.code={$\cdot \pgfmathprintnumber{#1}$}}},
 	/pgfplots/scaled x ticks/.belongs to family=/pgfplots/tick,
 	/pgfplots/scaled x ticks=true,
-	/pgfplots/scaled y ticks/.is if=pgfplots@scaled@ticks@y,
+	/pgfplots/scaled y ticks/.code={\pgfplots@scaled@ticks@setargs{y}{#1}},
+	/pgfplots/scaled y ticks/false/.code=		{\def\pgfplots@scaled@ticks@y@choice{0}},
+	/pgfplots/scaled y ticks/true/.code=		{\def\pgfplots@scaled@ticks@y@choice{1}},
+	/pgfplots/scaled y ticks/base 10/.code=		{\def\pgfplots@scaled@ticks@y@choice{2}\def\pgfplots@scaled@ticks@y@arg{#1}},
+	/pgfplots/scaled y ticks/real/.code=		{%
+		\def\pgfplots@scaled@ticks@y@choice{3}\def\pgfplots@scaled@ticks@y@arg{#1}%
+		\pgfkeys{/pgfplots/ytick scale label code/.code={$\cdot \pgfmathprintnumber{#1}$}}},
 	/pgfplots/scaled y ticks/.belongs to family=/pgfplots/tick,
 	/pgfplots/scaled y ticks=true,
 	/pgfplots/scaled ticks/.style={%
@@ -1355,43 +1383,61 @@
 %    assuming that no data scale transformation is active.
 %    FIXME : does that need further attention?
 \def\pgfplots@init@scaled@tick@for#1{%
+	\global\def\pgfplots@glob@TMPa{0}%
 	\begingroup
-	% the \pgfplots@xmin@unscaled@as@float  is set just before the data
-	% scale transformation is initialised.
-	%
-	% The variables are empty if there is no datascale transformation.
-	\expandafter\let\expandafter\pgfplots@cur@min@unscaled\csname pgfplots@#1min@unscaled@as@float\endcsname
-	\expandafter\let\expandafter\pgfplots@cur@max@unscaled\csname pgfplots@#1max@unscaled@as@float\endcsname
-	%
-	\ifx\pgfplots@cur@min@unscaled\pgfutil@empty
-		\edef\pgfplots@loc@TMPa{\csname pgfplots@#1min\endcsname}%
-		\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
-		\let\pgfplots@cur@min@unscaled=\pgfmathresult
-		\edef\pgfplots@loc@TMPa{\csname pgfplots@#1max\endcsname}%
-		\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
-		\let\pgfplots@cur@max@unscaled=\pgfmathresult
-	\fi
-	%
-	\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@min@unscaled\relax\pgfmathfloat@a@E
-	\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@max@unscaled\relax\pgfmathfloat@b@E
-	\ifnum\pgfmathfloat@b@E<\pgfmathfloat@a@E
-		\pgfmathfloat@b@E=\pgfmathfloat@a@E
-	\fi
-	\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@above@exponent}%
-	\expandafter\ifnum\pgfplots@glob@TMPa<\pgfmathfloat@b@E
-		% ok, scale it:
-		\multiply\pgfmathfloat@b@E by-1
-		\xdef\pgfplots@glob@TMPa{\the\pgfmathfloat@b@E}%
-	\else
-		\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@below@exponent}%
-		\expandafter\ifnum\pgfplots@glob@TMPa>\pgfmathfloat@b@E
+	\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
+	% CASE 0 : scaled #1 ticks=false: do nothing here.
+	\or
+		% CASE 1 : scaled #1 ticks=true:
+		%--------------------------------
+		% the \pgfplots@xmin@unscaled@as@float  is set just before the data
+		% scale transformation is initialised.
+		%
+		% The variables are empty if there is no datascale transformation.
+		\expandafter\let\expandafter\pgfplots@cur@min@unscaled\csname pgfplots@#1min@unscaled@as@float\endcsname
+		\expandafter\let\expandafter\pgfplots@cur@max@unscaled\csname pgfplots@#1max@unscaled@as@float\endcsname
+		%
+		\ifx\pgfplots@cur@min@unscaled\pgfutil@empty
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1min\endcsname}%
+			\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
+			\let\pgfplots@cur@min@unscaled=\pgfmathresult
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1max\endcsname}%
+			\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
+			\let\pgfplots@cur@max@unscaled=\pgfmathresult
+		\fi
+		%
+		\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@min@unscaled\relax\pgfmathfloat@a@E
+		\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@max@unscaled\relax\pgfmathfloat@b@E
+		\ifnum\pgfmathfloat@b@E<\pgfmathfloat@a@E
+			\pgfmathfloat@b@E=\pgfmathfloat@a@E
+		\fi
+		\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@above@exponent}%
+		\expandafter\ifnum\pgfplots@glob@TMPa<\pgfmathfloat@b@E
 			% ok, scale it:
 			\multiply\pgfmathfloat@b@E by-1
 			\xdef\pgfplots@glob@TMPa{\the\pgfmathfloat@b@E}%
 		\else
-			% no scaling necessary:
-			\xdef\pgfplots@glob@TMPa{0}%
+			\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@below@exponent}%
+			\expandafter\ifnum\pgfplots@glob@TMPa>\pgfmathfloat@b@E
+				% ok, scale it:
+				\multiply\pgfmathfloat@b@E by-1
+				\xdef\pgfplots@glob@TMPa{\the\pgfmathfloat@b@E}%
+			\else
+				% no scaling necessary:
+				\xdef\pgfplots@glob@TMPa{0}%
+			\fi
 		\fi
+	\or
+		% CASE 2 : scaled #1 ticks=base 10:
+		%--------------------------------
+		\c@pgf@counta=\csname pgfplots@scaled@ticks@#1@arg\endcsname\relax
+		%\multiply\c@pgf@counta by-1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\or
+		% CASE 3 : scaled #1 ticks=real:
+		%--------------------------------
+		\pgfmathfloatparsenumber{\csname pgfplots@scaled@ticks@#1@arg\endcsname}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
 	\fi
 	\endgroup
 	\expandafter\let\csname pgfplots@tick@scale@#1\endcsname=\pgfplots@glob@TMPa%
@@ -1447,21 +1493,31 @@
 \def\pgfplots@show@ticklabel@#1#2{%
 	\csname ifpgfplots@apply@datatrafo@#1\endcsname
 		\csname pgfplots@inverse@datascaletrafo@#1\endcsname{#2}%
-		\pgfplots@if{pgfplots@scaled@ticks@#1}{%
+		\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
+		\or
 			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
-		}\relax
+		\or
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+		\or
+			\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+		\fi
 		% .. and this here provides \tick as fixed point repr:
 		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 		\let\tick=\pgfmathresult
 	\else
 		\edef\tick{#2}%
 		\pgfplots@if{pgfplots@#1islinear}{%
-			\pgfplots@if{pgfplots@scaled@ticks@#1}{%
+			\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=0
+			\else
 				\pgfmathfloatparsenumber{#2}%
-				\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=3
+					\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\else
+					\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\fi
 				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 				\let\tick=\pgfmathresult
-			}{}%
+			\fi
 		}{}%
 	\fi
 	\pgfkeysgetvalue{/pgfplots/#1 coord inv trafo/.@cmd}\pgfplots@loc@TMPa
@@ -1608,32 +1664,37 @@
 
 \def\pgfplots@draw@tick@scale@label@for#1{%
 	\csname ifpgfplots@#1islinear\endcsname
-		\pgfplots@if{pgfplots@scaled@ticks@#1}{%
+		\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=0
+			\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+		\else
 			\begingroup
 				\xdef\pgfplots@glob@TMPa{\csname pgfplots@tick@scale@#1\endcsname}%
-				\expandafter\c@pgf@counta\pgfplots@glob@TMPa\relax
-				\multiply\c@pgf@counta by-1
-				\ifnum\c@pgf@counta=0\relax
-					\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+				\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=3
 				\else
-					\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+					\expandafter\c@pgf@counta\pgfplots@glob@TMPa\relax
+					\multiply\c@pgf@counta by-1
+					\ifnum\c@pgf@counta=0\relax
+						\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+					\else
+						\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+					\fi
 				\fi
 			\endgroup
-			\ifx\pgfplots@glob@TMPa\pgfutil@empty
-			\else
-				\edef\pgfplots@tick@scale@labels{\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/tick scale label code/.@cmd}{\pgfplots@glob@TMPa}}%
-				\node 
-					[%
-					xshift=\pgfplots@xcoordminTEX,%
-					yshift=\pgfplots@ycoordminTEX,%
-					x=\pgfplots@xcoordmaxTEX-\pgfplots@xcoordminTEX,%
-					y=\pgfplots@ycoordmaxTEX-\pgfplots@ycoordminTEX,%
-					/pgfplots/every tick label,%
-					/pgfplots/every #1 tick label,%
-					/pgfplots/every #1 tick scale label]
-				{\pgfplots@tick@scale@labels};
-			\fi
-		}{\relax}%
+		\fi
+		\ifx\pgfplots@glob@TMPa\pgfutil@empty
+		\else
+			\edef\pgfplots@tick@scale@labels{\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/#1tick scale label code/.@cmd}{\pgfplots@glob@TMPa}}%
+			\node 
+				[%
+				xshift=\pgfplots@xcoordminTEX,%
+				yshift=\pgfplots@ycoordminTEX,%
+				x=\pgfplots@xcoordmaxTEX-\pgfplots@xcoordminTEX,%
+				y=\pgfplots@ycoordmaxTEX-\pgfplots@ycoordminTEX,%
+				/pgfplots/every tick label,%
+				/pgfplots/every #1 tick label,%
+				/pgfplots/every #1 tick scale label]
+			{\pgfplots@tick@scale@labels};
+		\fi
 	\fi
 }
 
@@ -1692,8 +1753,8 @@
 % #3: tick position list
 \def\pgfplots@draw@extra@ticks@for#1#2#3{%
 	\begingroup
-	\pgfplots@scaled@ticks@xfalse
-	\pgfplots@scaled@ticks@yfalse
+	\def\pgfplots@scaled@ticks@x@choice{0}%
+	\def\pgfplots@scaled@ticks@y@choice{0}%
 	\csname pgfplots@#1minorticksfalse\endcsname
 	\csname pgfplots@#1minorgridsfalse\endcsname
 	\expandafter\let\expandafter\axis@TMP\csname pgfplots@extra@#1ticklabel\endcsname
@@ -2197,9 +2258,7 @@
 	\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
 	\ifpgfplots@major
 		\ifpgfplots@islinear
-			\pgfplots@if{pgfplots@scaled@ticks@#1}{%
-				\pgfplots@init@scaled@tick@for{#1}%
-			}\relax%
+			\pgfplots@init@scaled@tick@for{#1}%
 		\fi
 		\begingroup
 		\pgfkeys{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
