@@ -64,7 +64,24 @@ It is used with
 \end{codeexample}
 \noindent and requires \PGFPlots\ and \PGF\ $ \ge 2.00$ installed.
 
-Knowledge of |pgfkeys| is useful for a deeper insight into this package. Please refer to the \PGF\ manual,~\cite[section pgfkeys]{tikz} if you want a deeper insight into  |pgfkeys|. Otherwise, simply skip over to the examples provided in this document.
+\begin{command}{\pgfplotstableset\marg{key-value-options}}
+	The user interface of this package is based on key-value-options. They determine what to display, how to format and what to compute.
+	
+	Key-value pairs can be set in two ways:
+	\begin{enumerate}
+		\item As default settings for the complete document (or maybe a part of the document), using |\pgfplotstableset|\marg{options}. For example, the document's preamble may contain
+\begin{codeexample}[code only]
+\pgfplotstableset{fixed zerofill,precision=3}
+\end{codeexample}
+			to configure a precision of $3$ digits after the period, including zeros to get exactly $3$ digits for all fixed point numbers.
+		\item As option which affects just a single table. This is provided as optional argument to the respective table typesetting command, for example |\pgfplotstabletypesetfile|\oarg{options}\marg{file}.
+	\end{enumerate}
+	Both ways are shown in the examples below.
+
+	Knowledge of |pgfkeys| is useful for a deeper insight into this package, as |.style|, |.append style| etc. are specific to |pgfkeys|. Please refer to the \PGF\ manual,~\cite[section pgfkeys]{tikz} if you want a deeper insight into  |pgfkeys|. Otherwise, simply skip over to the examples provided in this document.
+
+	You will find key prefixes |/pgfplots/table/| and |/pgf/number format/|. These prefixes can be skipped if they are used in \PGFPlotstable; they belong to the ``default key path'' of |pgfkeys|.
+\end{command}
 
 \section{Text table input format}
 \PGFPlotstable\ works with plain text file tables in which entries (``cells'') are separated by a separation character. The initial separation character is ``white space'' which means ``at least one space or tab''. Those tables can have a header line which contains column names and most other columns typically contain numerical data.
@@ -983,6 +1000,33 @@ The last example employs commas and disables the default comma-spacing.
 	Just another name for |set thousands separator|.
 \end{key}
 
+\begin{key}{/pgf/number format/min exponent for 1000 sep=\marg{number} (initially 0)}
+	Defines the smalles exponent in scientific notation which is required to draw thousand separators. The exponent is the number of digits minus one, so $\meta{number}=4$ will use thousand separators starting with $1e4 = 10000$.
+\begin{codeexample}[]
+\pgfkeys{/pgf/number format/.cd,
+	int detect,
+	1000 sep={\,},
+	min exponent for 1000 sep=0}
+\pgfmathprintnumber{5000}; \pgfmathprintnumber{1000000}
+\end{codeexample}
+
+\begin{codeexample}[]
+\pgfkeys{/pgf/number format/.cd,
+	int detect,
+	1000 sep={\,},
+	min exponent for 1000 sep=4}
+\pgfmathprintnumber{1000}; \pgfmathprintnumber{5000}
+\end{codeexample}
+\begin{codeexample}[]
+\pgfkeys{/pgf/number format/.cd,
+	int detect,
+	1000 sep={\,},
+	min exponent for 1000 sep=4}
+\pgfmathprintnumber{10000}; \pgfmathprintnumber{1000000}
+\end{codeexample}
+\noindent A value of |0| disables this feature (negative values are ignored).
+\end{key}
+
 
 \begin{key}{/pgf/number format/use period}
 A predefined style which installs periods `\texttt{.}' as decimal separators and commas `\texttt{,}' as thousands separators. This style is the default.
@@ -1117,13 +1161,16 @@ Typesets the exponent as superscript for any number displayed in scientific form
 	The initial setting installs a |\pgfutilensuremath| around each final number to change to math mode if necessary. Use |assume math mode=true| if you know that math mode is active and you don't want |\pgfutilensuremath|.
 \end{key}
 
-\section{Changing tables}
+\section{Creating new columns (Postprocessing)}
 After tables have been loaded from disk, it is possible to change their contents. The methods are limited up to now and they reflect mostly what I needed in my applications. Nevertheless, the approaches are quite general and can be customized.
 
 \begin{command}{\pgfplotstablecreatecol\oarg{options}\marg{new col name}\marg{\textbackslash table}}
 Creates a new column named \marg{new col name} and appends it to table \marg{\textbackslash table}.
 
-This command is technical, but it offers a flexible framework to generate new columns. It has been designed to create new columns using the already existing values -- for example using logical or numerical methods to combine existing values. It provides fast access to a row's value and the next row's value.
+End users probably don't need to use |\pgfplotstablecreatecol| directly at all -- there is the high--level framework |create on use| which invokes it internally and can be used with simple key--value assignments (see below).
+
+
+This command is admittedly technical, but it offers a flexible framework to generate new columns. It has been designed to create new columns using the already existing values -- for example using logical or numerical methods to combine existing values. It provides fast access to a row's value, the previous row's value and the next row's value.
 
 The following documentation is for all who want to \emph{write} specialised columns. It is not particularly difficult; it is just technical and it requires some knowledge of |pgfkeys|. If you don't like it, you can resort to some predefined column generation styles - and enable those styles in \marg{options}.
 
@@ -1190,7 +1237,7 @@ The default implementation of |assign| is to produce empty strings. The default 
 
 \begin{codeexample}[narrow]
 % requires \usepackage{array}
-\pgfplotstableset{
+\pgfplotstableset{% could be used in preamble
 	create on use/quot1/.style=
 		{create col/quotient={error1}}}
 
@@ -1200,7 +1247,7 @@ The default implementation of |assign| is to produce empty strings. The default 
 	columns/quot1/.style={dec sep align}]
 {pgfplotstable.example1.dat}
 \end{codeexample}
-	The example above queries |quot1| which does not yet exist in the input file. Therefor, it is checked whether a |create on use| style for |quot1| exists. This is the case, so it is used to create the missing column.
+	The example above queries |quot1| which does not yet exist in the input file. Therefor, it is checked whether a |create on use| style for |quot1| exists. This is the case, so it is used to create the missing column. The |create col/quotient| key is discussed below; it computes quotients of successive rows in column |error1|.
 
 	A |create on use| specification is translated into 
 	
@@ -1211,21 +1258,23 @@ The default implementation of |assign| is to produce empty strings. The default 
 	The |create on use| has higher priority than |alias|.
 
 	In case \meta{col name} contains characters which are required for key settings, you need to use braces around it: ``|create on use/{name=wi/th,special}/.style={...}|''.
+
+	More examples for |create on use| are shown below while discussing the available column creation styles.
 \end{pgfplotstablecreateonusekey}
 
 \begin{stylekey}{/pgfplots/table/create col/expr=\marg{math expression}}
 	A style for use in |\pgfplotstablecreatecol| which uses \marg{math expression} to assign contents for the new column.
 
 \begin{codeexample}[]
-\pgfplotstableread{pgfplotstable.example1.dat}\table
-\pgfplotstablecreatecol[
-	create col/expr={\thisrow{level}*2}]
-	{new}\table
+\pgfplotstableset{
+	create on use/new/.style={
+		create col/expr={\thisrow{level}*2}}
+}
 
-\pgfplotstabletypeset[
+\pgfplotstabletypesetfile[
 	columns={level,new},
 	columns/new/.style={column name=$2\cdot $level}
-]\table
+]{pgfplotstable.example1.dat}
 \end{codeexample}
 	The macros |\thisrow|\marg{col name} and |\nextrow|\marg{col name} can be used to use values of the existing table.
 
@@ -1233,9 +1282,9 @@ The default implementation of |assign| is to produce empty strings. The default 
 
 	\paragraph{Attention:} Currently, |expr| uses the math parser of \PGF. Although very powerful, it has never been intended for scientific applications. Its $5.5$ fixed point arithmetic has its limitations.
 
-	There is limited support for float point arithmetics, but that is far from complete and every elementary operation needs to be programmed by hand. Some of the following numerical styles employ these routines, they have been included into the \PGF\ math library (but not into the parser).
+	At the time of this writing, the \textsc{cvs} version of \PGF\ provides the ``fixed point library'' which has a much higher data range of about $\pm 10^{17}$ and higher precision. It relies on the |fp| package and can be enabled easily for |expr| (without affecting any other \PGF\ pictures in the document).
 
-	Furthermore, you can create new columns using the |fp| package which allows precise fixed point arithmetics.
+	There is limited support for floating point arithmetics which covers the complete data range of $\pm 10^{\pm 324}$ required for scientific computing. The relative precision is at least $10^{-5}$. So far, every elementary operation needs to be programmed by hand and only a subset of math operations is implemented. Documentation for how to write such code is included in the \PGF\ math library.
 \end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/create col/quotient=\marg{column name}}
@@ -1243,19 +1292,19 @@ The default implementation of |assign| is to produce empty strings. The default 
 
 \begin{codeexample}[]
 % requires \usepackage{array}
-\pgfplotstableread{pgfplotstable.example1.dat}\table
-\pgfplotstablecreatecol[create col/quotient=error1]
-	{quot1}\table
-\pgfplotstablecreatecol[create col/quotient=error2]
-	{quot2}\table
-
-\pgfplotstabletypeset[
+\pgfplotstableset{% configuration, for example, in preamble:
+	create on use/quot1/.style={create col/quotient=error1},
+	create on use/quot2/.style={create col/quotient=error2},
 	columns={error1,error2,quot1,quot2},
+	%
+	% display styles:
 	columns/error1/.style={sci,sci zerofill},
 	columns/error2/.style={sci,sci zerofill},
 	columns/quot1/.style={dec sep align},
-	columns/quot2/.style={dec sep align}]
-\table
+	columns/quot2/.style={dec sep align}
+}
+
+\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
 \end{codeexample}
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-7}$ ($7$ significant digits in the mantisse).
 \end{stylekey}
@@ -1271,7 +1320,7 @@ The default implementation of |assign| is to produce empty strings. The default 
 
 \begin{codeexample}[]
 % requires \usepackage{array}
-\pgfplotstabletypesetfile[
+\pgfplotstabletypesetfile[% here, configuration options apply only to this single statement:
 	create on use/rate1/.style={create col/dyadic refinement rate={error1}},
 	create on use/rate2/.style={create col/dyadic refinement rate={error2}},
 	columns={error1,error2,rate1,rate2},
@@ -1299,37 +1348,31 @@ The default implementation of |assign| is to produce empty strings. The default 
 	
 \begin{codeexample}[]
 % requires \usepackage{array}
-\pgfplotstableread{pgfplotstable.example1.dat}\table
-\pgfplotstablecreatecol[create col/gradient loglog={dof}{error1}]
-	{slopes1}\table
-\pgfplotstablecreatecol[create col/gradient loglog={dof}{error2}]
-	{slopes2}\table
-
-\pgfplotstabletypeset[
+\pgfplotstableset{% configuration, for example in preamble:
+	create on use/slopes1/.style={create col/gradient loglog={dof}{error1}},
+	create on use/slopes2/.style={create col/gradient loglog={dof}{error2}},
 	columns={dof,error1,error2,slopes1,slopes2},
+	% display styles:
 	columns/dof/.style={int detect},
 	columns/error1/.style={sci,sci zerofill},
 	columns/error2/.style={sci,sci zerofill},
 	columns/slopes1/.style={dec sep align},
-	columns/slopes2/.style={dec sep align}]
-\table
+	columns/slopes2/.style={dec sep align}
+}
+\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
 \end{codeexample}
 
 \begin{codeexample}[]
 % requires \usepackage{array}
-\pgfplotstableread
-	{pgfplotstable.example1.dat}\table
-\pgfplotstablecreatecol
-	[create col/gradient semilogy={level}{error1}]
-	{slopes1}\table
-
-\pgfplotstabletypeset[
+\pgfplotstableset{% configuration, for example in preamble:
+	create on use/slopes1/.style={create col/gradient semilogy={level}{error1}},
 	columns={level,error1,slopes1},
+	% display styles:
 	columns/level/.style={int detect},
-	columns/error1/.style=
-		{sci,sci zerofill,sci subscript},
-	columns/slopes1/.style={dec sep align}]
-\table
+	columns/error1/.style={sci,sci zerofill,sci subscript},
+	columns/slopes1/.style={dec sep align}
+}
+\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
 \end{codeexample}
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-6}$ ($6$ significant digits in the mantisse).
 \end{keylist}
