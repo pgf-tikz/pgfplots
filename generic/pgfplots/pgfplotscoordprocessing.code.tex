@@ -1,0 +1,1554 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+% This file contains the code to process coordinates
+% - coordinate input: \addplot and its variants,
+% - coordinate loops,
+% - single coordinate processing
+
+
+% The main interface to draw a plot into an axis.
+%
+% Usage:
+% \addplot 
+% 	plot coordinates {
+% 		(0,0)
+% 		(1,1)
+% 	};
+% 
+% or
+%
+% \addplot[color=blue,mark=*]
+% 	plot coordinates {
+% 		(0,0)
+% 		(1,1)
+% 	};
+%
+% or one of the other input types.
+% 
+% The first syntax will use the next plot specification in the list
+% \autoplotspeclist
+% and the first will use blue color and * markers. 
+%
+% \addplot[<style options>]  plot[<behavior options>]  <input type and args> <post plot path> ;
+% 
+%
+% The linespec. will be used in the legend.
+%
+% Low-level implementation:
+%
+% \pgfplots@addplot 
+% \pgfplots@addplotimpl
+% \pgfplots@start@plot@with@behavioroptions <--- \begingroup
+% ...
+% ... remember options GLOBALLY
+% ... update limits GLOBALLY
+% ... \pgfplots@addplot@enqueue@coords GLOBALLY
+% ...
+% \pgfplots@end@plot <--- \endgroup
+\long\def\pgfplots@addplot{%
+	\pgfutil@ifnextchar+{%
+		\pgfplots@getautoplotspec into\nextplotspec
+		\pgfplots@addplotimplAPPEND
+	}{%
+		\pgfutil@ifnextchar[{%
+			\pgfplots@addplotimpl%
+		}{%
+			\pgfplots@getautoplotspec into\nextplotspec
+			% the space after ']' is required here:
+			% FIXME: 
+			% - \addplot[]plot coordinates is NOT allowed!?
+			\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec]%
+		}%
+	}%
+}
+
+\long\def\pgfplots@addplotimplAPPEND+[{%
+	\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec,
+}
+
+\long\def\pgfplots@addplotimpl[#1]{%
+	\pgfutil@ifnextchar p{%
+		\pgfplots@addplotimpl@plot{#1}%
+	}{%
+		\pgfplots@addplotimpl@plot{#1}plot
+	}%
+}
+
+\def\pgfplots@addplotimpl@plot#1plot{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@plot@withoptions{#1}%
+	}{%
+		\pgfplots@addplotimpl@plot@withoptions{#1}[]%
+	}%
+}
+
+\def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
+	\pgfplots@start@plot@with@behavioroptions{#2}%
+	\pgfutil@ifnextchar c{%
+		\pgfplots@addplotimpl@coordinates{#1}plot 
+	}{%
+		\pgfutil@ifnextchar f{%
+			\pgfplots@addplotimpl@f{#1}%
+		}{%
+			\pgfutil@ifnextchar t{%
+				\pgfplots@addplotimpl@table{#1}%
+			}{%
+				\pgfutil@ifnextchar ({%
+					\pgfplots@addplotimpl@expression{#1}%
+				}{%
+					\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
+					\pgfplots@gobble@until@semicolon
+				}%
+			}%
+		}%
+	}%
+}
+
+\def\pgfplots@gobble@until@semicolon#1;{}
+
+% Currently, plot expression is really inefficient:
+%
+% 1. it invokes the math parser to get all coordinates. Ok, that's
+% what one expects.
+%
+% 2. It collects the result into one large list instead of calling
+% pgfplots' stream methods. That's because \foreach encapsulates its
+% code in at least one TeX-group.
+%
+% 3. It processes the collected list; applying any floating point
+% parser routines - it does NOT know that any numbers are already in
+% TeX-precision!
+%
+\long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	%
+	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
+	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
+	%
+	\edef\pgfplots@plot@data{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat}}%
+	\pgfplotsapplistXXglobalnewempty
+	\pgfplots@plot@data{%
+		\pgfmathparse{#2}%
+		\let\pgfplots@current@point@x=\pgfmathresult
+		\pgfmathparse{#3}%
+		\let\pgfplots@current@point@y=\pgfmathresult
+		\edef\pgfplots@loc@TMPa{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+		\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@loc@TMPa}%
+	}%
+	\pgfplotsapplistXXgloballet\pgfplots@loc@TMPa
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@loc@TMPa}%
+}%
+
+\def\pgfplots@addplotimpl@f#1f{%
+	\pgfutil@ifnextchar i{\pgfplots@addplotimpl@file{#1}}{\pgfplots@addplotimpl@function{#1}}%
+}%
+
+\let\pgfplots@backupof@pgfplotxyfile=\pgfplotxyfile
+
+% the following code 
+% results finally in
+%
+% set format "%.7e";; set samples <...>; plot ...
+%
+% The windows port of gnuplot doesn't run without the second semicolon
+% - for whatever reason.
+{
+  \catcode`\%=12
+  \catcode`\"=12
+  \xdef\pgfplots@gnuplot@format{set format "%.7e";}
+}
+
+% #1: args of \addplot[...]
+% #2: gnuplot code to generate coordinates
+% #3: trailing path commands until ';'
+\def\pgfplots@addplotimpl@function#1unction#2#3;{%
+	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
+	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
+	\pgfplots@gettikzinternal@keyval{samples}{tikz@plot@samples}{25}%
+	\pgfplots@gettikzinternal@keyval{domain}{tikz@plot@domain}{-5:5}%
+	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
+	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
+	%
+	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\iftikz@plot@raw@gnuplot%
+		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#2}}%
+	\else%
+		\iftikz@plot@parametric%   
+			\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
+				\pgfplots@gnuplot@format;
+				set samples \tikz@plot@samples;
+				set parametric;
+				plot [t=\tikz@plot@domain] #2}}%
+		\else%
+			\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
+				\pgfplots@gnuplot@format;
+				set samples \tikz@plot@samples;
+				plot [x=\tikz@plot@domain] #2}}%
+		\fi%
+	\fi%
+	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#3}}%
+	\pgfplots@plot@data
+	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
+}%
+
+\def\pgfplots@addplotimpl@gnuplotresult#1#2#3{%
+	\begingroup
+	\openin1=#3
+	\ifeof1
+		\pgfplots@error{Sorry, the gnuplot-result file '#3' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> gnuplot <file>.gnuplot' manually on the respective gnuplot file.}%
+		\aftergroup\pgfplots@loop@CONTINUEfalse
+	\else
+		\aftergroup\pgfplots@loop@CONTINUEtrue
+	\fi
+	\closein1
+	\endgroup
+	\ifpgfplots@loop@CONTINUE
+		\pgfplots@addplotimpl@file{#1}ile{#3}#2;%
+	\fi
+}
+
+% #1: arguments to \addplot[...]
+% #2: the file name
+% #3: any additional path arguments
+\def\pgfplots@addplotimpl@file#1ile{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@file@opt{#1}%
+	}{%
+		\pgfplots@addplotimpl@file@opt{#1}[]%
+	}%
+}
+
+% \addplot[#1] file[#2] {#3} #4;
+\def\pgfplots@addplotimpl@file@opt#1[#2]#3#4;{%
+	\begingroup
+	\def\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/plot file}{#2}%
+	\fi
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplots@coord@stream@start
+	\openin1=#3
+	\ifeof1
+		\pgfplots@warning{sorry, plot file{#3} could not be opened!?}%
+	\else
+		\pgfplots@addplotimpl@file@readall
+	\fi
+	\pgfplots@coord@stream@end
+	\endgroup
+}%
+\def\pgfplots@addplotimpl@file@readall{%
+	\read1 to\pgfplots@file@LINE
+	\expandafter\pgfplotstableread@checkspecial@line\pgfplots@file@LINE\pgfplotstable@EOI
+	\ifpgfplotstableread@skipline
+	\else
+		\ifpgfplots@plot@file@skipfirst
+			% Silently skip first data row, assuming it is a header.
+			\pgfplots@plot@file@skipfirstfalse
+		\else
+			\expandafter\pgfplots@addplotimpl@file@parsesingle\pgfplots@file@LINE\pgfplots@EOI
+		\fi
+	\fi
+	\ifeof1
+	\else
+		\expandafter
+		\pgfplots@addplotimpl@file@readall
+	\fi
+}%
+
+\def\pgfplots@addplotimpl@file@parsesingle#1 #2 #3\pgfplots@EOI{%
+	\pgfplots@coord@stream@coord{#1}{#2}{}{}%
+}%
+
+\def\pgfplots@addplotimpl@table#1table{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@table@getopts{#1}%
+	}{%
+		\pgfplots@addplotimpl@table@getopts{#1}[x index=0,y index=1]%
+	}%
+}%
+
+\def\pgfplots@addplotimpl@table@getopts#1[#2]{%
+	\pgfutil@ifnextchar f{%
+		\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
+	}{%
+		\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+	}%
+}
+
+% #1: arguments to \addplot[...]
+% #2: arguments to table[...]
+% #3: the argument of plot table{...}
+% #4: trailing path arguments after plot table{...}#4;
+\long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{%
+	\begingroup
+	% FIXME : this thing here has runtime O(N^2) !
+	% I fear it is faster to simply reload the data .... !?
+	%
+	% well, for a lot of columns which are used in different contexts
+	% and few rows, this here IS more efficient.
+	\pgfplotstableset{#2}%
+	\pgfplotstablecopy#3\to\pgfplots@table
+	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+		\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\addplot@tbl@x
+	\else
+		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@x\of\pgfplots@table\to\addplot@tbl@x
+	\fi
+	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+		\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@yindex\of\pgfplots@table\to\addplot@tbl@y
+	\else
+		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
+	\fi
+	%
+	\ifpgfplots@errorbars@enabled
+		\let\addplot@tbl@error@x=\pgfutil@empty
+		\let\addplot@tbl@error@y=\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
+		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
+		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
+		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
+		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+			\else
+				\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@error@xindex\of\pgfplots@table\to\addplot@tbl@error@x
+			\fi
+		\else
+			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@x\of\pgfplots@table\to\addplot@tbl@error@x
+		\fi
+		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+			\else
+				\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@error@yindex\of\pgfplots@table\to\addplot@tbl@error@y
+			\fi
+		\else
+			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@y\of\pgfplots@table\to\addplot@tbl@error@y
+		\fi
+	\fi
+	%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplots@coord@stream@start
+	\loop
+	\pgfplotslistcheckempty\addplot@tbl@x
+	\ifpgfplotslistempty
+		\pgfplots@loop@CONTINUEfalse
+	\else
+		% This here is just for sanity checking: if the 'y' column is 
+		% - for whatever reasons - invalid; provide good error
+		%   recovery.
+		\pgfplotslistcheckempty\addplot@tbl@y
+		\ifpgfplotslistempty
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\pgfplots@loop@CONTINUEtrue
+		\fi
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\pgfplotslistpopfront\addplot@tbl@x\to\addplot@tbl@cur@x
+		\pgfplotslistpopfront\addplot@tbl@y\to\addplot@tbl@cur@y
+		\ifpgfplots@errorbars@enabled
+			\ifx\addplot@tbl@error@x\pgfutil@empty
+				\let\addplot@tbl@error@cur@x=\pgfutil@empty
+			\else
+				\pgfplotslistpopfront\addplot@tbl@error@x\to\addplot@tbl@error@cur@x
+			\fi
+			\ifx\addplot@tbl@error@y\pgfutil@empty
+				\let\addplot@tbl@error@cur@y=\pgfutil@empty
+			\else
+				\pgfplotslistpopfront\addplot@tbl@error@y\to\addplot@tbl@error@cur@y
+			\fi
+			\edef\pgfplots@loc@TMPa{{\addplot@tbl@cur@x}{\addplot@tbl@cur@y}{\addplot@tbl@error@cur@x}{\addplot@tbl@error@cur@y}}%
+			\expandafter\pgfplots@coord@stream@coord\pgfplots@loc@TMPa
+		\else
+			\edef\pgfplots@loc@TMPa{{\addplot@tbl@cur@x}{\addplot@tbl@cur@y}{}{}}%
+			\expandafter\pgfplots@coord@stream@coord\pgfplots@loc@TMPa
+		\fi
+	\repeat
+	\pgfplots@coord@stream@end
+	\endgroup
+}
+
+
+% #1: arguments to \addplot[...]
+% #2: arguments to table[...]
+% #3: the argument of plot table{...}
+% #4: trailing path arguments after plot table{...}#4;
+\long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{%
+	%--------------------------------------------------
+	% \begingroup
+	% \pgfplotstableset{#2}%
+	% \pgfplotstableread{#3}\pgfplots@table
+	% \pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
+	% \endgroup
+	%-------------------------------------------------- 
+	\pgfplotsapplistXXglobalnewempty
+	\begingroup
+	\pgfplotstableset{#2}%
+	\let\pgfplots@table@PTR@x=\pgfutil@empty
+	\let\pgfplots@table@PTR@y=\pgfutil@empty
+	\ifpgfplots@errorbars@enabled
+		\let\pgfplots@table@ERRPTR@x=\pgfutil@empty
+		\let\pgfplots@table@ERRPTR@y=\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
+		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
+		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
+		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors
+	\else
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener
+	\fi
+	\endgroup
+	%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplotsapplistXXgloballet\pgfplots@coordlist
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
+}
+\def\pgfplots@addplotimpl@table@fromfile@listener{%
+	\pgfplots@addplotimpl@table@fromfile@listener@
+	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
+}
+\def\pgfplots@addplotimpl@table@fromfile@listener@{%
+	\ifx\pgfplots@table@PTR@x\pgfutil@empty
+		% this here is only evaluated ONCE.
+		\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@table@PTR@x}%
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@x}{\pgfplots@table@PTR@x}%
+		\fi
+		\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@table@PTR@y}%
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@y}{\pgfplots@table@PTR@y}%
+		\fi
+	\fi
+	\pgfplotstablereadevalptr\pgfplots@table@PTR@x\pgfplots@current@point@x
+	\pgfplotstablereadevalptr\pgfplots@table@PTR@y\pgfplots@current@point@y
+}%
+\def\pgfplots@addplotimpl@table@fromfile@listener@witherrors{%
+	\pgfplots@addplotimpl@table@fromfile@listener@
+	%
+	\ifx\pgfplots@table@ERRPTR@x\pgfutil@empty
+		% this here is only evaluated ONCE.
+		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+				\let\pgfplots@table@ERRPTR@x=\relax%
+			\else
+				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@xindex}{\pgfplots@table@ERRPTR@x}%
+			\fi
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@x}{\pgfplots@table@ERRPTR@x}%
+		\fi
+		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+				\let\pgfplots@table@ERRPTR@y=\relax%
+			\else
+				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@yindex}{\pgfplots@table@ERRPTR@y}%
+			\fi
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@y}{\pgfplots@table@ERRPTR@y}%
+		\fi
+	\fi
+	\ifx\relax\pgfplots@table@ERRPTR@x
+		\let\addplot@tbl@error@cur@x=\pgfutil@empty
+	\else
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@x\addplot@tbl@error@cur@x
+	\fi
+	\ifx\relax\pgfplots@table@ERRPTR@y
+		\let\addplot@tbl@error@cur@y=\pgfutil@empty
+	\else
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@y\addplot@tbl@error@cur@y
+	\fi
+	\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\addplot@tbl@error@cur@x,\addplot@tbl@error@cur@y)}%
+	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
+}%
+
+% #1:  arguments to \addplot plot[#1]
+%   -> these are called 'behavior' options in the manual; they are set
+%   immediately.
+\def\pgfplots@start@plot@with@behavioroptions#1{%
+	\begingroup
+	\def\pgfplots@current@point@coordindex{0}% can be used inside of coordinate filters.
+	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
+	\ifx\pgfplots@execute@at@begin@plot\pgfutil@empty
+	\else
+		\pgfplots@execute@at@begin@plot
+	\fi
+	\def\pgfplots@addplot@nonlegend@options{#1}%
+	\ifx\pgfplots@addplot@nonlegend@options\pgfutil@empty
+	\else
+		\pgfplotsset{#1}%
+	\fi
+	% these styles may contain behavior options (error bars,
+	% samples,... ) activate them!
+	\pgfplotsset{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
+}
+
+% Initialises 
+% \pgfplots@coord@stream@start
+% \pgfplots@coord@stream@coord
+% \pgfplots@coord@stream@end
+% such that a following coordinate stream is processed properly. The
+% following coordinate stream may come from different input methods.
+%
+% Arguments:
+% #1:  all options of \addplot[...] (the plot style)
+% #2:  any trailing path commands after the 'plot' command as such,
+%      for example \addplot plot coordinates {...} -- (0,0);
+%      would yield #2 =' -- (0,0)'
+%
+\long\def\pgfplots@PREPARE@COORD@STREAM#1#2{%
+	\def\pgfplots@coord@stream@start@{%
+		\pgfplotsapplistXXnewempty
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+			\pgfplots@streamerrorbarstart
+		\else
+			\let\pgfplots@recordederrorbar=\pgfutil@empty
+		\fi
+		\ifpgfplots@stackedmode
+			\pgfplots@stacked@beginplot
+		\fi
+		%
+		%\let\pgfplots@coord@stream@recorded=\pgfutil@empty
+		%
+	}%
+	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
+	\def\pgfplots@coord@stream@end@{%
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@streamerrorbarend
+		\fi
+		\ifpgfplots@coord@stream@isfirst
+			\pgfplots@warning{Empty plot silently dropped.}%
+		\else
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@endplot
+			\fi
+			% Idea: use
+			%   \scope[plot specification]
+			%   <any paths for error bars>
+			%   \endscope
+			%   \draw plot coordinates {...};
+			% to share plot specifications between error bars and plot
+			% coordinates. Unfortunately, it is NOT sufficient to use
+			% \tikzset{#1}
+			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
+			\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+			% warning: rememberplotspec calls list macros which
+			% overwrite \t@pgfplots@toka
+			\t@pgfplots@toka=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+			\xdef\pgfplots@last@plot@style{\the\t@pgfplots@toka}% store it for \label commands.
+			% ATTENTION: do NOT call list macros from here on!
+			%
+			\ifpgfplots@datascaletrafo@initialised
+				\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
+				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+			\else
+				\t@pgfplots@tokc={}%
+			\fi
+			\ifx\pgfplots@recordederrorbar\pgfutil@empty
+				\let\pgfplots@loc@TMPb=\pgfutil@empty%
+			\else
+				\t@pgfplots@tokb=\expandafter{\pgfplots@recordederrorbar}%
+				\def\pgfplots@loc@TMPb{%
+					\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\t@pgfplots@tokb}%
+				}%
+			\fi
+			% assembe a \pgfplots@addplot@enqueue@coords command ...
+			% BEGIN HERE ...
+			% vvvvvvvvvv
+			\xdef\pgfplots@glob@TMPa{%
+				\noexpand\pgfplots@addplot@enqueue@coords
+				{% precommand:
+					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
+					\noexpand\pgfplots@initzerolevelhandler
+					\the\t@pgfplots@tokc% named start/end points (if already available)
+					\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@toka}}%
+					\pgfplots@loc@TMPb% error bar commands
+				}%
+				{% draw command:
+					\noexpand\draw%
+				}%
+			}%
+			\pgfplotsapplistXXlet\pgfplots@coord@stream@recorded
+			\pgfplotsapplistXXclear
+			\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
+			\t@pgfplots@tokb={#2;}%
+			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+			\xdef\pgfplots@glob@TMPa{%
+				\the\t@pgfplots@toka
+				{% coordinates which need to be processed in \endaxis:
+					plot coordinates {\the\t@pgfplots@tokc}\the\t@pgfplots@tokb
+				}%
+				{% postcommand
+				}%
+			}%
+			\pgfplots@glob@TMPa
+			%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
+			\pgfplots@end@plot
+		\fi
+	}%
+}%
+
+\def\pgfplots@end@plot{%
+	\global\advance\pgfplots@numplots by1\relax%
+	\ifx\pgfplots@execute@at@end@plot\pgfutil@empty
+	\else
+		\pgfplots@execute@at@end@plot
+	\fi
+	\global\let\pgfplots@glob@TMPa=\relax
+	\ifpgfplots@collect@firstplot@astick
+		\ifnum\pgfplots@numplots=1\relax
+			\t@pgfplots@toka=\expandafter{\pgfplots@firstplot@coords@x}%
+			\t@pgfplots@tokb=\expandafter{\pgfplots@firstplot@coords@y}%
+			\xdef\pgfplots@glob@TMPa{%
+				\noexpand\def\noexpand\pgfplots@firstplot@coords@x{\the\t@pgfplots@toka}%
+				\noexpand\def\noexpand\pgfplots@firstplot@coords@y{\the\t@pgfplots@tokb}%
+			}%
+		\fi
+	\fi
+	\endgroup
+	\pgfplots@glob@TMPa% see above
+}
+
+% #1: arguments to \addplot[...]
+% #2: the plot coordinates
+% #3: any trailing path command before the final ';'. It will be used as-is.
+\long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
+%\tracingmacros=2\tracingcommands=2
+%\pgfplots@message{processing plots coords with trailing path '#3'}%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#3}%
+	\pgfplots@coord@stream@foreach{#2}%
+}%
+
+\newif\ifpgfplots@update@limits@for@one@point@ISCLIPPED
+\def\pgfplots@math@ONE{1.0}%
+
+\def\pgfplots@streamerrorbarstart{%
+}%
+\def\pgfplots@streamerrorbarend{%
+}%
+\def\pgfplots@streamerrorbarcoords#1#2{%
+}%
+
+\def\pgfplots@streamerrorbar@recordto#1{%
+	\def\pgfplots@streamerrorbarstart{%
+		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@
+	}%
+	\def\pgfplots@streamerrorbarend{%
+		\pgfplotsapplistXlet#1=\pgfplots@streamerrorbar@recordto@@
+		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@% clear
+	}%
+	\def\pgfplots@streamerrorbarcoords##1##2{%
+		\pgfplotsapplistXpushback{\pgfplots@errorbar@draw{##1}{##2}}\to\pgfplots@streamerrorbar@recordto@@
+	}%
+}
+\def\pgfplots@streamerrorbar@directdraw{%
+	\def\pgfplots@streamerrorbarstart{}%
+	\def\pgfplots@streamerrorbarend{}%
+	\def\pgfplots@streamerrorbarcoords##1##2{%
+		\pgfplots@errorbar@draw{##1}{##2}%
+	}%
+}
+	
+
+
+% Updates the current x and y limits for point (#1,#2).
+%
+% The point coordinates may be given in floating point format, see
+% below.
+%
+% Please note that if user specified limits are given, automatic
+% limits are only applied to points which fall into the user specified
+% clipping region.
+%
+% PRECONDITIONS:
+% - the input coordinates have been parsed correctly (floating point
+%   format for linear axis, log applied for logarithmic ones)
+%
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\long\def\pgfplots@update@limits@for@one@point#1#2#3#4{%
+%\tracingmacros=2\tracingcommands=2
+%\pgfplots@message{Updating limits for (#1,#2) ...}%
+	\ifpgfplots@autocomputeanylimits
+		\pgfplots@update@limits@for@one@point@ISCLIPPEDfalse
+		\ifpgfplots@autocompute@all@limits
+		\else
+			% check whether we need to clip limits:
+			\ifpgfplots@clip@limits
+				\ifpgfplots@autocompute@xmin
+				\else
+					\ifpgfplots@xislinear
+						\pgfmathfloatlessthan@{#1}{\pgfplots@xmin}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\else
+						\pgfplotsmathlessthan{#1}{\pgfplots@xmin}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\fi
+				\fi
+				\ifpgfplots@autocompute@xmax
+				\else
+					\ifpgfplots@xislinear
+						\pgfmathfloatlessthan@{\pgfplots@xmax}{#1}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\else
+						\pgfplotsmathlessthan{\pgfplots@xmax}{#1}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\fi
+				\fi
+				\ifpgfplots@autocompute@ymin
+				\else
+					\ifpgfplots@yislinear
+						\pgfmathfloatlessthan@{#2}{\pgfplots@ymin}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\else
+						\pgfplotsmathlessthan{#2}{\pgfplots@ymin}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\fi
+				\fi
+				\ifpgfplots@autocompute@ymax
+				\else
+					\ifpgfplots@yislinear
+						\pgfmathfloatlessthan@{\pgfplots@ymax}{#2}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\else
+						\pgfplotsmathlessthan{\pgfplots@ymax}{#2}%
+						\ifpgfmathfloatcomparison
+							\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+		%
+		%
+		%
+		% Update limits:
+		\ifpgfplots@update@limits@for@one@point@ISCLIPPED
+		\else
+			\ifpgfplots@autocompute@xmin
+				\ifpgfplots@xislinear
+					\pgfmathfloatmin@{\pgfplots@xmin}{#1}%
+					\global\let\pgfplots@xmin=\pgfmathresult
+				\else
+					\pgfplotsmathmin{\pgfplots@xmin}{#1}%
+					\global\let\pgfplots@xmin=\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@xmax
+				\ifpgfplots@xislinear
+					\pgfmathfloatmax@{\pgfplots@xmax}{#1}%
+					\global\let\pgfplots@xmax=\pgfmathresult
+				\else
+					\pgfplotsmathmax{\pgfplots@xmax}{#1}%
+					\global\let\pgfplots@xmax=\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymin
+				\ifpgfplots@yislinear
+					\pgfmathfloatmin@{\pgfplots@ymin}{#2}%
+					\global\let\pgfplots@ymin=\pgfmathresult
+				\else
+					\pgfplotsmathmin{\pgfplots@ymin}{#2}%
+					\global\let\pgfplots@ymin=\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymax
+				\ifpgfplots@yislinear
+					\pgfmathfloatmax@{\pgfplots@ymax}{#2}%
+					\global\let\pgfplots@ymax=\pgfmathresult
+				\else
+					\pgfplotsmathmax{\pgfplots@ymax}{#2}%
+					\global\let\pgfplots@ymax=\pgfmathresult
+				\fi
+			\fi
+		\fi
+	\fi
+	%
+	% Compute data range:
+	\ifpgfplots@autocompute@all@limits
+		\global\let\pgfplots@data@xmin=\pgfplots@xmin
+		\global\let\pgfplots@data@xmax=\pgfplots@xmax
+		\global\let\pgfplots@data@ymin=\pgfplots@ymin
+		\global\let\pgfplots@data@ymax=\pgfplots@ymax
+	\else
+		% Attention: it is only done for linear axis!
+		\ifpgfplots@xislinear
+			\pgfmathfloatmin@{\pgfplots@data@xmin}{#1}%
+			\global\let\pgfplots@data@xmin=\pgfmathresult
+			\pgfmathfloatmax@{\pgfplots@data@xmax}{#1}%
+			\global\let\pgfplots@data@xmax=\pgfmathresult
+		\fi
+		\ifpgfplots@yislinear
+			\pgfmathfloatmin@{\pgfplots@data@ymin}{#2}%
+			\global\let\pgfplots@data@ymin=\pgfmathresult
+			\pgfmathfloatmax@{\pgfplots@data@ymax}{#2}%
+			\global\let\pgfplots@data@ymax=\pgfmathresult
+		\fi
+	\fi
+%\pgfplots@message{Updated limits: (\pgfplots@xmin,\pgfplots@ymin) rectangle  (\pgfplots@xmax,\pgfplots@ymax).}%
+%\tracingmacros=0\tracingcommands=0
+}
+\let\pgfplots@update@limits@for@one@point@orig=\pgfplots@update@limits@for@one@point
+
+\def\pgfplots@invoke@filter#1#2{%
+	\pgfkeysvalueof{/pgfplots/#2 filter/.@cmd}#1\pgfeov%
+}%
+
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\def\pgfplots@process@one@point#1#2#3#4{%
+	\pgfplots@prepare@xcoord{#1}%
+	\expandafter\pgfplots@invoke@filter\expandafter{\pgfmathresult}{x}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\pgfplots@prepare@ycoord{#2}%
+	\expandafter\pgfplots@invoke@filter\expandafter{\pgfmathresult}{y}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
+	\ifpgfplots@xislinear
+		\ifx\pgfplots@current@point@x\pgfutil@empty
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@current@point@x}%
+			\expandafter\pgfmathfloat@decompose@F\pgfmathresult\relax\c@pgf@counta
+			\ifnum\c@pgf@counta>2
+				\let\pgfplots@current@point@x=\pgfutil@empty
+			\else
+				\let\pgfplots@current@point@x=\pgfmathresult
+			\fi
+		\fi
+	\fi
+	%
+	\ifpgfplots@yislinear
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@current@point@y}%
+			\expandafter\pgfmathfloat@decompose@F\pgfmathresult\relax\c@pgf@counta
+			\ifnum\c@pgf@counta>2
+				\let\pgfplots@current@point@y=\pgfutil@empty
+			\else
+				\let\pgfplots@current@point@y=\pgfmathresult
+			\fi
+		\fi
+	\fi
+	%
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+		\ifpgfplots@warn@for@filter@discards
+			\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the x-coordinate filter.}%
+		\fi
+	\else
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+			\ifpgfplots@warn@for@filter@discards
+				\pgfplots@message{NOTE: coordinate (#1,#2) has been dropped because of the y-coordinate filter.}%
+			\fi
+		\else
+			%
+			\ifpgfplots@apply@datatrafo
+				\ifpgfplots@datascaletrafo@initialised
+					% apply data transformation directly.
+					\ifpgfplots@apply@datatrafo@x
+						\pgfplots@datascaletrafo@x\pgfplots@current@point@x
+						\let\pgfplots@current@point@x=\pgfmathresult
+					\fi
+					\ifpgfplots@apply@datatrafo@y
+						\pgfplots@datascaletrafo@y\pgfplots@current@point@y
+						\let\pgfplots@current@point@y=\pgfmathresult
+					\fi
+				\fi
+			\fi
+			% All following routines (limit updating/stacking/error
+			% bars) will use float numerics if necessary (controlled
+			% by ifs).
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@preparepoint@inmacro{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+				\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
+					\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+				\else
+					% the finishpoint routine will be invoked at
+					% \endaxis.
+				\fi
+			\fi
+			% update also axis / data limits:
+			\pgfplots@update@limits@for@one@point{\pgfplots@current@point@x}{\pgfplots@current@point@y}{}{}%
+			\ifpgfplots@errorbars@enabled
+				\pgfplots@process@errorbar@for{\pgfplots@current@point@x}{\pgfplots@current@point@y}{#3}{#4}{#1}{#2}%
+			\fi
+			%
+			\edef\pgfplots@loc@TMPa{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+			\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplots@loc@TMPa}%
+			%\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
+			%\edef\pgfplots@coord@stream@recorded{\the\t@pgfplots@tokc (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+			%
+			\ifpgfplots@collect@firstplot@astick
+				\ifnum\pgfplots@numplots=0
+					\ifx\pgfplots@firstplot@coords@x\pgfutil@empty
+						\t@pgfplots@tokc=\expandafter{}%
+					\else
+						\t@pgfplots@tokc=\expandafter{\pgfplots@firstplot@coords@x,}%
+					\fi
+					\edef\pgfplots@firstplot@coords@x{\the\t@pgfplots@tokc\pgfplots@current@point@x}%
+					\ifx\pgfplots@firstplot@coords@y\pgfutil@empty
+						\t@pgfplots@tokc=\expandafter{}%
+					\else
+						\t@pgfplots@tokc=\expandafter{\pgfplots@firstplot@coords@y,}%
+					\fi
+					\edef\pgfplots@firstplot@coords@y{\the\t@pgfplots@tokc\pgfplots@current@point@y}%
+				\fi
+			\fi
+		\fi
+	\fi
+	%
+	% increase \pgfplots@current@point@coordindex:
+	\begingroup
+	\c@pgf@counta=\pgfplots@current@point@coordindex
+	\advance\c@pgf@counta by1\relax
+	\edef\pgfmathresult{\the\c@pgf@counta}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let\pgfplots@current@point@coordindex=\pgfmathresult
+}
+
+% Internal stream methods.
+%
+% Please overwrite \pgfplots@coord@stream@start@,
+% \pgfplots@coord@stream@end@ and \pgfplots@coord@stream@coord@
+% if you implement streams.
+%
+% FIXME: REPLACE THIS HERE WITH METHODS OF THE VISUALIZATION FRAMEWORK
+\newif\ifpgfplots@coord@stream@isfirst
+\def\pgfplots@coord@stream@start{%
+	\pgfplots@coord@stream@isfirsttrue
+	\pgfplots@coord@stream@start@}%
+\def\pgfplots@coord@stream@end{\pgfplots@coord@stream@end@}
+
+% Will be invoked for every point coordinate.
+%
+% It invokes \pgfplots@coord@stream@coord@.
+% It is expected to assign \pgfplots@current@point@x and
+% \pgfplots@current@point@y
+%
+% It is expected to
+% (#1,#2) : x, y coordinates
+% (#3,#4) : any x, y errors (or empty)
+\def\pgfplots@coord@stream@coord#1#2#3#4{%
+	\pgfplots@coord@stream@coord@{#1}{#2}{#3}{#4}%
+	\ifpgfplots@coord@stream@isfirst
+		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
+		\else
+			\ifx\pgfplots@currentplot@firstcoord@y\pgfutil@empty
+			\else
+				\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
+				\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
+				\pgfplots@coord@stream@isfirstfalse
+			\fi
+		\fi
+	\fi
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+	\else
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+		\else
+			\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
+			\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+		\fi
+	\fi
+}%
+
+% A looping method which applies
+% \pgfplots@coord@stream@start
+% for each coordinate '(x,y)'  or '(x,y) +- (ex,ey)', call
+%   \pgfplots@coord@stream@coord{x}{y}{ex}{ey}
+% \pgfplots@coord@stream@end
+%
+% #1 a sequence of coordinates of the form 
+%   '(x,y)'
+%   or
+%   '(x,y) +- (ex,ey)'
+%   separated by white-space.
+\long\def\pgfplots@coord@stream@foreach#1{%
+	\pgfplots@coord@stream@start
+	\pgfplots@foreach@plot@coord@do%
+		\pgfplots@coord@stream@coord
+	\for
+	plot coordinates {#1};%
+	\pgfplots@EOI
+	\pgfplots@coord@stream@end
+}%
+
+% this is a convenience macro to save storage in the long coordinate
+% lists.
+\def\pgfplots@stream#1#2{\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
+
+\newif\ifpgfplots@record@marker@stream
+% Takes a sequence of PREPARED coordinates which are given in floating
+% point representation and applies the data scaling trafo (if
+% necessary).
+%
+% Any coordinate will be plotted with the selected PGF plot handler.
+%
+% This stream is designed to be done at the end of an axis.
+% See \pgfplots@coord@stream@finalize@storedcoords@START
+%
+% #1 : a macro which will be filled with a pgf plot stream for the
+% marker points.
+\def\pgfplots@coord@stream@INIT@finalize@storedcoords#1{%
+	%
+	% Init the plot handlers:
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	\ifx\tikz@plot@mark\pgfutil@empty
+		% mark=none : no need to waste time collecting marker
+		% positions.
+		\pgfplots@record@marker@streamfalse
+	\else
+		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
+			\ifpgfplots@clip@marker@paths
+				% only marks: draw markers directly; no need for the
+				% two-pass-approach.
+				\let\pgfplots@basiclevel@plothandler=\relax
+				\pgfplots@install@plotmark@handler
+				\pgfplots@record@marker@streamfalse
+			\else
+				% collect mark positions... they will be drawn after
+				% the clipped axis range. Clipping will only be
+				% applied to their *positions*, not their paths.
+				\pgfplots@record@marker@streamtrue
+			\fi
+		\else
+			% ok, mark!=none and we also have a plot handler.
+			% So, collect mark positions!
+			\pgfplots@record@marker@streamtrue
+		\fi
+	\fi
+	\gdef#1{}%
+	%
+	% Now, set up coordinate streams.
+	\def\pgfplots@coord@stream@start@{%
+		\ifpgfplots@apply@datatrafo
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@beginplot
+			\fi
+		\fi
+		\pgfplots@basiclevel@plothandler
+		\pgfplotstreamstart
+		\let\pgfplots@data@scaletrafo@result=\pgfutil@empty
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXXnewempty
+			\pgfplotsapplistXXpushback{\pgfplotstreamstart}%
+			%\gdef#1{\pgfplotstreamstart}%
+		\fi
+	}%
+	\def\pgfplots@coord@stream@end@{%
+		\ifpgfplots@apply@datatrafo
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@endplot
+			\fi
+			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
+			\pgfplots@loc@TMPa
+		\fi
+		\pgfplotstreamend
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXXpushback{\pgfplotstreamend}%
+			\pgfplotsapplistXXflushbuffers%
+			\global\let#1=\pgfplotsapplistXX
+			\pgfplotsapplistXXclear
+			%\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+		\fi
+	}%
+	\ifpgfplots@apply@datatrafo
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\pgfplots@apply@data@scaletrafo@to@one@point{##1}{##2}{##3}{##4}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\else
+		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
+			\def\pgfplots@current@point@x{##1}%
+			\def\pgfplots@current@point@y{##2}%
+			\pgfplots@coord@stream@finalize@currentpt
+		}%
+	\fi
+	%
+	\def\pgfplots@coord@stream@finalize@currentpt{%
+		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+		\ifpgfplots@record@marker@stream
+			\pgf@xa=\pgfplots@current@point@x pt % FIXME : SCOPE REGISTERS!?
+			\pgf@ya=\pgfplots@current@point@y pt %
+			\ifdim\pgf@xa<\pgfplots@xmin@reg
+			\else
+				\ifdim\pgf@xa>\pgfplots@xmax@reg
+				\else
+					\ifdim\pgf@ya<\pgfplots@ymin@reg
+					\else
+						\ifdim\pgf@ya>\pgfplots@ymax@reg
+						\else
+							\edef\pgfmathresult{\noexpand\pgfplots@stream{\the\pgf@x}{\the\pgf@y}}%
+							\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfmathresult}%
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+		\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
+	}%
+}
+\def\pgfplots@addplot@get@named@startendpoints@command#1{%
+	\edef#1{%
+		\noexpand\pgfcoordinate{current plot begin}{\noexpand\pgfqpointxy{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@firstcoord@y}}%
+		\noexpand\pgfcoordinate{current plot end}{\noexpand\pgfqpointxy{\pgfplots@currentplot@lastcoord@x}{\pgfplots@currentplot@lastcoord@y}}%
+	}%
+}%
+
+% INPUT: 
+% 	either floating point or fixed point coordinates (depending on the
+% 	state of the \ifpgfplots@apply@datatrafo boolean)
+%
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START plot coordinates #1#2;\pgfplots@EOI{%
+	\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
+	\pgfplots@stored@current@cmd[current plot style]
+	\pgfextra
+	\tikzset{every plot/.try}%
+	\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
+	\pgfplots@coord@stream@foreach{#1}%
+	\tikz@make@last@position{\pgfplotlastpoint}%  
+	\endpgfextra
+	#2;
+	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
+	\else
+		\ifpgfplots@clip@marker@paths
+			% Draw markers on top of the plot lines:
+			%
+			% FIXME: inefficient! Use \scope to set variables of 'current plot style' !?
+			\pgfplots@stored@current@cmd[current plot style]
+			\pgfextra 
+				\pgfplots@install@plotmark@handler
+				\pgfplots@recorded@marker@stream 
+			\endpgfextra
+			;
+		\else
+			% sigh... ok, store the marker list (once more again).
+			% They need to be drawn after the clipped area.
+			\pgfplots@stored@REMEMBER@MARK@COMMAND
+		\fi
+	\fi
+	\gdef\pgfplots@recorded@marker@stream{}% clear
+}%
+
+% This method MUST be called while \pgfplots@stored@plotlist is
+% evaluated, that means
+% - \pgfplots@stored@* commands need to be valid,
+% - the precommand has already been invoked.
+% - pgfplots@recorded@marker@stream exists
+% - current plot style is valid
+\def\pgfplots@stored@REMEMBER@MARK@COMMAND{%
+	\pgfkeysgetvalue{/tikz/current plot style/.@cmd}{\pgfplots@loc@TMPa}%
+	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
+	\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@cmd[current plot style]}%
+	\t@pgfplots@tokc=\expandafter{\pgfplots@recorded@marker@stream}%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfkeysdef{/tikz/current plot style}{\the\t@pgfplots@toka}%
+		\the\t@pgfplots@tokb
+		\noexpand\pgfextra
+		\noexpand\pgfplots@install@plotmark@handler
+		\the\t@pgfplots@tokc
+		\noexpand\endpgfextra
+		;}%
+	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@loc@TMPa}\to\pgfplots@stored@markerlist
+}%
+
+\def\pgfplots@install@plotmark@handler{%
+	\pgfplots@assert@tikzinternal@exists{tikz@options}%
+	% note: I can't check on tikz@transform because it can be
+	% '\relax'.
+	\pgfplots@gettikzinternal@keyval{mark indices}{tikz@mark@list}{}%
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	% do not reset \tikz@options: draw color may be acquired
+	% from 'current plot style'
+	%\let\tikz@options=\pgfutil@empty%
+	\let\tikz@transform=\pgfutil@empty%
+	\tikzset{every plot/.try,every mark}%
+	\tikz@options
+	\ifx\tikz@mark@list\pgfutil@empty%
+		\pgfplothandlermark{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}%
+	\else
+		\pgfplothandlermarklisted{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}{\tikz@mark@list}%
+	\fi
+}%
+
+% A looping command to loop through plot coordinates.
+% For every point, #1{X}{Y} will be invoked.
+%
+% No scoping is used during this operation, so you can access outer
+% variables.
+\long\def\pgfplots@foreach@plot@coord@do#1\for plot coordinates #2;\pgfplots@EOI{%
+	\def\pgfplots@foreach@plot@coord@do@CMD{#1}%
+	\pgfplots@foreach@plot@coord@ITERATE#2\pgfplots@EOI%
+}
+
+\def\pgfplots@foreach@plot@coord@ITERATE{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfplots@foreach@plot@coord@FINISH%
+	}{%
+		\pgfplots@foreach@plot@coord@NEXT%
+	}%
+}
+
+\def\pgfplots@foreach@plot@coord@NEXT(#1,#2){%
+	\pgfutil@ifnextchar+{%
+		\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE{#1}{#2}%
+	}{%
+		\pgfplots@foreach@plot@coord@do@CMD{#1}{#2}{}{}%
+		\pgfplots@foreach@plot@coord@ITERATE
+	}%
+}
+
+% processing something like '(x,y) +- (error_x,error_y)'
+\def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE#1#2+-#3({%
+	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@{#1}{#2}%
+}
+\def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@#1#2#3,#4){%
+	\pgfplots@foreach@plot@coord@do@CMD{#1}{#2}{#3}{#4}%
+	\pgfplots@foreach@plot@coord@ITERATE
+}
+
+\def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
+
+	
+% #1= x coord
+% #2= y coord
+% #3= error for x coord (or empty)
+% #4= error for y coord (or empty)
+\def\pgfplots@apply@data@scaletrafo@to@one@point#1#2#3#4{%
+	\ifpgfplots@apply@datatrafo@x
+		\pgfplots@datascaletrafo@x{#1}%
+		\let\pgfplots@current@point@x=\pgfmathresult
+	\else
+		\def\pgfplots@current@point@x{#1}%
+	\fi
+	\ifpgfplots@apply@datatrafo@y
+		\pgfplots@datascaletrafo@y{#2}%
+		\let\pgfplots@current@point@y=\pgfmathresult
+	\else
+		\def\pgfplots@current@point@y{#2}%
+	\fi
+	\ifpgfplots@stackedmode
+		% all these calls work with pgfmath; no more floating point
+		% arithmetics are applied.
+		\pgfplots@stacked@getnextzerolevelpoint
+		\pgfplots@stacked@finishpoint{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+		\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	\fi
+%	\t@pgfplots@tokc=\expandafter{\pgfplots@data@scaletrafo@result}%
+%	\edef\pgfplots@data@scaletrafo@result{\the\t@pgfplots@tokc(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+}
+
+% This thing here shall draw all error bar commands listed in '#2'.
+%
+% It will be invoked when any plotting commands take effect (that
+% means all limits are computed; the axis has been drawn,
+% transformations are set up...)
+\def\pgfplots@errorbars@finishwithstyleoptions[#1]#2{%
+	\scope[/pgfplots/.cd,#1,/pgfplots/every error bar]% it used the /pgfplots/.unknown
+	#2%
+	\endscope
+}
+
+\def\pgfplots@errorbar@draw@float(#1,#2)(#3,#4){%
+	\ifpgfplots@apply@datatrafo@x
+		\pgfplots@datascaletrafo@x{#1}%
+		\let\pgfplots@xarg=\pgfmathresult%
+		\pgfplots@datascaletrafo@x{#3}%
+		\let\pgfplots@error@xarg=\pgfmathresult%
+	\else
+		\def\pgfplots@xarg{#1}%
+		\def\pgfplots@error@xarg{#3}%
+	\fi
+	\ifpgfplots@apply@datatrafo@y
+		\pgfplots@datascaletrafo@y{#2}%
+		\let\pgfplots@yarg=\pgfmathresult%
+		\pgfplots@datascaletrafo@y{#4}%
+		\let\pgfplots@error@yarg=\pgfmathresult%
+	\else
+		\def\pgfplots@yarg{#2}%
+		\def\pgfplots@error@yarg{#4}%
+	\fi
+	\edef\pgfplots@loc@TMPa{{(\pgfplots@xarg,\pgfplots@yarg)}{(\pgfplots@error@xarg,\pgfplots@error@yarg)}}%
+	\def\pgfplots@loc@TMPb{\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}}%
+	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfeov
+}
+
+\def\pgfplots@errorbar@draw#1#2{%
+	\begingroup
+	\ifpgfplots@apply@datatrafo
+		\pgfplots@errorbar@draw@float#1#2
+	\else
+		\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}{#1}{#2}\pgfeov%
+	\fi
+	\endgroup
+}%
+
+% Also provides UNFILTERED arguments x (#5) and y (#6). These are use
+% in case of logplots, because we may need to compute log( x + e_x )
+% or log( y + e_y ).
+\def\pgfplots@process@errorbar@for#1#2#3#4#5#6{%
+%	\begingroup
+	\edef\pgfplots@xarg{#1}%
+	\edef\pgfplots@yarg{#2}%
+	\def\pgfplots@xarg@unfiltered{#5}%
+	\def\pgfplots@yarg@unfiltered{#6}%
+	\edef\pgfplots@error@xarg{#3}%
+	\edef\pgfplots@error@yarg{#4}%
+	\def\pgfplots@loc@TMPa{0}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@error@xarg
+		\let\pgfplots@error@xarg=\pgfutil@empty
+	\fi
+	\ifx\pgfplots@loc@TMPa\pgfplots@error@yarg
+		\let\pgfplots@error@yarg=\pgfutil@empty
+	\fi
+	%  FIXME : INEFFICIENT! This code here does every computation 
+	%  multiple times!
+	\ifcase\pgfplots@errorbars@xdirection
+	\or
+		\pgfplots@process@errorbar@@for{x}{+}1%
+	\or
+		\pgfplots@process@errorbar@@for{x}{-}2%
+	\or
+		\pgfplots@process@errorbar@@for{x}{+}1%
+		\pgfplots@process@errorbar@@for{x}{-}2%
+	\fi
+	\ifcase\pgfplots@errorbars@ydirection
+	\or
+		\pgfplots@process@errorbar@@for{y}{+}1%
+	\or
+		\pgfplots@process@errorbar@@for{y}{-}2%
+	\or
+		\pgfplots@process@errorbar@@for{y}{+}1%
+		\pgfplots@process@errorbar@@for{y}{-}2%
+	\fi
+%	\endgroup
+}
+
+% #1: either 'x' or 'y'
+% #2: either '+' or '-'
+% #3: an integer representing the argument #2. It is '1' if #2='+'
+%     and '2' is #2 = '-'.
+\def\pgfplots@process@errorbar@@for#1#2#3{%
+	\csname ifpgfplots@#1islinear\endcsname
+		\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
+		\ifcase\csname pgfplots@errorbars@#1mode\endcsname
+			% fixed absolute error.
+			\edef\pgfplots@error@coord{\csname pgfplots@errorbars@#1fixed\endcsname}%
+			\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+			\let\pgfplots@error@coord=\pgfmathresult
+			\ifnum#3=1
+				\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\else
+				\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\fi
+			\let\pgfplots@error@coord=\pgfmathresult
+		\or% fixed relative error:
+			\pgfmathparse{(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
+			\let\pgfplots@error@coord=\pgfmathresult
+			\pgfmathfloatmultiplyfixed@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\let\pgfplots@error@coord=\pgfmathresult
+		\or% explicit absolute:
+			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
+			\ifx\pgfplots@error@coord\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+				\let\pgfplots@error@coord=\pgfmathresult
+				\ifnum#3=1
+					\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\else
+					\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\fi
+				\let\pgfplots@error@coord=\pgfmathresult
+			\fi
+		\or% explicit relative:
+			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
+			\ifx\pgfplots@error@coord\pgfutil@empty
+			\else
+				\pgfmathparse{(1#2\pgfplots@error@coord)}%
+				\let\pgfplots@error@coord=\pgfmathresult
+				\pgfmathfloatmultiplyfixed@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\let\pgfplots@error@coord=\pgfmathresult
+			\fi
+		\fi
+	\else
+		% LOGARITHMIC scaling. All errors are interpreted as 
+		%   log(x +- e_x)
+		% or
+		%   log( x*(1+-e_x) )
+		\ifcase\csname pgfplots@errorbars@#1mode\endcsname
+			% fixed absolute, log( x +- e_x )
+			\edef\pgfplots@error@src{\csname pgfplots@#1arg@unfiltered\endcsname}%
+			\edef\pgfplots@error@coord{\csname pgfplots@errorbars@#1fixed\endcsname}%
+			\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+			\let\pgfplots@error@coord=\pgfmathresult
+			\pgfmathfloatparsenumber{\pgfplots@error@src}%
+			\let\pgfplots@error@src=\pgfmathresult
+			\ifnum#3=1
+				\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\else
+				\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\fi
+			\pgfmathlog@float{\pgfmathresult}%
+			\let\pgfplots@error@coord=\pgfmathresult
+		\or% fixed relative, log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
+			\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
+			\pgfmathparse{\pgfplots@error@src + ln(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
+			\let\pgfplots@error@coord=\pgfmathresult%
+		\or% explicit absolute
+			\edef\pgfplots@error@src{\csname pgfplots@#1arg@unfiltered\endcsname}%
+			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
+			\ifx\pgfplots@error@coord\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+				\let\pgfplots@error@coord=\pgfmathresult
+				\pgfmathfloatparsenumber{\pgfplots@error@src}%
+				\let\pgfplots@error@src=\pgfmathresult
+				\ifnum#3=1
+					\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\else
+					\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\fi
+				\pgfmathlog@float{\pgfmathresult}%
+				\let\pgfplots@error@coord=\pgfmathresult
+			\fi
+		\or% explicit relative:
+			\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
+			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
+			\ifx\pgfplots@error@coord\pgfutil@empty
+			\else
+				\pgfmathparse{\pgfplots@error@src + ln(1#2 \pgfplots@error@coord)}%
+				\let\pgfplots@error@coord=\pgfmathresult%
+			\fi
+		\fi
+	\fi
+	\ifx\pgfplots@error@coord\pgfutil@empty
+	\else
+		\def\pgfplots@loc@TMPa{#1}%
+		\def\pgfplots@loc@TMPb{x}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\pgfplots@update@limits@for@one@point{\pgfplots@error@coord}{\pgfplots@yarg}{}{}%
+			\edef\pgfplots@loc@TMPa{%
+				{(\pgfplots@xarg,\pgfplots@yarg)}%
+				{(\pgfplots@error@coord,\pgfplots@yarg)}%
+			}%
+		\else
+			\pgfplots@update@limits@for@one@point{\pgfplots@xarg}{\pgfplots@error@coord}{}{}%
+			\edef\pgfplots@loc@TMPa{%
+				{(\pgfplots@xarg,\pgfplots@yarg)}%
+				{(\pgfplots@xarg,\pgfplots@error@coord)}%
+			}%
+		\fi
+		\expandafter\pgfplots@streamerrorbarcoords\pgfplots@loc@TMPa
+	\fi
+}
+% This routine is called at the begin of every plot.
+% It initialised a zero level stream.
+%
+% The default is to use '0' as zero level streams.
+%
+% This method is called as "precommand"; before any Tikz drawing
+% commands have been started.
+\def\pgfplots@initzerolevelhandler{%
+	\ifpgfplots@stackedmode
+		% ATTENTION: this thing here says:
+		%    "draw zero level coordinates from list XYZ."
+		% But at the time of this initialisation, the list will be EMPTY!
+		%
+		% It will be filled later. That's ok, because 
+		% \pgfplots@initzerolevelhandler will be
+		% used as 'precommand', that means before Tikz sees any
+		% coordinates.
+		\pgfplots@stacked@initzerolevelhandler
+	\else
+		\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
+		\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
+	\fi
+}
+
+% This code is mainly interesting for bar plots.
+%
+% It precomputes x = 0 and y = 0 - which is not necessarily
+% trivial in case of data scaling. Furthermore, it applies
+% coordinate clipping to the resulting values and multiplies them
+% with x- and y scale vectors.
+\def\pgfplots@prepare@ZERO@coordinates{%
+	\ifpgfplots@xislinear
+		\ifpgfplots@apply@datatrafo@x
+			\pgfplots@datascaletrafo@fromfixed@x{0}%
+			\global\let\pgfplots@ZERO@x=\pgfmathresult
+		\else
+			\gdef\pgfplots@ZERO@x{0}%
+		\fi
+		\pgfplotsmathmax{\pgfplots@ZERO@x}{\pgfplots@xmin}%
+		\global\let\pgfplots@ZERO@x=\pgfmathresult
+	\else
+		\global\let\pgfplots@ZERO@x=\pgfplots@xmin%
+	\fi
+	%
+	\ifpgfplots@yislinear
+		\ifpgfplots@apply@datatrafo@y
+			\pgfplots@datascaletrafo@fromfixed@y{0}%
+			\global\let\pgfplots@ZERO@y=\pgfmathresult
+		\else
+			\gdef\pgfplots@ZERO@y{0}%
+		\fi
+		\pgfplotsmathmax{\pgfplots@ZERO@y}{\pgfplots@ymin}%
+		\global\let\pgfplots@ZERO@y=\pgfmathresult
+	\else
+		\global\let\pgfplots@ZERO@y=\pgfplots@ymin%
+	\fi
+	%
+	\global\let\pgfplots@logical@ZERO@x=\pgfplots@ZERO@x
+	\global\let\pgfplots@logical@ZERO@y=\pgfplots@ZERO@y
+	%
+	\pgfinterruptboundingbox%
+	\pgfqpointxy{\pgfplots@ZERO@x}{\pgfplots@ZERO@y}%
+	\xdef\pgfplots@ZERO@x{\the\pgf@x}%
+	\xdef\pgfplots@ZERO@y{\the\pgf@y}%
+	\endpgfinterruptboundingbox%
+}%
+
