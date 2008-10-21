@@ -182,9 +182,15 @@
 	\expandafter\pgfplotslistpushbackglobal\pgfplots@loc@TMPa\to\pgfplots@stacked@nextzerolevellist
 }
 
-\def\pgfplots@stacked@finishpoint#1#2{%
+% PRECONDITION:
+% 	Is in invoked inside of a coord preparation routine, that means
+% 	- \pgfplots@current@point@[xyz] 
+% 	- \ifpgfplots@curplot@threedim
+% 	are all set properly.
+\def\pgfplots@stacked@finishpoint{%
 	\ifpgfplots@stacked@isfirstplot
 	\else
+		% FIXME : This needs to be converted to logical coords.
 		\pgfpointxy{\pgfplots@stacked@zerolevelpoint@x}{\pgfplots@stacked@zerolevelpoint@y}%
 		\ifpgfplots@stacked@x
 			\edef\pgfplots@loc@TMPa{\the\pgf@x}%
@@ -199,7 +205,15 @@
 	\fi
 }%
 
-\def\pgfplots@stacked@preparepoint@inmacro#1#2{%
+% PRECONDITION:
+% 	Is in invoked inside of a coord preparation routine, that means
+% 	- \pgfplots@current@point@[xyz] 
+% 	- \ifpgfplots@curplot@threedim
+% 	are all set properly.
+%
+% POSTCONDITION:
+% 	- \pgfplots@current@point@[xyz] are adjusted.
+\def\pgfplots@stacked@preparepoint@inmacro{%
 	\pgfplots@stacked@getnextzerolevelpoint
 	\ifpgfplots@stacked@x
 		\ifpgfplots@stacked@plus
@@ -217,8 +231,8 @@
 				\fi
 			\fi
 		\fi
-		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@x}{#1}%
-		\let#1=\pgfmathresult
+		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@x}{\pgfplots@current@point@x}%
+		\let\pgfplots@current@point@x=\pgfmathresult
 	\else
 		\ifpgfplots@stacked@plus
 			\let\pgfplots@stacked@op=\pgfmathadd@
@@ -235,10 +249,10 @@
 				\fi
 			\fi
 		\fi
-		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@y}{#2}%
-		\let#2=\pgfmathresult
+		\pgfplots@stacked@op{\pgfplots@stacked@zerolevelpoint@y}{\pgfplots@current@point@y}%
+		\let\pgfplots@current@point@y=\pgfmathresult
 	\fi
-	\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(#1,#2)}%
+	\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 }
 
 % This here is a re-implementation of the stored plot processing.
@@ -304,10 +318,10 @@
 % Instead, it generates a macro #4 which - if used as "precommand"
 % befor a draw operation - restores all required options and performs
 % pre-drawing.
-\long\def\pgfplots@stacked@finalize@stored@coords@START plot coordinates #1#2;\to#3#4{%
+\long\def\pgfplots@stacked@finalize@stored@coords@START normalized coordinates #1#2;\to#3#4{%
 	\pgfplots@stacked@beginplot
 	\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto{#3}{\pgfplots@recorded@marker@stream}%
-	\pgfplots@coord@stream@foreach{#1}%
+	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
 	\pgfplots@stacked@endplot
 	\pgfplots@stacked@savestateto\pgfplots@loc@TMPa
 	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\def\pgfplots@stacked@stored@postpath{#2}}%
@@ -345,43 +359,82 @@
 			\global\let#2=\pgfplots@loc@TMPa
 		\fi
 	}%
+	%
+	\begingroup
+	\let\E=\noexpand
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\pgfplots@coord@stream@INIT@finalize@storedcoords@prepare@scaletrafomacro
+	% Will be inserted in one of two possible places below:
+	\def\pgfplots@loc@TMPa{%
+		\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+		\E\expandafter\E\pgfplotsapplistXpushback\E\expandafter{\E\pgfmathresult}\E\to\E\pgfplots@stacked@record@mark@cmds%%
+	}%
+	% This finalize command maps the logical coordinate into PGF's
+	% point space. Furthermore, it collects marker coordinates
+	% (properly clipped by position) if markers are required (see
+	% above).
+	%
+	% It is prepared here to eliminate if's.
+	\xdef\pgfplots@coord@stream@finalize@currentpt{%
+		\ifpgfplots@curplot@threedim
+			\E\pgfqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{\E\pgfplots@current@point@z}%
+		\else
+			\ifpgfplots@threedim
+				\E\pgfqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{0.0}%
+			\else
+				\E\pgfqpointxy{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}%
+			\fi
+		\fi
+		\E\edef\E\pgfmathresult{{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+		\E\t@pgfplots@toka=\E\expandafter{\E#1}%
+		\E\t@pgfplots@tokb=\E\expandafter{\E\pgfmathresult}%
+		\E\xdef\E#1{\E\the\E\t@pgfplots@toka
+			\E\noexpand\E\pgfplots@stream\E\the\E\t@pgfplots@tokb}%
+		%
+		\ifpgfplots@record@marker@stream
+			\E\pgf@xa=\E\pgfplots@current@point@x pt % FIXME : SCOPE REGISTERS!?
+			\E\pgf@ya=\E\pgfplots@current@point@y pt %
+			\ifpgfplots@curplot@threedim
+				\E\pgf@yb=\E\pgfplots@current@point@z pt %
+			\fi
+			\E\ifdim\E\pgf@xa<\E\pgfplots@xmin@reg
+			\E\else
+				\E\ifdim\E\pgf@xa>\E\pgfplots@xmax@reg
+				\E\else
+					\E\ifdim\E\pgf@ya<\E\pgfplots@ymin@reg
+					\E\else
+						\E\ifdim\E\pgf@ya>\E\pgfplots@ymax@reg
+						\E\else
+							\ifpgfplots@curplot@threedim
+								\E\ifdim\E\pgf@yb<\E\pgfplots@zmin@reg
+								\E\else
+									\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
+									\E\else
+										\pgfplots@loc@TMPa
+									\E\fi
+								\E\fi
+							\else
+								\pgfplots@loc@TMPa
+							\fi
+						\E\fi
+					\E\fi
+				\E\fi
+			\E\fi
+		\fi
+	}%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\endgroup
+	%
 	\ifpgfplots@apply@datatrafo
-		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
-			\pgfplots@apply@data@scaletrafo@to@one@point{##1}{##2}{##3}{##4}%
+		\def\pgfplots@coord@stream@coord@{%
+			\pgfplots@apply@data@scaletrafo@to@one@point%
 			\pgfplots@coord@stream@finalize@currentpt
 		}%
 	\else
-		\def\pgfplots@coord@stream@coord@##1##2##3##4{%
-			\def\pgfplots@current@point@x{##1}%
-			\def\pgfplots@current@point@y{##2}%
+		\def\pgfplots@coord@stream@coord@{%
 			\pgfplots@coord@stream@finalize@currentpt
 		}%
 	\fi
-	\def\pgfplots@coord@stream@finalize@currentpt{%
-		\pgfqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
-		\edef\pgfmathresult{{\the\pgf@x}{\the\pgf@y}}%
-		\t@pgfplots@toka=\expandafter{#1}%
-		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
-		\xdef#1{\the\t@pgfplots@toka
-			\noexpand\pgfplots@stream\the\t@pgfplots@tokb}%
-		%
-		\ifpgfplots@record@marker@stream
-			\ifdim\pgf@x<\pgfplots@xcoordminTEX
-			\else
-				\ifdim\pgf@x>\pgfplots@xcoordmaxTEX
-				\else
-					\ifdim\pgf@y<\pgfplots@ycoordminTEX
-					\else
-						\ifdim\pgf@y>\pgfplots@ycoordmaxTEX
-						\else
-							\edef\pgfmathresult{\noexpand\pgfplots@stream{\the\pgf@x}{\the\pgf@y}}%
-							\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfplots@stacked@record@mark@cmds%
-						\fi
-					\fi
-				\fi
-			\fi
-		\fi
-	}%
 }
 
 % This command gets called after the sequence reversal has been done.
@@ -407,12 +460,14 @@
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
 		\ifpgfplots@clip@marker@paths
+			\scope% make sure that 'fill opacity' and 'dotted' styles remain local!
 			\pgfplots@stored@current@cmd[current plot style]
 			\pgfextra 
 				\pgfplots@install@plotmark@handler
 				\pgfplots@recorded@marker@stream 
 			\endpgfextra
 			;
+			\endscope
 		\else
 			\pgfplots@stored@REMEMBER@MARK@COMMAND
 		\fi
