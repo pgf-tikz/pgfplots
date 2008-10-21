@@ -83,7 +83,8 @@ It is used with
 	You will find key prefixes |/pgfplots/table/| and |/pgf/number format/|. These prefixes can be skipped if they are used in \PGFPlotstable; they belong to the ``default key path'' of |pgfkeys|.
 \end{command}
 
-\section{Text table input format}
+\section{Loading and Displaying data}
+\subsection{Text Table Input Format}
 \PGFPlotstable\ works with plain text file tables in which entries (``cells'') are separated by a separation character. The initial separation character is ``white space'' which means ``at least one space or tab''. Those tables can have a header line which contains column names and most other columns typically contain numerical data.
 
 \noindent The following listing shows |pgfplotstable.example1.dat| and is used often throughout this documentation.
@@ -175,7 +176,7 @@ level,dof,error1,error2,info,{grad(log(dof),log(error2))},quot(error1)
 	Use |header=false| to force this last case, i.e. even if the first line contains strings, they won't be recognised as column names.
 \end{key}
 
-\section{Selecting columns}
+\subsection{Selecting Columns}
 \begin{key}{/pgfplots/table/columns=\marg{comma-separated-list} (initially all available ones)}
 	Selects particular columns the table. If this option is missing, all available columns will be selected.
 
@@ -417,7 +418,7 @@ A style which is installed for every column with odd column index (starting with
 \end{command}
 
 
-\section{Configuring row appearance}
+\subsection{Configuring Row Appearance}
 The following styles allow to configure the final table code \emph{after any cell contents have been assigned}.
 
 \begin{key}{/pgfplots/table/before row=\marg{\TeX\ code}}	
@@ -504,205 +505,7 @@ The following styles allow to configure the final table code \emph{after any cel
 	A style which is installed for each last \emph{data} row.
 \end{stylekey}
 
-\section{Determining cell contents}
-The conversion from an unprocessed input table to a final typesetted |tabular| code uses three stages for every cell,
-\begin{enumerate}
-	\item Preprocessing,
-	\item Typesetting,
-	\item Postprocessing.
-\end{enumerate}
-The main idea is to select one typesetting algorithm (for example ``format my numbers with the configured number style''). This algorithm usually doesn't need to be changed. Fine tuning can then be done using zero, one or more preprocessors and postprocessors. Preprocessing can mean to select only particular rows or to apply some sort of operation before the typesetting algorithm sees the content. Postprocessing means to apply fine-tuning to the resulting \TeX\ output -- for example to deal with empty cells or to insert unit suffixes or modify fonts for single cells.
-
-\subsection{Typesetting cells}
-\begin{codekey}{/pgfplots/table/assign cell content}
-	Allows to redefine the algorithm which assigns cell contents. The argument |#1| is the (unformatted) contents of the input table. 
-	
-	The resulting output needs to be written to |/pgfplots/table/@cell content|.
-
-	Please note that you may need special attention for |#1=|\marg{}, i.e. the empty string. This may happen if a column has less rows than the first column. \PGFPlotstable\ will balance columns automatically in this case, inserting enough empty cells to match the number of rows of the first column.
-
-	Please note further that if any column has more entries than the first column, these entries will be skipped and a warning message will be issued into the log file.
-
-	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
-\end{codekey}
-
-\begin{key}{/pgfplots/table/assign cell content as number}
-	This here is the default implementation of |assign cell contents|. 
-	
-	It invokes |\pgfmathprintnumberto| and writes the result into |@cell content|.
-\end{key}
-
-\begin{stylekey}{/pgfplots/table/string type}
-	A style which redefines |assign cell contents| to simply return the ``raw'' input data, that means as text column. This assumes input tables with valid \LaTeX\ content (verbatim printing is not supported).
-\end{stylekey}
-
-
-\subsection{Preprocessing cells}
-\begin{codekey}{/pgfplots/table/preproc cell content}
-	Allows to \emph{modify} the contents of cells \emph{before} |assign cell contents| is called.
-
-	The semantics is as follows: before the preprocessor, |@cell content| contains the raw input data (or, maybe, the result of another preprocessor call). After the preprocessor, |@cell content| is filled with a -- possibly modified -- value. The resulting value is then used as input to |assign cell contents|.
-
-	In the default settings, |assign cell contents| expects numerical input. So, the preprocessor is expected to produce numerical output.
-
-	It is possible to provide multiple preprocessor directives using |.append code| or |.append style| key handlers.
-
-	In case you don't want (or need) stackable preprocessors, you can also use `|#1|' to get the raw input datum as it is found in the file.
-\end{codekey}
-
-\begin{stylekey}{/pgfplots/table/clear infinite}
-	Appends code to the current |preproc cell content| value which replaces every infinite number with the empty string. This clears any cells with $\pm \infty$ and NaN.
-\end{stylekey}
-
-\begin{stylekey}{/pgfplots/table/multiply -1}
-	Appends code to current |preproc cell content| value which multiplies every cell with $-1$.
-\begin{codeexample}[]
-\pgfplotstableset{
-	columns={dof,error2,slopes2},
-	columns/error2/.style={sci,sci zerofill},
-	columns/slopes2/.style={dec sep align,empty cells with={\ensuremath{-}}},
-	create on use/slopes2/.style=
-		{create col/gradient loglog={dof}{error2}}}
-
-\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
-
-\pgfplotstabletypesetfile[columns/slopes2/.append style={multiply -1}]
-	{pgfplotstable.example1.dat}
-\end{codeexample}
-\end{stylekey}
-
-\begin{codekey}{/pgfplots/table/row predicate}
-	A boolean predicate which allows to select particular rows of the input table. The argument |#1| contains the current row's index (starting with~$0$, not counting comment lines or column names).
-
-	The return value is assigned to the \TeX-if |\ifpgfplotstableuserow|. If the boolean is not changed, the return value is true.
-\begin{codeexample}[narrow]
-% requires \usepackage{booktabs}
-\pgfplotstabletypesetfile[
-	every head row/.style={
-		before row=\toprule,after row=\midrule},
-	every last row/.style={
-		after row=\bottomrule},
-	row predicate/.code={%
-		\ifnum#1>4\relax
-			\ifnum#1<8\relax
-				\pgfplotstableuserowfalse
-			\fi
-		\fi}
-]
-	{pgfplotstable.example1.dat}
-\end{codeexample}
-	Please note that |row predicate| is applied \emph{before} any other option which affects row appearance. It is evaluated before |assign cell contents|. For example, the even/odd row styles refer to those rows for which the predicate returns |true|. In fact, you can use |row predicate| to truncate the complete table before it as actually processed. 
-	
-	During |row predicate|, the macro |\pgfplotstablerows| contains the total number of \emph{input} rows.
-	
-	Furthermore, |row predicate| applies only to the typeset routines, not the read methods. If you want to plot only selected table entries with |\addplot table|, use the \PGFPlots\ coordinate filter options.
-\end{codekey}
-
-\begin{stylekey}{/pgfplots/table/skip rows between index=\marg{begin}\marg{end}}
-	A style which appends an |row predicate| which discards selected rows. The selection is done by index where indexing starts with~$0$. Every row with index $\meta{begin} \le i < \meta{end}$ will be skipped.
-\begin{codeexample}[narrow]
-% requires \usepackage{booktabs}
-\pgfplotstabletypesetfile[
-	every head row/.style={
-		before row=\toprule,after row=\midrule},
-	every last row/.style={
-		after row=\bottomrule},
-	skip rows between index={2}{4},
-	skip rows between index={7}{9}
-]
-	{pgfplotstable.example1.dat}
-\end{codeexample}
-\end{stylekey}
-
-\begin{stylekey}{/pgfplots/table/select equal part entry of=\marg{part no}\marg{part count}}
-	A style which overwrites |row predicate| with a subset selection predicate. The idea is to split the current column into \marg{part count} equally sized parts and select only \marg{part no}.
-
-	This can be used to simulate multicolumn tables.
-\begin{codeexample}[]
-% requires \usepackage{booktabs}
-\pgfplotstableset{
-	every head row/.style={before row=\toprule,after row=\midrule},
-	every last row/.style={after row=\bottomrule}}
-
-\pgfplotstabletypesetfile[string type]{pgfplotstable.example2.dat}
-
-\pgfplotstabletypesetfile[
-	display columns/0/.style={select equal part entry of={0}{2},string type},
-	display columns/1/.style={select equal part entry of={0}{2},string type},
-	display columns/2/.style={select equal part entry of={1}{2},string type},
-	display columns/3/.style={select equal part entry of={1}{2},string type},
-	columns={A,B,A,B}
-]
-	{pgfplotstable.example2.dat}
-\end{codeexample}
-	The example above shows the original file as-is on the left side. The right side shows columns A,B,A,B~-- but only half of the elements are shown, selected by indices \#0 or \#1 of \#2. The parts are equally large, up to a remainder. 
-	
-	If the available number of rows is not dividable by \marg{part count}, the remaining entries are distributed equally among the first parts.
-\end{stylekey}
-
-
-\subsection{Postprocessing cells}
-\begin{codekey}{/pgfplots/table/postproc cell content}
-	Allows to \emph{modify} assigned cell content \emph{after} it has been assigned, possibly content-dependend. Ideas could be to draw negative numbers in red, typeset single entries in bold face or insert replacement text.
-
-	This key is evaluated \emph{after} |assign cell content|. Its semantics is to modify an existing |@cell content| value.
-
-	There may be more than one |postproc cell content| command, if you use |.append code| or |.append style| to define them:
-\begin{codeexample}[]
-% requires \usepackage{eurosym}
-\pgfplotstabletypesetfile[
-	column type=r,
-	columns={dof,info},
-	columns/info/.style={
-		postproc cell content/.append style={
-			/pgfplots/table/@cell content/.add={$\bf}{$}},
-		postproc cell content/.append style={
-			/pgfplots/table/@cell content/.add={}{\EUR{}}}
-	}]
-	{pgfplotstable.example1.dat}
-\end{codeexample}
-	The code above modifies |@cell content| successively. First, ``|$\bf ... $|'' is inserted, then ``|...\EUR|''. It should be noted that |pgfkeys| handles |.style| and |.code| in (quasi) the same way -- both are simple code keys and can be used as such. You can combine both with |.append style| and |.append code|. Please refer to~\cite[section about pgfkeys]{tikz} for details.
-
-	As in |assign cell contents|, the code can evaluate helper macros like |\pgfplotstablerow| to change only particular entries. Furthermore, the argument ``|#1|'' expands to the \emph{unformatted} input argument which was found in the input table. This allows complete context based formatting options. Please remember that empty strings may appear due to column balancing -- introduce special treatment if necessary.
-
-	There is one special case which occurs if |@cell content| itsself contains the cell separation character `|&|'. In this case, |postproc cell contents| is invoked \emph{separately} for each part before and after the ampersand and the ampersand is inserted afterwards. This allows compatibility with special styles which create artificial columns in the output (which is allowed, see |dec sep align|). To allow separate treatment of each part, you can use the macro |\pgfplotstablepartno|. It is defined only during the evaluation of |postproc cell content| and it evaluates to the current part index (starting with~$0$). If there is no ampersand in your text, the value will always be~$0$.
-
-	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
-
-	The following example can be used to insert a dash, $-$, in a slope column:
-\begin{codeexample}[]
-\pgfplotstableset{
-	create on use/slopes1/.style=
-		{create col/gradient loglog={dof}{error1}}}
-
-\pgfplotstabletypesetfile[
-	columns={dof,error1,slopes1},
-	columns/error1/.style={sci,sci zerofill},
-	columns/slopes1/.style={
-		postproc cell content/.append code={%
-			\ifnum\pgfplotstablerow=0
-				\pgfkeyssetvalue{/pgfplots/table/@cell content}{\ensuremath{-}}%
-			\fi
-		}%
-	}]
-	{pgfplotstable.example1.dat}
-\end{codeexample}
-Since this may be useful in a more general context, it is available as |empty cells with| style.
-\end{codekey}
-
-\begin{stylekey}{/pgfplots/table/empty cells with=\marg{replacement}}
-	Appends code to |postproc cell content| which replaces any empty cell with \marg{replacement}.
-
-	If |dec sep align| is active, the replacement will be inserted only for the part before the decimal separator.
-\end{stylekey}
-
-\begin{stylekey}{/pgfplots/table/set content=\marg{content}}
-	A style which redefines |postproc cell contents| to always return the value \marg{content}.
-\end{stylekey}
-
-
-
-\section{Customizing and getting the tabular code}
+\subsection{Customizing and Getting the Tabular Code}
 \begin{stylekey}{/pgfplots/table/every table=\marg{file name}}
 	A style which is installed at the beginning of every |\pgfplotstabletypeset| command.
 
@@ -750,7 +553,7 @@ The command |\pgfutilensuremath| checks whether math mode is active and switches
 	If enabled, will write every final tabular code to your log file.
 \end{key}
 
-\section{Defining column types for \texttt{tabular}}
+\subsection{Defining Column Types for \texttt{tabular}}
 Besides input of text files, it is sometimes desireable to define column types for existing \texttt{tabular} environments.
 
 \begin{command}{\newcolumntype\marg{letter}\oarg{number of arguments}$>$\marg{before column}\meta{column type}$<$\marg{after column}}
@@ -809,9 +612,9 @@ Now, the environment |pgfplotstablecoltype| can be used in \marg{before column} 
 \end{codeexample}
 \end{command}
 
-\section{Number formatting options}
+\subsection{Number Formatting Options}
 \label{sec:number:printing}%
-The following extract of \cite{tikz} explains how to configure number formats.
+The following extract of \cite{tikz} explains how to configure number formats. The common prefix |/pgf/number format| can be omitted; it will be recognised automatically.
 \begin{command}{\pgfmathprintnumber\marg{x}}
 Generates pretty-printed output for the (real) number \marg{x}. The input number \marg{x} is parsed using |\pgfmathfloatparsenumber| which allows arbitrary precision.
 
@@ -938,7 +741,7 @@ Truncates every number to integers (discards any digit after the period).
 Sets the desired rounding precision for any display operation. For scientific format, this affects the mantisse.
 \end{key}
 
-\subsection{Changing display styles}%
+\subsubsection{Changing Number Format Display Styles}%
 \label{sec:number:styles}%
 You can change the way how numbers are displayed. For example, if you use the `\texttt{fixed}' style, the input number is rounded to the desired precision and the current fixed point display style is used to typeset the number. The same is applied to any other format: first, rounding routines are used to get the correct digits, afterwards a display style generates proper \TeX-code.
 
@@ -1161,9 +964,246 @@ Typesets the exponent as superscript for any number displayed in scientific form
 	The initial setting installs a |\pgfutilensuremath| around each final number to change to math mode if necessary. Use |assume math mode=true| if you know that math mode is active and you don't want |\pgfutilensuremath|.
 \end{key}
 
-\section{Creating new columns (Postprocessing)}
+
+
+
+\section{Fine Tuning of Loaded Data}
+The conversion from an unprocessed input table to a final typesetted |tabular| code uses four stages for every cell,
+\begin{enumerate}
+	\item Loading the table,
+	\item Preprocessing,
+	\item Typesetting,
+	\item Postprocessing.
+\end{enumerate}
+The main idea is to select one typesetting algorithm (for example ``format my numbers with the configured number style''). This algorithm usually doesn't need to be changed. Fine tuning can then be done using zero, one or more preprocessors and postprocessors. Preprocessing can mean to select only particular rows or to apply some sort of operation before the typesetting algorithm sees the content. Postprocessing means to apply fine-tuning to the resulting \TeX\ output -- for example to deal with empty cells or to insert unit suffixes or modify fonts for single cells.
+
+\subsection{Loading the table}
+This first step to typeset a table involves the obvious input operations. Furthermore, the ``new column creation'' operations explained in section~\ref{pgfplotstable:createcol} are processed at this time. The table data is read (or acquired) as already explained earlier in this manual. Then, if columns are missing, column alias and |create on use| specifications will be processed as part of the loading procedure. See section~\ref{pgfplotstable:createcol} for details about column creation.
+
+\subsection{Typesetting Cell Content}
+Typesetting cells means to take their value and ``do something''. In many cases, this involves number formatting routines. For example, the ``raw'' input data |12.56| might become |1.235| |\cdot| |10^1|. The result of this stage is no longer useful for content-based computations. The typesetting step follows the preprocessing step.
+
+\begin{codekey}{/pgfplots/table/assign cell content}
+	Allows to redefine the algorithm which assigns cell contents. The argument |#1| is the (unformatted) contents of the input table. 
+	
+	The resulting output needs to be written to |/pgfplots/table/@cell content|.
+
+	Please note that you may need special attention for |#1=|\marg{}, i.e. the empty string. This may happen if a column has less rows than the first column. \PGFPlotstable\ will balance columns automatically in this case, inserting enough empty cells to match the number of rows of the first column.
+
+	Please note further that if any column has more entries than the first column, these entries will be skipped and a warning message will be issued into the log file.
+
+	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
+\end{codekey}
+
+\begin{key}{/pgfplots/table/assign cell content as number}
+	This here is the default implementation of |assign cell contents|. 
+	
+	It invokes |\pgfmathprintnumberto| and writes the result into |@cell content|.
+\end{key}
+
+\begin{stylekey}{/pgfplots/table/string type}
+	A style which redefines |assign cell contents| to simply return the ``raw'' input data, that means as text column. This assumes input tables with valid \LaTeX\ content (verbatim printing is not supported).
+\end{stylekey}
+
+
+\subsection{Preprocessing Cell Content}
+The preprocessing step allows to change cell contents \emph{before} any typesetting routine (like number formatting) has been applied. The data is available in numerical format and math operations can be applied. Furthermore, cells can be erased depending on their numerical value. The preprocess step follows the data acquisition step (``loading step''). This means in particular that you can create (or copy) columns and apply operations on them.
+
+\begin{codekey}{/pgfplots/table/preproc cell content}
+	Allows to \emph{modify} the contents of cells \emph{before} |assign cell contents| is called.
+
+	The semantics is as follows: before the preprocessor, |@cell content| contains the raw input data (or, maybe, the result of another preprocessor call). After the preprocessor, |@cell content| is filled with a -- possibly modified -- value. The resulting value is then used as input to |assign cell contents|.
+
+	In the default settings, |assign cell contents| expects numerical input. So, the preprocessor is expected to produce numerical output.
+
+	It is possible to provide multiple preprocessor directives using |.append code| or |.append style| key handlers.
+
+	In case you don't want (or need) stackable preprocessors, you can also use `|#1|' to get the raw input datum as it is found in the file.
+\end{codekey}
+
+\begin{stylekey}{/pgfplots/table/clear infinite}
+	Appends code to the current |preproc cell content| value which replaces every infinite number with the empty string. This clears any cells with $\pm \infty$ and NaN.
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/multiply with=\marg{real number}}
+	Appends code to the current |preproc cell content| value which multiplies every cell with \marg{real number}. Arithmetics are carried out in floating point.	
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/divide by=\marg{real number}}
+	Appends code to the current |preproc cell content| value which divides every cell by \marg{real number}. Arithmetics are carried out in floating point.	
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/sqrt}
+	Appends code to the current |preproc cell content| value which applies $\sqrt{x}$ to every non-empty cell. Arithmetics are carried out in floating point.	
+
+	The following example copies the column |error1| and applies |sqrt| to the copy.
+\begin{codeexample}[]
+\pgfplotstableset{
+	columns={error1,sqrterror1},
+	create on use/sqrterror1/.style={create col/copy=error1},
+	columns/error1/.style={column name=$\epsilon$},
+	columns/sqrterror1/.style={sqrt,column name=$\sqrt \epsilon$},
+	sci,sci 10e,precision=3,sci zerofill
+}
+\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
+\end{codeexample}
+	Please take a look at section~\ref{pgfplotstable:createcol} for details about |create on use|.
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/multiply -1}
+	Appends code to current |preproc cell content| value which multiplies every cell with $-1$. This style does the same job as |multiply with=-1|, it is just faster because only the sign changes.
+\begin{codeexample}[]
+\pgfplotstableset{
+	columns={dof,error2,slopes2},
+	columns/error2/.style={sci,sci zerofill},
+	columns/slopes2/.style={dec sep align,empty cells with={\ensuremath{-}}},
+	create on use/slopes2/.style=
+		{create col/gradient loglog={dof}{error2}}}
+
+\pgfplotstabletypesetfile{pgfplotstable.example1.dat}
+
+\pgfplotstabletypesetfile[columns/slopes2/.append style={multiply -1}]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+\end{stylekey}
+
+\begin{codekey}{/pgfplots/table/row predicate}
+	A boolean predicate which allows to select particular rows of the input table. The argument |#1| contains the current row's index (starting with~$0$, not counting comment lines or column names).
+
+	The return value is assigned to the \TeX-if |\ifpgfplotstableuserow|. If the boolean is not changed, the return value is true.
+\begin{codeexample}[narrow]
+% requires \usepackage{booktabs}
+\pgfplotstabletypesetfile[
+	every head row/.style={
+		before row=\toprule,after row=\midrule},
+	every last row/.style={
+		after row=\bottomrule},
+	row predicate/.code={%
+		\ifnum#1>4\relax
+			\ifnum#1<8\relax
+				\pgfplotstableuserowfalse
+			\fi
+		\fi}
+]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+	Please note that |row predicate| is applied \emph{before} any other option which affects row appearance. It is evaluated before |assign cell contents|. For example, the even/odd row styles refer to those rows for which the predicate returns |true|. In fact, you can use |row predicate| to truncate the complete table before it as actually processed. 
+	
+	During |row predicate|, the macro |\pgfplotstablerows| contains the total number of \emph{input} rows.
+	
+	Furthermore, |row predicate| applies only to the typeset routines, not the read methods. If you want to plot only selected table entries with |\addplot table|, use the \PGFPlots\ coordinate filter options.
+\end{codekey}
+
+\begin{stylekey}{/pgfplots/table/skip rows between index=\marg{begin}\marg{end}}
+	A style which appends an |row predicate| which discards selected rows. The selection is done by index where indexing starts with~$0$. Every row with index $\meta{begin} \le i < \meta{end}$ will be skipped.
+\begin{codeexample}[narrow]
+% requires \usepackage{booktabs}
+\pgfplotstabletypesetfile[
+	every head row/.style={
+		before row=\toprule,after row=\midrule},
+	every last row/.style={
+		after row=\bottomrule},
+	skip rows between index={2}{4},
+	skip rows between index={7}{9}
+]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/select equal part entry of=\marg{part no}\marg{part count}}
+	A style which overwrites |row predicate| with a subset selection predicate. The idea is to split the current column into \marg{part count} equally sized parts and select only \marg{part no}.
+
+	This can be used to simulate multicolumn tables.
+\begin{codeexample}[]
+% requires \usepackage{booktabs}
+\pgfplotstableset{
+	every head row/.style={before row=\toprule,after row=\midrule},
+	every last row/.style={after row=\bottomrule}}
+
+\pgfplotstabletypesetfile[string type]{pgfplotstable.example2.dat}
+
+\pgfplotstabletypesetfile[
+	display columns/0/.style={select equal part entry of={0}{2},string type},
+	display columns/1/.style={select equal part entry of={0}{2},string type},
+	display columns/2/.style={select equal part entry of={1}{2},string type},
+	display columns/3/.style={select equal part entry of={1}{2},string type},
+	columns={A,B,A,B}
+]
+	{pgfplotstable.example2.dat}
+\end{codeexample}
+	The example above shows the original file as-is on the left side. The right side shows columns A,B,A,B~-- but only half of the elements are shown, selected by indices \#0 or \#1 of \#2. The parts are equally large, up to a remainder. 
+	
+	If the available number of rows is not dividable by \marg{part count}, the remaining entries are distributed equally among the first parts.
+\end{stylekey}
+
+
+\subsection{Postprocessing Cell Content}
+The postprocessing step is applied after the typesetting stage, that means it can't access the original input data. However, it can apply final formatting instructions which are not content based.
+
+\begin{codekey}{/pgfplots/table/postproc cell content}
+	Allows to \emph{modify} assigned cell content \emph{after} it has been assigned, possibly content-dependend. Ideas could be to draw negative numbers in red, typeset single entries in bold face or insert replacement text.
+
+	This key is evaluated \emph{after} |assign cell content|. Its semantics is to modify an existing |@cell content| value.
+
+	There may be more than one |postproc cell content| command, if you use |.append code| or |.append style| to define them:
+\begin{codeexample}[]
+% requires \usepackage{eurosym}
+\pgfplotstabletypesetfile[
+	column type=r,
+	columns={dof,info},
+	columns/info/.style={
+		postproc cell content/.append style={
+			/pgfplots/table/@cell content/.add={$\bf}{$}},
+		postproc cell content/.append style={
+			/pgfplots/table/@cell content/.add={}{\EUR{}}}
+	}]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+	The code above modifies |@cell content| successively. First, ``|$\bf ... $|'' is inserted, then ``|...\EUR|''. It should be noted that |pgfkeys| handles |.style| and |.code| in (quasi) the same way -- both are simple code keys and can be used as such. You can combine both with |.append style| and |.append code|. Please refer to~\cite[section about pgfkeys]{tikz} for details.
+
+	As in |assign cell contents|, the code can evaluate helper macros like |\pgfplotstablerow| to change only particular entries. Furthermore, the argument ``|#1|'' expands to the \emph{unformatted} input argument which was found in the input table. This allows complete context based formatting options. Please remember that empty strings may appear due to column balancing -- introduce special treatment if necessary.
+
+	There is one special case which occurs if |@cell content| itsself contains the cell separation character `|&|'. In this case, |postproc cell contents| is invoked \emph{separately} for each part before and after the ampersand and the ampersand is inserted afterwards. This allows compatibility with special styles which create artificial columns in the output (which is allowed, see |dec sep align|). To allow separate treatment of each part, you can use the macro |\pgfplotstablepartno|. It is defined only during the evaluation of |postproc cell content| and it evaluates to the current part index (starting with~$0$). If there is no ampersand in your text, the value will always be~$0$.
+
+	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
+
+	The following example can be used to insert a dash, $-$, in a slope column:
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/slopes1/.style=
+		{create col/gradient loglog={dof}{error1}}}
+
+\pgfplotstabletypesetfile[
+	columns={dof,error1,slopes1},
+	columns/error1/.style={sci,sci zerofill},
+	columns/slopes1/.style={
+		postproc cell content/.append code={%
+			\ifnum\pgfplotstablerow=0
+				\pgfkeyssetvalue{/pgfplots/table/@cell content}{\ensuremath{-}}%
+			\fi
+		}%
+	}]
+	{pgfplotstable.example1.dat}
+\end{codeexample}
+Since this may be useful in a more general context, it is available as |empty cells with| style.
+\end{codekey}
+
+\begin{stylekey}{/pgfplots/table/empty cells with=\marg{replacement}}
+	Appends code to |postproc cell content| which replaces any empty cell with \marg{replacement}.
+
+	If |dec sep align| is active, the replacement will be inserted only for the part before the decimal separator.
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/set content=\marg{content}}
+	A style which redefines |postproc cell contents| to always return the value \marg{content}.
+\end{stylekey}
+
+
+\section{Postprocessing Data in New Columns}
+\label{pgfplotstable:createcol}
 After tables have been loaded from disk, it is possible to change their contents. The methods are limited up to now and they reflect mostly what I needed in my applications. Nevertheless, the approaches are quite general and can be customized.
 
+\subsection{The Postprocessing Framework}
 \begin{command}{\pgfplotstablecreatecol\oarg{options}\marg{new col name}\marg{\textbackslash table}}
 Creates a new column named \marg{new col name} and appends it to table \marg{\textbackslash table}.
 
@@ -1261,6 +1301,23 @@ The default implementation of |assign| is to produce empty strings. The default 
 
 	More examples for |create on use| are shown below while discussing the available column creation styles.
 \end{pgfplotstablecreateonusekey}
+
+\subsection{Predefined Column Generation Methods}
+The following keys can be used in both |\pgfplotstablecreatecol| and the easier |create on use| frameworks.
+
+\begin{stylekey}{/pgfplots/table/create col/copy=\marg{column name}}
+	A style for use in column creation context which simply copies the existing column \marg{column name}.
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/new/.style={create col/copy={level}}
+}
+
+\pgfplotstabletypesetfile[
+	columns={level,new},
+	columns/new/.style={column name=Copy of level}
+]{pgfplotstable.example1.dat}
+\end{codeexample}
+\end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/create col/expr=\marg{math expression}}
 	A style for use in |\pgfplotstablecreatecol| which uses \marg{math expression} to assign contents for the new column.
@@ -1377,7 +1434,8 @@ The default implementation of |assign| is to produce empty strings. The default 
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-6}$ ($6$ significant digits in the mantisse).
 \end{keylist}
 
-\section{Plain \TeX\ and Con\TeX t support}
+\section{Miscellaneous}
+\subsection{Plain \TeX\ and Con\TeX t support}
 \label{sec:pgfplotstable:context}
 The table code generator is initialised to produce \LaTeX\ |tabular| environments. However, it only relies on~`|&|' being the column separator and~`|\\|' the row terminator. The |column type| feature is more or less specific to |tabular|, but you can disable it completely. Replace |begin table| and |end table| with appropriate \TeX- or Con\TeX t commands to change it. If you have useful default styles (or bug reports), let me know.
 
