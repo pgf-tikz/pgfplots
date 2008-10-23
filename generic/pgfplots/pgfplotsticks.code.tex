@@ -1136,43 +1136,44 @@
 					\fi
 				\fi
 			\fi
-%\message{Computed H#1=\the\H [unscaled]; transforming ... }%
+			\aftergroup\pgfplots@isuniformticktrue
 			\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
 			\let\Hmacro=\pgfmathresult
+			% The following code is carried out in floating point
+			% arithmetics because it requires large data ranges.
+			%
+			% I want to compute MIN@new := I*H  where I is chosen
+			% such that MIN = I*H + rest with rest < H.
+			% The problem is the possibly large range of MIN. I
+			% can't work completely in the transformed datarange,
+			% so numbers get too large.
+			%
+			% So, compute I := int( MIN / H )  (integer truncation)
+			% in float arithmetics and then MIN@new := I*H
+			\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
+			\pgfmathfloatint@{\pgfmathresult}%
+			\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
+			\let\MIN@new=\pgfmathresult
+			% Ok, we are ready.
+			% Now, convert everything into the fixed point data
+			% range:
 			\ifpgfplots@is@datascaled
+				\csname pgfplots@datascaletrafo@#1\endcsname{\MIN@new}%
+				\MIN=\pgfmathresult pt
 				\pgfplots@data@scale@trafo\Hmacro
+				\H=\pgfmathresult pt
 			\else
+				\pgfmathfloattofixed\MIN@new
+				\MIN=\pgfmathresult pt
 				\pgfmathfloattofixed\Hmacro
+				\H=\pgfmathresult pt
 			\fi
-			\let\Hmacro=\pgfmathresult
-%\message{got H#1=\Hmacro\ [transformed]}%
-			\expandafter\H\Hmacro pt
-			\aftergroup\pgfplots@isuniformticktrue
 			%
-			% Now, we want to activate the Tick set {i*H, i in \Z}
-			% compute I such that
-			%   xmin = I * H + rest;  |rest| < H
-			% -> I = round(xmin/H)
-			% -> MIN = I * H
-			%
-			% but first: eliminate any 'affine' data scaling!
-			\ifpgfplots@is@datascaled
-				\advance\MIN by\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname pt
-			\fi
-			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-				{\pgf@sys@tonumber\MIN}%
-				{\pgf@sys@tonumber\H}%
-			}%
-			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
-			\ifdim\MIN<0pt
-				% the truncation rounds TOWARDS 0 which is not what I want.
-				\advance\c@pgf@counta by-1
-			\fi
-			\MIN=\H
-			\multiply\MIN by\c@pgf@counta
-			\ifpgfplots@is@datascaled
-				\advance\MIN by-\csname pgfplots@data@scale@trafo@SHIFT@#1\endcsname pt
-			\fi
+			% And, since we have used finite precision, I is most
+			% likely to large. So: subtract one H. In the worst
+			% case, this produces one tick position too much (but
+			% it won't be printed).
+			\advance\MIN by-\H
 		\else
 			% CASE LOG AXIS
 			%
