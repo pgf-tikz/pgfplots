@@ -1,0 +1,283 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+% #1 : the name of the color map as string (not as macro).
+% #2 : a <color specification> as is expected for a colormap.
+%
+% Example: \pgfplots@createcolormap{my map}{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(1cm)=(0,0,1); gray(1cm)=(3);  color(1cm)=(green); }
+\def\pgfplotscreatecolormap#{%
+	\pgfplots@createcolormap
+}
+\def\pgfplots@createcolormap#1#2{%
+	\edef\pgfplots@createcolormap@name{pgfpl@cm@#1}%
+	\expandafter\pgfplotsarraynewempty\expandafter{\pgfplots@createcolormap@name}%
+	\def\pgfplots@createcolormap@MIN{0}% NORMALIZATION: assume that lower-end is 0pt.
+	\let\pgfplots@createcolormap@H=\pgfutil@empty
+	\def\pgfplots@createcolormap@MAX{0}% To be computed.
+	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MIN
+	% PARSE IT:
+	\pgfplots@createcolormap@#2]
+	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
+	% sanity checking:
+	\expandafter\pgfplotsarraysizetomacro\expandafter{\pgfplots@createcolormap@name}\to\pgfplots@loc@TMPa
+	\ifcase\pgfplots@loc@TMPa\relax
+		\pgfplots@error{Sorry, you need to provide at least the two end points of a colormap.}%
+	\or
+		\pgfplots@error{Sorry, you need to provide at least the two end points of a colormap.}%
+	\fi
+	% Map the input range [0pt,MAX] linearly to [0,1000]
+	\expandafter\def\csname\pgfplots@createcolormap@name @max\endcsname{1000}%
+	\pgfmathdivide@{\csname\pgfplots@createcolormap@name @max\endcsname}{\pgfplots@createcolormap@MAX}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@createcolormap@H}%
+	\let\pgfplots@createcolormap@H=\pgfmathresult
+	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
+	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
+	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
+\pgfplots@colormap@showdebuginfofor{#1}%
+}
+\def\pgfplots@createcolormap@{%
+	\pgfutil@ifnextchar]{\pgfutil@gobble}%done!
+	{%
+		\pgfutil@ifnextchar;{\pgfplots@createcolormap@grabsemicolon}%
+		{%
+			\pgfutil@ifnextchar r{\pgfplots@createcolormap@grabrgb}%
+			{%
+				\pgfutil@ifnextchar g{\pgfplots@createcolormap@grabgray}%
+				{%
+					\pgfutil@ifnextchar c{\pgfplots@createcolormap@grabcolor}%
+					{\pgfplots@error{Illformed shading colormap specification}}%
+				}%
+			}%
+		}%
+	}%
+}
+\def\pgfplots@createcolormap@grabsemicolon;{\pgfplots@createcolormap@}%
+\def\pgfplots@createcolormap@grabrgb rgb(#1)=(#2,#3,#4){%
+	\pgfplots@createcolormap@nextRGB{#1}{#2}{#3}{#4}%
+ 	\pgfplots@createcolormap@}
+\def\pgfplots@createcolormap@grabgray gray(#1)=(#2){%
+	\pgfplots@createcolormap@nextRGB{#1}{#2}{#2}{#2}%
+ 	\pgfplots@createcolormap@}
+\def\pgfplots@createcolormap@grabcolor color(#1)=(#2){%
+	\pgfutil@colorlet{pgf@tempcol}{#2}%
+	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
+	\expandafter\pgfutil@convertcolorspec\pgf@tempcolor{rgb}{\pgf@rgbcolor}%
+	\expandafter\pgfplots@createcolormap@grabcolor@\pgf@rgbcolor\relax{#1}}%
+\def\pgfplots@createcolormap@grabcolor@#1,#2,#3\relax#4{%
+	\pgfplots@createcolormap@nextRGB{#4}{#1}{#2}{#3}%
+ 	\pgfplots@createcolormap@}
+
+% Ok, we parsed the next single spec.
+% #1: the width
+% #2,#3,#4 RGB values.
+\def\pgfplots@createcolormap@nextRGB#1#2#3#4{%
+	% Process 'h':
+	\pgfmathparse{#1}%
+	\let\pgfplots@createcolormap@MAX=\pgfmathresult
+	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
+	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MAX
+	\let\pgfplots@createcolormap@H@cur=\pgfmathresult
+\message{found current diff  = \pgfplots@createcolormap@H@cur\ ( from #1 - \pgfplots@createcolormap@LAST pt)}%
+	\ifx\pgfplots@createcolormap@H\pgfutil@empty
+		\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
+		\ifpgfplotsarrayempty
+			\ifdim\pgfplots@createcolormap@MAX pt=0pt
+			\else
+				\pgfplots@error{Sorry, the left end of a colormap (at 0pt) must be provided explicitly. You cannot start with \pgfplots@createcolormap@MAX pt.}%
+				\def\pgfplots@createcolormap@MAX{0}%
+			\fi
+		\else
+			\let\pgfplots@createcolormap@H=\pgfplots@createcolormap@H@cur
+\message{H := \pgfplots@createcolormap@H( from #1).}%
+		\fi
+	\else
+		\pgfmathapproxequalto@{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
+		\ifpgfmathcomparison
+		\else
+			\pgfplots@error{Sorry, non-uniform colormaps are not yet implemented. Please maintain a uniform distance before offset #1 (in this case, I expected h = \pgfplots@createcolormap@H pt).}%
+		\fi
+	\fi
+	%
+	% Append values:
+	\def\pgfplots@loc@TMPa{\pgfplotsarraypushback{#2,#3,#4}\to}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
+}%
+
+% Shows debug info about colormap #1 into the console.
+\def\pgfplots@colormap@showdebuginfofor#1{%
+	\message{Debug info for color map '#1':}%
+	\message{(Transformed) Range: [0:\csname pgfpl@cm@#1@max\endcsname];  }%
+	\message{H: \csname pgfpl@cm@#1@h\endcsname;    }%
+	\message{H:^{-1}: \csname pgfpl@cm@#1@invh\endcsname;    }%
+	\pgfplotsarraysizetomacro{pgfpl@cm@#1}\to\pgfplots@loc@TMPa
+	\message{Size: \pgfplots@loc@TMPa;    }%
+	\message{RGB Values: }%
+	\begingroup
+	\c@pgf@counta=0
+	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
+		\message{\#\the\c@pgf@counta: \elem; }%
+		\advance\c@pgf@counta by1
+	}%
+	\endgroup
+}
+
+% Convert a colormap into a PGF shading's color specification for use
+% in \pgfdeclare*shading.
+%
+% #1: the colormap's name.
+% #2: the PGF "size" of the shading. It is used to set the right end
+% of the color specification.
+% #3: a macro which will be filled with the result.
+%
+% Example:
+% \pgfplotscolormaptoshadingspec{my colormap}{4cm}{\output}
+\def\pgfplotscolormaptoshadingspec#1#2#3{%
+	\begingroup
+	\pgfmathparse{#2}%
+	\expandafter\pgfmathdivide@\expandafter{\pgfmathresult}{\pgfplotscolormaprange{#1}}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfmathmultiply@{\csname pgfpl@cm@#1@h\endcsname}{\pgfplots@loc@TMPb}%
+	\pgf@ya=\pgfmathresult pt
+	\c@pgf@counta=0
+	\let#3=\pgfutil@empty
+	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\pgfplots@loc@TMPa{%
+		\ifnum\c@pgf@counta=0
+			\edef\pgfplots@loc@TMPc{rgb(0pt)=(\pgfplots@loc@TMPa)}%
+		\else
+			\pgf@yb=\c@pgf@counta\pgf@ya
+			\edef\pgfplots@loc@TMPc{rgb(\the\pgf@yb)=(\pgfplots@loc@TMPa)}%
+		\fi
+		\ifx#3\pgfutil@empty
+			\t@pgfplots@toka={}%
+		\else
+			\t@pgfplots@toka=\expandafter{#3; }%
+		\fi
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPc}%
+		\edef#3{\the\t@pgfplots@toka \the\t@pgfplots@tokb }%
+		\advance\c@pgf@counta by1
+	}%
+	\pgfmath@smuggleone#3%
+	\endgroup
+}%
+
+
+% Expands to the transformed range's right end of a colormap. The left
+% end is fixed to '0'.
+\def\pgfplotscolormaprange#1{\csname pgfpl@cm@#1@max\endcsname}
+
+% Linearly maps the number #4 into the colormap #5 and returns the interpolated RGB triple 
+% into \pgfmathresult.
+% 
+% [#1:#2]  the number range of the data source. This is required to
+%          map into the colormap.
+% [#3]     (optional) the quantity 
+% 			 s := \pgfplotscolormaprange{#5} / (#2-#1).
+% 		   Precomputing this quantity may save a lot of time because
+% 		   divisions are expensive in TeX. You can omit [#3] or
+% 		   provide an empty string here.
+% #4       the number to map.
+% #5       the colormap's name. Must be defined with
+%          \pgfplotscreatecolormap before.
+%
+% Example:
+% \pgfplotscolormapfind[-1:1]{0.2}{my colormap}
+\def\pgfplotscolormapfind[#1:#2]{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotscolormapfind@precomputed[#1:#2]%
+	}{%
+		\pgfplotscolormapfind@precomputed[#1:#2][]%
+	}%
+}%
+\def\pgfplotscolormapfind@precomputed[#1:#2][#3]#4#5{%
+	\begingroup
+	% Step 0: compute #3 if it is missing and write it into
+	% \pgfplots@loc@TMPa.
+	\def\pgfplots@loc@TMPa{#3}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfmathsubtract@{#2}{#1}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfmathdivide@{\pgfplotscolormaprange{#5}}{\pgfplots@loc@TMPb}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+	\fi
+%\message{mapping '#4' into colormap '#5' ... }%
+	% Step 1: perform lookup. Map #4 into the colormap's range
+	% using the linear trafo
+	% phi(#4) = ( #4 - #1 ) / (#2-#1) * colormaprange(#5).
+	% This, determine the INTERVAL number into which #4 falls.
+	\pgfmathsubtract@{#4}{#1}%
+	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
+	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\csname pgfpl@cm@#5@invh\endcsname}%
+	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
+	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
+	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
+	% without '.0' suffix:
+	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
+	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
+%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange{#5}]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \pgfplotscolormapfind@intervalno.}%
+	% Step 2: interpolate the desired RGB value using vector valued
+	% interpolation on the identified interval.
+	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
+	\advance\c@pgf@counta by1
+	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@RIGHT
+%\message{After lookup: the corresponding RGB interval boundaries are [\pgfplotscolormapfind@rgb@LEFT: \pgfplotscolormapfind@rgb@RIGHT].}%
+	\edef\pgfplots@loc@TMPa{\pgfplotscolormapfind@rgb@LEFT:\pgfplotscolormapfind@rgb@RIGHT}%
+	\expandafter\pgfplotscolormapfind@interpolate\pgfplots@loc@TMPa\relax
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+% internal helper method which computes
+%
+% color^m(x) = ( x/h - i ) * ( c_{i+1}^m - c_{i}^m ) + c_i^m 
+% for each m in {red,green,blue}  and defines \pgfmathresult to be
+% 'R,G,B' , the single results.
+\def\pgfplotscolormapfind@interpolate#1,#2,#3:#4,#5,#6\relax{%
+	%  R:
+	\pgfmathsubtract@{#4}{#1}%
+	\let\pgfplotscolormapfind@Cdiff=\pgfmathresult
+	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
+	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplotscolormapfind@Cdiff}%
+	\expandafter\pgfmathadd@\expandafter{\pgfmathresult}{#1}%
+	\let\RED=\pgfmathresult
+	%  G:
+	\pgfmathsubtract@{#5}{#2}%
+	\let\pgfplotscolormapfind@Cdiff=\pgfmathresult
+	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
+	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplotscolormapfind@Cdiff}%
+	\expandafter\pgfmathadd@\expandafter{\pgfmathresult}{#2}%
+	\let\GREEN=\pgfmathresult
+	%  B:
+	\pgfmathsubtract@{#6}{#3}%
+	\let\pgfplotscolormapfind@Cdiff=\pgfmathresult
+	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
+	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplotscolormapfind@Cdiff}%
+	\expandafter\pgfmathadd@\expandafter{\pgfmathresult}{#3}%
+	\let\BLUE=\pgfmathresult
+	\edef\pgfmathresult{\RED,\GREEN,\BLUE}%
+}%
