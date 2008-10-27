@@ -142,6 +142,7 @@ Some more details:
 \end{command}
 
 \subsubsection{Providing Input Coordinates}
+\label{pgfplots:providing:input}
 
 \begin{addplotoperation}[]{coordinates}{\marg{coordinate list}}
 The `|plot coordinates|' command is provided by \Tikz\ and reads its input data from a sequence of point coordinates.
@@ -1350,6 +1351,108 @@ Area plots may need modified legends, for example using the |area legend| key. F
 \end{tikzpicture}
 \end{codeexample}
 
+\subsubsection{Scatter Plots}
+\label{pgfplots:scatter}
+For scatter plots, the marker appearance changes for each data point. An example is that marker colors depend on the magnitude of function values $f(x)$.
+
+Scatter plots require ``source'' coordinates. These source coordinates can be the $y$ coordinate, or explicitly provided additional values.
+
+\begin{plottype}{scatter plot}
+	Enables marker appearance modifications. The default implementation acquires ``source coordinates'' for every data point (see |scatter src| below) and maps them linearly into the current color map. The resulting color is used as draw and fill color of the marker.
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot+[scatter plot,only marks] 
+		plot[samples=50,scatter src=y]
+		(\x,\x-\x^2);
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The key |scatter plot| simply enables marker modifications. It applies only to markers and it can be combined with any other plot type.
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot+[scatter plot] 
+		plot[samples=50,scatter src=y]
+		(\x,\x^3);
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{plottype}
+
+Scatter plots can be configured using a set of options. One of them is mandatory, the rest allows fine grained control over marker appearance options.
+
+\begin{pgfplotskey}{scatter src=\mchoice{none,x,y,z,explicit} (initially none)}
+	This key needs to be provided as \marg{behavior option} for |\addplot| to configure the value used to determine marker appearances.
+
+	The choices |x|, |y| and |z| will use either the $x$, $y$ or $z$ coordinates to determine marker options. The choice |explicit| expects the scatter source data as additional coordinate from the coordinate input streams (see section~\ref{pgfplots:providing:input}).
+\end{pgfplotskey}
+
+\begin{stylekey}{/pgfplots/scatter plot/use mapped color=\marg{options for each marker} (initially draw=mapped color!80!black,fill=mapped color)}
+	This style is installed by default. When active, it recomputes the color |mapped color| for every processed point coordinate by transforming the |scatter src| coordinates into the current colormap linearly. Then, it evaluates the options provided as \marg{options for each marker} which are expected to depend on |mapped color|.
+
+	The user interface for colormaps is described in section~\ref{pgfplots:colormap}.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[title=Default arguments]
+\addplot+[scatter plot]
+	plot[scatter src=y]
+	(\x,2*\x+3);
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Black fill color and varying draw color,
+	scatter plot/use mapped color=
+		{draw=mapped color,fill=black}]
+\addplot+[scatter plot]
+	plot[scatter src=y]
+	(\x,2*\x+3);
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Black draw color and varying fill color,
+	scatter plot/use mapped color=
+		{draw=black,fill=mapped color}]
+\addplot+[scatter plot]
+	plot[scatter src=y]
+	(\x,2*\x+3);
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	This key is actually a style which redefines |@pre marker code| and |@post marker code| (see below).
+\end{stylekey}
+
+\begin{pgfplotsxycodekeylist}{
+	scatter plot/@pre marker code,
+	scatter plot/@post marker code}
+	These two keys constitute the public low-level implementation which determines the marker appearance depending on the scatter source coordinates.
+
+	Redefining them allows fine grained control even over marker types, linestyles and colors.
+
+	The scatter plot algorithm works as follows:
+\begin{enumerate} 
+\item The scatter source coordinates form a data stream whose data limits are computed additionally to the axis limits. 
+\item Before any markers are drawn, a linear coordinate transformation from these data limits to the interval $[0.0,1000.0]$ is initialised. 
+\item Every scatter source coordinate\footnote{During the evaluation, the public macros \texttt{\textbackslash pgfplotspointmeta} and \texttt{\textbackslash pgfplotspointmetarange} indicate the source coordinate and the source coordinate range in the format $a:b$ (both using floating point representation.} will be transformed linearly and the result is available as |\pgfplotspointmetatransformed| $ \in [0.0,1000.0]$.
+\item The code of |scatter plot/@pre marker code| is evaluated (without arguments).
+\item The standard code which draws markers is evaluated.
+\item The code of |scatter plot/@post marker code| is evaluated (without arguments).
+\end{enumerate}
+	The idea is to generate a set of appearance keys which depends on |\pgfplotspointmetatransformed|. Then, a call to |\scope|\oarg{generated keys} as |@pre| code and the associated |\endscope| as |@post| code will draw markers individually using \oarg{generated keys}.
+\end{pgfplotsxycodekeylist}
+
+
 \subsection{Markers and Linestyles}
 \label{sec:markers}%
 The following options of \Tikz\ are available to plots.
@@ -1635,6 +1738,34 @@ It is also possible to use RGB values, the HSV color model or the HTML color syn
 \end{codeexample}
 \noindent creates the color with $208/255$ pieces red, $178/255$ pieces green and $43$ pieces blue, specified in standard HTML notation. Please refer to the |xcolor| manual~\cite{xcolor} for more details and color models.
 }%
+
+\subsubsection{Color Maps}
+\label{pgfplots:colormap}
+\begin{pgfplotskey}{colormap name=\marg{color map name} (initially hot)}
+	Changes the current color map to the already defined map named \marg{color map name}. Available standard color maps are
+
+	\begin{tabular}{>{\ttfamily}ll}
+	hot & \pgfplotsshowcolormap{hot}\\
+	\end{tabular}
+
+	Colormaps can be used, for example, in scatter plots (see section~\ref{pgfplots:scatter}).
+
+	You can use |colormap| to create new color maps (see below).
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{colormap=\marg{name}\marg{color specification}}
+	Defines a new colormap named \marg{name} according to \marg{color specification} and activates it using |colormap name=|\marg{name}.
+	
+	The syntax of \marg{color specification} is the same as those for \PGF\ shadings described in~\cite[VIII -- Shadings]{tikz}: it consists of a series of colors along with a length.
+\begin{codeexample}[code only]
+rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(0.3);  color(4cm)=(green)
+\end{codeexample}
+\pgfplotsshowcolormapexample{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(0.3);  color(4cm)=(green)}
+
+\noindent The single colors are separated by semicolons `|;|'. The length describes how much of the bar is occupied by the interval. Each entry has the form \meta{color model}|(|\meta{length}|)=(|\meta{arguments}|)|. The line above means that the left end of the colormap shall have RGB components $1 0 0$, indicating $100\%$ red and $0\%$ green and blue. The next entity starts at |1cm| and describes a color with $100\%$ green. Finally, |gray| specifies an color with the same value for each, R G and B and |color| accesses predefined colors.
+
+\paragraph{Remark:} Currently, only equidistant \marg{color specification}s are supported (each interval must have the same length).
+\end{pgfplotskey}
 
 \subsubsection{Options Controlling Linestyles}
 

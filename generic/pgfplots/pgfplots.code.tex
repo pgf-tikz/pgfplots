@@ -62,6 +62,7 @@
 \newif\ifpgfplots@enlargelimits@rel@thresh
 \newif\ifpgfplots@enlargelimits@auto
 \newif\ifpgfplots@tickshow
+\newif\ifpgfplots@scatterplotenabled
 \newif\ifpgfplots@xminorticks
 \newif\ifpgfplots@xmajorticks
 \newif\ifpgfplots@yminorticks
@@ -95,6 +96,7 @@
 \newif\ifpgfplots@stacked@plus
 \newif\ifpgfplots@plot@file@skipfirst
 \newif\ifpgfplots@threedim
+\newif\ifpgfplots@perpointmeta@usesfloat
 \let\pgfnodepartimagebox=\pgfnodeparttextbox
 
 \newif\ifpgfplots@collect@firstplot@astick
@@ -1548,6 +1550,68 @@
 	/pgfplots/y coord inv trafo/.code={},
 	/pgfplots/z coord trafo/.code={},
 	/pgfplots/z coord inv trafo/.code={},
+% Set \pgfplots@perpointmeta@choice to
+% 0:  mi is not available/not used.
+% 1:  mi = xi
+% 2:  mi = yi
+% 3:  mi = zi
+% 4:  mi = given explicitly somehow
+	/pgfplots/point meta/.is choice,
+	/pgfplots/point meta/none/.code={
+		\def\pgfplots@perpointmeta@choice{0}%
+		\def\pgfplots@perpointmeta@arg{}%
+	},
+	/pgfplots/point meta/x/.code={
+		\def\pgfplots@perpointmeta@choice{1}%
+		\def\pgfplots@perpointmeta@arg{}%
+	},
+	/pgfplots/point meta/y/.code={
+		\def\pgfplots@perpointmeta@choice{2}%
+		\def\pgfplots@perpointmeta@arg{}%
+	},
+	/pgfplots/point meta/z/.code={
+		\def\pgfplots@perpointmeta@choice{3}%
+		\def\pgfplots@perpointmeta@arg{}%
+	},
+	/pgfplots/point meta/explizit/.code={
+		\def\pgfplots@perpointmeta@choice{4}%
+		\def\pgfplots@perpointmeta@arg{#1}%
+	},
+	/pgfplots/point meta/none,
+	/pgfplots/colormap name/.initial=hot,
+	/pgfplots/colormap/.code 2 args={
+		\pgfplotscreatecolormap{#1}{#2}%
+		\pgfkeysdef{/pgfplots/colormap name}{#1}%
+	},
+	/pgfplots/scatter plot/.is if=pgfplots@scatterplotenabled,
+	/pgfplots/scatter plot/.default=true,
+	/pgfplots/scatter src/.style={/pgfplots/point meta=#1},
+	/tikz/scatter plot/.style={/pgfplots/scatter plot=#1},
+	%
+	% ARGUMENTS: the macros
+	% - \pgfplotspointmeta
+	% - \pgfplotspointmetarange
+	% - \pgfplotspointmetatransformed
+	% - \pgfplotspointmetatransformedrange
+	% are set during @pre marker code and @post marker code.
+	% '#1' is empty.
+	/pgfplots/scatter plot/@pre marker code/.code={},
+	/pgfplots/scatter plot/@post marker code/.code={},
+	/pgfplots/scatter plot/use mapped color/.style={
+		/pgfplots/scatter plot/@pre marker code/.code={
+			\expandafter\pgfplotscolormapfind\expandafter[\pgfplotspointmetatransformedrange]
+				[1.0]
+				{\pgfplotspointmetatransformed}
+				{\pgfkeysvalueof{/pgfplots/colormap name}}
+%\message{Color for current point is RGB '\pgfmathresult' (determined using meta 'phi(\pgfplotspointmeta) = \pgfplotspointmetatransformed')}%
+			\def\pgfplots@loc@TMPb{\definecolor{mapped color}{rgb}}
+			\expandafter\pgfplots@loc@TMPb\expandafter{\pgfmathresult}
+			\scope[#1]
+		},
+		/pgfplots/scatter plot/@post marker code/.code={\endscope}
+	},
+	/pgfplots/scatter plot/use mapped color/.default={draw=mapped color!80!black,fill=mapped color},
+	/pgfplots/scatter plot/use mapped color,
 }
 
 {
@@ -4940,7 +5004,9 @@
 			\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
 				\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
 %\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
-				% The precmd processed any error bars.
+				% The precmd sets all required variables needed to
+				% finalize a plot.
+				% @see the stream preparation routines.
 				\pgfplots@stored@current@precmd
 				\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 					\pgfplots@stored@current@data%

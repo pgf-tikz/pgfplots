@@ -146,6 +146,8 @@
 % \pgfplots@current@point@[xyz]@error (if in argument list)
 \def\pgfplots@coord@stream@coord{%
 	\pgfplots@coord@stream@coord@%
+	% FIXME : needs to be updated for 3D
+	% FIXME : reduce \if's
 	\ifpgfplots@coord@stream@isfirst
 		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
 		\else
@@ -201,6 +203,85 @@
 		%
 		%\let\pgfplots@coord@stream@recorded=\pgfutil@empty
 		%
+		\pgfplots@perpointmeta@usesfloattrue
+		% %%%%%%%%%%%%%%
+		%
+		% Define \pgfplots@set@perpointmeta properly:
+		\ifcase\pgfplots@perpointmeta@choice
+			% disabled.
+			\def\pgfplots@set@perpointmeta{%	
+				\let\pgfplots@current@point@meta=\pgfutil@empty
+			}%
+		\or
+			% point meta/x
+			\def\pgfplots@set@perpointmeta{%	
+				\let\pgfplots@current@point@meta=\pgfplots@current@point@x
+			}%
+			\ifpgfplots@xislinear
+			\else	
+				\pgfplots@perpointmeta@usesfloatfalse
+			\fi
+		\or
+			% point meta/y
+			\def\pgfplots@set@perpointmeta{%	
+				\let\pgfplots@current@point@meta=\pgfplots@current@point@y
+			}%
+			\ifpgfplots@yislinear
+			\else	
+				\pgfplots@perpointmeta@usesfloatfalse
+			\fi
+		\or
+			% point meta/z
+			\def\pgfplots@set@perpointmeta{%	
+				\let\pgfplots@current@point@meta=\pgfplots@current@point@z
+			}%
+			\ifpgfplots@zislinear
+			\else	
+				\pgfplots@perpointmeta@usesfloatfalse
+			\fi
+		\or
+			% point meta/explicit : parse the information found
+			% somewhere:
+			\def\pgfplots@set@perpointmeta{%	
+				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+		\fi
+		\ifnum\pgfplots@perpointmeta@choice=0
+			\let\pgfplots@metamin=\pgfutil@empty
+			\let\pgfplots@metamax=\pgfutil@empty
+		\else
+			% We need to work with per point meta data.
+			% So, also compute the data range on a per-stream basis!
+			% These limits are important later.
+			\ifpgfplots@perpointmeta@usesfloat
+				\pgfmathfloatcreate{1}{1.0}{2147483645}%
+				\let\pgfplots@invalidrange@metamin=\pgfmathresult
+				\pgfmathfloatcreate{2}{1.0}{2147483645}%
+				\let\pgfplots@invalidrange@metamax=\pgfmathresult
+				\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+				\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+					\pgfplots@set@perpointmeta
+					\pgfmathfloatmin@{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+					\let\pgfplots@metamin=\pgfmathresult
+					\pgfmathfloatmax@{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+					\let\pgfplots@metamax=\pgfmathresult
+				}%
+			\else
+				\def\pgfplots@invalidrange@xmin{16300}%
+				\def\pgfplots@invalidrange@xmax{-16300}%
+				\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+				\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+					\pgfplots@set@perpointmeta
+					\pgfmathmin@{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+					\let\pgfplots@metamin=\pgfmathresult
+					\pgfmathmax@{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+					\let\pgfplots@metamax=\pgfmathresult
+				}%
+			\fi
+		\fi
 	}%
 	\begingroup
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -462,6 +543,11 @@
 				% \endaxis.
 			\fi
 		\fi
+		%
+		% Prepare \pgfplots@current@point@meta (see the preparation
+		% routine above):
+		\E\pgfplots@set@perpointmeta
+		%
 		% update also axis / data limits:
 		% Arguments: \pgfplots@current@point@[xy]
 		\E\pgfplots@update@limits@for@one@point
@@ -475,10 +561,13 @@
 		\fi
 		%
 		% Store normalized point for list:
-		\E\edef\E\pgfplots@loc@TMPa{\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z;}%
+		% We need
+		% xi,yi,zi,mi;
+		% where zi and mi may be empty. mi is the per-point meta
+		% information. It is used for per-coordinate marker
+		% modifications (like colormaps for scatter plots).
+		\E\edef\E\pgfplots@loc@TMPa{\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z,\E\pgfplots@current@point@meta;}%
 		\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfplots@loc@TMPa}%
-		%\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
-		%\edef\pgfplots@coord@stream@recorded{\the\t@pgfplots@tokc (\pgfplots@current@point@x,\pgfplots@current@point@y)}%
 		%
 		\ifpgfplots@collect@firstplot@astick
 			\ifnum\pgfplots@numplots=0
@@ -579,18 +668,18 @@
 		%
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
 			\ifpgfplots@warn@for@filter@discards
-				\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x,\E\pgfplots@current@point@y\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z\fi) has been dropped because of the x-coordinate filter.}%
+				\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the x-coordinate filter.}%
 			\fi
 		\E\else
 			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
 				\ifpgfplots@warn@for@filter@discards
-					\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x,\E\pgfplots@current@point@y\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z\fi) has been dropped because of the y-coordinate filter.}%
+					\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the y-coordinate filter.}%
 				\fi
 			\E\else
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
 						\ifpgfplots@warn@for@filter@discards
-							\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z) has been dropped because of the z-coordinate filter.}%
+							\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered,\E\pgfplots@current@point@z@unfiltered) has been dropped because of the z-coordinate filter.}%
 						\fi
 					\E\else
 						% insert the main 3d code here:
@@ -671,13 +760,22 @@
 			% vvvvvvvvvv
 			\xdef\pgfplots@glob@TMPa{%
 				\noexpand\pgfplots@addplot@enqueue@coords
-				{% precommand:
+				{% precommand(s):
 					\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
 					\noexpand\pgfplots@initzerolevelhandler
 					\the\t@pgfplots@tokc% named start/end points (if already available)
 					\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@toka}}%
 					\pgfplots@loc@TMPb% error bar commands
+					% per-point meta data ranges:
+					\noexpand\def\noexpand\pgfplots@metamin{\pgfplots@metamin}%
+					\noexpand\def\noexpand\pgfplots@metamax{\pgfplots@metamax}%
+					\ifpgfplots@perpointmeta@usesfloat
+						\noexpand\pgfplots@perpointmeta@usesfloattrue
+					\else
+						\noexpand\pgfplots@perpointmeta@usesfloatfalse
+					\fi
+					%\noexpand\pgfplots@perpointmeta@preparetrafo
 				}%
 				{% draw command:
 					\noexpand\draw%
@@ -703,12 +801,60 @@
 	}%
 }%
 
+% Defines the linear transformation macro \pgfplots@perpointmeta@trafo,
+%
+% phi : [meta_min,meta,max] -> [0,10^k]
+%
+% which operates on the per-point meta data (if any).
+% The trafo will be skipped if there is no such data.
+%
+% The trafo is expected to prepare meta information before it is used
+% as input to \pgfplotscolormapfind. Thus, the 10^k is chosen to be 
+% the same as \pgfplotscolormaprange (which is 1000 per default).
+%
+\def\pgfplots@perpointmeta@preparetrafo{%
+	\ifx\pgfplots@metamax\pgfutil@empty
+		\def\pgfplots@perpointmeta@trafo##1{\def\pgfmathresult{}}%
+		\def\pgfplots@perpointmeta@traforange{0:0}%
+	\else
+		% The transformation is
+		%
+		% phi(m) = ( m- meta_min) * 1000/ (meta_max-meta_min).
+		%
+		% -> precompute the scaling factor!
+		\ifpgfplots@perpointmeta@usesfloat
+			\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
+			\ifnum\pgfplots@loc@TMPa=1000
+			\else
+				\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
+			\fi
+			\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
+			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfmathfloatcreate{1}{1.0}{3}%
+			\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+			\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
+			%
+			% Now, setup the trafo as such.
+			% It assigns \pgfmathresult (in fixed point).
+			\def\pgfplots@perpointmeta@trafo##1{%
+				\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
+				\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+				\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+			}%
+			% Expands to the transformation range as 'a:b':
+			\def\pgfplots@perpointmeta@traforange{0:1000}%
+		\else
+			\pgfplots@error{NOT YET IMPLEMENTED: sorry, per-point meta information is currently not processed for log plots.}%
+		\fi
+	\fi
+}%
 
 % A looping method which applies
 % \pgfplots@coord@stream@start
 % for each coordinate '(x,y)'  or '(x,y) +- (ex,ey)',
 %    assign \pgfplots@current@point@[xyz]
 %    assign \pgfplots@current@point@[xyz]@error (if in argument list)
+%    assign \pgfplots@current@point@meta
 %    call \pgfplots@coord@stream@coord
 % \pgfplots@coord@stream@end
 %
@@ -717,8 +863,11 @@
 %   or
 %   '(x,y[,z]) +- (ex,ey)'
 %   separated by white-space.
+%
+% The per-point meta is not implemented yet.
 \long\def\pgfplots@coord@stream@foreach#1{%
 	\pgfplots@coord@stream@start
+	\let\pgfplots@current@point@meta=\pgfutil@empty
 	\pgfplots@foreach@plot@coord@ITERATE#1\pgfplots@EOI%
 	\pgfplots@coord@stream@end
 }%
@@ -803,8 +952,12 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %
 % The same in normalized coordinates of the form
-%  x1,y1,z1;x2,y2,z2;...;xN,yN,zN;
+%  x1,y1,z1,m1;x2,y2,z2,m2;...;xN,yN,zN,mN;
 % if the plot is not threedim, zi is empty.
+%
+% The mi are Meta Values associated to point coordinates. They are
+% usually empty, but can be used to realize per-point marker
+% modifications (scatter plots, especially for colormaps).
 \long\def\pgfplots@coord@stream@foreach@NORMALIZED#1{%
 	\pgfplots@coord@stream@start
 	\let\pgfplots@current@point@x@error=\pgfutil@empty
@@ -826,10 +979,11 @@
 		\pgfplots@foreach@plot@coord@NORMALIZED@NEXT%
 	}%
 }
-\def\pgfplots@foreach@plot@coord@NORMALIZED@NEXT#1,#2,#3;{%
+\def\pgfplots@foreach@plot@coord@NORMALIZED@NEXT#1,#2,#3,#4;{%
 	\def\pgfplots@current@point@x{#1}%
 	\def\pgfplots@current@point@y{#2}%
 	\def\pgfplots@current@point@z{#3}%
+	\def\pgfplots@current@point@meta{#4}%
 	\pgfplots@coord@stream@coord
 	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
 }
@@ -989,11 +1143,14 @@
 			\pgfmathparse{\pgfplots@addplotimpl@expression@zEXPR}%
 			\let\pgfplots@current@point@z=\pgfmathresult
 		\fi
-		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z;}%
+		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,;}%
 		\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@loc@TMPa}%
 	}%
 	\pgfplotsapplistXXgloballet\pgfplots@loc@TMPa
 	\pgfplotsapplistXXglobalclear
+	% Process the normalized coordinate stream. This invoked the same
+	% streaming methods as the unnormalized stream, only the format is
+	% slightly different.
 	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@loc@TMPa}%
 }%
 
@@ -1527,6 +1684,7 @@
 % this is a convenience macro to save storage in the long coordinate
 % lists.
 \def\pgfplots@stream#1#2{\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
+\def\pgfplots@stream@withmeta#1#2#3{\def\pgfplots@current@point@meta{#3}\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
 
 \newif\ifpgfplots@record@marker@stream
 % Takes a sequence of PREPARED coordinates which are given in floating
@@ -1587,6 +1745,14 @@
 			\pgfplotsapplistXXpushback{\pgfplotstreamstart}%
 			%\gdef#1{\pgfplotstreamstart}%
 		\fi
+		% Define \pgfplots@process@perpointmeta properly:
+		\ifnum\pgfplots@perpointmeta@choice=0
+			% disabled.
+			\def\pgfplots@process@perpointmeta{%	
+				\let\pgfplots@current@point@meta=\pgfutil@empty
+			}%
+		\else
+		\fi
 	}%
 	\def\pgfplots@coord@stream@end@{%
 		\ifpgfplots@apply@datatrafo
@@ -1612,8 +1778,16 @@
 	%
 	% Will be inserted in one of two possible places below:
 	\def\pgfplots@loc@TMPa{%
-		\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
-		\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
+		\ifnum\pgfplots@perpointmeta@choice=0
+			% we don't have per-point meta data. Nothing special to
+			% do:
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
+		\else
+			% Ok, then we need to process the meta data as well:
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@withmeta{\E\the\E\pgf@x}{\E\the\E\pgf@y}{\E\pgfplots@current@point@meta}}%
+			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
+		\fi
 	}%
 	% This finalize command maps the logical coordinate into PGF's
 	% point space. Furthermore, it collects marker coordinates
@@ -1777,6 +1951,16 @@
 	\t@pgfplots@tokc=\expandafter{\pgfplots@recorded@marker@stream}%
 	\edef\pgfplots@loc@TMPa{%
 		\noexpand\pgfkeysdef{/tikz/current plot style}{\the\t@pgfplots@toka}%
+		%
+		\noexpand\def\noexpand\pgfplots@metamin{\pgfplots@metamin}%
+		\noexpand\def\noexpand\pgfplots@metamax{\pgfplots@metamax}%
+		\ifpgfplots@perpointmeta@usesfloat
+			\noexpand\pgfplots@perpointmeta@usesfloattrue
+		\else
+			\noexpand\pgfplots@perpointmeta@usesfloatfalse
+		\fi
+		\noexpand\pgfplots@perpointmeta@preparetrafo
+		%
 		\the\t@pgfplots@tokb
 		\noexpand\pgfextra
 		\noexpand\pgfplots@install@plotmark@handler
@@ -1799,10 +1983,53 @@
 	\let\tikz@transform=\pgfutil@empty%
 	\tikzset{every plot/.try,every mark}%
 	\tikz@options
+	% this here is the MAIN marker code.
+	% It may be modified if scatter plot is enabled, see below.
+	\def\pgfplots@loc@TMPa{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}
+	\ifpgfplots@scatterplotenabled
+		% Scatter plots work like this:
+		%
+		% <compute per-point meta info>
+		% /pgfplots/scatter plot/@pre marker code
+		% <marker code, lowlevel>
+		% /pgfplots/scatter plot/@post marker code
+		%
+		% -> that's all. The Rest is configurable with style which
+		%  (re)define '@pre marker code' and '@post marker code' (see
+		%  the docs for details).
+		%
+		% Prepare arguments for '@pre/@post' macros:
+		\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
+		\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
+		\t@pgfplots@toka={%
+			\begingroup
+			\pgfutil@ifundefined{pgfplots@current@point@meta}{%
+				\pgfplots@error{'scatter plot' could not access its data source. Maybe you need to add '\string\addplot\space plot[scatter src=y]' or something like that?}%
+				\pgfmathfloatcreate{1}{1.0}{0}%
+				\def\pgfplotspointmetatransformed{1.0}%
+			}{%
+				% prepare arguments:
+				\let\pgfplotspointmeta=\pgfplots@current@point@meta
+				\pgfplots@perpointmeta@trafo{\pgfplotspointmeta}%
+				\let\pgfplotspointmetatransformed=\pgfmathresult
+			}%
+			\pgfkeysvalueof{/pgfplots/scatter plot/@pre marker code/.@cmd}\pgfeov
+		}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+		\t@pgfplots@tokc={%
+			\pgfkeysvalueof{/pgfplots/scatter plot/@post marker code/.@cmd}\pgfeov
+			\endgroup
+		}%
+		\edef\pgfplots@loc@TMPa{%
+			\the\t@pgfplots@toka
+			\the\t@pgfplots@tokb
+			\the\t@pgfplots@tokc
+		}%
+	\fi
 	\ifx\tikz@mark@list\pgfutil@empty%
-		\pgfplothandlermark{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}%
+		\expandafter\pgfplothandlermark\expandafter{\pgfplots@loc@TMPa}%
 	\else
-		\pgfplothandlermarklisted{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}{\tikz@mark@list}%
+		\expandafter\pgfplothandlermarklisted\expandafter{\pgfplots@loc@TMPa}{\tikz@mark@list}%
 	\fi
 }%
 

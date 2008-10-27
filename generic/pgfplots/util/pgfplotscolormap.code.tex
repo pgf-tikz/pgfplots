@@ -27,7 +27,7 @@
 % #1 : the name of the color map as string (not as macro).
 % #2 : a <color specification> as is expected for a colormap.
 %
-% Example: \pgfplots@createcolormap{my map}{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(1cm)=(0,0,1); gray(1cm)=(3);  color(1cm)=(green); }
+% Example: \pgfplots@createcolormap{my map}{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(3);  color(4cm)=(green); }
 \def\pgfplotscreatecolormap#{%
 	\pgfplots@createcolormap
 }
@@ -49,15 +49,14 @@
 		\pgfplots@error{Sorry, you need to provide at least the two end points of a colormap.}%
 	\fi
 	% Map the input range [0pt,MAX] linearly to [0,1000]
-	\expandafter\def\csname\pgfplots@createcolormap@name @max\endcsname{1000}%
-	\pgfmathdivide@{\csname\pgfplots@createcolormap@name @max\endcsname}{\pgfplots@createcolormap@MAX}%
+	\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@createcolormap@MAX}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
 	\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@createcolormap@H}%
 	\let\pgfplots@createcolormap@H=\pgfmathresult
 	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
 	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
-\pgfplots@colormap@showdebuginfofor{#1}%
+%\pgfplots@colormap@showdebuginfofor{#1}%
 }
 \def\pgfplots@createcolormap@{%
 	\pgfutil@ifnextchar]{\pgfutil@gobble}%done!
@@ -90,18 +89,38 @@
 \def\pgfplots@createcolormap@grabcolor@#1,#2,#3\relax#4{%
 	\pgfplots@createcolormap@nextRGB{#4}{#1}{#2}{#3}%
  	\pgfplots@createcolormap@}
-
+\def\pgfplots@createcolormap@rgbrangeexception#1#2#3{%
+	\pgfplots@error{Sorry, RGB[#1,#2,#3] is not supported. The allowed range is 0 <= r,g,b <= 1.}%
+}%
 % Ok, we parsed the next single spec.
 % #1: the width
 % #2,#3,#4 RGB values.
 \def\pgfplots@createcolormap@nextRGB#1#2#3#4{%
+	\ifdim#2pt<0pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
+	\ifdim#3pt<0pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
+	\ifdim#4pt<0pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
+	\ifdim#2pt>1pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
+	\ifdim#3pt>1pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
+	\ifdim#4pt>1pt
+		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
+	\fi
 	% Process 'h':
 	\pgfmathparse{#1}%
 	\let\pgfplots@createcolormap@MAX=\pgfmathresult
 	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MAX
 	\let\pgfplots@createcolormap@H@cur=\pgfmathresult
-\message{found current diff  = \pgfplots@createcolormap@H@cur\ ( from #1 - \pgfplots@createcolormap@LAST pt)}%
+%\message{found current diff  = \pgfplots@createcolormap@H@cur\ ( from #1 - \pgfplots@createcolormap@LAST pt)}%
 	\ifx\pgfplots@createcolormap@H\pgfutil@empty
 		\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 		\ifpgfplotsarrayempty
@@ -112,7 +131,7 @@
 			\fi
 		\else
 			\let\pgfplots@createcolormap@H=\pgfplots@createcolormap@H@cur
-\message{H := \pgfplots@createcolormap@H( from #1).}%
+%\message{H := \pgfplots@createcolormap@H( from #1).}%
 		\fi
 	\else
 		\pgfmathapproxequalto@{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
@@ -130,7 +149,7 @@
 % Shows debug info about colormap #1 into the console.
 \def\pgfplots@colormap@showdebuginfofor#1{%
 	\message{Debug info for color map '#1':}%
-	\message{(Transformed) Range: [0:\csname pgfpl@cm@#1@max\endcsname];  }%
+	\message{(Transformed) Range: [0:\pgfplotscolormaprange];  }%
 	\message{H: \csname pgfpl@cm@#1@h\endcsname;    }%
 	\message{H:^{-1}: \csname pgfpl@cm@#1@invh\endcsname;    }%
 	\pgfplotsarraysizetomacro{pgfpl@cm@#1}\to\pgfplots@loc@TMPa
@@ -155,10 +174,14 @@
 %
 % Example:
 % \pgfplotscolormaptoshadingspec{my colormap}{4cm}{\output}
+% \def\tempb{\pgfdeclarehorizontalshading{myshadingA}{1cm}}
+% \expandafter\tempb\expandafter{\temp}	
+%
+% \pgfuseshading{myshadingA}
 \def\pgfplotscolormaptoshadingspec#1#2#3{%
 	\begingroup
 	\pgfmathparse{#2}%
-	\expandafter\pgfmathdivide@\expandafter{\pgfmathresult}{\pgfplotscolormaprange{#1}}%
+	\expandafter\pgfmathdivide@\expandafter{\pgfmathresult}{\pgfplotscolormaprange}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
 	\pgfmathmultiply@{\csname pgfpl@cm@#1@h\endcsname}{\pgfplots@loc@TMPb}%
 	\pgf@ya=\pgfmathresult pt
@@ -185,9 +208,9 @@
 }%
 
 
-% Expands to the transformed range's right end of a colormap. The left
+% Expands to the transformed range's right end of every colormap. The left
 % end is fixed to '0'.
-\def\pgfplotscolormaprange#1{\csname pgfpl@cm@#1@max\endcsname}
+\def\pgfplotscolormaprange{1000}
 
 % Linearly maps the number #4 into the colormap #5 and returns the interpolated RGB triple 
 % into \pgfmathresult.
@@ -195,7 +218,7 @@
 % [#1:#2]  the number range of the data source. This is required to
 %          map into the colormap.
 % [#3]     (optional) the quantity 
-% 			 s := \pgfplotscolormaprange{#5} / (#2-#1).
+% 			 s := \pgfplotscolormaprange / (#2-#1).
 % 		   Precomputing this quantity may save a lot of time because
 % 		   divisions are expensive in TeX. You can omit [#3] or
 % 		   provide an empty string here.
@@ -220,7 +243,7 @@
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\pgfmathsubtract@{#2}{#1}%
 		\let\pgfplots@loc@TMPb=\pgfmathresult
-		\pgfmathdivide@{\pgfplotscolormaprange{#5}}{\pgfplots@loc@TMPb}%
+		\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@loc@TMPb}%
 		\let\pgfplots@loc@TMPa=\pgfmathresult
 	\fi
 %\message{mapping '#4' into colormap '#5' ... }%
@@ -238,7 +261,7 @@
 	% without '.0' suffix:
 	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
 	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
-%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange{#5}]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \pgfplotscolormapfind@intervalno.}%
+%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \pgfplotscolormapfind@intervalno.}%
 	% Step 2: interpolate the desired RGB value using vector valued
 	% interpolation on the identified interval.
 	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
@@ -250,6 +273,7 @@
 	\expandafter\pgfplotscolormapfind@interpolate\pgfplots@loc@TMPa\relax
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
+%\message{-> got finally mapping(#4, #5) = RGB'\pgfmathresult'.}%
 }%
 
 % internal helper method which computes
@@ -281,3 +305,6 @@
 	\let\BLUE=\pgfmathresult
 	\edef\pgfmathresult{\RED,\GREEN,\BLUE}%
 }%
+
+
+\pgfplots@createcolormap{hot}{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(0.3);  color(4cm)=(green); }
