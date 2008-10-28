@@ -1370,7 +1370,7 @@ Scatter plots require ``source'' coordinates. These source coordinates can be th
 \end{tikzpicture}
 \end{codeexample}
 
-	The key |scatter plot| simply enables marker modifications. It applies only to markers and it can be combined with any other plot type.
+	The key |scatter plot| is simply a boolean variable which enables marker modifications. It applies only to markers and it can be combined with any other plot type.
 
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -1389,6 +1389,8 @@ Scatter plots can be configured using a set of options. One of them is mandatory
 	This key needs to be provided as \marg{behavior option} for |\addplot| to configure the value used to determine marker appearances.
 
 	The choices |x|, |y| and |z| will use either the $x$, $y$ or $z$ coordinates to determine marker options. The choice |explicit| expects the scatter source data as additional coordinate from the coordinate input streams (see section~\ref{pgfplots:providing:input}).
+
+	Please note that |scatter src|$\neq$|none| results in work even if |scatter plot=false|.
 \end{pgfplotskey}
 
 \begin{stylekey}{/pgfplots/scatter plot/use mapped color=\marg{options for each marker} (initially draw=mapped color!80!black,fill=mapped color)}
@@ -1436,7 +1438,7 @@ Scatter plots can be configured using a set of options. One of them is mandatory
 \begin{pgfplotsxycodekeylist}{
 	scatter plot/@pre marker code,
 	scatter plot/@post marker code}
-	These two keys constitute the public low-level implementation which determines the marker appearance depending on the scatter source coordinates.
+	These two keys constitute the public low-level interface which determines the marker appearance depending on the scatter source coordinates.
 
 	Redefining them allows fine grained control even over marker types, linestyles and colors.
 
@@ -1444,12 +1446,48 @@ Scatter plots can be configured using a set of options. One of them is mandatory
 \begin{enumerate} 
 \item The scatter source coordinates form a data stream whose data limits are computed additionally to the axis limits. 
 \item Before any markers are drawn, a linear coordinate transformation from these data limits to the interval $[0.0,1000.0]$ is initialised. 
-\item Every scatter source coordinate\footnote{During the evaluation, the public macros \texttt{\textbackslash pgfplotspointmeta} and \texttt{\textbackslash pgfplotspointmetarange} indicate the source coordinate and the source coordinate range in the format $a:b$ (both using floating point representation.} will be transformed linearly and the result is available as |\pgfplotspointmetatransformed| $ \in [0.0,1000.0]$.
+\item Every scatter source coordinate\footnote{During the evaluation, the public macros \texttt{\textbackslash pgfplotspointmeta} and \texttt{\textbackslash pgfplotspointmetarange} indicate the source coordinate and the source coordinate range in the format $a:b$ (both using floating point representation).} will be transformed linearly and the result is available as macro |\pgfplotspointmetatransformed| $ \in [0.0,1000.0]$.
+
+The decision is thus based on per thousands of the data range.
 \item The code of |scatter plot/@pre marker code| is evaluated (without arguments).
 \item The standard code which draws markers is evaluated.
 \item The code of |scatter plot/@post marker code| is evaluated (without arguments).
 \end{enumerate}
 	The idea is to generate a set of appearance keys which depends on |\pgfplotspointmetatransformed|. Then, a call to |\scope|\oarg{generated keys} as |@pre| code and the associated |\endscope| as |@post| code will draw markers individually using \oarg{generated keys}.
+
+A technical example is shown below. It demonstrates how to write user defined routines, in this case a three--class system\footnote{Please note that you don't need to copy this particular example: the multiple--class example is also available as predefined style \texttt{scatter classes}.}.
+\begin{codeexample}[]
+% Example: use three different marker classes 
+% 0% - 30%   : first class
+% 30% - 60%  : second class
+% 60% - 100% : third class
+\begin{tikzpicture}
+\begin{axis}[
+scatter plot/@pre marker code/.code={%
+   \ifdim\pgfplotspointmetatransformed pt<300pt
+      \def\markopts{mark=square*,fill=blue}%
+   \else
+      \ifdim\pgfplotspointmetatransformed pt<600pt
+         \def\markopts{mark=triangle*,fill=orange}%
+      \else
+         \def\markopts{mark=pentagon*,fill=red}%
+      \fi
+   \fi
+   \expandafter\scope\expandafter[\markopts]
+},%
+scatter plot/@post marker code/.code={%
+   \endscope
+}]
+
+\addplot+[scatter plot]
+   plot[scatter src=y,samples=40]
+   (\x, {sin(\x r)});
+   
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+Please note that |\ifdim| compares \TeX\ lengths, so the example employs the suffix |pt| for any number used in this context. That doesn't change the semantics.
+
 \end{pgfplotsxycodekeylist}
 
 
@@ -1762,7 +1800,7 @@ rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(0.3);  color(4c
 \end{codeexample}
 \pgfplotsshowcolormapexample{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb(2cm)=(0,0,1); gray(3cm)=(0.3);  color(4cm)=(green)}
 
-\noindent The single colors are separated by semicolons `|;|'. The length describes how much of the bar is occupied by the interval. Each entry has the form \meta{color model}|(|\meta{length}|)=(|\meta{arguments}|)|. The line above means that the left end of the colormap shall have RGB components $1 0 0$, indicating $100\%$ red and $0\%$ green and blue. The next entity starts at |1cm| and describes a color with $100\%$ green. Finally, |gray| specifies an color with the same value for each, R G and B and |color| accesses predefined colors.
+\noindent The single colors are separated by semicolons `|;|'. The length describes how much of the bar is occupied by the interval. Each entry has the form \meta{color model}|(|\meta{length}|)=(|\meta{arguments}|)|. The line above means that the left end of the colormap shall have RGB components $1,0,0$, indicating $100\%$ red and $0\%$ green and blue. The next entity starts at |1cm| and describes a color with $100\%$ green. Finally, |gray| specifies a color with the same value for each, R G and B and |color| accesses predefined colors.
 
 \paragraph{Remark:} Currently, only equidistant \marg{color specification}s are supported (each interval must have the same length).
 \end{pgfplotskey}
