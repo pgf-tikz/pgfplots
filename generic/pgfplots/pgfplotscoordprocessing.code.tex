@@ -852,7 +852,6 @@
 						\noexpand\pgfplots@perpointmeta@usesfloatfalse
 					\fi
 					\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-					%\noexpand\pgfplots@perpointmeta@preparetrafo
 				}%
 				{% draw command:
 					\noexpand\draw%
@@ -997,8 +996,13 @@
 \def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@#1,#2){%
 	\def\pgfplots@current@point@x@error{#1}%
 	\def\pgfplots@current@point@y@error{#2}%
-	\pgfplots@coord@stream@coord
-	\pgfplots@foreach@plot@coord@ITERATE
+	\pgfutil@ifnextchar[{%
+		\pgfplots@foreach@plot@coord@NEXT@meta
+	}{%
+		\let\pgfplots@current@point@meta=\pgfutil@empty
+		\pgfplots@coord@stream@coord
+		\pgfplots@foreach@plot@coord@ITERATE
+	}%
 }
 \def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
 
@@ -1050,8 +1054,13 @@
 	\def\pgfplots@current@point@x@error{#1}%
 	\def\pgfplots@current@point@y@error{#2}%
 	\def\pgfplots@current@point@z@error{#3}%
-	\pgfplots@coord@stream@coord
-	\pgfplots@foreach@plot@coord@threedim@ITERATE
+	\pgfutil@ifnextchar[{%
+		\pgfplots@foreach@plot@coord@threedim@NEXT@meta
+	}{%
+		\let\pgfplots@current@point@meta=\pgfutil@empty
+		\pgfplots@coord@stream@coord
+		\pgfplots@foreach@plot@coord@threedim@ITERATE
+	}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
@@ -1600,6 +1609,11 @@
 }
 
 
+% This here is the (probably) faster input method from tables.
+%
+% It has linear complexity in the number of rows (as long as the
+% number of rows is less than about 110000).
+%
 % #1: arguments to \addplot[...]
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
@@ -1628,6 +1642,7 @@
 	\let\pgfplots@table@PTR@z=\pgfutil@empty
 	\let\pgfplots@table@PTR@meta=\pgfutil@empty
 	\let\pgfplots@current@point@meta=\pgfutil@empty
+	\let\pgfplots@current@point@z=\pgfutil@empty
 	\ifpgfplots@errorbars@enabled
 		\let\pgfplots@table@ERRPTR@x=\pgfutil@empty
 		\let\pgfplots@table@ERRPTR@y=\pgfutil@empty
@@ -1638,30 +1653,35 @@
 		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
 		\pgfkeysgetvalue{/pgfplots/table/z error index}\pgfplots@plot@tbl@error@zindex
 		\pgfkeysgetvalue{/pgfplots/table/z error}\pgfplots@plot@tbl@error@z
-		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL
 	\else
-		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener
+		\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 	\fi
 	\endgroup
 	%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	\pgfplotsapplistXXgloballet\pgfplots@coordlist
 	\pgfplotsapplistXXglobalclear
-	% FIXME : isn't there a faster way!?
-	\ifpgfplots@curplot@threedim
-		\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@coordlist}%%
+	\ifpgfplots@errorbars@enabled
+		\ifpgfplots@curplot@threedim
+			\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@coordlist}%%
+		\else
+			\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
+		\fi
 	\else
-		\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
+		% this here is the usual case; it is faster than the error bar
+		% stuff.
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coordlist}%
 	\fi
 }
-\def\pgfplots@addplotimpl@table@fromfile@listener{%
+\def\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	\edef\pgfplots@current@point{%
-		(\pgfplots@current@point@x,%
-		 \pgfplots@current@point@y%
-		 \ifpgfplots@curplot@threedim,\pgfplots@current@point@z\fi%
-		)%	
-		 \ifx\pgfplots@current@point@meta\pgfutil@empty\else[\pgfplots@current@point@meta]\fi%
+		\pgfplots@current@point@x,%
+		\pgfplots@current@point@y,%
+		\pgfplots@current@point@z,%
+		\pgfplots@current@point@meta%
+		;%
 	}%
 	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
 }
@@ -1704,7 +1724,7 @@
 		\pgfplotstablereadevalptr\pgfplots@table@PTR@meta\pgfplots@current@point@meta
 	\fi
 }%
-\def\pgfplots@addplotimpl@table@fromfile@listener@witherrors{%
+\def\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	%
 	\ifx\pgfplots@table@ERRPTR@x\pgfutil@empty
@@ -1755,9 +1775,9 @@
 		\else
 			\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@z\pgfplots@current@point@z@error
 		\fi
-		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error,\pgfplots@current@point@z@error)}%
+		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error,\pgfplots@current@point@z@error) [\pgfplots@current@point@meta]}%
 	\else
-		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error)}%
+		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error) [\pgfplots@current@point@meta]}%
 	\fi
 	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
 }%
@@ -1874,6 +1894,11 @@
 	% Init the plot handlers:
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	\ifpgfplots@scatterplotenabled
+		\ifx\tikz@plot@mark\pgfutil@empty
+			\def\tikz@plot@mark{*}%
+		\fi
+	\fi
 	%
 	\ifx\tikz@plot@mark\pgfutil@empty
 		% mark=none : no need to waste time collecting marker
@@ -2131,7 +2156,6 @@
 			\noexpand\pgfplots@perpointmeta@usesfloatfalse
 		\fi
 		\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-		\noexpand\pgfplots@perpointmeta@preparetrafo
 		%
 		\the\t@pgfplots@tokb
 		\noexpand\pgfextra
@@ -2155,6 +2179,7 @@
 	\let\tikz@transform=\pgfutil@empty%
 	\tikzset{every plot/.try,every mark}%
 	\tikz@options
+	\pgfplots@perpointmeta@preparetrafo
 	% this here is the MAIN marker code.
 	% It may be modified if scatter plot is enabled, see below.
 	\def\pgfplots@loc@TMPa{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}
@@ -2162,9 +2187,9 @@
 		% Scatter plots work like this:
 		%
 		% <compute per-point meta info>
-		% /pgfplots/scatter plot/@pre marker code
+		% /pgfplots/scatter/@pre marker code
 		% <marker code, lowlevel>
-		% /pgfplots/scatter plot/@post marker code
+		% /pgfplots/scatter/@post marker code
 		%
 		% -> that's all. The Rest is configurable with style which
 		%  (re)define '@pre marker code' and '@post marker code' (see
@@ -2176,7 +2201,7 @@
 		\t@pgfplots@toka={%
 			\begingroup
 			\pgfutil@ifundefined{pgfplots@current@point@meta}{%
-				\pgfplots@error{'scatter plot' could not access its data source. Maybe you need to add '\string\addplot\space plot[scatter src=y]' or something like that?}%
+				\pgfplots@error{'scatter' could not access its data source. Maybe you need to add '\string\addplot\space plot[scatter src=y]' or something like that?}%
 				\pgfmathfloatcreate{1}{1.0}{0}%
 				\def\pgfplotspointmetatransformed{1.0}%
 			}{%
@@ -2185,11 +2210,11 @@
 				\pgfplots@perpointmeta@trafo{\pgfplotspointmeta}%
 				\let\pgfplotspointmetatransformed=\pgfmathresult
 			}%
-			\pgfkeysvalueof{/pgfplots/scatter plot/@pre marker code/.@cmd}\pgfeov
+			\pgfkeysvalueof{/pgfplots/scatter/@pre marker code/.@cmd}\pgfeov
 		}%
 		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
 		\t@pgfplots@tokc={%
-			\pgfkeysvalueof{/pgfplots/scatter plot/@post marker code/.@cmd}\pgfeov
+			\pgfkeysvalueof{/pgfplots/scatter/@post marker code/.@cmd}\pgfeov
 			\endgroup
 		}%
 		\edef\pgfplots@loc@TMPa{%
