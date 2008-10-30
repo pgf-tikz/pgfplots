@@ -1328,18 +1328,35 @@
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
 	%
+	% Assemble a 
+	% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
+	\edef\pgfplots@plot@data##1{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 	\ifpgfplots@curplot@threedim
+		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
 			\def\pgfplots@addplotimpl@expression@yEXPR{##1}%
 			\def\pgfplots@addplotimpl@expression@zEXPR{##2}%
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#3\pgfplots@EOI%
+		\ifx\pgfplots@plot@ydomain\pgfutil@empty
+			\def\y{0}%
+		\else
+			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
+			% Assemble a 
+			% \pgfplots@plot@data##1 -> 
+			% 	\foreach \x in {-5,-4.6,...,5} 
+			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
+			%  macro:
+			\edef\pgfplots@plot@data##1{%
+				\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} 
+					{\noexpand\foreach\noexpand\y in {\pgfplotslocretval} {##1}}}%
+		\fi
 	\else
+		\def\y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#3}%
 		\def\pgfplots@current@point@z{}%
 	\fi
 	%
-	\edef\pgfplots@plot@data{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat}}%
 	\pgfplotsapplistXXglobalnewempty
 	\pgfplots@plot@data{%
 		\pgfmathparse{#2}%
@@ -1413,14 +1430,26 @@
 	\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 	%
 	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\def\pgfplots@addplotimpl@gnuplotresult@isthreedim@withtwocoords{0}%
 	\iftikz@plot@raw@gnuplot%
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#3}}%
 	\else%
+		\ifpgfplots@curplot@threedim 
+			\ifx\pgfplots@plot@ydomain\pgfutil@empty
+				\pgfplots@error{Sorry, '\string\addplot3 plot function{}' can't be processed correctly because 'y domain' is empty.}%
+				\def\pgfplots@plot@ydomain{0:1}%
+			\fi
+		\fi
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 			\pgfplots@gnuplot@format;
 			set samples \tikz@plot@samples;
 			\iftikz@plot@parametric	set parametric;\fi
-			\ifpgfplots@curplot@threedim s\fi plot [x=\tikz@plot@domain] \ifpgfplots@curplot@threedim [y=\pgfplots@plot@ydomain]\fi\space #3;}}%
+			\ifpgfplots@curplot@threedim 
+				splot [x=\tikz@plot@domain] [y=\pgfplots@plot@ydomain] #3;%
+			\else
+				plot [x=\tikz@plot@domain] #3;%
+			\fi
+			}}%
 	\fi%
 	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#4}}%
 	\pgfplots@plot@data
