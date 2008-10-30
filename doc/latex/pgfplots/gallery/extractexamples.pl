@@ -1,11 +1,12 @@
 #!/usr/bin/perl -w
 #
 # A script 
-#  extractexamples.pl <INFILES> <PREFIX>
+#  extractexamples.pl <PREFIX> <htmlfilename> <INFILES> 
 # which 
 # - processes every input .tex file
 # - extracts all tikzpicture-environments which are inside of a codeexample
 # - generates <PREFIX>_<index>.tex
+# - writes an index-html file into <htmlfilename>
 #
 # Furthermore, it processes every LaTeX Comment which is DIRECTLY before the codeexample to export:
 #
@@ -19,12 +20,21 @@
 # 
 # See the associated Makefile which also exports each thing into pdf and png.
 
-$#ARGV > 0 or die('expected INFILES PREFIX.');
+$#ARGV > 0 or die('expected OUTPREFIX OUTHTML INFILE[s].');
 
-$OUTPREFIX=$ARGV[$#ARGV];
+$OUTPREFIX=$ARGV[0];
+$OUTHTMLNAME=$ARGV[1];
 
 $header = 
 '\documentclass{minimal}
+
+% This file is an extract of the PGFPLOTS manual, copyright by Christian Feuersaenger.
+% 
+% Feel free to use it as long as you cite the pgfplots manual properly.
+%
+% See
+%   http://pgfplots.sourceforge.net/pgfplots.pdf
+% for the complete manual.
 
 \usepackage{pgfplots}
 
@@ -64,8 +74,16 @@ $plotcoord_cmd='
 ';
 
 $i = 0;
+open OUTHTML,'>',$OUTHTMLNAME or die('could not open $OUTHTMLNAME for writing.');
+print OUTHTML 
+'<html>
+<head>
+	<link rel="stylesheet" type="text/css" href="gallery.css">
+</head>
+<body>
+';
 
-for($j = 0; $j<$#ARGV; ++$j ) {
+for($j = 2; $j<=$#ARGV; ++$j ) {
 	open FILE,$ARGV[$j] or die("could not open ".$ARGV[$j]);
 
 	@S = stat(FILE);
@@ -93,8 +111,20 @@ for($j = 0; $j<$#ARGV; ++$j ) {
 		print OUTFILE $match;
 		print OUTFILE "\n\\end{document}\n";
 		close(OUTFILE);
+
+		$png = $outfile;
+		$png =~ s/.tex/.png/;
+		print OUTHTML "<div class=\"img\">\n";
+		print OUTHTML "\t<a href=\"".$outfile."\"><img src=\"".$png."\"/></a>\n";
+		print OUTHTML "\t<a class=\"texlink\" href=\"".$outfile."\">.tex</a>\n";
+		print OUTHTML "</div>\n";
 	}
 
 }
+print OUTHTML 
+'</body>
+</html>
+';
+close OUTHTML;
 print "Exported ".$i." examples.\n";
 exit 0

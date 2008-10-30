@@ -10,7 +10,7 @@ all: prepare
 	$(MAKE) images
 
 prepare: $(DOC_SRC)
-	./extractexamples.pl $(DOC_SRC) ./example
+	./extractexamples.pl ./example ./index.html $(DOC_SRC) 
 
 clean:
 	rm ./example* 
