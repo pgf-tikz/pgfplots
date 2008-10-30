@@ -20,6 +20,13 @@
 # 
 # See the associated Makefile which also exports each thing into pdf and png.
 
+
+sub maskForHTML {
+	my $arg = $_[0];
+#	$arg =~ s/
+	return $arg;
+}
+
 $#ARGV > 0 or die('expected OUTPREFIX OUTHTML INFILE[s].');
 
 $OUTPREFIX=$ARGV[0];
@@ -117,6 +124,7 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 		print OUTHTML "<div class=\"img\">\n";
 		print OUTHTML "\t<a href=\"".$outfile."\"><img src=\"".$png."\"/></a>\n";
 		print OUTHTML "\t<a class=\"texlink\" href=\"".$outfile."\">.tex</a>\n";
+		print OUTHTML "\t<div class=\"texsrc\">".maskForHTML($match)."</div>\n";
 		print OUTHTML "</div>\n";
 	}
 
