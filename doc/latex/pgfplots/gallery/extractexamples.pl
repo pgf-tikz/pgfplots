@@ -102,7 +102,7 @@ print OUTHTML
 </head>
 <body>
 <h2>PGFPlots Gallery</h2>
-<h4>The following graphics have been generated with the LaTeX Package <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a>.</h4>
+<h4>The following graphics have been generated with the LaTeX Package <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a> and <a href="http://pgfplots.sourceforge.net/pgfplotstable.pdf">PGFPlotsTable</a>.</h4>
 ';
 
 for($j = 2; $j<=$#ARGV; ++$j ) {
@@ -162,7 +162,7 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 			print OUTHTML "<div class=\"img\">\n";
 			if( $largegraphics ) {
 				print OUTHTML "\t<span class=\"largegraphics\">\n";
-				print OUTHTML "\t\t<a class=\"texlink_from_image\" href=\"".$outfile."\"><img src=\"".$png."\"/></a><br/>\n";
+				print OUTHTML "\t\t<a class=\"texlink_from_image\" href=\"".$pdf."\"><img src=\"".$png."\"/></a><br/>\n";
 				print OUTHTML "\t\t<a class=\"texlink\" href=\"".$outfile."\">[.tex]</a>\n";
 				print OUTHTML "\t\t<a class=\"pdflink\" href=\"".$pdf."\">[.pdf]</a>\n";
 				print OUTHTML "\t</span>\n";
@@ -170,7 +170,7 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 				print OUTHTML "</div>\n";
 			} else {
 				print OUTHTML "\t<span class=\"graphics\">\n";
-				print OUTHTML "\t\t<a class=\"texlink_from_image\" href=\"".$outfile."\"><img src=\"".$png."\"/></a><br/>\n";
+				print OUTHTML "\t\t<a class=\"texlink_from_image\" href=\"".$pdf."\"><img src=\"".$png."\"/></a><br/>\n";
 				print OUTHTML "\t\t<a class=\"texlink\" href=\"".$outfile."\">[.tex]</a>\n";
 				print OUTHTML "\t\t<a class=\"pdflink\" href=\"".$pdf."\">[.pdf]</a>\n";
 				print OUTHTML "\t</span>\n";
