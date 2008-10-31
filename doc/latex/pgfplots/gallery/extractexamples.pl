@@ -116,6 +116,9 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 	$autoheaders = '';
 	$largegraphics = 0;
 
+	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[[^\n]*\])\n(.*?)[\n \t]*\\end{codeexample}/gs );
+	#	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[\])\n(\\begin{tikzpicture}.*?\\end{tikzpicture})/gs );
+
 	if( $ARGV[$j] =~ m/pgfplotstable.tex/ ) {
 		$largegraphics = 1;
 		$autoheaders = '
@@ -125,11 +128,6 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 \usepackage{eurosym}
 \usepackage{amsmath}
 ';
-
-
-		@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[[^\n]*\])\n(.*?)\n\\end{codeexample}/gs );
-	} else {
-		@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[\])\n(\\begin{tikzpicture}.*?\\end{tikzpicture})/gs );
 	}
 
 	for( $q=0; $q<=$#matches/3; $q++ ) {
@@ -139,9 +137,21 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 		$prefix =~ s/% //;
 		$codeexamplearg= $matches[3*$q+1];
 		$match = $matches[3*$q+2];
+
+		# Make sure we have only "relevant" pictures:
+		next if not ($match =~ m/tikzpicture.*(axis|semilogxaxis|semilogyaxis|loglogaxis).*\\addplot|pgfplotstabletypeset/s);
+
+		# no complete examples:
+		next if ($match =~ m/\\begin{document}/); 
+
 		$match =~ s/\\plotcoords/$plotcoord_cmd/o;
 
-		if ( not ($codeexamplearg =~ m/code only/) ) {
+		if ( ($codeexamplearg =~ m/code only/) ) {
+			print OUTHTML "<div class=\"img\">\n";
+			print OUTHTML "\t<div class=\"codeonly\">".maskForHTML($match)."</div>\n";
+			print OUTHTML "</div>\n";
+
+		} else {
 			$outfile = $OUTPREFIX."_".($i++).".tex";
 	#print "$i PREFIX: ".$prefix."\n";
 	#print "$i : ".$match."\n\n";
@@ -177,10 +187,6 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 				print OUTHTML "\t<div class=\"texsrc\">".maskForHTML($match)."</div>\n";
 				print OUTHTML "</div>\n";
 			}
-		} else {
-			print OUTHTML "<div class=\"img\">\n";
-			print OUTHTML "\t<div class=\"codeonly\">".maskForHTML($match)."</div>\n";
-			print OUTHTML "</div>\n";
 		}
 	}
 
@@ -191,4 +197,4 @@ print OUTHTML
 ';
 close OUTHTML;
 print "Exported ".$i." examples.\n";
-exit 0
+exit 0;

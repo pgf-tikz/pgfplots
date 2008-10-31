@@ -1,4 +1,8 @@
 # converts all examples from pgfplots and pgfplotstable to graphics and assembles a pretty-printed HTML gallery.
+#
+#
+# REQUIREMENTS:
+# make sure TEXINPUTS contains the doc/latex/pgfplots/ tree recursively.
 
 DOC_SRC=$(wildcard ../pgfplots.*.tex) ../pgfplotstable.tex
 # DOC_SRC:=../pgfplotstable.tex
