@@ -1766,34 +1766,41 @@
 	\scope[/pgfplots/every outer #1 axis line,
 		#1discont,decoration={pre length=\csname #1disstart\endcsname, post length=\csname #1disend\endcsname}]
 	\ifcase\csname pgfplots@#1axislinesnum\endcsname\relax
-		\draw decorate {
-			\pgfextra
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2min\endcsname}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2min\endcsname}}%
-			\endpgfextra 
-			};
-		\draw decorate {
-			\pgfextra
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2max\endcsname}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2max\endcsname}}%
-			\endpgfextra 
-			};
-
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{0}{%
+			\draw decorate {
+				\pgfextra
+				\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2min\endcsname}}%
+				\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2min\endcsname}}%
+				\endpgfextra 
+				};
+		}{\relax}%
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{1}{%
+			\draw decorate {
+				\pgfextra
+				\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2max\endcsname}}%
+				\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2max\endcsname}}%
+				\endpgfextra 
+				};
+		}{\relax}%
 	\or
-		\draw decorate { 
-			\pgfextra
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2min\endcsname}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2min\endcsname}}%
-			\endpgfextra 
-			};
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{0}{%
+			\draw decorate { 
+				\pgfextra
+				\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2min\endcsname}}%
+				\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2min\endcsname}}%
+				\endpgfextra 
+				};
+		}{\relax}%
 	\or 
 	\or
-		\draw decorate {
-			\pgfextra
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2max\endcsname}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2max\endcsname}}%
-			\endpgfextra 
-			};
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{1}{%
+			\draw decorate {
+				\pgfextra
+				\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@#2max\endcsname}}%
+				\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#2max\endcsname}}%
+				\endpgfextra 
+				};
+		}{\relax}%
 	\fi
 	\endscope
 }%
@@ -3449,6 +3456,13 @@
 		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
 		{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
 	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\noexpand\pgf@y=\the\pgf@y}%
+	%
+	\ifpgfplots@threedim
+		\pgfpointdiff
+			{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
+			{\pgfplotsqpointxy{\pgfplots@zmin}{\pgfplots@zmax}}%
+		\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\noexpand\pgf@y=\the\pgf@y}%
+	\fi
 	\endgroup
 %--------------------------------------------------
 % \begingroup
@@ -3787,6 +3801,8 @@
 		\fi
 	\fi
 	%
+	\pgfplots@decide@which@figure@surfaces@are@drawn
+	%
 	% compute tick position lists
 	% 	\pgfplots@prepared@tick@positions@minor@x
 	% and
@@ -3868,6 +3884,154 @@
 		\pgfplots@draw@axis@insurface@symmetric xyz2
 	\fi
 }%
+
+% Defines booleans for every surface of the axis cube indicating
+% whether they shall be drawn or not.
+%
+% For 2D, the only available surface is 'vv0' (x=variing; y=variing; z=zmin)
+% For 3D, there are surfaces
+% 	- 'vv0' 'vv1'
+% 	- 'v0v' 'v1v'
+% 	' '0vv' '1vv'
+% 
+% @see \pgfplotspointonorientedsurfaceabmatchaxisline for details
+% about those three-character ids.
+%
+% @PRECONDITION
+%
+% @POSTCONDITION
+%   for every available surface, a macro '\pgfplots@surfenabled@CCC'
+%   is defined to be either '0' or '1'.
+%   Thus, we don't have real TeX booleans, "only" those one-character
+%   strings.
+%
+% ABOUT THE ALGORITHM:
+% I find it really hard to decide exactly which surfaces shall be drawn. After
+% all, PGF is 2D and notions like "above" are not possible.
+% So, I resorted to an heuristic approach which will (hopefully) prove
+% to be a good idea:
+%
+% ASSUMPTION:
+% 	1. We have a right-handed-coordinate system. The heuristics here
+% 	WILL fail in every other case.
+% 	2. The z-axis points to the top of the paper.
+% 	Again, the heuristics WILL fail if that is not the case.
+% Both assumptions happen to be reasonable for most cases.
+% I will have to think about those cases where they are not
+% reasonable.
+%
+% Now, the heuristics ONLY CHECKS THE 'y' components of the the three
+% basis vectors. Since per assumption (1.), z_y > 0, there remain only 
+% a handful of cases for x_y > 0, x_y <0, y_y > 0 and y_y <0. I have
+% hard-coded good approaches for each of them below.
+\def\pgfplots@decide@which@figure@surfaces@are@drawn{%
+	\ifpgfplots@threedim
+		\begingroup
+		\gdef\pgfplots@glob@TMPa{%
+			% This here is the "fall-back" solution: simple enable
+			% every axis.
+			\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+			\expandafter\def\csname pgfplots@surfenabled@vv1\endcsname{1}%
+			\expandafter\def\csname pgfplots@surfenabled@v0v\endcsname{1}%
+			\expandafter\def\csname pgfplots@surfenabled@v1v\endcsname{1}%
+			\expandafter\def\csname pgfplots@surfenabled@0vv\endcsname{1}%
+			\expandafter\def\csname pgfplots@surfenabled@1vv\endcsname{1}%
+		}%
+		\let\xaxisy=\pgf@ya
+		\let\yaxisy=\pgf@yb
+		\let\zaxisy=\pgf@yc
+		\pgfplotspointxaxis
+		\xaxisy=\pgf@y
+		\pgfplotspointyaxis
+		\yaxisy=\pgf@y
+		\pgfplotspointzaxis
+		\zaxisy=\pgf@y
+		\ifdim\zaxisy>0pt
+			% CASE I :
+			\ifdim\xaxisy>0pt
+			\else
+				\ifdim\yaxisy>0pt
+				\else
+					\gdef\pgfplots@glob@TMPa{%
+						\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@vv1\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v0v\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v1v\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@0vv\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@1vv\endcsname{0}%
+						%
+						\def\pgfplots@xticklabelaxisspec{v00}%
+						\def\pgfplots@yticklabelaxisspec{1v0}%
+						\def\pgfplots@zticklabelaxisspec{00v}%
+					}%
+				\fi
+			\fi
+			% CASE II:
+			\ifdim\xaxisy<0pt
+			\else
+				\ifdim\yaxisy<0pt
+				\else
+					\gdef\pgfplots@glob@TMPa{%
+						\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@vv1\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v0v\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v1v\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@0vv\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@1vv\endcsname{1}%
+						%
+						\def\pgfplots@xticklabelaxisspec{v00}%
+						\def\pgfplots@yticklabelaxisspec{0v0}%
+						\def\pgfplots@zticklabelaxisspec{01v}%
+					}%
+				\fi
+			\fi
+			% CASE III:
+			\ifdim\xaxisy<0pt
+			\else
+				\ifdim\yaxisy>0pt
+				\else
+					\gdef\pgfplots@glob@TMPa{%
+						\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@vv1\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v0v\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@v1v\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@0vv\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@1vv\endcsname{1}%
+						%
+						\def\pgfplots@xticklabelaxisspec{v10}%
+						\def\pgfplots@yticklabelaxisspec{0v0}%
+						\def\pgfplots@zticklabelaxisspec{11v}%
+					}%
+				\fi
+			\fi
+			% CASE IV:
+			\ifdim\xaxisy>0pt
+			\else
+				\ifdim\yaxisy>0pt
+				\else
+					\gdef\pgfplots@glob@TMPa{%
+						\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@vv1\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@v0v\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@v1v\endcsname{0}%
+						\expandafter\def\csname pgfplots@surfenabled@0vv\endcsname{1}%
+						\expandafter\def\csname pgfplots@surfenabled@1vv\endcsname{0}%
+						%
+						\def\pgfplots@xticklabelaxisspec{v10}%
+						\def\pgfplots@yticklabelaxisspec{1v0}%
+						\def\pgfplots@zticklabelaxisspec{10v}%
+					}%
+				\fi
+			\fi
+		\fi
+		\endgroup
+		% and activate the macro:
+		\pgfplots@glob@TMPa
+	\else
+		\expandafter\def\csname pgfplots@surfenabled@vv0\endcsname{1}%
+		\def\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn##1##2##3{##2}% ALWAYS TRUE
+	\fi
+}
 
 % Processes every tick mark in direction #1 and draws tick lines, tick
 % labels, grid lines, axis lines and extra ticks.
