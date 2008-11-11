@@ -20,6 +20,7 @@ tar czf pgfplots.tgz \
 		 --exclude='*.dvi' \
 		 --exclude='*.blg' \
 		 --exclude='pgfplots/doc/latex/pgfplots/gnuplot/*' \
+		 --exclude='pgfplots/doc/latex/pgfplots/gallery' \
 		 --exclude='pgfplotstest.pdf' \
 		 --exclude='pgfmathlogtest.pdf' \
 		 --exclude='numtabletest.pdf' \
