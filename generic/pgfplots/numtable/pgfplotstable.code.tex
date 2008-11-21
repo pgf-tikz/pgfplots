@@ -164,24 +164,25 @@
 		\pgfplots@assert@LaTeX@package@loaded{array}{dec sep align}%
 		\pgfkeysalso{%
 		/pgf/number format/assume math mode,
-		/pgf/number format/@dec sep mark={&},
+		/pgf/number format/@dec sep mark={$&$},
 		/pgfplots/table/assign column name/.code={%
 			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
 		},%
-		/pgfplots/table/column type={>{$}r<{$}@{}>{$}l<{$}},
+		/pgfplots/table/column type={%
+			r<{\pgfplotstableresetcolortbloverhangright}%
+			@{}%
+			l<{\pgfplotstableresetcolortbloverhangleft}%
+		},
 		/pgfplots/table/assign cell content/.code={%
 			\def\pgfmathresult{##1}%
 			\ifx\pgfmathresult\pgfutil@empty
 				\def\pgfmathresult{&}%
-			%	\pgfutil@in@false
 			\else
 				\pgfmathprintnumberto{##1}\pgfmathresult%
-			%	\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+				% now make sure we have math mode for the single
+				% columns:
+				\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
 			\fi
-			%\ifpgfutil@in@
-			%\else
-			%	\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult&}%
-			%\fi
 			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
 		},
 		}%
@@ -191,23 +192,29 @@
 		\pgfplots@assert@LaTeX@package@loaded{array}{sci sep align}%
 		\pgfkeysalso{%
 		/pgf/number format/assume math mode,
-		/pgf/number format/@sci exponent mark={&},
+		/pgf/number format/@sci exponent mark={$&$},
 		/pgfplots/table/assign column name/.code={%
 			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
 		},%
-		/pgfplots/table/column type={>{$}r<{$}@{}>{$}l<{$}},
+		/pgfplots/table/column type={%
+			r<{\pgfplotstableresetcolortbloverhangright}%
+			@{}%
+			l<{\pgfplotstableresetcolortbloverhangleft}%
+		},
 		/pgfplots/table/assign cell content/.code={%
 			\def\pgfmathresult{##1}%
 			\ifx\pgfmathresult\pgfutil@empty
 				\def\pgfmathresult{&}%
-				\pgfutil@in@true
 			\else
 				\pgfmathprintnumberto{##1}\pgfmathresult%
 				\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
-			\fi
-			\ifpgfutil@in@
-			\else
-				\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult&}%
+				% now make sure we have math mode for the single
+				% columns:
+				\ifpgfutil@in@
+					\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+				\else
+					\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter\pgfutilensuremath\expandafter{\pgfmathresult}&}%
+				\fi
 			\fi
 			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
 		},
@@ -305,6 +312,16 @@
 			\fi
 		}
 	},
+	/pgfplots/table/string replace/.style 2 args={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\def\pgfplots@loc@TMPa{#1}%
+			\ifx\pgfmathresult\pgfplots@loc@TMPa
+				\def\pgfplots@loc@TMPb{#2}%
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplots@loc@TMPb}%
+			\fi
+		}
+	},
 	/pgfplots/table/multiply -1/.style={%
 		/pgfplots/table/preproc cell content/.append code={%
 			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
@@ -389,6 +406,12 @@
 			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
 		}%
 	},
+	/pgfplots/table/create col/set/.style={%
+		/pgfplots/table/create col/assign/.code={%
+			\def\pgfmathresult{#1}%
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		}%
+	},%
 	/pgfplots/table/create col/expr/.style={%
 		/pgfplots/table/create col/assign/.code={%
 			\pgfmathparse{#1}%
@@ -652,6 +675,35 @@
 	},%
 }
 \pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent@EMPTY
+
+
+% A helper macro to automatically remove the "hangover" created by
+% 'colortbl'.
+% This allows compatibility between my 'sci sep align' and 'dec sep align' 
+% implementations and \rowcolor. Otherwise, the hangover
+% would overwrite digits near the separator.
+%
+% @remark This does also work if colortbl is not loaded.
+\def\pgfplotstableresetcolortbloverhangright{%
+	\pgfutil@ifundefined{CT@row@color}{\relax}{%
+		\global\let\pgfplots@origrowcolorcmd=\CT@row@color
+		\gdef\CT@row@color{%
+			\pgfplots@origrowcolorcmd
+			\@tempdimc=0pt
+			\global\let\CT@row@color=\pgfplots@origrowcolorcmd
+		}%
+	}%
+}%
+\def\pgfplotstableresetcolortbloverhangleft{%
+	\pgfutil@ifundefined{CT@row@color}{\relax}{%
+		\global\let\pgfplots@origrowcolorcmd=\CT@row@color
+		\gdef\CT@row@color{%
+			\pgfplots@origrowcolorcmd
+			\@tempdimb=0pt
+			\global\let\CT@row@color=\pgfplots@origrowcolorcmd
+		}%
+	}%
+}%
 
 % \pgfplotstableread[OPTIONS] {FILE} to \name
 %
@@ -1705,7 +1757,7 @@
 			\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first column}%
 		\fi
 		% save this now before we increment '\c@pgfplotstable@colindex':
-		\edef\pgfplotstable@displaycolkey{display columns/\the\c@pgfplotstable@colindex/.try}%
+		\edef\pgfplotstable@displaycolkey{display columns/\the\c@pgfplotstable@colindex/.try,every col no \the\c@pgfplotstable@colindex/.try}%
 		%
 		\global\advance\c@pgfplotstable@colindex by1\relax
 		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
@@ -1784,6 +1836,7 @@
 %\message{I have now \meaning\pgfplotstabletypeset@final@colnames, and \meaning\pgfplotstabletypeset@final@cols.}%
 	% Step 1: column names.
 	\c@pgfplotstable@colindex=0\relax
+	\c@pgfplotstable@rowindex=-1\relax
 	% STEP 1.1: collect column types:
 	\def\pgfplotstable@resulttypes{}%
 	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
@@ -1952,6 +2005,8 @@
 		\immediate\closeout\pgfplotstable@outfile
 	\fi
 %\message{I have now \meaning\pgfplotstable@result.}%
+	\def\pgfplotstablecol{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
+	\def\pgfplotstablerow{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
 	\pgfplotstable@result
 	\fi
 	\endgroup
