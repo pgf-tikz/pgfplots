@@ -305,7 +305,7 @@ function initTextField( x,y, textField, displayOpts, value )
 		textField.display = display.noPrint;
 }
 
-function placeAnnot( plotRegionField, x,y, textField, plotLimits, displayOpts, retCoords )
+function placeAnnot( plotRegionField, x,y, textField, axisAnnotObj, displayOpts, retCoords )
 {
 	// Get and modify bounding box. The mouse movement is only accurate up to one point 
 	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
@@ -326,17 +326,17 @@ function placeAnnot( plotRegionField, x,y, textField, plotLimits, displayOpts, r
 	var unitx = mx / w;
 	var unity = my / h;
 
-	var realx = plotLimits.xmin + unitx * (plotLimits.xmax - plotLimits.xmin);
-	var realy = plotLimits.ymin + unity * (plotLimits.ymax - plotLimits.ymin);
+	var realx = axisAnnotObj.xmin + unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
+	var realy = axisAnnotObj.ymin + unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
 
 	if( retCoords ) {
 		retCoords[0] = realx;
 		retCoords[1] = realy;
 	}
 
-	if( plotLimits.xscale == "log" )
+	if( axisAnnotObj.xscale == "log" )
 		realx = Math.exp(realx);
-	if( plotLimits.yscale == "log" )
+	if( axisAnnotObj.yscale == "log" )
 		realy = Math.exp(realy);
 
 //	console.println( "w = " + w + "; h = " + h );
@@ -351,7 +351,7 @@ function placeAnnot( plotRegionField, x,y, textField, plotLimits, displayOpts, r
 
 /**
  * @param formName the name of the clickable button. It is expected to be as large as the underlying plot.
- * @param plotLimits an object with the fields
+ * @param axisAnnotObj an object with the fields
  *   - xmin, xmax
  *   - ymin, ymax
  *   - xscale, yscale
@@ -363,7 +363,7 @@ function placeAnnot( plotRegionField, x,y, textField, plotLimits, displayOpts, r
  *       ["RGB",1,1,.855]
  *	 - textFont / textSize
  */
-function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp ) 
+function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp ) 
 {
 	if( !bMouseUp ) {
 		posOnMouseDownX = mouseX;
@@ -398,8 +398,8 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 	if( Math.abs( lastMouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
 		Math.abs( lastMouseY - posOnMouseDownY ) > 6 )
 	{
-		placeAnnot( a, posOnMouseDownX, posOnMouseDownY, result, plotLimits, displayOpts, tmpArray1 );
-		placeAnnot( a, lastMouseX, lastMouseY, result2, plotLimits, displayOpts, tmpArray2 );
+		placeAnnot( a, posOnMouseDownX, posOnMouseDownY, result, axisAnnotObj, displayOpts, tmpArray1 );
+		placeAnnot( a, lastMouseX, lastMouseY, result2, axisAnnotObj, displayOpts, tmpArray2 );
 
 		var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
 		var n =  tmpArray1[1] - m * tmpArray1[0];
@@ -419,7 +419,7 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 		%-------------------------------------------------- 
 
 	} else {
-		placeAnnot( a, lastMouseX, lastMouseY, result, plotLimits, displayOpts, null );
+		placeAnnot( a, lastMouseX, lastMouseY, result, axisAnnotObj, displayOpts, null );
 	}
 }
 \end{insDLJS}
@@ -469,11 +469,86 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 	annot/font/.initial={font.Times},
 %	annot/font={"CMR10"},
 	annot/textSize/.initial=11,
+	annot/width/.initial=,
+	annot/height/.initial=,
+	annot/jsname/.initial=,
+	annot/xmin/.initial=,
+	annot/xmax/.initial=,
+	annot/ymin/.initial=,
+	annot/ymax/.initial=,
+	annot/xscale/.initial=, % "log" or "linear"
+	annot/yscale/.initial=,
 	every semilogy axis/.append style={/pgfplots/annot/point format={(\%.1f,\%.1e)}},
 	every semilogx axis/.append style={/pgfplots/annot/point format={(\%.1e,\%.1f)}},
 	every loglog axis/.append style={/pgfplots/annot/point format={(\%.1e,\%.1e)}},
 }
 
+% Creates an area which is clickable. A click produces a popup which
+% contains information about the point under the cursor.
+%
+% The complete (!) context needs to be provided using key-value-pairs,
+% either in '#1' or set before invocation of \pgfplotsclickablecreate.
+%
+% This command actually creates an AcroForm which employs javascript
+% whenever it is clicked. A javascript Object is created which
+% represents the context (axis limits and options). This javascript
+% object is available at runtime.
+%
+% @remark This method is public and it is NOT restricted to pgfplots.
+% The pgfplots hook simply initialises the required key-value-pairs in
+% '#1'.
+% @remark This method does not draw anything. It initialises only a
+% clickable area and javascript code.
+%
+% The required key-value-pairs are documented in the pdf-manual or can
+% be seen above.
+%
+% @attention Complete key-value validation is NOT performed here. It
+% can happen that invalid options will produce javascript bugs when
+% opened with Acrobat Reader. Use the javascript console to find them.
+\def\pgfplotsclickablecreate[#1]{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/annot}{#1}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/annot/jsname}\pgfplots@clickable@uniquename
+	\ifx\pgfplots@clickable@uniquename\pgfutil@empty
+		\edef\pgfplots@clickable@uniquename{clickableplot\pgfplots@clickable@no}%
+		\begingroup
+			\c@pgf@counta=\pgfplots@clickable@no\relax
+			\advance\c@pgf@counta by1
+			\xdef\pgfplots@clickable@no{\the\c@pgf@counta}%
+		\endgroup
+	\fi
+	\edef\pgfplots@clickable@expanded@args{% FIXME : is that a good idea to do!? Are user-args expandable?
+		{\pgfkeysvalueof{/pgfplots/annot/width}}%
+		{\pgfkeysvalueof{/pgfplots/annot/height}}%
+		{\pgfplots@clickable@uniquename}%
+		{{
+			xmin:\pgfkeysvalueof{/pgfplots/annot/xmin}, 
+			xmax:\pgfkeysvalueof{/pgfplots/annot/xmax},
+			ymin:\pgfkeysvalueof{/pgfplots/annot/ymin},
+			ymax:\pgfkeysvalueof{/pgfplots/annot/ymax},
+			xscale:"\pgfkeysvalueof{/pgfplots/annot/xscale}",
+			yscale:"\pgfkeysvalueof{/pgfplots/annot/yscale}"
+		}}%
+		{{
+			pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
+			slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
+			fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
+			textFont:\pgfkeysvalueof{/pgfplots/annot/font},
+			textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
+			printable: \ifpgfplots@annot@printable true\else false\fi
+		}}%
+	}%
+	\expandafter\pgfplots@create@clickable@plotarea\pgfplots@clickable@expanded@args
+}%
+
+
+% This thing is invoked from within pgfplots. It prepares and invokes
+% \pgfplotsclickablecreate.
+% 
 \def\pgfplots@create@clickable@plotarea@hook{%
 	\ifpgfplots@clickable
 		\begingroup
@@ -507,44 +582,37 @@ function processAnnotatedPlot(formName, plotLimits, displayOpts, bMouseUp )
 				{\pgfpointadd{\yaxisvec}{\xaxisvec}}}%
 		\edef\pgfplots@clickable@wd{\the\pgf@x}%
 		\edef\pgfplots@clickable@ht{\the\pgf@y}%
-		\edef\pgfplots@clickable@expanded@args{% FIXME : is that a good idea to do!? Are user-args exandable?
-			{\pgfplots@clickable@wd}%
-			{\pgfplots@clickable@ht}%
-			{clickableplot\pgfplots@clickable@no}%
-			{{
-				xmin:\pgfplots@clickable@xmin, 
-				xmax:\pgfplots@clickable@xmax,
-				ymin:\pgfplots@clickable@ymin,
-				ymax:\pgfplots@clickable@ymax,
-				xscale:"\ifpgfplots@xislinear linear\else log\fi",
-				yscale:"\ifpgfplots@yislinear linear\else log\fi"
-			}}%
-			{{
-				pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
-				slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
-				fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
-				textFont:\pgfkeysvalueof{/pgfplots/annot/font},
-				textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
-				printable: \ifpgfplots@annot@printable true\else false\fi
-			}}%
-		}%
+		%
+		% Convert to user interface of clickable lib:
+		\pgfkeyslet{/pgfplots/annot/width}\pgfplots@clickable@wd
+		\pgfkeyslet{/pgfplots/annot/height}\pgfplots@clickable@ht
+		\pgfkeyslet{/pgfplots/annot/xmin}\pgfplots@clickable@xmin
+		\pgfkeyslet{/pgfplots/annot/xmax}\pgfplots@clickable@xmax
+		\pgfkeyslet{/pgfplots/annot/ymin}\pgfplots@clickable@ymin
+		\pgfkeyslet{/pgfplots/annot/ymax}\pgfplots@clickable@ymax
+		\ifpgfplots@xislinear
+			\pgfkeyssetvalue{/pgfplots/annot/xscale}{linear}%
+		\else
+			\pgfkeyssetvalue{/pgfplots/annot/xscale}{linear}%
+		\fi
+		\ifpgfplots@yislinear
+			\pgfkeyssetvalue{/pgfplots/annot/yscale}{linear}%
+		\else
+			\pgfkeyssetvalue{/pgfplots/annot/yscale}{log}%
+		\fi
 		\pgfinterruptboundingbox%
-		\pgftext[left,bottom,at=\lowerleftinnercorner]
-			{\expandafter\pgfplots@create@clickable@plotarea\pgfplots@clickable@expanded@args}%
+		\pgftext[left,bottom,at=\lowerleftinnercorner]{\pgfplotsclickablecreate[]}%
 		\endpgfinterruptboundingbox%
-		\begingroup
-			\c@pgf@counta=\pgfplots@clickable@no\relax
-			\advance\c@pgf@counta by1
-			\xdef\pgfplots@clickable@no{\the\c@pgf@counta}%
-		\endgroup
 		\endgroup
 	\fi
 }
 
+% This is the low-level method which creates Acroforms and Javascript
+% code.
 % #1: width
 % #2: height
 % #3: name
-% #4: the plotLimits object (see javascript docs)
+% #4: the axisAnnotObj object (see javascript docs)
 % #5: the displayOpts object (see javascript docs)
 \def\pgfplots@create@clickable@plotarea#1#2#3#4#5{%
 %\tracingmacros=2\tracingcommands=2
