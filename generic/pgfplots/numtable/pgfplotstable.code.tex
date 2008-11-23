@@ -32,6 +32,8 @@
 \newcount\c@pgfplotstable@counta
 \newwrite\pgfplotstable@outfile
 \newif\ifpgfplotstabletypesetdebug
+\newif\ifpgfplotstabletypesetskipcoltypes
+\newif\ifpgfplotstabletypesetresult
 \newif\ifpgfplotstableuserow
 \newif\ifpgfplotstabletypeset@includeoutfiles
 \newif\ifpgfplotstabletypeset@force@remake
@@ -252,6 +254,11 @@
 	/pgfplots/table/include outfiles/.default=true,
 	/pgfplots/table/force remake/.is if=pgfplotstabletypeset@force@remake,
 	/pgfplots/table/force remake/.default=true,
+	/pgfplots/table/write to macro/.initial=,
+	/pgfplots/table/typeset/.is if=pgfplotstabletypesetresult,
+	/pgfplots/table/typeset=true,
+	/pgfplots/table/skip coltypes/.is if=pgfplotstabletypesetskipcoltypes,
+	/pgfplots/table/skip coltypes/.default=true,
 	/pgfplots/table/debug/.is if=pgfplotstabletypesetdebug,
 	%
 	% will be redefined by |assign cell content| for every cell:
@@ -673,7 +680,15 @@
 			}%
 		},%
 	},%
+	/pgfplots/table/typeset cell/.code={%
+		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
+			\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1\\}%
+		\else
+			\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1&}%
+		\fi
+	},
 }
+\pgfkeyslet{/pgfplots/table/TeX comment}\pgfplots@PERCENT@TEXT
 \pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent@EMPTY
 
 
@@ -982,6 +997,16 @@
 		\pgfplotstableread{#2}\pgfplotstabletypesetfile@opt@@
 		\pgfplotstabletypeset\pgfplotstabletypesetfile@opt@@
 	\fi
+	\pgfkeysgetvalue{/pgfplots/table/write to macro}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@loc@TMPa{\pgfutil@empty}%
+	\else
+		\expandafter\ifx\pgfplots@loc@TMPa\relax
+			% is it really defined? NO! Sanity checking here:
+			\def\pgfplots@loc@TMPa{\pgfutil@empty}%
+		\fi
+	\fi
+	\expandafter\pgfmath@smuggleone\pgfplots@loc@TMPa
 	\endgroup
 }%
 
@@ -1659,6 +1684,7 @@
 		\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa,#1}%
 	\fi
 	\pgfkeysgetvalue{/pgfplots/table/outfile}\pgfplotstable@outfilename
+	\pgfkeysgetvalue{/pgfplots/table/TeX comment}\pgfplots@TeX@comment
 	\ifpgfplotstabletypeset@force@remake
 		\pgfplotstabletypeset@includeoutfilesfalse
 	\else
@@ -1698,7 +1724,7 @@
 		\immediate\write16{------- PGFPLOTSTABLE DEBUG MODE: --------}%
 		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-			\immediate\write16{\the\t@pgfplots@toka\pgfplots@PERCENT@TEXT}%
+			\immediate\write16{\the\t@pgfplots@toka\pgfplots@TeX@comment}%
 		}%
 	\fi
 	\ifx\pgfplotstable@outfilename\pgfutil@empty
@@ -1706,7 +1732,7 @@
 		\immediate\openout\pgfplotstable@outfile=\pgfplotstable@outfilename\relax
 		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-			\immediate\write\pgfplotstable@outfile{\the\t@pgfplots@toka\pgfplots@PERCENT@TEXT}%
+			\immediate\write\pgfplotstable@outfile{\the\t@pgfplots@toka\pgfplots@TeX@comment}%
 		}%
 	\fi
 	%
@@ -1837,13 +1863,6 @@
 	% Step 1: column names.
 	\c@pgfplotstable@colindex=0\relax
 	\c@pgfplotstable@rowindex=-1\relax
-	% STEP 1.1: collect column types:
-	\def\pgfplotstable@resulttypes{}%
-	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@resulttypes}%
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
-		\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-	}%
 	\let\pgfplotstable@result=\pgfutil@empty
 	%
 	\pgfkeysgetvalue{/pgfplots/table/font}{\pgfplotstable@font}%
@@ -1856,15 +1875,26 @@
 	%
 	\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
 	\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
-	\ifx\pgfplotstable@resulttypes\pgfutil@empty
-		\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
+	\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
+	%
+	\ifpgfplotstabletypesetskipcoltypes
 	\else
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
-		\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+		% STEP 1.1: collect column types:
+		\def\pgfplotstable@resulttypes{}%
+		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@resulttypes}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
+			\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		}%
+		\ifx\pgfplotstable@resulttypes\pgfutil@empty
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
+			\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+		\fi
 	\fi
 	\pgfplotstable@curline@FLUSH
 	%
-
 	% Step 1.2: Collect FIRST ROW (column names)
 	\begingroup
 	\pgfplotstableset{every head row}%
@@ -1884,13 +1914,16 @@
 	\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
 	%
 	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
+		%
 		\advance\c@pgfplotstable@colindex by1\relax
+		% typeset the cell:
+		\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
+		\expandafter\pgfplots@loc@TMPa\pgfplotstable@colname@out\pgfeov
+		\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+		%
+		% append this cell:
 		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
-			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out \\}%
-		\else
-			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out &}%
-		\fi
+		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
 		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 	}%
 	% insert 'after row' here:
@@ -1970,13 +2003,16 @@
 			\pgfplotslistpopfront\pgfplotstable@col@processed\to\pgfplotstable@entry
 			\pgfplotsarrayletentry\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array=\pgfplotstable@col@processed
 			\advance\c@pgfplotstable@colindex by1\relax
+			% typeset the cell:
+			\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
+			\expandafter\pgfplots@loc@TMPa\pgfplotstable@entry\pgfeov
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			%
+			% append this cell:
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-			\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry \\}%
-			\else
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry &}%
-			\fi
+			\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
 			\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			%
 			\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
 				\c@pgfplotstable@colindex=0\relax
 				% insert 'after row' here:
@@ -2007,9 +2043,19 @@
 %\message{I have now \meaning\pgfplotstable@result.}%
 	\def\pgfplotstablecol{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
 	\def\pgfplotstablerow{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
-	\pgfplotstable@result
+	\ifpgfplotstabletypesetresult
+		\pgfplotstable@result
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/write to macro}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\global\let\pgfplots@glob@TMPa=\relax
+	\else
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+		\xdef\pgfplots@glob@TMPa{\noexpand\def\expandafter\noexpand\pgfplots@loc@TMPa{\the\t@pgfplots@toka}}%
+	\fi
 	\fi
 	\endgroup
+	\pgfplots@glob@TMPa% execute 'write to macro' if set.
 }%
 
 \newif\ifpgfplotstable@isfirstrow
