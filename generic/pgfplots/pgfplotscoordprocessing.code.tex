@@ -30,6 +30,7 @@
 % - single coordinate processing
 
 
+
 % Denotes a point in a twodimensional hyperplane. The hyperplane is
 % one of the six planes of the threedimensional axis cube.
 % 
@@ -1585,7 +1586,9 @@
 % parser routines - it does NOT know that any numbers are already in
 % TeX-precision!
 %
-\long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{%
+\long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
+% \addplot[#1] (#2,#3) #4;
+\long\def\pgfplots@addplotimpl@expression@#1#2#3#4{%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
@@ -1657,6 +1660,7 @@
 {
   \catcode`\%=12
   \catcode`\"=12
+  \catcode`\;=12
   \xdef\pgfplots@gnuplot@format{set format "%.7e";}
 }
 
@@ -1666,8 +1670,9 @@
 % 	{gnuplot code} 
 % 	#3;
 % #1: args of \addplot[...]
-% #2: gnuplot code to generate coordinates
-% #3: trailing path commands until ';'
+% #2: optional arguments after function[]
+% #3: gnuplot code to generate coordinates
+% #4: trailing path commands until ';'
 \def\pgfplots@addplotimpl@function#1unction{%
 	\pgfutil@ifnextchar[{%
 		\pgfplots@addplotimpl@function@opt{#1}%
@@ -1675,7 +1680,9 @@
 		\pgfplots@addplotimpl@function@opt{#1}[]%
 	}%
 }%
-\def\pgfplots@addplotimpl@function@opt#1[#2]#3#4;{%
+\def\pgfplots@addplotimpl@function@opt#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
+% \addplot[#1] function[#2] {#3} #4;
+\def\pgfplots@addplotimpl@function@opt@#1#2#3#4{%
 	\def\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
@@ -1731,7 +1738,12 @@
 	\closein1
 	\endgroup
 	\ifpgfplots@loop@CONTINUE
-		\pgfplots@addplotimpl@file{#1}ile{#3}#2;%
+		 % Now, invoke 'plot file'.
+		 %
+		 % I invoke the private '@opt@' method because the semicolon ';' 
+		 % character may cause problems due to catcode mismatches.
+		 % *sigh*.
+		\pgfplots@addplotimpl@file@opt@{#1}{}{#3}{#2}%
 	\fi
 }
 
@@ -1747,7 +1759,8 @@
 }
 
 % \addplot[#1] file[#2] {#3} #4;
-\def\pgfplots@addplotimpl@file@opt#1[#2]#3#4;{%
+\def\pgfplots@addplotimpl@file@opt#1[#2]#3#4;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}}%
+\def\pgfplots@addplotimpl@file@opt@#1#2#3#4{%
 	\begingroup
 	\def\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -1851,7 +1864,9 @@
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
-\long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{%
+\long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{\pgfplots@addplotimpl@table@fromstructure@{#1}{#2}{#3}{#4}}%
+% \addplot[#1] table[#2] from {#3} #4 ;
+\long\def\pgfplots@addplotimpl@table@fromstructure@#1#2#3#4{%
 	\begingroup
 	% FIXME : this thing here has runtime O(N^2) !
 	% I fear it is faster to simply reload the data .... !?
@@ -2003,7 +2018,9 @@
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
-\long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{%
+\long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{\pgfplots@addplotimpl@table@fromfile@{#1}{#2}{#3}{#4}}%
+% \addplot[#1] table[#2] {#3} {#4};
+\long\def\pgfplots@addplotimpl@table@fromfile@#1#2#3#4{%
 	%--------------------------------------------------
 	% \begingroup
 	% \pgfplotstableset{#2}%
@@ -2212,7 +2229,9 @@
 % #1: arguments to \addplot[...]
 % #2: the plot coordinates
 % #3: any trailing path command before the final ';'. It will be used as-is.
-\long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{%
+\long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}}%
+% \addplot[#1] coordinates {#2} #3;
+\long\def\pgfplots@addplotimpl@coordinates@#1#2#3{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{processing plots coords with trailing path '#3'}%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#3}%
@@ -2222,6 +2241,45 @@
 		\pgfplots@coord@stream@foreach{#2}%
 	\fi
 }%
+
+{
+	% A block which handles active semicolons.
+	%
+	% ATTENTION: this block does only work if
+	% \pgfplots@addplotimpl.... changes are reflected here!
+	%
+	\catcode`\;=\active
+	\globaldefs=1
+	% 'AS' == 'active semicolon'
+	% 'IS' == 'inactive semicolon'
+	\let\pgfplots@gobble@until@semicolon@IS=\pgfplots@gobble@until@semicolon
+	\let\pgfplots@addplotimpl@expression@IS=\pgfplots@addplotimpl@expression
+	\let\pgfplots@addplotimpl@function@opt@IS=\pgfplots@addplotimpl@function@opt
+	\let\pgfplots@addplotimpl@file@opt@IS=\pgfplots@addplotimpl@file@opt
+	\let\pgfplots@addplotimpl@table@fromstructure@IS=\pgfplots@addplotimpl@table@fromstructure
+	\let\pgfplots@addplotimpl@table@fromfile@IS=\pgfplots@addplotimpl@table@fromfile
+	\let\pgfplots@addplotimpl@coordinates@IS=\pgfplots@addplotimpl@coordinates
+	%
+	\def\pgfplots@gobble@until@semicolon@AS#1;{}
+	\long\def\pgfplots@addplotimpl@expression@AS#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
+	\def\pgfplots@addplotimpl@function@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
+	\def\pgfplots@addplotimpl@file@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}}%
+	\long\def\pgfplots@addplotimpl@table@fromstructure@AS#1#2from#3#4;{\pgfplots@addplotimpl@table@fromstructure@{#1}{#2}{#3}{#4}}%
+	\long\def\pgfplots@addplotimpl@table@fromfile@AS#1#2#3#4;{\pgfplots@addplotimpl@table@fromfile@{#1}{#2}{#3}{#4}}%
+	\long\def\pgfplots@addplotimpl@coordinates@AS#1plot coordinates#2#3;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}}%
+	%
+	% Checks whether ';' is an active character and, if that is the
+	% case, modifies all public macros for it.
+	\pgfplots@appendto@activesemicolon@switcher{%
+		\let\pgfplots@gobble@until@semicolon=\pgfplots@gobble@until@semicolon@AS
+		\let\pgfplots@addplotimpl@expression=\pgfplots@addplotimpl@expression@AS
+		\let\pgfplots@addplotimpl@function@opt=\pgfplots@addplotimpl@function@opt@AS
+		\let\pgfplots@addplotimpl@file@opt=\pgfplots@addplotimpl@file@opt@AS
+		\let\pgfplots@addplotimpl@table@fromstructure=\pgfplots@addplotimpl@table@fromstructure@AS
+		\let\pgfplots@addplotimpl@table@fromfile=\pgfplots@addplotimpl@table@fromfile@AS
+		\let\pgfplots@addplotimpl@coordinates=\pgfplots@addplotimpl@coordinates@AS
+	}%
+}
 
 \newif\ifpgfplots@update@limits@for@one@point@ISCLIPPED
 \def\pgfplots@math@ONE{1.0}%
