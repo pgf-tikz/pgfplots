@@ -44,14 +44,6 @@
 \newif\ifpgfplots@yislinear
 \newif\ifpgfplots@zislinear
 \newcount\pgfplots@numplots
-\newdimen\pgfplots@xcoordminTEX
-\newdimen\pgfplots@xcoordmaxTEX
-\newdimen\pgfplots@ycoordminTEX
-\newdimen\pgfplots@ycoordmaxTEX
-\newdimen\pgfplots@zcoordminTEX
-\newdimen\pgfplots@zcoordmaxTEX
-% FIXME : at least ONE of the dimen sets for axis limits is
-% unnecessary with the change to logical coords!
 \newdimen\pgfplots@xmin@reg
 \newdimen\pgfplots@xmax@reg
 \newdimen\pgfplots@ymin@reg
@@ -3013,13 +3005,12 @@
 % The actual width is 
 % 	c + x*(xmax-xmin)
 % based on
-% - x*xmax = \pgfplots@xcoordmaxTEX
-% - x*xmin = \pgfplots@xcoordminTEX
 % - c = estimated, a constant for the axis label/tick labels
 %
 % Arguments: 
-% #1: the output argument for the SCALE.
-\def\pgfplots@initsizes@getXscale\into#1{%
+% #1: is expected to be x*(xmax-xmin) measured in pt.
+% #2: the output argument for the SCALE.
+\def\pgfplots@initsizes@getXscale#1\into#2{%
 	\begingroup
 	\pgf@xa=\pgfplots@width\relax
 	% EXPECTED WIDTH = X = \pgfplots@width
@@ -3037,8 +3028,7 @@
 		\pgf@xa=0pt
 	\fi
 	% \pgf@xb := x*(xmax-xmin):
-	\pgf@xb=\pgfplots@xcoordmaxTEX
-	\advance\pgf@xb by-\pgfplots@xcoordminTEX
+	\pgf@xb=#1%
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
 		{\pgf@sys@tonumber\pgf@xa}%
 		{\pgf@sys@tonumber\pgf@xb}%
@@ -3047,14 +3037,14 @@
 %	c=estimated, 
 %	width-c =\the\pgf@xa,  
 %	x*(xmax[=\the\pgfplots@xcoordmaxTEX] - xmin[=\the\pgfplots@xcoordminTEX)]) = \the\pgf@xb  
-%	-> x-scale =#1 }%
+%	-> x-scale =#2 }%
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
-	\let#1=\pgfmathresult
+	\let#2=\pgfmathresult
 }
 
 % The same as \pgfplots@initsizes@getXscale, just for the height.
-\def\pgfplots@initsizes@getYscale\into#1{%
+\def\pgfplots@initsizes@getYscale#1\into#2{%
 	\begingroup
 	\expandafter\pgf@xa\pgfplots@height\relax
 	% EXPECTED WIDTH = X = \pgfplots@width
@@ -3071,9 +3061,8 @@
 		\pgfplots@error{Error: Plot height `\pgfplots@height' is too small. This can't be realised while maintaining constant height for x-labels. Sorry, label heights are only approximate. You will need to adjust your height.}%
 		\pgf@xa=0pt
 	\fi
-	% \pgf@xb := x*(xmax-xmin):
-	\pgf@xb=\pgfplots@ycoordmaxTEX
-	\advance\pgf@xb by-\pgfplots@ycoordminTEX
+	% \pgf@xb := y*(ymax-ymin):
+	\pgf@xb=#1%
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
 		{\pgf@sys@tonumber\pgf@xa}%
 		{\pgf@sys@tonumber\pgf@xb}%
@@ -3083,10 +3072,10 @@
 %	c=estimated,
 %	height-c =\the\pgf@xa,  
 %	y*(ymax[=\the\pgfplots@ycoordmaxTEX] - ymin[=\the\pgfplots@ycoordminTEX)]) = \the\pgf@xb  
-%	-> y-scale =#1 }%
+%	-> y-scale =#2 }%
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
-	\let#1=\pgfmathresult
+	\let#2=\pgfmathresult
 }
 
 
@@ -3328,6 +3317,8 @@
 		%
 %\message{Setting unitvector(#1) to auto-computed multiple of e_#2 ...}%
 		\edef\pgfplots@loc@TMPa{#3}%
+% FIXME : '\pgfplots@loc@TMPa' contains 'pt' leading to missing
+% character warning!
 		\ifcase#2\relax
 			\pgfsetxvec{\pgfqpoint{\pgfplots@loc@TMPa}{0pt}}%
 			\pgfmathabs@{\pgfplots@loc@TMPa}%
@@ -3427,12 +3418,13 @@
 		\pgfplots@zmax@reg=\pgfplots@zmax pt %
 	\fi
 	%
-	\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
-	\pgfplots@xcoordminTEX=\pgf@x
-	\pgfplots@ycoordminTEX=\pgf@y
-	\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
-	\pgfplots@xcoordmaxTEX=\pgf@x
-	\pgfplots@ycoordmaxTEX=\pgf@y
+	\pgfpointdiff
+		{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
+		{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
+	% only used temporarily in this macro to compute the correct
+	% length for unit vectors:
+	\edef\pgfplots@initsizes@axisdiag@x{\the\pgf@x}%
+	\edef\pgfplots@initsizes@axisdiag@y{\the\pgf@y}%
 	%
 	%
 	%-----------------------------------------
@@ -3448,7 +3440,7 @@
 		\ifx\pgfplots@width\pgfutil@empty
 			\pgfplots@error{INTERNAL LOGIC ERROR! WIDTH NOT SET}%
 		\fi
-		\pgfplots@initsizes@getXscale\into\pgfplots@tmpXscale
+		\pgfplots@initsizes@getXscale\pgfplots@initsizes@axisdiag@x\into\pgfplots@tmpXscale
 		\ifpgfplots@scale@only@axis
 			\let\pgfplots@rectangle@width=\pgfplots@width
 		\fi
@@ -3460,7 +3452,7 @@
 		\ifx\pgfplots@height\pgfutil@empty
 			\pgfplots@error{INTERNAL LOGIC ERROR! HEIGHT NOT SET}%
 		\fi
-		\pgfplots@initsizes@getYscale\into\pgfplots@tmpYscale
+		\pgfplots@initsizes@getYscale\pgfplots@initsizes@axisdiag@y\into\pgfplots@tmpYscale
 		\ifpgfplots@scale@only@axis
 			\let\pgfplots@rectangle@height=\pgfplots@height
 		\fi
@@ -3516,12 +3508,19 @@
 	% 3. The user supplied 'x' and or 'y'. Simply use them, its
 	% accurate.
 	%
+	\begingroup
 	\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\xdef\pgfplotspointsouthwest{\noexpand\pgf@x=\the\pgf@x\noexpand\relax\noexpand\pgf@y=\the\pgf@y}%
+	% ATTENTION: I re-use registers here! Make sure they won't be
+	% overwritten! \pgfpointdiff and \pgfplotsqpointxy are ok in this respect.
+	\let\pgfplots@xcoordminTEX=\pgf@xb
+	\let\pgfplots@ycoordminTEX=\pgf@yb
 	\pgfplots@xcoordminTEX=\pgf@x
 	\pgfplots@ycoordminTEX=\pgf@y
+	%
 	\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
 	\ifx\pgfplots@rectangle@width\pgfutil@empty
-		\pgfplots@xcoordmaxTEX=\pgf@x
+		\def\pgfplots@tmp@xmax@ymin{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}}%
 	\else
 		% this 'if' here should only make a difference of about
 		% 1-2pt, not more.
@@ -3529,32 +3528,38 @@
 		% and I am quite sure that this inaccuracy (and this
 		% work-around) only affects the
 		% final size, not the relative plot accuracy.
-		\pgfplots@xcoordmaxTEX=\pgfplots@xcoordminTEX
-		\expandafter\advance\expandafter\pgfplots@xcoordmaxTEX\pgfplots@width
+		\pgf@x=\pgfplots@xcoordminTEX
+		\advance\pgf@x by\pgfplots@width
+		\edef\pgfplots@tmp@xmax@ymin{\noexpand\pgfqpoint{\the\pgf@x}{\noexpand\pgfplots@ycoordminTEX}}%
 	\fi
 	\ifx\pgfplots@rectangle@height\pgfutil@empty
-		\pgfplots@ycoordmaxTEX=\pgf@y
+		\def\pgfplots@tmp@xmin@ymax{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
 	\else
-		\pgfplots@ycoordmaxTEX=\pgfplots@ycoordminTEX
-		\expandafter\advance\expandafter\pgfplots@ycoordmaxTEX\pgfplots@height
+		\pgf@x=\pgfplots@ycoordminTEX
+		\advance\pgf@x\pgfplots@height
+		\edef\pgfplots@tmp@xmin@ymax{\noexpand\pgfqpoint{\noexpand\pgfplots@xcoordminTEX}{\the\pgf@x}}%
 	\fi
-	\begingroup
-	% FIXME : optimize?
 	\pgfpointdiff
 		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
-		{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}}%
+		{\pgfplots@tmp@xmax@ymin}%
 	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\noexpand\pgf@y=\the\pgf@y}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
 	%
 	\pgfpointdiff
 		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
-		{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
+		{\pgfplots@tmp@xmin@ymax}%
 	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\noexpand\pgf@y=\the\pgf@y}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
 	%
 	\ifpgfplots@threedim
 		\pgfpointdiff
 			{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
 			{\pgfplotsqpointxy{\pgfplots@zmin}{\pgfplots@zmax}}%
 		\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\noexpand\pgf@y=\the\pgf@y}%
+		\pgfmathveclen{\pgf@x}{\pgf@y}%
+		\xdef\pgfplotspointzaxislength{\pgfmathresult pt}%
 	\fi
 	\endgroup
 %--------------------------------------------------
@@ -5363,15 +5368,14 @@
 	%
 	\begingroup
 		% set coordinate system to (0,0) rectangle (1,1) for descriptions:
-		\pgftransformxshift{\pgfplots@xcoordminTEX}%
-		\pgftransformyshift{\pgfplots@ycoordminTEX}%
+		\pgftransformshift{\pgfplotspointsouthwest}%
 		% This here is a preparation macro for \pgfplots@low@level@shape@INNER.
 		% It applies the shift to the ORIGIN as well.
 		% It will ONLY be expanded if someone uses origin-anchors
 		% inside of axis descriptions.
 		\def\pgfplotspointORIGIN@tmp{%
 			\pgfpointdiff
-				{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}%
+				{\pgfplotspointsouthwest}%
 				{\pgfqpoint{\pgfplots@ZERO@x}{\pgfplots@ZERO@y}}%
 		}%
 		\pgfsetxvec{\pgfplotspointxaxis}%
@@ -5398,11 +5402,12 @@
 		\xdef\pgfplots@saveddimen@picminx{\the\pgf@picminx}%
 		\xdef\pgfplots@saveddimen@picminy{\the\pgf@picminy}%
 		%
-		\pgf@xa=\pgfplots@xcoordminTEX
+		\pgfplotspointsouthwest
+		\pgf@xa=\pgf@x
 		\advance\pgf@xa by-\pgf@picminx
 		\xdef\pgfplots@savedanchor@inner@lowerleft@x{\the\pgf@xa}%
 		%
-		\pgf@xa=\pgfplots@ycoordminTEX
+		\pgf@xa=\pgf@y
 		\advance\pgf@xa by-\pgf@picminy
 		\xdef\pgfplots@savedanchor@inner@lowerleft@y{\the\pgf@xa}%
 		%
