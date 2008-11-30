@@ -43,6 +43,8 @@
 \newif\ifpgfplots@xislinear
 \newif\ifpgfplots@yislinear
 \newif\ifpgfplots@zislinear
+\newif\ifpgfplots@axis@equal
+\newif\ifpgfplots@axis@equal@image
 \newcount\pgfplots@numplots
 \newdimen\pgfplots@xmin@reg
 \newdimen\pgfplots@xmax@reg
@@ -880,6 +882,10 @@
 	/pgfplots/clip limits/.default=true,
 	/pgfplots/clip limits=true,
 	/pgfplots/clip limits/.belongs to family=/pgfplots,
+	/pgfplots/axis equal/.is if=pgfplots@axis@equal,
+	/pgfplots/axis equal/.default=true,
+	/pgfplots/axis equal image/.is if=pgfplots@axis@equal@image,
+	/pgfplots/axis equal image/.default=true,
 	/pgfplots/xmin/.belongs to family=/pgfplots,
 	/pgfplots/xmin/.initial=,
 	/pgfplots/xmax/.belongs to family=/pgfplots,
@@ -3350,20 +3356,17 @@
 			%
 %\message{Setting unitvector(#1) to non-standard \csname pgfplots@#1\endcsname ...}%
 			\def\pgfplots@loc@TMPa(##1,##2){%
+				\pgfmathparse{##1}%
 				\ifpgfplots@apply@datatrafo@x
-					\pgfmathparse{##1}%
 					\expandafter\pgfplots@inverse@datascaletrafo@tofixed@x@noshift\expandafter{\pgfmathresult}%
-					\let\pgfplots@loc@TMPb=\pgfmathresult
-				\else
-					\def\pgfplots@loc@TMPb{##1}%
 				\fi
+				\let\pgfplots@loc@TMPb=\pgfmathresult
+				%
+				\pgfmathparse{##2}%
 				\ifpgfplots@apply@datatrafo@y
-					\pgfmathparse{##2}%
 					\expandafter\pgfplots@inverse@datascaletrafo@tofixed@y@noshift\expandafter{\pgfmathresult}%
-					\let\pgfplots@loc@TMPc=\pgfmathresult
-				\else
-					\def\pgfplots@loc@TMPc{##2}%
 				\fi
+				\let\pgfplots@loc@TMPc=\pgfmathresult
 				\csname pgfset#1vec\endcsname{\pgfqpoint{\pgfplots@loc@TMPb pt}{\pgfplots@loc@TMPc pt}}%
 			}%
 			\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb%
@@ -3396,6 +3399,203 @@
 			\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
 		\fi
 	\fi
+}%
+
+% Applies the 'axis equal' feature.
+%
+% PRECONDITION:
+% 	- final unit vectors have been set
+% 	- final axis limits are given in transformed range
+% 	-  \pgfplots@set@default@size@options has been invoked before
+%
+% POSTCONDITION:
+% 	- unit vectors have been set to equal length,
+% 	- axis limits have been rescaled such that the axis dimensions
+% 	remain fixed
+%
+% There is just one algorithmic difficulty: the data scaling
+% transformation. All unit vector length above are only meaningful in
+% the UNTRANSFORMED range, so we have to mingle with the scaling
+% transformation.
+\def\pgfplots@axis@equal@apply{%
+	% Step 1: compute the unit vector which STAYS CONSTANT.
+	%
+	% All other ones will be scaled to fit its length.
+	\ifpgfplots@threedim
+		\def\pgfplots@axis@equal@apply@reference{x}%
+		\pgfplots@if@unitveclenlessthan@untransformed xy{%
+			\pgfplots@if@unitveclenlessthan@untransformed xz{%
+				\def\pgfplots@axis@equal@apply@reference{x}%
+			}{}%
+		}{}%
+		\pgfplots@if@unitveclenlessthan@untransformed yx{%
+			\pgfplots@if@unitveclenlessthan@untransformed yz{%
+				\def\pgfplots@axis@equal@apply@reference{y}%
+			}{}%
+		}{}%
+		\pgfplots@if@unitveclenlessthan@untransformed zx{%
+			\pgfplots@if@unitveclenlessthan@untransformed zy{%
+				\def\pgfplots@axis@equal@apply@reference{z}%
+			}{}%
+		}{}%
+	\else
+		\pgfplots@if@unitveclenlessthan@untransformed xy{%
+			\def\pgfplots@axis@equal@apply@reference{x}%
+		}{%
+			\def\pgfplots@axis@equal@apply@reference{y}%
+		}%
+	\fi
+%\message{USING REFERENCE UNIT VECTOR FROM \pgfplots@axis@equal@apply@reference.}%
+	\if x\pgfplots@axis@equal@apply@reference
+	\else
+		\pgfplots@axis@equal@apply@for x
+	\fi
+	\if y\pgfplots@axis@equal@apply@reference
+	\else
+		\pgfplots@axis@equal@apply@for y
+	\fi
+	\ifpgfplots@threedim
+		\if z\pgfplots@axis@equal@apply@reference
+		\else
+			\pgfplots@axis@equal@apply@for z
+		\fi
+	\fi
+}%
+
+% Scales unit vector '#1' such that it has the same length as the unit
+% vector in direction \pgfplots@axis@equal@apply@reference.
+%
+% The data limits for '#1' will be enlarged as well (for 'axis
+% equal').
+\def\pgfplots@axis@equal@apply@for#1{%
+	\pgfmathmultiply@
+		{\csname pgfplots@\pgfplots@axis@equal@apply@reference @veclength\endcsname}
+		{\csname pgfplots@#1@inverseveclength\endcsname}%
+	\global\let\pgfplots@glob@TMPa=\pgfmathresult
+	\pgfmathmultiply@
+		{\csname pgfplots@\pgfplots@axis@equal@apply@reference @inverseveclength\endcsname}
+		{\csname pgfplots@#1@veclength\endcsname}%
+	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	% 
+	% If the datascaling transformation is active (which is almost
+	% every the case here), we need to respect it here.
+	%
+	% We only need to respect the SCALING, translations (shifts) are
+	% not interesting.
+	%
+	% We want that || T^{-1} e_ref || = || T^{-1} E_#1 ||.
+	%
+	% So: T^{-1} E_#1 :=  s* T^{-1} e_#1 where 
+	%  s = ||T^{-1} e_ref|| / || T^{-1} e_#1 || 
+	%    = |10^{scale_ref}| / |10^{scale_#1}| * || e_ref|| / ||e_#1||.
+	% 
+	% Then, E_#1 = T ( T^{-1} E_#1 ) = s * e_#1.
+	%
+	% -> compute 's'! We already have the quotient of unit vectors.
+	%  Now, acquire the scale quotients.
+	%
+	\begingroup
+		\def\pgfplots@tmp@exponentref{0}%
+		\def\pgfplots@tmp@exponentK{0}%
+		\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@axis@equal@apply@reference}{%
+			\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@axis@equal@apply@reference}%
+		}{}%
+		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+			\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
+		}{}%
+		\c@pgf@counta=\pgfplots@tmp@exponentref
+		\advance\c@pgf@counta by-\pgfplots@tmp@exponentK
+		\ifnum\c@pgf@counta=0
+		\else
+			\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
+			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+			\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
+			\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		\fi
+	\endgroup
+	%
+	\if x#1
+		\pgfsetxvec{\pgfplotsqpointxy{\pgfplots@glob@TMPa}{0}}%
+	\else
+		\if y#1
+			\pgfsetyvec{\pgfplotsqpointxy{0}{\pgfplots@glob@TMPa}}%
+		\else
+			\if z#1
+				\pgfsetzvec{\pgfplotsqpointxyz{0}{0}{\pgfplots@glob@TMPa}}%
+			\fi
+		\fi
+	\fi
+	\pgfplots@letcsname pgfplots@#1@veclength={pgfplots@\pgfplots@axis@equal@apply@reference @veclength}%
+	\pgfplots@letcsname pgfplots@#1@inverseveclength={pgfplots@\pgfplots@axis@equal@apply@reference @inverseveclength}%
+	%
+	%
+	\ifpgfplots@axis@equal@image
+	\else
+		%
+		% Ok, now update the axis limits such that the axis' dimensions
+		% stay the same.
+		%
+		% My idea is to add half of the new range to 'max' and
+		% subtract the other half from 'min':
+		% 
+% \message{REsizing data range for #1: from \csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname\ to}%
+		\pgfmathsubtract@{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#1min\endcsname}%
+		\begingroup
+			\pgf@xa=\pgfmathresult pt
+			\pgf@xa=\pgfplots@glob@TMPb \pgf@xa
+			\divide\pgf@xa by2
+			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+		\endgroup
+		\pgfmathsubtract@{\csname pgfplots@#1min\endcsname}{\pgfplots@glob@TMPb}%
+		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+		\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPb}%
+		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [+- \pgfplots@glob@TMPb]}%
+		%
+		% Update auxiliary data members:
+		\csname pgfplots@#1min@reg\endcsname=\csname pgfplots@#1min\endcsname pt %
+		\csname pgfplots@#1max@reg\endcsname=\csname pgfplots@#1max\endcsname pt %
+		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+			\csname pgfplots@inverse@datascaletrafo@#1\endcsname{\csname pgfplots@#1min\endcsname}%
+			\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfmathresult
+			\csname pgfplots@inverse@datascaletrafo@#1\endcsname{\csname pgfplots@#1max\endcsname}%
+			\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfmathresult
+		}{}%
+	\fi
+}
+
+% Invokes #3 if 
+% ( 10^{s1} * veclen1 < 10^{s2} * veclen2 )
+%   <=>
+% ( 10^{s1-s2} * veclen1 < veclen2 ).
+%
+% If the condition is false, '#4' is invoked.
+\def\pgfplots@if@unitveclenlessthan@untransformed#1#2#3#4{%
+	\def\pgfplots@loc@TMPa{0}%
+	\def\pgfplots@loc@TMPb{0}%
+	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+		\pgfplots@letcsname{pgfplots@loc@TMPa}={pgfplots@data@scale@trafo@EXPONENT@#1}%
+	}{}%
+	\pgfplots@if{pgfplots@apply@datatrafo@#2}{%
+		\pgfplots@letcsname{pgfplots@loc@TMPb}={pgfplots@data@scale@trafo@EXPONENT@#2}%
+	}{}%
+	\begingroup
+	\pgf@xb=\csname pgfplots@#2@veclength\endcsname pt
+	\c@pgf@counta=\pgfplots@loc@TMPa
+	\advance\c@pgf@counta by-\pgfplots@loc@TMPb
+	\ifnum\c@pgf@counta=0
+		\pgf@xa=\csname pgfplots@#1@veclength\endcsname pt
+	\else
+		\pgfplotsmathmultiplypowten@{\csname pgfplots@#1@veclength\endcsname}{\c@pgf@counta}%
+		\pgf@xa=\pgfmathresult pt
+	\fi
+	\ifdim\pgf@xa<\pgf@xb
+		\gdef\pgfplots@glob@TMPc{1}%
+	\else
+		\gdef\pgfplots@glob@TMPc{0}%
+	\fi
+	\endgroup
+	\if1\pgfplots@glob@TMPc #3\else #4\fi
 }%
 
 % PRECONDITION: 
@@ -3487,6 +3687,12 @@
 			\fi
 		\fi
 	\fi
+	\ifpgfplots@axis@equal@image
+		\pgfplots@axis@equaltrue
+	\fi
+	\ifpgfplots@axis@equal
+		\pgfplots@axis@equal@apply
+	\fi
 	%
 	% Determine final rectangle dimensions.
 	% There are the following cases: 
@@ -3562,13 +3768,6 @@
 		\xdef\pgfplotspointzaxislength{\pgfmathresult pt}%
 	\fi
 	\endgroup
-%--------------------------------------------------
-% \begingroup
-% \pgf@x=\pgfplots@xcoordmaxTEX\advance\pgf@x by-\pgfplots@xcoordminTEX
-% \pgf@y=\pgfplots@ycoordmaxTEX\advance\pgf@y by-\pgfplots@ycoordminTEX
-% \message{Axis scaling x=\pgfplots@tmpXscale, y=\pgfplots@tmpYscale\ yields lower-left-corner (\pgfplots@xmin,\pgfplots@ymin) = (\the\pgfplots@xcoordminTEX,\the\pgfplots@ycoordminTEX) and upper right (\pgfplots@xmax,\pgfplots@ymax) = (\the\pgfplots@xcoordmaxTEX,\the\pgfplots@ycoordmaxTEX).   Axis dimensions are width=\the\pgf@x, height=\the\pgf@y. Inverse unit vector length are x:\pgfplots@x@inverseveclength; y:\pgfplots@y@inverseveclength.}%
-% \endgroup
-%-------------------------------------------------- 
 }
 
 % This here is a low-weight node. It can ONLY be used during axis
