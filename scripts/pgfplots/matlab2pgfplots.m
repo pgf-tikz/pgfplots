@@ -58,6 +58,10 @@ fighandle = parser.Results.fig;
 lineobjs = findobj(fighandle, 'Type', 'line' );
 axesobj = findobj( fighandle, 'Type', 'axes' );
 
+% As far as I know, 'scatter' and 'scatter3' produce groups of this class:
+scatterobjs = findobj(fighandle, 'Type', 'hggroup' );
+lineobjs = [ lineobjs scatterobjs ];
+
 legendobj = findobj( fighandle, 'tag', 'legend' );
 if length(legendobj) > 0 
 	allchildsoflegend = [ findobj( legendobj ) ];

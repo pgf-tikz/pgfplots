@@ -93,6 +93,7 @@
 \newif\ifpgfplots@stacked@plus
 \newif\ifpgfplots@plot@file@skipfirst
 \newif\ifpgfplots@threedim
+\newif\ifpgfplots@curplot@isirrelevant
 \newif\ifpgfplots@perpointmeta@usesfloat
 \let\pgfnodepartimagebox=\pgfnodeparttextbox
 
@@ -114,9 +115,9 @@
 % #2:  the list entries. You can use either a comma-separated list or
 %      a '\\'-terminated list. The latter case also requires '\\'
 %      AFTER the last entry.
-\def\pgfcreateplotcyclelist#1#2{\pgfplots@assign@list#1{#2}}
+\def\pgfplotscreateplotcyclelist#1#2{\expandafter\pgfplots@assign@list\csname pgfp@cyclist@\string#1@\endcsname{#2}}
 
-\pgfcreateplotcyclelist{\blackwhiteplotspeclist}{%
+\pgfplotscreateplotcyclelist{black white}{%
 	every mark/.append style={fill=gray},mark=*\\%
 	every mark/.append style={fill=gray},mark=square*\\%
 	every mark/.append style={fill=gray},mark=otimes*\\%
@@ -128,7 +129,8 @@
 	densely dashed,every mark/.append style={solid},mark=star\\%
 	densely dashed,every mark/.append style={solid,fill=gray},mark=diamond*\\%
 }
-\pgfcreateplotcyclelist{\coloredplotspeclist}{%
+
+\pgfplotscreateplotcyclelist{color}{%
 	blue,every mark/.append style={fill=blue!80!black},mark=*\\%
 	red,every mark/.append style={fill=red!80!black},mark=square*\\%
 	brown!60!black,every mark/.append style={fill=brown!80!black},mark=otimes*\\%
@@ -140,6 +142,25 @@
 	blue,densely dashed,mark=star,every mark/.append style=solid\\%
 	red,densely dashed,every mark/.append style={solid,fill=red!80!black},mark=diamond*\\%
 }
+\pgfplotscreateplotcyclelist{exotic}{%
+	teal,every mark/.append style={fill=teal!80!black},mark=*\\%
+	orange,every mark/.append style={fill=orange!80!black},mark=square*\\%
+	cyan!60!black,every mark/.append style={fill=cyan!80!black},mark=otimes*\\%
+	red!70!white,mark=star\\%
+	lime!80!black,every mark/.append style={fill=lime},mark=diamond*\\%
+	red,densely dashed,every mark/.append style={solid,fill=red!80!black},mark=*\\%
+	yellow!60!black,densely dashed,every mark/.append style={solid,fill=yellow!80!black},mark=square*\\%
+	black,every mark/.append style={solid,fill=gray},mark=otimes*\\%
+	blue,densely dashed,mark=star,every mark/.append style=solid\\%
+	red,densely dashed,every mark/.append style={solid,fill=red!80!black},mark=diamond*\\%
+}
+
+
+% backwards compatibility:
+\let\pgfcreateplotcyclelist=\pgfplotscreateplotcyclelist
+\pgfplots@letcsname{pgfp@cyclist@\string\blackwhiteplotspeclist @}={pgfp@cyclist@black white@}%
+\pgfplots@letcsname{pgfp@cyclist@\string\coloredplotspeclist @}={pgfp@cyclist@color@}%
+%%%%
 
 \def\pgfplotsset#{\pgfqkeys{/pgfplots}}
 
@@ -982,9 +1003,15 @@
 	/pgfplots/view={}{},
 	/pgfplots/cycle list/.code={\pgfplots@assign@list\autoplotspeclist{#1}},
 	/pgfplots/cycle list/.belongs to family=/pgfplots,
-	/pgfplots/cycle list name/.code={\let\autoplotspeclist=#1\relax},
+	/pgfplots/cycle list name/.code={%
+		\pgfutil@ifundefined{pgfp@cyclist@\string#1@}{%
+			\pgfplots@error{Sorry, there is no such cycle list named \string#1. Maybe you misspelled it?}%
+		}{%
+			\expandafter\let\expandafter\autoplotspeclist\csname pgfp@cyclist@\string#1@\endcsname
+		}%
+	},
 	/pgfplots/cycle list name/.belongs to family=/pgfplots,
-	/pgfplots/cycle list name=\coloredplotspeclist,
+	/pgfplots/cycle list name=color,
 	/pgfplots/legend style/.belongs to family=/pgfplots/style commands,
 	/pgfplots/legend style/.code={%
 		\pgfkeysalso{/pgfplots/every axis legend/.append style={#1}}%
@@ -1745,6 +1772,8 @@
 			\expandafter\pgfkeysalso\expandafter{\the\t@pgfplots@toka}%
 		}%
 	},%
+	/pgfplots/forget plot/.is if=pgfplots@curplot@isirrelevant,
+	/pgfplots/forget plot/.default=true,
 }
 
 {
@@ -2280,7 +2309,15 @@
 					\ifnum\curcolumnNum=\maxcolumnCount
 						\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\\}%
 					\else
+						\pgfplotslistcheckempty\pgfplots@legend
 						\ifnum\pgfplots@numplots=0
+							\pgfplotslistemptytrue
+						\fi
+						\ifpgfplotslistempty
+							% Ok, either the legend list is empty or
+							% there are no more plots.
+							%
+							% Finalize matrix:
 							\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\\}%
 						\else
 							\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\pgfmatrixnextcell}%
