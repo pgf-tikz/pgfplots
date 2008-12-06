@@ -518,9 +518,23 @@
 % - \pgfplots@coord@stream@end@ and 
 % - \pgfplots@coord@stream@coord@
 % if you implement streams.
+%
+% REMARK:
+% 	- the stream methods automatically collect first and last
+% 	coordinates.
+% 	- I have experimented with global \addplot accumulation to reduce
+% 	copy operations. That experiment was not successfull (it was not
+% 	faster :-(  ). However, the streaming methods still assign their
+% 	things globally...
 \newif\ifpgfplots@coord@stream@isfirst
 \def\pgfplots@coord@stream@start{%
-	\pgfplots@coord@stream@isfirsttrue
+	\global\pgfplots@coord@stream@isfirsttrue
+	\global\let\pgfplots@currentplot@firstcoord@x=\pgfutil@empty
+	\global\let\pgfplots@currentplot@firstcoord@y=\pgfutil@empty
+	\global\let\pgfplots@currentplot@firstcoord@z=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@x=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@y=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@z=\pgfutil@empty
 	\let\pgfplots@current@point@x=\pgfutil@empty
 	\let\pgfplots@current@point@y=\pgfutil@empty
 	\let\pgfplots@current@point@z=\pgfutil@empty
@@ -543,23 +557,17 @@
 	\pgfplots@coord@stream@coord@%
 	% FIXME : needs to be updated for 3D
 	% FIXME : reduce \if's
-	\ifpgfplots@coord@stream@isfirst
-		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
-		\else
-			\ifx\pgfplots@currentplot@firstcoord@y\pgfutil@empty
-			\else
-				\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
-				\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
-				\pgfplots@coord@stream@isfirstfalse
-			\fi
-		\fi
-	\fi
 	\ifx\pgfplots@current@point@x\pgfutil@empty
 	\else
 		\ifx\pgfplots@current@point@y\pgfutil@empty
 		\else
-			\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
-			\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
+			\ifpgfplots@coord@stream@isfirst
+				\global\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
+				\global\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
+				\global\pgfplots@coord@stream@isfirstfalse
+			\fi
+			\global\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
+			\global\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
 		\fi
 	\fi
 }%
@@ -579,6 +587,26 @@
 %
 % PRECONDITION:
 % 	- needs to be called inside of \addplot.
+%
+% REMARK:
+% 	The following code is permissable:
+% 		\pgfplots@PREPARE@COORD@STREAM{..}{...}
+% 		\pgfplots@coord@stream@start
+% 		...
+% 		\pgfplots@coord@stream@coord
+% 		..
+%		\pgfplots@coord@stream@coord
+%		..
+% 		\pgfplots@coord@stream@end
+% 	-> All need to be the SAME LEVEL OF SCOPING! The '@coord' commands
+% 	may not be scoped deeper than 'begin' and 'end'!
+% 	- I had a version which allowed that. it was actually slower!
+% 	- For now, the following things are global / local:
+% 		- point coordinate list: local
+% 		- meta data limits: global,
+% 		- recorded error bar commands: local,
+% 		- what about stacked plot stuff: appears to be a combination
+% 		of local/global.
 %
 \long\def\pgfplots@PREPARE@COORD@STREAM#1#2{%
 	\ifpgfplots@curplot@threedim
@@ -647,12 +675,12 @@
 			\def\pgfplots@set@perpointmeta{}%
 		\fi
 		\ifnum\pgfplots@perpointmeta@choice=0
-			\let\pgfplots@metamin=\pgfutil@empty
-			\let\pgfplots@metamax=\pgfutil@empty
+			\global\let\pgfplots@metamin=\pgfutil@empty
+			\global\let\pgfplots@metamax=\pgfutil@empty
 		\else
 			\ifnum\pgfplots@perpointmeta@choice=5
-				\let\pgfplots@metamin=\pgfutil@empty
-				\let\pgfplots@metamax=\pgfutil@empty
+				\global\let\pgfplots@metamin=\pgfutil@empty
+				\global\let\pgfplots@metamax=\pgfutil@empty
 			\else
 				% We need to work with per point meta data.
 				% So, also compute the data range on a per-stream basis!
@@ -662,26 +690,26 @@
 					\let\pgfplots@invalidrange@metamin=\pgfmathresult
 					\pgfmathfloatcreate{2}{1.0}{2147483645}%
 					\let\pgfplots@invalidrange@metamax=\pgfmathresult
-					\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-					\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+					\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+					\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
 					\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
 						\pgfplots@set@perpointmeta
 						\pgfmathfloatmin@{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-						\let\pgfplots@metamin=\pgfmathresult
+						\global\let\pgfplots@metamin=\pgfmathresult
 						\pgfmathfloatmax@{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-						\let\pgfplots@metamax=\pgfmathresult
+						\global\let\pgfplots@metamax=\pgfmathresult
 					}%
 				\else
 					\def\pgfplots@invalidrange@metamin{16300}%
 					\def\pgfplots@invalidrange@metamax{-16300}%
-					\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-					\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+					\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+					\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
 					\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
 						\pgfplots@set@perpointmeta
 						\pgfplotsmathmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-						\let\pgfplots@metamin=\pgfmathresult
+						\global\let\pgfplots@metamin=\pgfmathresult
 						\pgfplotsmathmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-						\let\pgfplots@metamax=\pgfmathresult
+						\global\let\pgfplots@metamax=\pgfmathresult
 					}%
 				\fi
 			\fi
@@ -690,6 +718,12 @@
 	\begingroup
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\let\E=\noexpand
+	% 
+	% Setup Just-In-Time-Macro Compilation:
+	% I compile a set of macros which is highly optimized for this
+	% particular plot.
+	%
+	% 1.\pgfplots@update@limits@for@one@point
 	% Updates the current x and y limits for point (#1,#2).
 	%
 	% To eliminate all those case distinctions, it is created with
@@ -908,6 +942,11 @@
 %\message{Assembled update-limits macro to {\meaning\pgfplots@update@limits@for@one@point}}%
 	\ifpgfplots@bb@isactive
 	\else
+		% we are inside of 
+		% \pgfplotsinterruptdatabb 
+		% ..
+		% \endpgfinterruptboundingbox
+		% -> don't change data limits!
 		\global\let\pgfplots@update@limits@for@one@point=\relax
 	\fi
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -976,25 +1015,25 @@
 		\ifpgfplots@collect@firstplot@astick
 			\ifnum\pgfplots@numplots=0
 				\E\ifx\E\pgfplots@firstplot@coords@x\E\pgfutil@empty
-					\E\t@pgfplots@tokc=\E\expandafter{}%
+					\E\t@pgfplots@tokc={}%
 				\E\else
 					\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@x,}%
 				\E\fi
-				\E\edef\E\pgfplots@firstplot@coords@x{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@x}%
+				\E\xdef\E\pgfplots@firstplot@coords@x{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@x}%
 				\E\ifx\E\pgfplots@firstplot@coords@y\E\pgfutil@empty
-					\E\t@pgfplots@tokc=\E\expandafter{}%
+					\E\t@pgfplots@tokc={}%
 				\E\else
 					\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@y,}%
 				\E\fi
-				\E\edef\E\pgfplots@firstplot@coords@y{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@y}%
+				\E\xdef\E\pgfplots@firstplot@coords@y{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@y}%
 				%
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@firstplot@coords@z\E\pgfutil@empty
-						\E\t@pgfplots@tokc=\E\expandafter{}%
+						\E\t@pgfplots@tokc={}%
 					\E\else
 						\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@z,}%
 					\E\fi
-					\E\edef\E\pgfplots@firstplot@coords@z{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@z}%
+					\E\xdef\E\pgfplots@firstplot@coords@z{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@z}%
 				\fi
 			\fi
 		\fi
@@ -1100,10 +1139,9 @@
 		\E\begingroup
 		\E\c@pgf@counta=\E\pgfplots@current@point@coordindex
 		\E\advance\E\c@pgf@counta by1\E\relax
-		\E\edef\E\pgfmathresult{\E\the\E\c@pgf@counta}%
-		\E\pgfmath@smuggleone\E\pgfmathresult
+		\E\xdef\E\pgfplots@glob@TMPc{\E\the\E\c@pgf@counta}%
 		\E\endgroup
-		\E\let\E\pgfplots@current@point@coordindex=\E\pgfmathresult
+		\E\let\E\pgfplots@current@point@coordindex=\E\pgfplots@glob@TMPc
 	}%
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\endgroup
@@ -1123,12 +1161,12 @@
 		\ifpgfplots@errorbars@enabled
 			\pgfplots@streamerrorbarend
 		\fi
+		\ifpgfplots@stackedmode
+			\pgfplots@stacked@endplot
+		\fi
 		\ifpgfplots@coord@stream@isfirst
 			\pgfplots@warning{Empty plot silently dropped.}%
 		\else
-			\ifpgfplots@stackedmode
-				\pgfplots@stacked@endplot
-			\fi
 			% Idea: use
 			%   \scope[plot specification]
 			%   <any paths for error bars>
@@ -1167,8 +1205,8 @@
 					\the\t@pgfplots@tokc% named start/end points (if already available)
 					\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@toka}}%
 					% per-point meta data ranges:
-					\noexpand\def\noexpand\pgfplots@metamin{\pgfplots@metamin}%
-					\noexpand\def\noexpand\pgfplots@metamax{\pgfplots@metamax}%
+					\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
+					\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
 					\ifpgfplots@perpointmeta@usesfloat
 						\noexpand\pgfplots@perpointmeta@usesfloattrue
 					\else
@@ -1215,8 +1253,8 @@
 				\pgfplots@glob@TMPa
 			\fi
 			%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
-			\pgfplots@end@plot
 		\fi
+		\pgfplots@end@plot
 	}%
 }%
 
@@ -1310,7 +1348,6 @@
 % The per-point meta is not implemented yet.
 \long\def\pgfplots@coord@stream@foreach#1{%
 	\pgfplots@coord@stream@start
-	\let\pgfplots@current@point@meta=\pgfutil@empty
 	\pgfplots@foreach@plot@coord@ITERATE#1\pgfplots@EOI%
 	\pgfplots@coord@stream@end
 }%
@@ -1383,7 +1420,6 @@
 % The same for three dim coords:
 \long\def\pgfplots@coord@stream@foreach@threedim#1{%
 	\pgfplots@coord@stream@start
-	\let\pgfplots@current@point@meta=\pgfutil@empty
 	\pgfplots@foreach@plot@coord@threedim@ITERATE#1\pgfplots@EOI%
 	\pgfplots@coord@stream@end
 }%
@@ -1455,9 +1491,6 @@
 % modifications (scatter plots, especially for colormaps).
 \long\def\pgfplots@coord@stream@foreach@NORMALIZED#1{%
 	\pgfplots@coord@stream@start
-	\let\pgfplots@current@point@x@error=\pgfutil@empty
-	\let\pgfplots@current@point@y@error=\pgfutil@empty
-	\let\pgfplots@current@point@z@error=\pgfutil@empty
 	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE#1\pgfplots@EOI
 	\pgfplots@coord@stream@end
 }%
@@ -1512,6 +1545,9 @@
 % \addplot [<style options>]  plot[<behavior options>]  <input type and args> <post plot path> ;
 % \addplot3[<style options>]  plot[<behavior options>]  <input type and args> <post plot path> ;
 % 
+% The complete accumulation is done GLOBALLY. It should be safe to put
+% '\addplot' into local groups.
+%
 %
 % The linespec. will be used in the legend.
 %
@@ -1574,17 +1610,23 @@
 }
 
 \def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
-	\pgfplots@start@plot@with@behavioroptions{#2}%
+	% Invoke this here as soon as the coordinate input type is known.
+	% I want to redefine user interface keys accordingly (see below):
+	\def\pgfplots@addplotimpl@INIT{\pgfplots@start@plot@with@behavioroptions{#2}}%
+	%
 	\pgfutil@ifnextchar c{%
+		\pgfplots@addplotimpl@INIT
 		\pgfplots@addplotimpl@coordinates{#1}plot 
 	}{%
 		\pgfutil@ifnextchar f{%
 			\pgfplots@addplotimpl@f{#1}%
 		}{%
 			\pgfutil@ifnextchar t{%
+				\pgfplots@addplotimpl@INIT
 				\pgfplots@addplotimpl@table{#1}%
 			}{%
 				\pgfutil@ifnextchar ({%
+					\pgfplots@addplotimpl@INIT
 					\pgfplots@addplotimpl@expression{#1}%
 				}{%
 					\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
@@ -1594,21 +1636,28 @@
 		}%
 	}%
 }
+\def\pgfplots@addplotimpl@f#1f{%
+	\pgfutil@ifnextchar i{%
+		\pgfplots@addplotimpl@INIT
+		\pgfplots@addplotimpl@file{#1}%
+	}{%
+		% Overwrite the implementation of domain here!
+		% Reason: 'plot function' allows MUCH higher data domains than
+		% the standard implementation of 'domain'.
+		%
+		% That's an ugly hack, but it works at least.
+		\pgfkeysdef{/tikz/domain}{\edef\tikz@plot@domain{####1}}%
+		\pgfplots@addplotimpl@INIT
+		\pgfplots@addplotimpl@function{#1}%
+	}%
+}%
 
 \def\pgfplots@gobble@until@semicolon#1;{}
 
-% Currently, plot expression is really inefficient:
+% Plot expression. It invokes the pgf math parser and a customized
+% pgfplots point sampling routine. Combined with the 'fixed point
+% library' of pgf, it results in highly accurate plots.
 %
-% 1. it invokes the math parser to get all coordinates. Ok, that's
-% what one expects.
-%
-% 2. It collects the result into one large list instead of calling
-% pgfplots' stream methods. That's because \foreach encapsulates its
-% code in at least one TeX-group.
-%
-% 3. It processes the collected list; applying any floating point
-% parser routines - it does NOT know that any numbers are already in
-% TeX-precision!
 %
 \long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
 % \addplot[#1] (#2,#3) #4;
@@ -1618,9 +1667,6 @@
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
 	%
-	% Assemble a 
-	% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
-	\edef\pgfplots@plot@data##1{\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
@@ -1638,16 +1684,23 @@
 			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
 			%  macro:
 			\edef\pgfplots@plot@data##1{%
-				\noexpand\foreach\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} 
-					{\noexpand\foreach\noexpand\y in {\pgfplotslocretval} {##1}}}%
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} 
+					{\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplotslocretval} {##1}}}%
 		\fi
 	\else
+		% Assemble a 
+		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
+		\edef\pgfplots@plot@data##1{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 		\def\y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#3}%
 		\def\pgfplots@current@point@z{}%
 	\fi
+	% I am using \pgfplotsforeachungrouped in favor of
+	% \foreach because \foreach does NOT allow extended
+	% precision. Besided, \pgfplotsforeachungrouped avoids
+	% scoping problems.
 	%
-	\pgfplotsapplistXXglobalnewempty
+	\pgfplots@coord@stream@start
 	\pgfplots@plot@data{%
 		\pgfmathparse{#2}%
 		\let\pgfplots@current@point@x=\pgfmathresult
@@ -1657,20 +1710,11 @@
 			\pgfmathparse{\pgfplots@addplotimpl@expression@zEXPR}%
 			\let\pgfplots@current@point@z=\pgfmathresult
 		\fi
-		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,;}%
-		\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@loc@TMPa}%
+		\pgfplots@coord@stream@coord
 	}%
-	\pgfplotsapplistXXgloballet\pgfplots@loc@TMPa
-	\pgfplotsapplistXXglobalclear
-	% Process the normalized coordinate stream. This invoked the same
-	% streaming methods as the unnormalized stream, only the format is
-	% slightly different.
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@loc@TMPa}%
+	\pgfplots@coord@stream@end
 }%
 
-\def\pgfplots@addplotimpl@f#1f{%
-	\pgfutil@ifnextchar i{\pgfplots@addplotimpl@file{#1}}{\pgfplots@addplotimpl@function{#1}}%
-}%
 
 \let\pgfplots@backupof@pgfplotxyfile=\pgfplotxyfile
 
@@ -2244,23 +2288,8 @@
 	\else
 		\global\advance\pgfplots@numplots by1\relax%
 	\fi
-	\ifx\pgfplots@execute@at@end@plot\pgfutil@empty
-	\else
-		\pgfplots@execute@at@end@plot
-	\fi
-	\global\let\pgfplots@glob@TMPa=\relax
-	\ifpgfplots@collect@firstplot@astick
-		\ifnum\pgfplots@numplots=1\relax
-			\t@pgfplots@toka=\expandafter{\pgfplots@firstplot@coords@x}%
-			\t@pgfplots@tokb=\expandafter{\pgfplots@firstplot@coords@y}%
-			\xdef\pgfplots@glob@TMPa{%
-				\noexpand\def\noexpand\pgfplots@firstplot@coords@x{\the\t@pgfplots@toka}%
-				\noexpand\def\noexpand\pgfplots@firstplot@coords@y{\the\t@pgfplots@tokb}%
-			}%
-		\fi
-	\fi
+	\pgfplots@execute@at@end@plot
 	\endgroup
-	\pgfplots@glob@TMPa% see above
 }
 
 % #1: arguments to \addplot[...]
@@ -2376,7 +2405,7 @@
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
 	\ifpgfplots@scatterplotenabled
 		\ifx\tikz@plot@mark\pgfutil@empty
-			\def\tikz@plot@mark{*}%
+			\pgfplots@warning{I am confused: A scatter plot with 'mark=none'? This may need attention...?}%
 		\fi
 	\fi
 	%
@@ -2628,8 +2657,8 @@
 	\edef\pgfplots@loc@TMPa{%
 		\noexpand\pgfkeysdef{/tikz/current plot style}{\the\t@pgfplots@toka}%
 		%
-		\noexpand\def\noexpand\pgfplots@metamin{\pgfplots@metamin}%
-		\noexpand\def\noexpand\pgfplots@metamax{\pgfplots@metamax}%
+		\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
+		\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
 		\ifpgfplots@perpointmeta@usesfloat
 			\noexpand\pgfplots@perpointmeta@usesfloattrue
 		\else

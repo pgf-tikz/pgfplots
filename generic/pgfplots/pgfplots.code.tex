@@ -679,6 +679,8 @@
 	/pgfplots/xticklabel pos/left/.belongs to family=/pgfplots/tick,
 	/pgfplots/xticklabel pos/right/.code	={\def\pgfplots@xticklabelaxisspec{v10}},
 	/pgfplots/xticklabel pos/right/.belongs to family=/pgfplots/tick,
+	/pgfplots/xticklabel pos/top/.style={/pgfplots/xticklabel pos/right},
+	/pgfplots/xticklabel pos/bottom/.style={/pgfplots/xticklabel pos/left},
 	/pgfplots/xticklabel pos=default,
 	/pgfplots/yticklabel pos/.code={\pgfplots@setticklabelpos@for y{#1}},
 	/pgfplots/yticklabel pos/.belongs to family=/pgfplots/tick,
@@ -699,7 +701,7 @@
 	/pgfplots/ticklabelpos/.style={
 		/pgfplots/xticklabel pos={#1},
 		/pgfplots/yticklabel pos={#1},
-		/pgfplots/zticklabel pos={#1},
+	%	/pgfplots/zticklabel pos={#1},
 	},
 % sets \pgfplots@{x,y}tickalignnum to
 % inside=0
@@ -1693,8 +1695,17 @@
 	},
 	/pgfplots/scatter/true/.code={%
 		\pgfplots@scatterplotenabledtrue
-		% FIXME : make sure there is at least one mark set!
-		%\pgfkeysalso{/tikz}{mark=*,mark options={draw=blue,fill=blue!80!black}}%
+		% make sure there is a mark set!
+		\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+		\def\pgfplots@loc@TMPa{none}%
+		\ifx\tikz@plot@mark\pgfplots@loc@TMPa
+			% this here happens only in older versions of pgf.
+			\pgfqkeys{/tikz}{mark=*}%
+		\else
+			\ifx\tikz@plot@mark\pgfutil@empty
+				\pgfqkeys{/tikz}{mark=*}%
+			\fi
+		\fi
 	},
 	/pgfplots/scatter/.default=true,
 	/pgfplots/scatter src/.style={/pgfplots/point meta=#1},
@@ -2699,6 +2710,8 @@
 				\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
 				\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}\the\t@pgfplots@tokc}%
 				\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks@isfloat\pgfplots@loc@TMPa\to\pgfplots@loc@TMPc
+				% clear structure:
+				\expandafter\global\expandafter\let\csname pgfplots@firstplot@coords@#1\endcsname=\pgfutil@empty
 			\else
 				\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
 	%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
@@ -2725,6 +2738,8 @@
 		\def\pgfplots@loc@TMPb{data}%
 		\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfplots@loc@TMPb
 			\pgfplots@letcsname pgfplots@#1tick={pgfplots@firstplot@coords@#1}%
+			% clear structure:
+			\expandafter\global\expandafter\let\csname pgfplots@firstplot@coords@#1\endcsname=\pgfutil@empty
 		\fi
 		\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfutil@empty
 		\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfutil@empty
@@ -5148,6 +5163,9 @@
 			\fi
 		\fi
 	\pgfplots@deactivefamiliescmd
+	\pgfkeysdef{/pgfplots/xmode}{\pgfplots@error{You can't set 'xmode' in this context, sorry.}}%
+	\pgfkeysdef{/pgfplots/ymode}{\pgfplots@error{You can't set 'ymode' in this context, sorry.}}%
+	\pgfkeysdef{/pgfplots/zmode}{\pgfplots@error{You can't set 'zmode' in this context, sorry.}}%
 	%
 	% Acquire style commands and nameing commands from direct input
 	% options '#1' BEFORE the 'every' styles are processed:
@@ -5256,9 +5274,9 @@
 		\pgfplots@collect@firstplot@asticktrue
 	\fi
 	\ifpgfplots@collect@firstplot@astick
-		\let\pgfplots@firstplot@coords@x=\pgfutil@empty
-		\let\pgfplots@firstplot@coords@y=\pgfutil@empty
-		\let\pgfplots@firstplot@coords@z=\pgfutil@empty
+		\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+		\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+		\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	\fi
 	\pgfkeysdef{/pgfplots/.unknown}{%
 		\let\pgfplots@searchname=\pgfkeyscurrentname
@@ -5405,6 +5423,114 @@
 \def\pgfplots@interruptdatabb{\pgfplots@bb@isactivefalse}
 \def\endpgfplots@interruptdatabb{\pgfplots@bb@isactivetrue}
 
+%
+% \begin{axis}[#1] :
+%
+% This command prepares the axis for collection. NOTHING will be drawn
+% until \end{axis}. During the collect phase, axis limits will be
+% computed.
+%
+% The following variables are accummulated between 
+% \begin{axis}
+% and
+% \end{axis}:
+%
+% -  \pgfplots@[xyz]min
+%    \pgfplots@[xyz]max
+%    	- These denote the axis limits. 
+%    	- They are always assigned globally.
+%    	- For linear axes, they will be computed in floating point.
+%    	- For log axes, they will be computed using pgf math engine.
+% - \pgfplots@[xyz]min@reg
+%   	- A register containing the value of macro \pgfplots@[xyz]min
+%   	in pt. It is only valid during \end{axis}.
+% - \pgfplots@[xyz]max@reg
+%   	- The same for 'max'.
+% - \pgfplots@invalidrange@[xyz]min
+%   \pgfplots@invalidrange@[xyz]max
+%   	A value which is used for the axis limits before the
+%   	limit computation starts.
+% - \pgfplots@data@[xyz]min
+%   \pgfplots@data@[xyz]max
+%   	- DATA limits. These limits are not affected by limit
+%   	restrictions
+%   	- They are used to initialise the data scaling trafo.
+%   	- They WON'T be assigned for log axes.
+%   	- Assigned globally.
+% - \pgfplots@[xyz]min@unscaled@as@float
+%   	- Assigned during \end{axis} (local variables).
+%   	- Contain the value of axis limits as floating point numbers
+%   	in the original data range.
+% - \pgfplots@metamin
+%   \pgfplots@metamax
+%   	- if meta data is active, these macros will contain the upper
+%   	and lower bound for meta data.
+%   	- will be assigned globally.
+% - \pgfplots@numplots
+%   	- A count register indexing the current plot counter. Assigned
+%   	globally.
+% - \ifpgfplots@apply@datatrafo
+%   	A boolean which indicates whether any scaling trafo is
+%   	active.
+% - \ifpgfplots@apply@datatrafo@[xyz]
+%   	Booleans indicating whether for which axes the scaling trafo
+%   	is active.
+% - \pgfplots@stored@plotlist
+%   	- An instance of pgfplotslist.
+%   	- It is assigned globally.
+%   	- Every \addplot or tikz path command is collected into this
+%   	structure.
+%   	- The element type is a compound object containing everything
+%   	needed to process the plot during \end{axis}.
+% - \pgfplots@plotspeclist
+%   	- instance of pgfplotslist
+%   	- collects every line specification for \addplot.
+%   	- Used to assemble legends.
+%   	- Assigned globally.
+% - \pgfplots@legend
+%   	- instance of pgfplotslist
+%   	- collects every legend entry.
+%   	- Used to assemble legends.
+%   	- Assigned globally.
+% - \pgfplots@data@scale@trafo@SHIFT@[xyz]
+%   \pgfplots@data@scale@trafo@EXPONENT@[xyz]
+%   	- For any direction for which the scaling trafo is active,
+%   	these macros contain the two parameters for the affine scaling
+%   	trafo.
+% - \pgfplots@firstplot@coords@[xyz]
+%   	- A macro containing a comma separated list
+%   	- It is collected if and only if [xyz]tick = 'data'.
+%   	- Contains a list of coordinates in floating point
+%   	representation if the axis is linear.
+%   	- The coordinates are in pgf math notation for log axes.
+%   	- Assigned globally.
+% - \pgfplots@[xyz]@veclength
+%   	- A macro containing the vector length of the [xyz] unit
+%   	vector.
+%   	- Assigned in \end{axis}
+% - \pgfplots@[xyz]@inverseveclength
+%   	- A macro containing the INVERSE vector length of the [xyz]
+%   	unit vector.
+%   	- Assigned in \end{axis}
+% - \pgfplotspoint[xyz]axis
+%   	- A macro which sets 'pgf@x' and 'pgf@y' to the [xyz] axis.
+% - \pgfplotspoint[xyz]axislength
+%   	- A macro containing the vector length of the [xyz] axis
+%   	(including the 'pt' suffix).
+%
+% - \ifpgfplots@curplot@threedim
+%   	- valid during an '\addplot' preparation step. 
+% - \ifpgfplots@threedim
+%   	- whether the axis shall be threedimensional.
+%
+% - \pgfplots@currentplot@firstcoord@[xyz] 
+% - \pgfplots@currentplot@lastcoord@[xyz]
+%   	- contains the first/last coordinate of the current plot.
+%   	- assigned globally.
+% - \ifpgfplots@coord@stream@isfirst
+%   	- assigned globally during \addplot.
+%
+%
 \def\pgfplots@environment@opt[#1]{%
 	\begingroup
 	\pgfplots@checkandpreparefor@active@semicolon
@@ -5563,6 +5689,11 @@
 		\pgfplots@BEGIN@init@and@draw@axis
 	\fi
 }
+
+% \end{axis} :
+%
+% This command actually takes all collected (global) variables,
+% creates an axis and performs all postponed drawing operations.
 \def\endpgfplots@environment@opt{%
 	\xdef\numplots{\the\pgfplots@numplots}%
 	\pgfkeysvalueof{/pgfplots/before end axis/.@cmd}\pgfeov%

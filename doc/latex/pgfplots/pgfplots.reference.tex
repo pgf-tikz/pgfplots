@@ -129,6 +129,7 @@ Some more details:
 	\item For normal plots, \PGFPlots\ applies floating point arithmetics to support large or small numbers like 0.00000001234 or $1.234\cdot 10^{24}$. Its number range is much larger than \TeX's native support for numbers. The relative precision is at least~$5$ significant decimal digits for the mantisse. As soon as the axes limits are completely known, \PGFPlots\ applies a transformation which maps these floating point numbers into \TeX-precision using transformations
 		\[ T_x(x) = 10^{s_x} \cdot x - a_x \text{ and } T_y(y) = 10^{s_y} \cdot y - a_y \]
 	with properly chosen integers $s_x, s_y \in \Z$ and shifts $a_x,a_y\in \R$. Section~\ref{sec:disabledatascaling} contains a description of |disabledatascaling| and provides more details about the transformation.
+	\index{Accuracy!Floating Point in \PGFPlots}%
 
 	\item As a consequence of the coordinate parsing routines, you can't use the mathematical expression parsing method of \PGF\ as coordinates (that means: you will need to provide coordinates without suffixes like ``cm'' or ``pt'' and you can't invoke mathematical functions).
 	
@@ -371,6 +372,10 @@ Sometimes it is called |shell-escape| or |enable-write18|.
 The \meta{style options} determine the appearance of the plotted function; these parameters also affect the legend. The \meta{behavior options} are specific to the gnuplot interface. These options are described in all detail in \cite[section~18.6]{tikz}. A short summary is shown below.
 
 Please note that |plot function| does not allow per point meta data.
+
+\paragraph{High precision for \normalfont\texttt{domain}}
+\index{Accuracy!High Precision for Gnuplot Domains}%
+	Please supply the |domain| key always as \meta{behavior option} to |\addplot| (not as global option to |axis| or |tikzpicture|). This ensures that you can use the full floating point data range of |gnuplot| for |domain|.
 \end{addplotoperation}
 
 \begin{key}{/tikz/domain=\meta{start}:\meta{end} (initially [-5:5])}
@@ -431,6 +436,49 @@ the braces are necessary to delimit the $y$ argument here. If you want to use ra
 to convert the radians to degrees. The \Tikz\ plot expression parser also accepts some more options like |samples at=|\marg{coordinate list} or |variable=\t| which are described in the \Tikz\ manual.
 
 Please note that plot expression does not allow per point meta data.
+
+\paragraph{Accuracy}
+\index{Accuracy!High Precision for Plot Expression}%
+\index{Error Messages!dimension too large}%
+The accuracy of plot expression is limited to that of \PGF's math parser. The standard parser employs \TeX's fast register arithmetics for all its computations which is limited to data ranges of $\pm 16384.0$ and $0.0001$ absolute minimum. For many applications, this is sufficient. If it is \emph{not} sufficient, there are two possibilities:
+\begin{enumerate}
+	\item Use |plot function|. It uses the external, freely available program |gnuplot| as desktop calculator. \PGFPlots\ as such is capabable of handling large numbers with reasonable accuracy.
+	\item Change the \PGF\ math parser. At the time of this writing, this requires the CVS version of \PGF\ (that's why I did not already include it as default into \PGFPlots).
+\end{enumerate}
+Just in case your version of \PGF\ already contains the |fixedpointarithmetic| library, the following example shows how to get higher accuracy.
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{loglogaxis}[
+		samples=150,
+		title={$\frac{1}{x^2}$ 
+			with \PGF's math parser}]
+	\addplot[blue] 
+		[domain=1:1000] 
+		(\x,\x^-2);
+	\end{loglogaxis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent Since we have a logarithmic scale, we expect $\log x^{-2} = -2 \log x$ to be a straight line. The example above clearly shows limitations of the standard configuration. If you have a recent \PGF\ version (at the time of this writing, this refers to the CVS version of \PGF!), it is possible to use the fixed point library of \PGF: 
+\begin{codeexample}[]
+% Requires:
+% \usepackage{fp}
+% \usetikzlibrary{fixedpointarithmetic}
+% WARNING: 
+%   At the time of this writing,
+%   this library is only available in 
+%   the CVS version of pgf!
+\begin{tikzpicture}
+	\begin{loglogaxis}[
+		samples=150,
+		title={$\frac{1}{x^2}$ with 
+			\PGF's fixed point library}]
+	\addplot[blue] 
+		[fixed point arithmetic,domain=1:100000]
+		(\x,\x^-2);
+	\end{loglogaxis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent Please note, however, that |fp| is relatively slow. It may be faster to use |plot function| which invokes |gnuplot| and leads to the same result.
 \end{addplotoperation}
 
 \begin{command}{\addplot+\oarg{style options} \textcolor{gray}{\dots};}
@@ -2052,7 +2100,8 @@ These predefined cycle lists habe been created with
 	red!70!white,mark=star\\%
 	lime!80!black,every mark/.append style={fill=lime},mark=diamond*\\%
 	red,densely dashed,every mark/.append style={solid,fill=red!80!black},mark=*\\%
-	yellow!60!black,densely dashed,every mark/.append style={solid,fill=yellow!80!black},mark=square*\\%
+	yellow!60!black,densely dashed,
+		every mark/.append style={solid,fill=yellow!80!black},mark=square*\\%
 	black,every mark/.append style={solid,fill=gray},mark=otimes*\\%
 	blue,densely dashed,mark=star,every mark/.append style=solid\\%
 	red,densely dashed,every mark/.append style={solid,fill=red!80!black},mark=diamond*\\%
@@ -3382,6 +3431,7 @@ A small value of |enlarge x limits| may avoid problems with large markers near t
 \end{stylekey}
 
 \begin{environment}{{pgfplotsinterruptdatabb}}
+\index{Bounding Box Control!Disable \protect\emph{data} bounding box modifications}
 	Everything in \marg{environment contents} will not contribute to the data bounding box.
 \end{environment}
 
@@ -3764,7 +3814,7 @@ which has the same effect as the `|every x tick label|' statement above. This is
 \begin{pgfplotsxykeylist}{
 	scaled \x\ ticks=\mchoice{true,false,base 10:{\normalfont\meta{e}},real:{\normalfont\meta{number}},manual:{\normalfont\marg{text}\marg{tick scale code}}} (initially true),
 	scaled ticks=\mchoice{true,false,base 10:{\normalfont\meta{e}},real:{\normalfont\meta{number}},manual:{\normalfont\marg{text}\marg{tick scale code}\hfill}} (initially true)}
-Allows to factor out common exponents in tick labels. For example, if you have tick labels $20000,40000$ and $60000$, you may want to save some space and write $2,4,6$ with a separate factor `$\cdot 10^4$'. Use `|scaled ticks=true|' to enable this feature. In case |true|, tick scaling will be triggered if the data range is either too large or too small (see below).
+Allows to factor out common exponents in tick labels for \emph{linear axes}. For example, if you have tick labels $20000,40000$ and $60000$, you may want to save some space and write $2,4,6$ with a separate factor `$\cdot 10^4$'. Use `|scaled ticks=true|' to enable this feature. In case |true|, tick scaling will be triggered if the data range is either too large or too small (see below).
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[scaled ticks=true]
@@ -3869,6 +3919,8 @@ The \marg{text} can be arbitrary. It is completely in user control. The second a
 This feature may also be used do transform coordinates in case they can't be processed with \PGFPlots: transform them and supply a proper tick scaling method such that tick labels represent the original range.
 
 If \marg{text} is empty, the tick scale label won't be drawn (and no space will be occupied).
+
+Tick scaling does \emph{not} work for logarithmic axes.
 \end{pgfplotsxykeylist}
 
 \begin{pgfplotsxycodekeylist}{\x tick scale label code}
@@ -3912,7 +3964,7 @@ For $y$, the additional choices |bottom| and |top| can be used which are equival
 \begin{pgfplotsxykey}{\x ticklabel pos=\mchoice{left,right,default} (initially default)}
 Allows to choose where to place tick \emph{labels}. The choices |left| and |right| place tick labels either at the left or at the right side of the complete axis. The choice |default| uses the same setting as |xtick pos| (or |ytick pos|). This option is only useful for boxed axis -- keep it to |default| for non-boxed figures.
 
-For $y$, the additional choices |bottom| and |top| can be used which are equivalent to |left| and |right|, respectively. Both are accepted for $y$.
+For $x$, the additional choices |bottom| and |top| can be used which are equivalent to |left| and |right|, respectively. Both are accepted for $x$.
 \end{pgfplotsxykey}
 
 \begin{pgfplotskey}{ticklabelpos=\mchoice{left,right,default}}
@@ -4747,6 +4799,8 @@ where $y = \log(m)$ is computed with a newton method applied to $\exp(y) - m$. T
 
 \label{sec:disabledatascaling}%
 \begin{pgfplotskey}{disabledatascaling=\mchoice{true,false} (initally false, default true)}
+\index{Accuracy!Data Transformation}%
+\index{Error Messages!dimension too large}%
 Disables internal re-scaling of input data. Normally, every input data like plot coordinates, tick positions or whatever, are parsed without using \TeX's limited number precision. Then, a transformation like 
 	\[ T(x) = 10^{q-m} \cdot x - a \]
 is applied to every input coordinate/position where $m$ is ``the order of $x$'' base~$10$. Example: $x=1234 = 1.234\cdot 10^3$ has order~$m=4$ while $x=0.001234 = 1.234\cdot 10^{-3}$ has order $m=-2$. The parameter~$q$ is the order of the axis' width/height.
@@ -4760,7 +4814,7 @@ So far, the data scale transformation applies only to normal axis (logarithmic s
 \end{pgfplotskey}
 
 
-\begin{pgfplotsxykey}{\x\ filter/.code=\marg{...}} % FIXME create a xycodekey environment
+\begin{pgfplotsxycodekeylist}{\x\ filter}
 The code keys |x filter| and |y filter| allow coordinate filtering. A coordinate filter gets an input coordinate as |#1|, applies some operation and writes the result into the macro |\pgfmathresult|. If |\pgfmathresult| is empty afterwards, the coordinate is discarded.
 
 It is allowed if filters do not |\pgfmathresult|. In this case, the unfiltered coordinate will be used.
@@ -4804,7 +4858,7 @@ There is also a style key which simplifies selection by index, see below.
 	If the corresponding axis is logarithmic, |#1| is the \emph{logarithm} of the coordinate as a real number, for example |#1=4.2341|.
 
 	The arguments to coordinate filters are not transformed. You may need to call coordinate parsing routines.
-\end{pgfplotsxykey}
+\end{pgfplotsxycodekeylist}
 
 \begin{stylekey}{/pgfplots/skip coords between index=\marg{begin}\marg{end}}
 	A style which appends an |x filter| which discards selected coordinates. The selection is done by index where indexing starts with~$0$, see |\coordindex|. Every coordinate with index $\meta{begin} \le i < \meta{end}$ will be skipped.

@@ -358,6 +358,184 @@
 	}%
 }%
 
+
+% Usage:
+% \pgfplotsforeachentryinCSV{\value}{1,2,3,4.5,6.7,10}{The value is \value\par}
+%
+% The loop is ungrouped.
+\long\def\pgfplotsforeachentryinCSV#1#2#3{%
+	\def\pgfplotsforeachentryinCSV@{#1}%
+	\long\def\pgfplotsforeachentryinCSV@@{#3}%
+	\pgfplotsforeachentryinCSV@loop#2,\pgfplots@EOI
+}%
+% A variant of \pgfplotsforeachentryinCSV where a trailing comma
+% indicates the end of input.
+% Example:
+%
+% \pgfplotsforeachentryinCSV{\value}{1,2,3,4.5,6.7,10,}{The value is \value\par}
+%                                                    ^
+%
+% It is permissable to provide an empty list (without trailing comma)
+\long\def\pgfplotsforeachentryinCSVisterminated#1#2#3{%
+	\def\pgfplotsforeachentryinCSV@{#1}%
+	\long\def\pgfplotsforeachentryinCSV@@{#3}%
+	\pgfplotsforeachentryinCSV@loop#2\pgfplots@EOI
+}%
+\def\pgfplotsforeachentryinCSV@loop{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfutil@gobble
+	}{%
+		\pgfplotsforeachentryinCSV@next
+	}%
+}%
+\def\pgfplotsforeachentryinCSV@next#1,{%
+	\expandafter\def\pgfplotsforeachentryinCSV@{#1}%
+	\pgfplotsforeachentryinCSV@@
+	\pgfplotsforeachentryinCSV@loop
+}%
+
+
+% A (simple) replacement for \foreach which 
+% 1. does NOT scope the argument
+% 2. allows to use PGF Math routines for loops ( '...' notation)
+% instead of TeX registers.
+%
+% Usage:
+% \pgfplotsforeachungrouped \x in {1,2,3,4,5} {<code>}
+% 
+% Some details:
+% - If #2 is a UNIFORM SAMPLING RANGE, the algorithm is supposed to be
+%   most effective.
+% - If \pgfmathadd@ is the standard PGF math version of \pgfmathadd@,
+%   we use fast TeX dimensions for any loops. Otherwise, \pgfmathadd@
+%   is used (assuming it has been replaced and should be used.
+%
+\def\pgfplotsforeachungrouped#1{\pgfplotsforeachungrouped@{#1}}%
+\long\def\pgfplotsforeachungrouped@#1in #2#3{%
+	\pgfplotsforeachungrouped@isuniform{#2}%
+	\ifpgfplots@loc@tmp
+		\pgfplotsforeachungroupeduniform@#1{#2}{#3}%
+	\else
+		\pgfplotsforeachungroupednonuniform@#1{#2}{#3}%
+	\fi
+}
+\let\pgfplots@original@pgfmathadd@=\pgfmathadd@
+
+\long\def\pgfplotsforeachungroupeduniform@#1#2#3{%
+	\pgfplotsforeachungroupeduniform@@{#1}#2\relax{#3}%
+}
+\long\def\pgfplotsforeachungroupeduniform@@#1#2,#3,...,#4\relax#5{%
+	% Compute mesh width!
+	\pgfmathparse{#2}%
+	\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
+	\pgfmathparse{#3}%
+	\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
+	\pgfmathsubtract@{\pgfplots@foreach@loc@TMPb}{\pgfplots@foreach@loc@TMPa}%
+	\ifx\pgfmathadd@\pgfplots@original@pgfmathadd@
+		% perform manual restoration of local variables:
+		\edef\pgfplots@foreach@loc@TMPd{%
+			\noexpand\pgf@xa=\the\pgf@xa\noexpand\relax
+			\noexpand\pgf@xb=\the\pgf@xb\noexpand\relax
+			\noexpand\pgf@ya=\the\pgf@ya\noexpand\relax
+		}%
+		% mesh width:
+		\pgf@ya=\pgfmathresult pt
+		% the loop will run while ( NOT <cur> \pgfplots@foreach@loc@cmp  <last> )
+		\ifdim\pgf@ya<0pt
+			\def\pgfplots@foreach@loc@cmp{<}%
+		\else
+			\def\pgfplots@foreach@loc@cmp{>}%
+		\fi
+		%
+		\pgfmathparse{#4}%
+		\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
+		\pgf@xa=\pgfplots@foreach@loc@TMPa pt
+		\pgf@xb=\pgfplots@foreach@loc@TMPb pt
+		\long\def\pgfplots@foreach@loc@TMPc{#5}%
+		%
+		\pgfutil@loop
+		\ifdim\pgf@xa \pgfplots@foreach@loc@cmp \pgf@xb\relax
+			\pgfplots@loc@tmpfalse
+		\else
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifpgfplots@loc@tmp
+			\edef#1{\pgf@sys@tonumber{\pgf@xa}}%
+			\pgfplots@foreach@loc@TMPc\relax
+			\advance\pgf@xa by\pgf@ya\relax
+		\pgfutil@repeat
+		% ok, restore them:
+		\pgfplots@foreach@loc@TMPd
+	\else
+		% Use \pgfmath engine for the loop:
+		\edef\pgfplots@foreach@loc@TMPd{%
+			\noexpand\pgf@xa=\the\pgf@xa\noexpand\relax
+		}%
+		% mesh width:
+		\let\pgfplots@foreach@loc@meshwidth=\pgfmathresult
+		\pgfmathlessthan@{\pgfplots@foreach@loc@meshwidth}{0}%
+		\pgf@xa=\pgfmathresult pt
+		% the loop will run while ( NOT \pgfplots@foreach@loc@cmp{<cur>}{<last>} )
+		\ifdim\pgf@xa=1pt
+			\let\pgfplots@foreach@loc@cmp=\pgfmathlessthan@
+		\else
+			\let\pgfplots@foreach@loc@cmp=\pgfmathgreaterthan@
+		\fi
+		%
+		\pgfmathparse{#4}%
+		\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
+		\long\def\pgfplots@foreach@loc@TMPc{#5}%
+		%
+		\pgfutil@loop
+		\pgfplots@foreach@loc@cmp{\pgfplots@foreach@loc@TMPa}{\pgfplots@foreach@loc@TMPb}%
+		\pgf@xa=\pgfmathresult pt
+		\ifdim\pgf@xa=0pt
+			\let#1=\pgfplots@foreach@loc@TMPa%
+			\pgfplots@foreach@loc@TMPc\relax
+			\pgfmathadd@{\pgfplots@foreach@loc@TMPa}{\pgfplots@foreach@loc@meshwidth}%
+			\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
+		\pgfutil@repeat
+		% ok, restore them:
+		\pgfplots@foreach@loc@TMPd
+	\fi
+}%
+\long\def\pgfplotsforeachungroupednonuniform@#1#2#3{%
+	\pgfplotsapplistXXglobalnewempty
+	\foreach\pgfplots@foreach@loc@TMPa in {#2} {%
+		\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@foreach@loc@TMPa,}%
+	}%
+	\pgfplotsapplistXXgloballet\pgfplots@foreach@loc@TMPa
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplotsforeachentryinCSVisterminated\expandafter\pgfplots@foreach@loc@TMPa\expandafter{\pgfplots@foreach@loc@TMPa}{%
+		\let#1=\pgfplots@foreach@loc@TMPa
+		#3%
+	}%
+}
+
+% Sets \ifpgfplots@loc@tmp to something true if and only if '#1' is of the form
+% #1 = <number1>,<number2>,...,<number3>.
+\def\pgfplotsforeachungrouped@isuniform#1{%
+	\edef\pgfplots@foreach@loc@TMPa{#1}%
+	\expandafter\pgfplotsforeachungrouped@isuniform@\pgfplots@foreach@loc@TMPa,,,,\relax
+}%
+\def\pgfplotsforeachungrouped@isuniform@#1,#2,#3,#4,#5\relax{%
+	\def\pgfplots@foreach@loc@TMPa{#5}%
+	\def\pgfplots@foreach@loc@TMPb{,,,}%
+	\pgfplots@loc@tmpfalse
+	\ifx\pgfplots@foreach@loc@TMPa\pgfplots@foreach@loc@TMPb
+		\def\pgfplots@foreach@loc@TMPa{#3}%
+		\def\pgfplots@foreach@loc@TMPb{...}%
+		\ifx\pgfplots@foreach@loc@TMPa\pgfplots@foreach@loc@TMPb
+			\pgfutil@in@,{#4}%
+			\ifpgfutil@in@
+			\else
+				% ok, we REALLY have a uniform range!
+				\pgfplots@loc@tmptrue
+			\fi
+		\fi
+	\fi
+}%
+
 \input pgfplotsliststructure.code.tex
 \input pgfplotsliststructureext.code.tex
 \input pgfplotsarray.code.tex
