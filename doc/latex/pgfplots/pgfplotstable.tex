@@ -1099,6 +1099,57 @@ Typesetting cells means to take their value and ``do something''. In many cases,
 	A style which redefines |assign cell contents| to simply return the ``raw'' input data, that means as text column. This assumes input tables with valid \LaTeX\ content (verbatim printing is not supported).
 \end{stylekey}
 
+\begin{stylekey}{/pgfplots/table/date type=\marg{date format}}% (initially \year-\month-\day)}
+	A style which expects ISO dates of the form |YYYY-MM-DD| in each cell and produces pretty-printed strings on output. The output format is given as \marg{date format}. Inside of \marg{date format}, several macros which are explained below can be used.
+\begin{codeexample}[]
+% Requires 
+% \usepackage{pgfcalendar}
+\pgfplotstableset{columns={date,account1}}
+
+\pgfplotstabletypesetfile[
+	columns/date/.style={string type}
+]{plotdata/accounts.dat}
+\hspace{1cm}
+\pgfplotstabletypesetfile[
+	columns/date/.style={date type={\monthname\ \year}}
+]{plotdata/accounts.dat}
+\end{codeexample}
+	This style \textbf{requires} to load the \PGF\  \textbf{calendar package}:
+\begin{codeexample}[code only]
+\usepackage{pgfcalendar}
+\end{codeexample}
+\end{stylekey}
+
+\begin{command}{\year}
+	Inside of \marg{date format}, this macro expands to the year as number (like |2008|).
+\end{command}
+\begin{command}{\month}
+	Inside of \marg{date format}, this macro expands to the month as number, starting with~$1$ (like |1|).
+\end{command}
+\begin{command}{\monthname}
+	Inside of \marg{date format}, this macro expands to the month's name as set in the current language (like |January|).
+	 See below for how to change the language.
+\end{command}
+\begin{command}{\monthshortname}
+	Inside of \marg{date format}, this macro expands to the month's short name as set in the current language (like |Jan|). 
+	See below for how to change the language.
+\end{command}
+\begin{command}{\day}
+	Inside of \marg{date format}, this macro expands to the day as number (like |31|).
+\end{command}
+\begin{command}{\weekday}
+	Inside of \marg{date format}, this macro expands to the weekday number ($0$ for Monday, $1$ for Tuesday etc.).
+\end{command}
+\begin{command}{\weekdayname}
+	Inside of \marg{date format}, this macro expands to the weekday's name in the current language (like |Wednesday|).
+	 See below for how to change the language.
+\end{command}
+\begin{command}{\weekdayshortname}
+	Inside of \marg{date format}, this macro expands to the weekday's short name in the current language (like |Wed|).
+	 See below for how to change the language.
+\end{command}
+\subsubsection*{Changing the language for dates}
+The date feature is implemented using the \PGF\ calendar module. This module employs the package |translator| (if it is loaded). I don't have more detail yet, sorry. Please refer to \cite{tikz} for more details.
 
 \subsection{Preprocessing Cell Content}
 The preprocessing step allows to change cell contents \emph{before} any typesetting routine (like number formatting) has been applied. The data is available in numerical format and math operations can be applied. Furthermore, cells can be erased depending on their numerical value. The preprocess step follows the data acquisition step (``loading step''). This means in particular that you can create (or copy) columns and apply operations on them.
@@ -1351,7 +1402,7 @@ The following macros are useful during cell assignments:
 
 	\item |\pgfplotstablerow| and |\pgfplotstablerows| which contain the current row's index and the total number of rows, respectively. See page~\pageref{pgfplotstable:page:tablerow} for details.
 	\item |\pgfmathaccuma| and |\pgfmathaccumb| can be used to transport intermediate results.
-	Both maintain their value from one column assignment to the next. All other local variables will be deleted after leaving the assignment routines.
+	Both maintain their value from one column assignment to the next. All other local variables will be deleted after leaving the assignment routines. The initial value is the empty string for both of them.
 \end{enumerate}
 The \marg{col name} is expected to be a \emph{physical} column name, no alias or column index is allowed (unless column indices and column names are the same).
 
@@ -1465,11 +1516,33 @@ The following keys can be used in both |\pgfplotstablecreatecol| and the easier 
 
 	Please see |\pgfplotstablecreatecol| for more information.
 
+	\paragraph{Accumulated columns:} The |expr| style initialises |\pgfmathaccuma| to |0| before its first column. Whenever it computes a new column value, it redefines |\pgfmathaccuma| to be the result. That means you can use |\pgfmathaccuma| inside of \marg{math expression} to accumulate columns. See |create col/expr accum| for more details.
+
 	\paragraph{Attention:} Currently, |expr| uses the math parser of \PGF. Although very powerful, it has never been intended for scientific applications. Its $5.5$ fixed point arithmetic has its limitations.
 
 	At the time of this writing, the \textsc{cvs} version of \PGF\ provides the ``fixed point library'' which has a much higher data range of about $\pm 10^{17}$ and higher precision. It relies on the |fp| package and can be enabled easily for |expr| (without affecting any other \PGF\ pictures in the document).
 
 	There is limited support for floating point arithmetics which covers the complete data range of $\pm 10^{\pm 324}$ required for scientific computing. The relative precision is at least $10^{-5}$. So far, every elementary operation needs to be programmed by hand and only a subset of math operations is implemented. Documentation for how to write such code is included in the \PGF\ math library.
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/create col/expr accum=\marg{math expression}\marg{accum initial}}
+	A variant of |create col/expr| which also allows to define the initial value of |\pgfmathaccuma|. The case \marg{accum initial}=|0| is \emph{equivalent} to |expr=|\marg{math expression}.
+
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/new/.style={
+		create col/expr={\pgfmathaccuma + \thisrow{level}}},
+	create on use/new2/.style={
+		create col/expr accum={\pgfmathaccuma - \thisrow{level}}{100}}
+}
+
+\pgfplotstabletypesetfile[
+	columns={level,new,new2},
+	columns/new/.style={column name=$\sum$level},
+	columns/new2/.style={column name=$\prod$level}
+]{pgfplotstable.example1.dat}
+\end{codeexample}
+The example creates two columns: the |new| column is just the sum of each value in the \meta{level} column (it employs the default |\pgfmathaccuma=0|). The |new2| column initialises |\pgfmathaccuma=100| and then successively subtracts the value of \meta{level}.
 \end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/create col/quotient=\marg{column name}}
