@@ -1632,8 +1632,22 @@
 					\pgfplots@addplotimpl@INIT
 					\pgfplots@addplotimpl@expression{#1}%
 				}{%
-					\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
-					\pgfplots@gobble@until@semicolon
+					\pgfutil@ifnextchar\bgroup{%
+						\pgfplots@addplotimpl@INIT
+						\pgfplots@addplotimpl@expression@curly{#1}%
+					}{%
+						\pgfutil@ifnextchar e{%
+							\pgfplots@addplotimpl@INIT
+							\pgfplots@addplotimpl@expression@e{#1}%
+						}{%
+							\pgfutil@ifnextchar g{%
+								\pgfplots@addplotimpl@gnuplot{#1}%
+							}{%
+								\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
+								\pgfplots@gobble@until@semicolon
+							}%
+						}%
+					}%
 				}%
 			}%
 		}%
@@ -1644,13 +1658,7 @@
 		\pgfplots@addplotimpl@INIT
 		\pgfplots@addplotimpl@file{#1}%
 	}{%
-		% Overwrite the implementation of domain here!
-		% Reason: 'plot function' allows MUCH higher data domains than
-		% the standard implementation of 'domain'.
-		%
-		% That's an ugly hack, but it works at least.
-		\pgfkeysdef{/tikz/domain}{\edef\tikz@plot@domain{####1}}%
-		\pgfplots@addplotimpl@INIT
+		% do NOT call \pgfplots@addplotimpl@INIT here!
 		\pgfplots@addplotimpl@function{#1}%
 	}%
 }%
@@ -1669,6 +1677,17 @@
 	%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
+	%
+	% Define a "function" x which sets \pgfmathresult := \x :
+	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
+		% We have PGF 2.00 :
+		\def\pgfmath@parsefunction@x{\edef\pgfmathresult{\tikz@plot@var}\pgfmath@postfunction}%
+		\def\pgfmath@parsefunction@y{\let\pgfmathresult=\y\pgfmath@postfunction}%
+	}{%
+		% We have PGF > 2.00 :
+		\pgfmathdeclarefunction{x}{0}{\edef\pgfmathresult{\tikz@plot@var}}%
+		\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
+	}%
 	%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
@@ -1717,6 +1736,25 @@
 	}%
 	\pgfplots@coord@stream@end
 }%
+% \addplot[#1] {#2} #4;
+\long\def\pgfplots@addplotimpl@expression@curly#1#2#3;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}}%
+\long\def\pgfplots@addplotimpl@expression@curly@#1#2#3{%
+	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
+	\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#2}{#3}%
+}%
+% \addplot[#1] expression[#2] {#3} #4;
+\def\pgfplots@addplotimpl@expression@e#1expression{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@expression@e@{#1}%
+	}{%
+		\pgfplots@addplotimpl@expression@e@{#1}[]%
+	}%
+}%
+\def\pgfplots@addplotimpl@expression@e@#1[#2]{%
+	\pgfplots@process@behavioroptions{#2}%
+	\pgfplots@addplotimpl@expression@curly{#1}%
+}%
 
 
 \let\pgfplots@backupof@pgfplotxyfile=\pgfplotxyfile
@@ -1735,6 +1773,9 @@
   \xdef\pgfplots@gnuplot@format{set format "%.7e";}
 }
 
+% |\addplot gnuplot| is an alias to |\addplot function|
+\def\pgfplots@addplotimpl@gnuplot#1gnuplot{\pgfplots@addplotimpl@function{#1}unction}%
+
 % \addplot[<style options>]
 % 	plot[<behavior opts>] 
 % 	function[<further behavior opts>]
@@ -1745,6 +1786,14 @@
 % #3: gnuplot code to generate coordinates
 % #4: trailing path commands until ';'
 \def\pgfplots@addplotimpl@function#1unction{%
+	% Overwrite the implementation of domain here!
+	% Reason: 'plot function' allows MUCH higher data domains than
+	% the standard implementation of 'domain'.
+	%
+	% That's an ugly hack, but it works at least.
+	\pgfkeysdef{/tikz/domain}{\edef\tikz@plot@domain{##1}}%
+	\pgfplots@addplotimpl@INIT
+	%
 	\pgfutil@ifnextchar[{%
 		\pgfplots@addplotimpl@function@opt{#1}%
 	}{%
@@ -1754,14 +1803,7 @@
 \def\pgfplots@addplotimpl@function@opt#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
 % \addplot[#1] function[#2] {#3} #4;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4{%
-	\def\pgfplots@loc@TMPa{#2}%
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
-			\pgfplots@addplot@nonlegend@options
-			#2}%
-		\pgfplotsset{#2}%
-	\fi
+	\pgfplots@process@behavioroptions{#2}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{samples}{tikz@plot@samples}{25}%
@@ -2272,11 +2314,8 @@
 	\else
 		\pgfplots@execute@at@begin@plot
 	\fi
-	\def\pgfplots@addplot@nonlegend@options{#1}%
-	\ifx\pgfplots@addplot@nonlegend@options\pgfutil@empty
-	\else
-		\pgfplotsset{#1}%
-	\fi
+	\let\pgfplots@addplot@nonlegend@options=\pgfutil@empty
+	\pgfplots@process@behavioroptions{#1}%
 	% these styles may contain behavior options (error bars,
 	% samples,... ) activate them!
 	\ifpgfplots@curplot@isirrelevant
@@ -2285,6 +2324,16 @@
 		\pgfplotsset{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
 	\fi
 }
+\def\pgfplots@process@behavioroptions#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
+			\pgfplots@addplot@nonlegend@options
+			#1}%
+		\pgfplotsset{#1}%
+	\fi
+}%
 
 \def\pgfplots@end@plot{%
 	\ifpgfplots@curplot@isirrelevant
@@ -2323,6 +2372,7 @@
 	% 'IS' == 'inactive semicolon'
 	\let\pgfplots@gobble@until@semicolon@IS=\pgfplots@gobble@until@semicolon
 	\let\pgfplots@addplotimpl@expression@IS=\pgfplots@addplotimpl@expression
+	\let\pgfplots@addplotimpl@expression@curly@IS=\pgfplots@addplotimpl@expression@curly
 	\let\pgfplots@addplotimpl@function@opt@IS=\pgfplots@addplotimpl@function@opt
 	\let\pgfplots@addplotimpl@file@opt@IS=\pgfplots@addplotimpl@file@opt
 	\let\pgfplots@addplotimpl@table@fromstructure@IS=\pgfplots@addplotimpl@table@fromstructure
@@ -2331,6 +2381,7 @@
 	%
 	\def\pgfplots@gobble@until@semicolon@AS#1;{}
 	\long\def\pgfplots@addplotimpl@expression@AS#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
+	\long\def\pgfplots@addplotimpl@expression@curly@AS#1#2#3;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}}%
 	\def\pgfplots@addplotimpl@function@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
 	\def\pgfplots@addplotimpl@file@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}}%
 	\long\def\pgfplots@addplotimpl@table@fromstructure@AS#1#2from#3#4;{\pgfplots@addplotimpl@table@fromstructure@{#1}{#2}{#3}{#4}}%
@@ -2342,6 +2393,7 @@
 	\pgfplots@appendto@activesemicolon@switcher{%
 		\let\pgfplots@gobble@until@semicolon=\pgfplots@gobble@until@semicolon@AS
 		\let\pgfplots@addplotimpl@expression=\pgfplots@addplotimpl@expression@AS
+		\let\pgfplots@addplotimpl@expression@curly=\pgfplots@addplotimpl@expression@curly@AS
 		\let\pgfplots@addplotimpl@function@opt=\pgfplots@addplotimpl@function@opt@AS
 		\let\pgfplots@addplotimpl@file@opt=\pgfplots@addplotimpl@file@opt@AS
 		\let\pgfplots@addplotimpl@table@fromstructure=\pgfplots@addplotimpl@table@fromstructure@AS

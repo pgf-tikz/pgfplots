@@ -14,4 +14,7 @@ pgfplotstable: pgfplotstable.pdf
 	@echo ""
 	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
 	
+clean:
+	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg
+
 FORCE:
