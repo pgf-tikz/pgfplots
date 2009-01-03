@@ -1613,35 +1613,27 @@
 \def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
 	\begingroup% <-- This groups ends in \pgfplots@end@plot
 	%
-	% Invoke this here as soon as the coordinate input type is known.
-	% I want to redefine user interface keys accordingly (see below):
-	\def\pgfplots@addplotimpl@INIT{\pgfplots@start@plot@with@behavioroptions{#2}}%
-	%
 	\pgfutil@ifnextchar c{%
-		\pgfplots@addplotimpl@INIT
-		\pgfplots@addplotimpl@coordinates{#1}plot 
+		\pgfplots@addplotimpl@coordinates{#1}{#2}plot 
 	}{%
 		\pgfutil@ifnextchar f{%
-			\pgfplots@addplotimpl@f{#1}%
+			\pgfplots@addplotimpl@f{#1}{#2}%
 		}{%
 			\pgfutil@ifnextchar t{%
-				\pgfplots@addplotimpl@INIT
+				\pgfplots@start@plot@with@behavioroptions{#2}%
 				\pgfplots@addplotimpl@table{#1}%
 			}{%
 				\pgfutil@ifnextchar ({%
-					\pgfplots@addplotimpl@INIT
-					\pgfplots@addplotimpl@expression{#1}%
+					\pgfplots@addplotimpl@expression{#1}{#2}%
 				}{%
 					\pgfutil@ifnextchar\bgroup{%
-						\pgfplots@addplotimpl@INIT
-						\pgfplots@addplotimpl@expression@curly{#1}%
+						\pgfplots@addplotimpl@expression@curly{#1}{#2}%
 					}{%
 						\pgfutil@ifnextchar e{%
-							\pgfplots@addplotimpl@INIT
-							\pgfplots@addplotimpl@expression@e{#1}%
+							\pgfplots@addplotimpl@expression@e{#1}{#2}%
 						}{%
 							\pgfutil@ifnextchar g{%
-								\pgfplots@addplotimpl@gnuplot{#1}%
+								\pgfplots@addplotimpl@gnuplot{#1}{#2}%
 							}{%
 								\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
 								\pgfplots@gobble@until@semicolon
@@ -1653,13 +1645,11 @@
 		}%
 	}%
 }
-\def\pgfplots@addplotimpl@f#1f{%
+\def\pgfplots@addplotimpl@f#1#2f{%
 	\pgfutil@ifnextchar i{%
-		\pgfplots@addplotimpl@INIT
-		\pgfplots@addplotimpl@file{#1}%
+		\pgfplots@addplotimpl@file{#1}{#2}%
 	}{%
-		% do NOT call \pgfplots@addplotimpl@INIT here!
-		\pgfplots@addplotimpl@function{#1}%
+		\pgfplots@addplotimpl@function{#1}{#2}%
 	}%
 }%
 
@@ -1670,10 +1660,16 @@
 % library' of pgf, it results in highly accurate plots.
 %
 %
-\long\def\pgfplots@addplotimpl@expression#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
-% \addplot[#1] (#2,#3) #4;
-\long\def\pgfplots@addplotimpl@expression@#1#2#3#4{%
-	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+\long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
+% \addplot[#1] [#2] (#3,#4) #5;
+\long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
+	\ifpgfplots@usefpu
+		\def\pgfplots@loc@TMPa{/pgf/fpu=true}%
+	\else
+		\let\pgfplots@loc@TMPa=\pgfutil@empty
+	\fi
+	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#2}%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#5}%
 	%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
@@ -1691,11 +1687,11 @@
 	%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
-		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
+		\def\pgfplots@addplotimpl@expression@split@yz##1,##3\pgfplots@EOI{%
 			\def\pgfplots@addplotimpl@expression@yEXPR{##1}%
-			\def\pgfplots@addplotimpl@expression@zEXPR{##2}%
+			\def\pgfplots@addplotimpl@expression@zEXPR{##3}%
 		}%
-		\pgfplots@addplotimpl@expression@split@yz#3\pgfplots@EOI%
+		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
 		\ifx\pgfplots@plot@ydomain\pgfutil@empty
 			\def\y{0}%
 		\else
@@ -1714,7 +1710,7 @@
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
 		\edef\pgfplots@plot@data##1{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 		\def\y{0}%
-		\def\pgfplots@addplotimpl@expression@yEXPR{#3}%
+		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
 		\def\pgfplots@current@point@z{}%
 	\fi
 	% I am using \pgfplotsforeachungrouped in favor of
@@ -1724,7 +1720,7 @@
 	%
 	\pgfplots@coord@stream@start
 	\pgfplots@plot@data{%
-		\pgfmathparse{#2}%
+		\pgfmathparse{#3}%
 		\let\pgfplots@current@point@x=\pgfmathresult
 		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
 		\let\pgfplots@current@point@y=\pgfmathresult
@@ -1736,24 +1732,23 @@
 	}%
 	\pgfplots@coord@stream@end
 }%
-% \addplot[#1] {#2} #4;
-\long\def\pgfplots@addplotimpl@expression@curly#1#2#3;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}}%
-\long\def\pgfplots@addplotimpl@expression@curly@#1#2#3{%
+% \addplot[#1] [#2] {#3} #4;
+\long\def\pgfplots@addplotimpl@expression@curly#1#2#3#4;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}{#4}}%
+\long\def\pgfplots@addplotimpl@expression@curly@#1#2#3#4{%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
-	\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}}%
-	\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#2}{#3}%
+	\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#3}{#4}%
 }%
-% \addplot[#1] expression[#2] {#3} #4;
-\def\pgfplots@addplotimpl@expression@e#1expression{%
+% \addplot[#1] [#2] expression[#3] {#4} #5;
+\def\pgfplots@addplotimpl@expression@e#1#2expression{%
 	\pgfutil@ifnextchar[{%
-		\pgfplots@addplotimpl@expression@e@{#1}%
+		\pgfplots@addplotimpl@expression@e@{#1}{#2}%
 	}{%
-		\pgfplots@addplotimpl@expression@e@{#1}[]%
+		\pgfplots@addplotimpl@expression@e@{#1}{#2}[]%
 	}%
 }%
-\def\pgfplots@addplotimpl@expression@e@#1[#2]{%
-	\pgfplots@process@behavioroptions{#2}%
-	\pgfplots@addplotimpl@expression@curly{#1}%
+\def\pgfplots@addplotimpl@expression@e@#1#2[#3]{%
+	\pgfplots@addplotimpl@expression@curly{#1}{#2,#3}%
 }%
 
 
@@ -1774,7 +1769,7 @@
 }
 
 % |\addplot gnuplot| is an alias to |\addplot function|
-\def\pgfplots@addplotimpl@gnuplot#1gnuplot{\pgfplots@addplotimpl@function{#1}unction}%
+\def\pgfplots@addplotimpl@gnuplot#1#2gnuplot{\pgfplots@addplotimpl@function{#1}{#2}unction}%
 
 % \addplot[<style options>]
 % 	plot[<behavior opts>] 
@@ -1785,25 +1780,22 @@
 % #2: optional arguments after function[]
 % #3: gnuplot code to generate coordinates
 % #4: trailing path commands until ';'
-\def\pgfplots@addplotimpl@function#1unction{%
-	% Overwrite the implementation of domain here!
-	% Reason: 'plot function' allows MUCH higher data domains than
-	% the standard implementation of 'domain'.
-	%
-	% That's an ugly hack, but it works at least.
-	\pgfkeysdef{/tikz/domain}{\edef\tikz@plot@domain{##1}}%
-	\pgfplots@addplotimpl@INIT
-	%
+\def\pgfplots@addplotimpl@function#1#2unction{%
 	\pgfutil@ifnextchar[{%
-		\pgfplots@addplotimpl@function@opt{#1}%
+		\pgfplots@addplotimpl@function@opt{#1}{#2}%
 	}{%
-		\pgfplots@addplotimpl@function@opt{#1}[]%
+		\pgfplots@addplotimpl@function@opt{#1}{#2}[]%
 	}%
 }%
-\def\pgfplots@addplotimpl@function@opt#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
-% \addplot[#1] function[#2] {#3} #4;
-\def\pgfplots@addplotimpl@function@opt@#1#2#3#4{%
-	\pgfplots@process@behavioroptions{#2}%
+\def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
+% \addplot[#1] [#2] function[#3] {#4} #5;
+\def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
+	\pgfplots@start@plot@with@behavioroptions{%
+		% Overwrite the implementation of domain here!
+		% Reason: 'plot function' allows MUCH higher data domains than
+		% the standard implementation of 'domain'.
+		/tikz/domain/.estore in=\tikz@plot@domain,
+		#2,#3}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{samples}{tikz@plot@samples}{25}%
@@ -1815,7 +1807,7 @@
 	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
 	\def\pgfplots@addplotimpl@gnuplotresult@isthreedim@withtwocoords{0}%
 	\iftikz@plot@raw@gnuplot%
-		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#3}}%
+		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#4}}%
 	\else%
 		\ifpgfplots@curplot@threedim 
 			\ifx\pgfplots@plot@ydomain\pgfutil@empty
@@ -1828,13 +1820,13 @@
 			set samples \tikz@plot@samples;
 			\iftikz@plot@parametric	set parametric;\fi
 			\ifpgfplots@curplot@threedim 
-				splot [x=\tikz@plot@domain] [y=\pgfplots@plot@ydomain] #3;%
+				splot [x=\tikz@plot@domain] [y=\pgfplots@plot@ydomain] #4;%
 			\else
-				plot [x=\tikz@plot@domain] #3;%
+				plot [x=\tikz@plot@domain] #4;%
 			\fi
 			}}%
 	\fi%
-	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#4}}%
+	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#5}}%
 	\pgfplots@plot@data
 	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
 }%
@@ -1856,24 +1848,26 @@
 		 % I invoke the private '@opt@' method because the semicolon ';' 
 		 % character may cause problems due to catcode mismatches.
 		 % *sigh*.
-		\pgfplots@addplotimpl@file@opt@{#1}{}{#3}{#2}%
+		\pgfplots@addplotimpl@file@opt@@{#1}{}{#3}{#2}%
 	\fi
 }
 
-% #1: arguments to \addplot[...]
-% #2: the file name
-% #3: any additional path arguments
-\def\pgfplots@addplotimpl@file#1ile{%
+% \addplot[#1] [#2] file{#3} #4;
+\def\pgfplots@addplotimpl@file#1#2ile{%
 	\pgfutil@ifnextchar[{%
-		\pgfplots@addplotimpl@file@opt{#1}%
+		\pgfplots@addplotimpl@file@opt{#1}{#2}%
 	}{%
-		\pgfplots@addplotimpl@file@opt{#1}[]%
+		\pgfplots@addplotimpl@file@opt{#1}{#2}[]%
 	}%
 }
 
-% \addplot[#1] file[#2] {#3} #4;
-\def\pgfplots@addplotimpl@file@opt#1[#2]#3#4;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}}%
-\def\pgfplots@addplotimpl@file@opt@#1#2#3#4{%
+% \addplot[#1] [#2] file[#3] {#4} #5;
+\def\pgfplots@addplotimpl@file@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}{#5}}%
+\def\pgfplots@addplotimpl@file@opt@#1#2#3#4#5{%
+	\pgfplots@start@plot@with@behavioroptions{#2}%
+	\pgfplots@addplotimpl@file@opt@@{#1}{#3}{#4}{#5}%
+}
+\def\pgfplots@addplotimpl@file@opt@@#1#2#3#4{%
 	\begingroup
 	\def\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -2329,7 +2323,7 @@
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
 		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
-			\pgfplots@addplot@nonlegend@options
+			\pgfplots@addplot@nonlegend@options,
 			#1}%
 		\pgfplotsset{#1}%
 	\fi
@@ -2344,19 +2338,18 @@
 	\endgroup%<-- close the \begingroup of \pgfplots@addplotimpl@plot@withoptions
 }
 
-% #1: arguments to \addplot[...]
-% #2: the plot coordinates
-% #3: any trailing path command before the final ';'. It will be used as-is.
-\long\def\pgfplots@addplotimpl@coordinates#1plot coordinates#2#3;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}}%
-% \addplot[#1] coordinates {#2} #3;
-\long\def\pgfplots@addplotimpl@coordinates@#1#2#3{%
+% \addplot[#1] [#2] {#3} #4;
+\long\def\pgfplots@addplotimpl@coordinates#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
+% \addplot[#1] [#2] coordinates {#3} #4;
+\long\def\pgfplots@addplotimpl@coordinates@#1#2#3#4{%
 %\tracingmacros=2\tracingcommands=2
-%\pgfplots@message{processing plots coords with trailing path '#3'}%
-	\pgfplots@PREPARE@COORD@STREAM{#1}{#3}%
+%\pgfplots@message{processing plots coords with trailing path '#4'}%
+	\pgfplots@start@plot@with@behavioroptions{#2}%
+	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	\ifpgfplots@curplot@threedim
-		\pgfplots@coord@stream@foreach@threedim{#2}%
+		\pgfplots@coord@stream@foreach@threedim{#3}%
 	\else
-		\pgfplots@coord@stream@foreach{#2}%
+		\pgfplots@coord@stream@foreach{#3}%
 	\fi
 }%
 
@@ -2380,13 +2373,13 @@
 	\let\pgfplots@addplotimpl@coordinates@IS=\pgfplots@addplotimpl@coordinates
 	%
 	\def\pgfplots@gobble@until@semicolon@AS#1;{}
-	\long\def\pgfplots@addplotimpl@expression@AS#1(#2,#3)#4;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}}%
-	\long\def\pgfplots@addplotimpl@expression@curly@AS#1#2#3;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}}%
-	\def\pgfplots@addplotimpl@function@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}}%
-	\def\pgfplots@addplotimpl@file@opt@AS#1[#2]#3#4;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}}%
+	\long\def\pgfplots@addplotimpl@expression@AS#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
+	\long\def\pgfplots@addplotimpl@expression@curly@AS#1#2#3#4;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}{#4}}%
+	\def\pgfplots@addplotimpl@function@opt@AS#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
+	\def\pgfplots@addplotimpl@file@opt@AS#1#2[#3]#4#5;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}{#5}}%
 	\long\def\pgfplots@addplotimpl@table@fromstructure@AS#1#2from#3#4;{\pgfplots@addplotimpl@table@fromstructure@{#1}{#2}{#3}{#4}}%
 	\long\def\pgfplots@addplotimpl@table@fromfile@AS#1#2#3#4;{\pgfplots@addplotimpl@table@fromfile@{#1}{#2}{#3}{#4}}%
-	\long\def\pgfplots@addplotimpl@coordinates@AS#1plot coordinates#2#3;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}}%
+	\long\def\pgfplots@addplotimpl@coordinates@AS#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
 	%
 	% Checks whether ';' is an active character and, if that is the
 	% case, modifies all public macros for it.
