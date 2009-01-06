@@ -1702,6 +1702,8 @@
 	\fi
 	%
 	% Define a "function" x which sets \pgfmathresult := \x :
+	% FIXME : that's wrong here! I need to 
+	% provide \pgfmathresult IN THE CORRECT NUMBER FORMAT!
 	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
 		% We have PGF 2.00 :
 		\def\pgfmath@parsefunction@x{\edef\pgfmathresult{\tikz@plot@var}\pgfmath@postfunction}%
@@ -1711,6 +1713,13 @@
 		\pgfmathdeclarefunction{x}{0}{\edef\pgfmathresult{\tikz@plot@var}}%
 		\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
 	}%
+	%
+	% Now, prepare the loops.
+	%
+	% I am using \pgfplotsforeachungrouped in favor of
+	% \foreach because \foreach does NOT allow extended
+	% precision. Besided, \pgfplotsforeachungrouped avoids
+	% scoping problems.
 	%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
@@ -1736,6 +1745,7 @@
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
 		%
+		%
 		% For log-axes, samples logarithmically (unless the user
 		% provides its own sampling routine)
 		\def\pgfplots@samples@logarithmically{0}%
@@ -1746,6 +1756,7 @@
 			\fi
 		\fi
 		\if\pgfplots@samples@logarithmically1
+			% sample logarithmically:
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachlogarithmicungrouped
 				\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log 
@@ -1759,6 +1770,17 @@
 			\def\pgfplots@addplotimpl@expression@prepare@x{%
 				\let\pgfplots@current@point@x=\pgfplots@current@point@x@log
 			}%
+			\pgflibraryfpuifactive
+				{\relax}
+				{%
+					% ok, if the FPU is NOT active, we should return
+					% results as fixed points.
+					% We need to configure that for
+					% \pgfplotsforeachlogarithmicungrouped manually:
+					\pgfplotsforeachlogarithmicformatresultwith{%
+						\pgfmathfloattofixed{\pgfmathresult}%
+					}%
+				}%
 		\else
 			\edef\pgfplots@plot@data##1{
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
@@ -1767,11 +1789,6 @@
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
 		\def\pgfplots@current@point@z{}%
 	\fi
-	% I am using \pgfplotsforeachungrouped in favor of
-	% \foreach because \foreach does NOT allow extended
-	% precision. Besided, \pgfplotsforeachungrouped avoids
-	% scoping problems.
-	%
 	\pgfplots@coord@stream@start
 	\pgfplots@plot@data{%
 		\pgfplots@addplotimpl@expression@prepare@x%
