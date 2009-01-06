@@ -1674,6 +1674,33 @@
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
 	%
+	% Determine whether the x range is parameterized or uniform and
+	% prepare a macro which assigns \pgfplots@current@point@x:
+	\def\pgfplots@addplotimpl@expression@prepare@x{%
+		\pgfmathparse{#3}%
+		\let\pgfplots@current@point@x=\pgfmathresult
+	}%
+	\def\pgfplots@addplotimpl@expression@hasuniform@x{0}%
+	\def\pgfplots@loc@TMPa{#3}%
+	% do we have '\x' as x coordinate?
+	\expandafter\def\expandafter\pgfplots@loc@TMPb\expandafter{\tikz@plot@var}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
+	\else
+		\def\pgfplots@loc@TMPb{x}%
+		% do we have 'x' as x coordinate?
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
+		\fi
+	\fi
+	\if\pgfplots@addplotimpl@expression@hasuniform@x1
+		% if '#3' is '\x' or 'x', we don't need the math parser -
+		% we can simply take \tikz@plot@var.
+		\def\pgfplots@addplotimpl@expression@prepare@x{%
+			\edef\pgfplots@current@point@x{\tikz@plot@var}%
+		}%
+	\fi
+	%
 	% Define a "function" x which sets \pgfmathresult := \x :
 	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
 		% We have PGF 2.00 :
@@ -1708,10 +1735,33 @@
 	\else
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
+		%
+		% For log-axes, samples logarithmically (unless the user
+		% provides its own sampling routine)
+		\def\pgfplots@samples@logarithmically{0}%
 		\ifpgfplots@xislinear
-			\edef\pgfplots@plot@data##1{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 		\else
-			\edef\pgfplots@plot@data##1{\noexpand\pgfplotsforeachlogarithmicungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@domain} {##1}}%
+			\if\pgfplots@addplotimpl@expression@hasuniform@x1
+				\def\pgfplots@samples@logarithmically{1}%
+			\fi
+		\fi
+		\if\pgfplots@samples@logarithmically1
+			\edef\pgfplots@plot@data##1{%
+				\noexpand\pgfplotsforeachlogarithmicungrouped
+				\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log 
+					in {\tikz@plot@domain} {##1}}%
+			%  we have a logarithmic sampling sequence,
+			% \pgfplots@current@point@x@log is already available
+			% logarithmic! We can safe time and accuracy for the x
+			% coordinate by using that one instead of computing
+			% log(exp(\x)) numerically:
+			\pgfplots@disablelogfilter@xtrue
+			\def\pgfplots@addplotimpl@expression@prepare@x{%
+				\let\pgfplots@current@point@x=\pgfplots@current@point@x@log
+			}%
+		\else
+			\edef\pgfplots@plot@data##1{
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
 		\fi
 		\def\y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
@@ -1724,8 +1774,7 @@
 	%
 	\pgfplots@coord@stream@start
 	\pgfplots@plot@data{%
-		\pgfmathparse{#3}%
-		\let\pgfplots@current@point@x=\pgfmathresult
+		\pgfplots@addplotimpl@expression@prepare@x%
 		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
 		\let\pgfplots@current@point@y=\pgfmathresult
 		\ifpgfplots@curplot@threedim
@@ -1813,7 +1862,24 @@
 	\iftikz@plot@raw@gnuplot%
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{#4}}%
 	\else%
-		\pgfplots@disablelogfiltertrue
+		\def\pgfplots@gnuplot@logdirs{}%
+		\ifpgfplots@xislinear
+		\else
+			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs x}%
+		\fi
+		\ifpgfplots@yislinear
+		\else
+			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs y}%
+		\fi
+		\ifpgfplots@curplot@threedim
+			\ifpgfplots@zislinear
+			\else
+				\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs z}%
+			\fi
+			\pgfplots@disablelogfilter@ztrue
+		\fi
+		\pgfplots@disablelogfilter@xtrue
+		\pgfplots@disablelogfilter@ytrue
 		\ifpgfplots@curplot@threedim 
 			\ifx\pgfplots@plot@ydomain\pgfutil@empty
 				\pgfplots@error{Sorry, '\string\addplot3 plot function{}' can't be processed correctly because 'y domain' is empty.}%
@@ -1823,17 +1889,9 @@
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 			\pgfplots@gnuplot@format;
 			set samples \tikz@plot@samples;
-			\ifpgfplots@xislinear
-				\ifpgfplots@yislinear
-				\else
-					set logscale y 2.71828182845905; 
-				\fi
-			\else 
-				\ifpgfplots@yislinear
-					set logscale x 2.71828182845905; 
-				\else
-					set logscale xy 2.71828182845905; 
-				\fi
+			\ifx\pgfplots@gnuplot@logdirs\pgfutil@empty
+			\else
+				set logscale \pgfplots@gnuplot@logdirs\space 2.71828182845905; 
 			\fi
 			\iftikz@plot@parametric	set parametric;\fi
 			\ifpgfplots@curplot@threedim 
