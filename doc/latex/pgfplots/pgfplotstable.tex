@@ -163,6 +163,10 @@ There is future support for a second header line which must start with `|$flags 
 \end{codeexample}
 \end{command}
 
+\begin{command}{\pgfplotstablegetrowsof\marg{file name or \textbackslash loadedtable}}
+	Defines |\pgfmathresult| to be the number of rows in a table. The argument may be either a file name or an already loaded table (the \meta{\textbackslash macro} of |\pgfplotstableread|).
+\end{command}
+
 \begin{command}{\pgfplotstabletypeset\oarg{optional arguments}\marg{\textbackslash macro}}
 	Works in the same way as |\pgfplotstabletypesetfile|, but it accepts an already loaded table.
 \end{command}
@@ -1359,13 +1363,49 @@ Since this may be useful in a more general context, it is available as |empty ce
 \end{stylekey}
 
 
-\section{Postprocessing Data in New Columns}
+\section{Generating Data in New Tables or Columns}
 \label{pgfplotstable:createcol}
-After tables have been loaded from disk, it is possible to change their contents. The methods are limited up to now and they reflect mostly what I needed in my applications. Nevertheless, the approaches are quite general and can be customized.
+It is possible to create new tables from scratch or to change tables after they have been loaded from disk.
 
-\subsection{Creating New Columns From Others}
+\subsection{Creating New Tables From Scratch}
+\begin{command}{\pgfplotstablenew\oarg{options}\marg{row count}\marg{\textbackslash table}}
+	Creates a new table from scratch. 
+
+	The new table will contain all columns listed in the |columns| key
+	which needs to be provided in \oarg{options}\footnote{Currently, you need to provide at least one column here: the implementation gets confused for completely empty tables. If you do not provide any column name, a dummy column will be created.}.
+
+	Furthermore, there must be |create on use| statements (see the next subsection) for every
+	column which shall be generated. Columns are generated
+	independently, in the order of appearance in |columns|.
+
+	The table will contain exactly \marg{row count} rows. If \marg{row count} is an |\pgfplotstablegetrowsof| statement, that statement will be executed and the resulting number of rows be  used. Otherwise, \marg{row count} will be evaluated as number.
+\begin{codeexample}[]
+% this key setting could be provided in the document's preamble:
+\pgfplotstableset{
+	% define how the 'new' column shall be filled:
+	create on use/new/.style={create col/set list={4,5,6,7,...,10}}}
+% create a new table with 11 rows and column 'new':
+\pgfplotstablenew[columns={new}]{11}\table
+% show it:
+\pgfplotstabletypeset[empty cells with={---}]\table
+\end{codeexample}
+
+\begin{codeexample}[]
+% create a new table with 11 rows and column 'new':
+\pgfplotstablenew[
+	% define how the 'new' column shall be filled:
+	create on use/new/.style={create col/expr={(15+\pgfplotstablerow)!}},
+	columns={new}]
+	{11}
+	\table
+% show it:
+\pgfplotstabletypeset\table
+\end{codeexample}
+\end{command}
+
+\subsection{Creating New Columns From Existing Ones}
 \begin{command}{\pgfplotstablecreatecol\oarg{options}\marg{new col name}\marg{\textbackslash table}}
-Creates a new column named \marg{new col name} and appends it to table \marg{\textbackslash table}.
+Creates a new column named \marg{new col name} and appends it to an already existing table \marg{\textbackslash table}.
 
 End users probably don't need to use |\pgfplotstablecreatecol| directly at all -- there is the high--level framework |create on use| which invokes it internally and can be used with simple key--value assignments (see below). However, this documentation explains how to use values of existing columns to fill new cells.
 
@@ -1402,7 +1442,8 @@ The following macros are useful during cell assignments:
 
 	\item |\pgfplotstablerow| and |\pgfplotstablerows| which contain the current row's index and the total number of rows, respectively. See page~\pageref{pgfplotstable:page:tablerow} for details.
 	\item |\pgfmathaccuma| and |\pgfmathaccumb| can be used to transport intermediate results.
-	Both maintain their value from one column assignment to the next. All other local variables will be deleted after leaving the assignment routines. The initial value is the empty string for both of them.
+	Both maintain their value from one column assignment to the next. All other local variables will be deleted after leaving the assignment routines. The initial value is the empty string for both of them unless they are already initialised by column creation styles.
+	\item commands which are valid throughout every part of this package, for example |\pgfplotstablerow| to get the current row index or |\pgfplotstablerows| to get the total number of rows.
 \end{enumerate}
 The \marg{col name} is expected to be a \emph{physical} column name, no alias or column index is allowed (unless column indices and column names are the same).
 
@@ -1470,6 +1511,7 @@ The default implementation of |assign| is to produce empty strings. The default 
 \subsection{Predefined Column Generation Methods}
 The following keys can be used in both |\pgfplotstablecreatecol| and the easier |create on use| frameworks.
 
+\subsubsection{Acquiring Data Somewhere}
 \begin{stylekey}{/pgfplots/table/create col/set=\marg{value}}
 	A style for use in column creation context which creates a new column and writes \marg{value} into each new cell. The value is written as string (verbatim).
 \begin{codeexample}[]
@@ -1482,6 +1524,24 @@ The following keys can be used in both |\pgfplotstablecreatecol| and the easier 
 	columns={level,my new col},
 ]{pgfplotstable.example1.dat}
 \end{codeexample}
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/create col/set list=\marg{comma-separated-list}}
+	A style for use in column creation context which creates a new column consisting of the entries in \marg{comma-separated-list}. The value is written as string (verbatim).
+
+	The \marg{comma-separated-list} is processed via \Tikz's |\foreach| command, that means you can use |...| expressions to provide number (or character) ranges.
+\begin{codeexample}[]
+\pgfplotstableset{
+	create on use/my new col/.style={
+		create col/set list={A,B,C,4,50,55,...,100}},
+	columns/my new col/.style={string type}
+}
+
+\pgfplotstabletypesetfile[
+	columns={level,my new col},
+]{pgfplotstable.example1.dat}
+\end{codeexample}
+	\noindent The new column will be padded or truncated to the required number of rows. If the list does not contain enough elements, empty cells will be produced.
 \end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/create col/copy=\marg{column name}}
@@ -1497,6 +1557,19 @@ The following keys can be used in both |\pgfplotstablecreatecol| and the easier 
 ]{pgfplotstable.example1.dat}
 \end{codeexample}
 \end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/create col/copy column from table=\marg{file name or \textbackslash macro}\marg{column name}}
+	A style for use in column creation context which creates a new column consisting of the entries in \marg{column name} of the provided table. The argument may be either a file name or an already loaded table (i.e. a \meta{\textbackslash macro} as returned by |\pgfplotstableread|).
+
+	You can use this style, possibly combined with |\pgfplotstablenew|, to merge one common sort of column from different tables into one large table.
+	
+	The cell values are written as string (verbatim).
+
+	\noindent The new column will be padded or truncated to the required number of rows. If the list does not contain enough elements, empty cells will be produced.
+\end{stylekey}
+
+
+\subsubsection{Mathematical Operations}
 
 \begin{stylekey}{/pgfplots/table/create col/expr=\marg{math expression}}
 	A style for use in |\pgfplotstablecreatecol| which uses \marg{math expression} to assign contents for the new column.
@@ -1634,6 +1707,49 @@ The example creates two columns: the |new| column is just the sum of each value 
 \end{codeexample}
 	This style employs methods of the floating point unit, that means it works with a relative precision of about $10^{-6}$ ($6$ significant digits in the mantisse).
 \end{keylist}
+
+\begin{stylekey}{/pgfplots/table/create col/function graph cut y=\marg{cut value}\marg{common options}\marg{one key-value set for each plot}}
+	A specialized style for use in |create on use| statements which computes cuts of (one or more) discrete plots $y(x_1), \dotsc, y(x_N)$ with a fixed \marg{cut value}. The $x_i$ are written into the table's cells.
+	
+	\pgfplotsset{anchor=center,/tikz/baseline}
+\begin{codeexample}[]
+\pgfplotstablenew[
+	create on use/cut/.style={create col/function graph cut y=
+		{2.5e-4}%
+		{x=Basis,y=L2,ymode=log,xmode=log}%
+{{table=plotdata/newexperiment1.dat},{table=plotdata/newexperiment2.dat}}
+	},
+	columns={cut}]
+	{2}
+	\table
+\pgfplotstabletypeset{\table}
+
+\begin{tikzpicture}
+\begin{loglogaxis}
+	\addplot table[x=Basis,y=L2] {plotdata/newexperiment1.dat};
+	\addplot table[x=Basis,y=L2] {plotdata/newexperiment2.dat};
+	\draw[blue!30!white] (axis cs:1,2.5e-4) -- (axis cs:1e5,2.5e-4);
+	\node[pin=-90:{$x=53.66$}] at (axis cs:53.66,2.5e-4) {};
+	\node[pin=45:{$x=601.83$}] at (axis cs:601.83,2.5e-4) {};
+\end{loglogaxis}
+\end{tikzpicture}
+\end{codeexample}
+	In the example above, we are searching for $x_1$ and $x_2$ such that $f_1(x_1) = \pgfmathprintnumber{2.5e-4}$ and $f_2(x_2) =\pgfmathprintnumber{2.5e-4}$. On the left is the automatically computed result. On the right is a problem illustration with proper annotation.
+	The \marg{cut value} is set to |2.5e-4|. The \marg{common options} contain the problem setup; in our case logarithmic scales and column names. The third argument is a comma-separated-list. Each element $i$ is a set of keys describing how to get $f_i(\cdot)$.
+
+	During both, \marg{common options} and the key sets, the following keys can be used:
+	\begin{itemize}
+		\item |table|: either a file name or an already loaded table where to get the data points,
+		\item |x|: the column name of the $x$ axis,
+		\item |y|: the column name of the $y$ axis.
+	\end{itemize}
+	The keys |xmode| and |ymode| can take either |log| or |linear|.
+
+	I needed such a thing as part of my postprocessing routines and decided to put it here -- if it proves to be useful for anyone, feel free to use it.
+\end{stylekey}
+\begin{stylekey}{/pgfplots/table/create col/function graph cut x=\marg{cut value}\marg{common options}\marg{one key-value set for each plot}}
+	As above, just with $x$ and $y$ exchanged.
+\end{stylekey}
 
 \section{Miscellaneous}
 \subsection{Plain \TeX\ and Con\TeX t support}

@@ -28,6 +28,28 @@
 %
 %--------------------------------------------
 
+
+% This file provides a high-level table manipulation and typesetting
+% package.
+%
+%
+% ---------------------------------------------
+%  Implementation notes for programmers:
+% ---------------------------------------------
+%
+%  The table data structure consists of
+%  1. A name which must be a valid TeX macro like '\table'
+%  2. A column list in the \pgfplotslist format.
+%   In fact, the column list is stored in the table's name:
+%   	\pgfplotslistnewempty\table
+%  3. A "file name" stored in
+%     \csname\string<\namemacro>@@table@name\endcsname
+%  4. foreach column, there is a list of row-values (a row-vector) in
+%  the \pgfplotslist format named
+%  		\csname\string<\namemacro>@<column name>\endcsname
+%   
+
+
 \newif\ifpgfplotstable@search@header
 \newcount\c@pgfplotstable@counta
 \newwrite\pgfplotstable@outfile
@@ -439,6 +461,10 @@
 			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
 		}%
 	},%
+	/pgfplots/table/create col/set list/.code={%
+		\pgfplots@assign@list\pgfmathaccumb{#1}%
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfmathaccumb}%
+	},%
 	/pgfplots/table/create col/expr accum/.code 2 args={%
 		\ifpgfplots@usefpu
 			\pgfkeysalso{/pgf/fpu=true}%
@@ -456,6 +482,30 @@
 	/pgfplots/table/create col/expr/.style={%
 		/pgfplots/table/create col/expr accum={#1}{0}%
 	},%
+	/pgfplots/table/create col/copy column from table/.code 2 args={%
+		\pgfplotstable@isloadedtable{#1}{%
+			\pgfplotstablegetcolumnbyname{#2}\of#1\to\pgfmathaccumb
+		}{%
+			\begingroup
+			\pgfplotstableread{#1}\pgfplotstable@tmptbl
+			\pgfplotstablegetcolumnbyname{#2}\of\pgfplotstable@tmptbl\to\pgfmathaccumb
+			\pgfmath@smuggleone\pgfmathaccumb
+			\endgroup
+		}%
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfmathaccumb}%
+	},
+	/pgfplots/table/create col/@from list struct/.code={%
+		\pgfplotslistcopy#1\to\pgfmathaccumb
+		\pgfkeysdef{/pgfplots/table/create col/assign}{%
+			\pgfplotslistcheckempty\pgfmathaccumb
+			\ifpgfplotslistempty
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			\else
+				\pgfplotslistpopfront\pgfmathaccumb\to\pgfmathresult
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			\fi
+		}%
+	},
 	/pgfplots/table/create col/quotient/.style={%
 		/pgfplots/table/columns={#1},
 		/pgfplots/table/create col/assign first/.style={%
@@ -719,6 +769,34 @@
 		\fi
 	},
 }
+
+% 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
+%
+% fills the column with x1,...,xN such that yi(xi) == epsilon where
+%
+% In other words, it computes cuts points between the line 
+% y == epsilon and one or more other plots yi(x) and returns the 'x'
+% values of the cuts.
+%
+% Example:
+% \pgfplotstableset{
+%	create on use/cut/.style={create col/function graph cut y={7e-4}{x=Basis,ymode=log,xmode=log}{{table=regtable,y=special-L2}}},
+%}
+\pgfkeysdefargs{/pgfplots/table/create col/function graph cut y}{#1#2#3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{y}{x}}
+\pgfkeysdefargs{/pgfplots/table/create col/function graph cut x}{#1#2#3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{x}{y}}
+\pgfkeys{%
+	/pgfplots/table/create col/function graph cut/xmode/.is choice,
+	/pgfplots/table/create col/function graph cut/xmode/linear/.code={\def\pgfplotstable@fgc@xmode{0}},%
+	/pgfplots/table/create col/function graph cut/xmode/log/.code={\def\pgfplotstable@fgc@xmode{1}},%
+	/pgfplots/table/create col/function graph cut/ymode/.is choice,
+	/pgfplots/table/create col/function graph cut/ymode/linear/.code={\def\pgfplotstable@fgc@ymode{0}},%
+	/pgfplots/table/create col/function graph cut/ymode/log/.code={\def\pgfplotstable@fgc@ymode{1}},%
+	/pgfplots/table/create col/function graph cut/x/.initial=,
+	/pgfplots/table/create col/function graph cut/y/.initial=,
+	/pgfplots/table/create col/function graph cut/table/.initial=,
+}
+
+
 \pgfkeyslet{/pgfplots/table/TeX comment}\pgfplots@PERCENT@TEXT
 \pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent@EMPTY
 
@@ -796,6 +874,97 @@
 
 % BACKWARDS COMPATIBILITY
 \let\pgfnumtableread=\pgfplotstableread
+
+% Invokes #2 if '#1' is an already loaded table and #3 if not.
+\long\def\pgfplotstable@isloadedtable#1#2#3{%
+	\pgfutil@ifundefined{\string#1@@table@name}{#3}{#2}%
+}%
+
+% Defines \pgfmathresult to be the number of rows in table #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\def\pgfplotstablegetrowsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistfront#1\to\pgfplotstablegetrows@@
+		\expandafter\pgfplotslistsize\csname\string#1@\pgfplotstablegetrows@@\endcsname\to\c@pgfplotstable@counta
+		\edef\pgfmathresult{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplotstablegetrows@
+			\pgfplotstablegetrowsof{\pgfplotstablegetrows@}%
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}%
+}%
+
+% \pgfplotstablenew[<options>]{<numrows>}{<\name>}
+%
+% Creates a new table from scratch. 
+%
+% The new table will contain all columns listed in the 'columns' key
+% which must be present in <options>. 
+%
+% Furthermore, there must be 'create on use' statements for every
+% column which shall be generated. Columns are generated
+% independently, in the order of appearance in 'columns'.
+% The table will contain exactly <numrows> rows.
+\def\pgfplotstablenew{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstablenew@impl
+	}{%
+		\pgfplotstablenew@impl[]%
+	}%
+}%
+\def\pgfplotstablenew@impl[#1]#2#3{%
+	\pgfutil@namedef{\string#3@@table@name}{newlycreatedtable}%
+	\begingroup
+	% create a temporary column with the desired number of rows:
+	\pgfutil@in@\pgfplotstablegetrowsof{#2}%
+	\ifpgfutil@in@
+		#2%
+		\let\pgfplotstable@loc@TMPa=\pgfmathresult
+	\else
+		\def\pgfplotstable@loc@TMPa{#2}%
+	\fi
+	\pgfplotslistnew#3{@@@@@temporary@column@\\}%
+	\expandafter\pgfplots@assign@list\csname\string#3@@@@@@temporary@column@\endcsname{1,2,...,\pgfplotstable@loc@TMPa}%
+	%
+	% now, create all real columns:
+	\pgfkeyslet{/pgfplots/table/columns}{\pgfutil@empty}%
+	\pgfplotstableset{#1}%
+	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
+	\ifx\pgfplotstable@colnames\pgfutil@empty
+		\pgfplots@warning{\string\pgfplotstablenew[columns={},...]{#2}{\string#3} has been invoked - but empty tables are currently not really supported, sorry. You will have to live with an artifical column which contains temporary values.}%
+	\else
+		\expandafter\pgfplots@assign@list\expandafter\pgfplotstablenew@cols\expandafter{\pgfplotstable@colnames}%
+		% make sure every requested column exists:
+		\pgfutil@loop
+		\pgfplotslistcheckempty\pgfplotstablenew@cols
+		\ifpgfplotslistempty
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\pgfplots@loop@CONTINUEtrue
+		\fi
+		\ifpgfplots@loop@CONTINUE
+			\pgfplotslistpopfront\pgfplotstablenew@cols\to\pgfplotstablenew@col
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstablenew@col}\of#3\to\pgfplotstable@loc@TMPa
+		\pgfutil@repeat
+		% remove the temporary column:
+		% FIXME this should be done after the '\fi'. But that will
+		% lead to an error because empty tables are currently
+		% unsupported!
+		\pgfplotslistpopfront#3\to\pgfplotstable@loc@TMPa
+	\fi
+	\pgfplotstable@copy@to@globalbuffers#3
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to#3
+}%
 
 \def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
 
@@ -955,6 +1124,8 @@
 % - \getthisrow{<col name>}{\macro}
 % - \nextrow{<col name>}, 
 % - \getnextrow{<col name>}{\macro}
+%
+% FIXME this documentation is incomplete. Please refer to pgfplotstable.pdf .
 \def\pgfplotstablecreatecol{%
 	\pgfutil@ifnextchar[{%
 		\pgfplotstablecreatecol@opt
@@ -1106,10 +1277,10 @@
 	\pgfplotstableread@lineno=0
 	\pgfplotstableread@usablelineno=0
 	\pgfplotstableread@numcols=0
-	\global\pgfplotslistnewempty\pgfplotstable@colnames
+	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\ifeof1
 		\pgfplotstable@error{Could not read table file '#2'.}%
-		\global\pgfplotslistnewempty\pgfplotstable@colnames
+		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\else
 		\ifpgfplots@tableread@to@listener
 			\let\pgfplotstable@listener=#3%
@@ -1132,20 +1303,43 @@
 	\else
 		% Now, we can access the global variables!
 		% copy them to #3.
-		\let#3=\pgfplotstable@colnames
 		\expandafter\def\csname\string#3@@table@name\endcsname{#2}%
-		\c@pgfplotstable@counta=0\relax%
-		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@loc@TMPa{%
-			\def\pgfplotstable@loc@TMPb{%
-				\expandafter\let\csname\string#3@\pgfplotstable@loc@TMPa\endcsname}%
-			\expandafter\pgfplotstable@loc@TMPb\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname
-	%\message{Column '\pgfplotstable@loc@TMPa' has entries: \expandafter\meaning\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname}%
-			\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname=\pgfutil@empty
-			\advance\c@pgfplotstable@counta by1\relax
-		}%
+		\pgfplotstable@copy@globalbuffers@to#3
 	\fi
-	\global\let\pgfplotstable@colnames=\pgfutil@empty
 }
+
+% Copies the table column list and the column vectors of #1 to global buffers. 
+% @see \pgfplotstable@copy@globalbuffers@to
+%
+% Use these two methods to avoid scoping problems.
+\def\pgfplotstable@copy@to@globalbuffers#1{%
+	\global\let\pgfplotstable@colnames@glob=#1
+	\c@pgfplotstable@counta=0\relax%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as\pgfplotstable@loc@TMPa{%
+		\def\pgfplotstable@loc@TMPb{%
+			\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname%
+		}%
+		\expandafter\pgfplotstable@loc@TMPb\csname\string#1@\pgfplotstable@loc@TMPa\endcsname
+		\advance\c@pgfplotstable@counta by1\relax
+	}%
+}%
+
+% copies the global column list and the global column vectors to #1
+% (NOT the table file name).
+% @see \pgfplotstable@copy@to@globalbuffers
+\def\pgfplotstable@copy@globalbuffers@to#1{%
+	\let#1=\pgfplotstable@colnames@glob
+	\c@pgfplotstable@counta=0\relax%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as\pgfplotstable@loc@TMPa{%
+		\def\pgfplotstable@loc@TMPb{%
+			\expandafter\let\csname\string#1@\pgfplotstable@loc@TMPa\endcsname}%
+		\expandafter\pgfplotstable@loc@TMPb\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname
+%\message{Column '\pgfplotstable@loc@TMPa' has entries: \expandafter\meaning\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname}%
+		\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname=\pgfutil@empty
+		\advance\c@pgfplotstable@counta by1\relax
+	}%
+	\global\let\pgfplotstable@colnames@glob=\pgfutil@empty
+}%
 
 \def\pgfplotstableread@finish{%
 	\ifpgfplots@tableread@to@listener
@@ -1218,7 +1412,7 @@
 					\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
 					%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
 				\fi
-%\pgfplots@message{After reading first row: found '\the\pgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames'}%
+%\pgfplots@message{After reading first row: found '\the\pgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames@glob'}%
 			\else
 				\pgfplotstableread@curcol=0\relax
 				\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
@@ -1287,7 +1481,7 @@
 	\pgfplotstableread@curcol=0\relax
 	\pgfutil@loop
 	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols
-		\expandafter\pgfplotslistpushbackglobal\the\pgfplotstableread@curcol\to\pgfplotstable@colnames
+		\expandafter\pgfplotslistpushbackglobal\the\pgfplotstableread@curcol\to\pgfplotstable@colnames@glob
 		\advance\pgfplotstableread@curcol by1\relax
 	\pgfutil@repeat
 }
@@ -1473,7 +1667,7 @@
 		\edef\pgfplotstable@loc@TMPa{#1--index\the\pgfplotstableread@curcol}%
 	}%
 	\expandafter\def\csname pgfplotstableread@impl@COLNAME@#1\endcsname{foo}% remember this name.
-	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames
+	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames@glob
 	\ifpgfplots@tableread@to@listener
 		% create an associative container colindex -> colname
 		% for use in a listener.
@@ -2138,8 +2332,12 @@
 	%
 	\pgfplots@loop@CONTINUEtrue
 	% allow this here to accumulate something.
-	\let\pgfmathaccuma=\pgfutil@empty
-	\let\pgfmathaccumb=\pgfutil@empty
+	\pgfutil@ifundefined{pgfmathaccuma}{%
+		\let\pgfmathaccuma=\pgfutil@empty
+	}{}%
+	\pgfutil@ifundefined{pgfmathaccumb}{%
+		\let\pgfmathaccumb=\pgfutil@empty
+	}{}%
 	\pgfutil@loop% loop over each row until there are no more rows.
 	\ifpgfplots@loop@CONTINUE
 		\ifnum\c@pgfplotstable@numrows=-1\relax
@@ -2213,6 +2411,182 @@
 		\expandafter\pgfplotslistpushback\expandafter{\pgfplots@glob@TMPb}\to#3
 	\fi
 	\expandafter\let\csname\string#3@\pgfplots@glob@TMPb\endcsname=\pgfplots@glob@TMPc
+}%
+
+
+%-----------------------------------------------------------
+%
+% Implementation of '/pgfplots/table/create col/function graph cut y':
+%
+%-----------------------------------------------------------
+
+%	create on use/cut/.style={create col/function graph cut y={7e-4}{x=Basis,ymode=log,xmode=log}{{table=regtable,y=special-L2}}},
+% #1 = value of fixed line (I call it epsilon)
+% #2 = options
+% #3 = specification where to get the y from. It is a comma separated
+% list of key-value sets, on set for every y(x) graph which shall be
+% used.
+% #4 = the direction in which the line does NOT vary (either 'x' or 'y')
+% #5 = the direction in which the line DOES vary (either 'x' or 'y')
+\def\pgfplotstable@fgc@init#1#2#3#4#5{%
+	\def\pgfplotstable@fgc@xmode{0}%
+	\def\pgfplotstable@fgc@ymode{0}%
+	%
+	\pgfkeysalso{/pgf/fpu=true}%
+	%
+	\pgfqkeys{/pgfplots/table/create col/function graph cut}{#2}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/table}\pgfplotstable@fgc@table
+	\ifx\pgfplotstable@fgc@table\pgfutil@empty
+	\else
+		% ok, we need to query (or load) a table!
+		\pgfplotstable@isloadedtable{\pgfplotstable@fgc@table}{%
+		}{%
+			\expandafter\pgfplotstableread\expandafter{\pgfplotstable@fgc@table}{\pgfplotstable@fgc@table}%
+		}%
+	\fi
+	%
+	\ifnum\csname pgfplotstable@fgc@#4mode\endcsname=1
+		\pgfmathparse{ln(#1)}%
+	\else
+		\pgfmathparse{#1}%
+	\fi
+	\let\pgfplotstable@fgc@eps=\pgfmathresult
+	\pgfplots@assign@list\pgfmathaccumb{#3}%
+	%
+	\pgfkeysdef{/pgfplots/table/create col/assign}{%
+%\message{working on next cell ...}%
+		\pgfplotslistcheckempty\pgfmathaccumb
+		\ifpgfplotslistempty
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+		\else
+			\pgfplotslistpopfront\pgfmathaccumb\to\pgfmathresult
+			\begingroup
+				% set local keys:
+				\def\pgfplots@loc@TMPa{\pgfqkeys{/pgfplots/table/create col/function graph cut}}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+				% acquire any sources:
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/table}\pgfplotstable@fgc@table
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/x}\pgfplotstable@fgc@x
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/y}\pgfplotstable@fgc@y
+				\ifx\pgfplotstable@fgc@table\pgfutil@empty
+				\else
+					% ok, we need to query (or load) a table!
+					\pgfplotstable@isloadedtable{\pgfplotstable@fgc@table}{%
+					}{%
+						\expandafter\pgfplotstableread\expandafter{\pgfplotstable@fgc@table}{\pgfplotstable@fgc@table}%
+					}%
+				\fi
+				\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@fgc@x}\of\pgfplotstable@fgc@table\to\pgfplotstable@fgc@x@col
+				\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@fgc@y}\of\pgfplotstable@fgc@table\to\pgfplotstable@fgc@y@col
+				%
+				% search for epsilon in the y values:
+				\expandafter\pgfplotstable@fgc@findintervalwitheps\expandafter{\csname pgfplotstable@fgc@#4@col\endcsname}{\csname pgfplotstable@fgc@#4mode\endcsname}%
+				\ifx\pgfplotstable@fgc@second\pgfutil@empty
+					\let\pgfmathresult=\pgfutil@empty
+				\else
+					%
+					% acquire the associated x values:
+					\expandafter\pgfplotstable@fgc@getassociated\expandafter{\csname pgfplotstable@fgc@#5@col\endcsname}{\csname pgfplotstable@fgc@#5mode\endcsname}%
+					%
+					% Interpolate:
+					\pgfmathparse{
+						\pgfplotstable@fgc@abscissafirst + 
+						(\pgfplotstable@fgc@eps - \pgfplotstable@fgc@first) / (\pgfplotstable@fgc@second-\pgfplotstable@fgc@first) 
+						* (\pgfplotstable@fgc@abscissasecond - \pgfplotstable@fgc@abscissafirst) }%
+					\if\pgfplotstable@fgc@xmode1
+						\pgfmathfloatexp@{\pgfmathresult}%
+					\fi
+%\message{FGC: found \pgfplotstable@fgc@eps\space in no \pgfplotstable@fgc@index; \pgfplotstable@fgc@first:\pgfplotstable@fgc@second; lastwasless=\pgfplotstable@fgc@lastwasless; abscissa interval = \pgfplotstable@fgc@abscissafirst:\pgfplotstable@fgc@abscissasecond; result = \pgfmathresult}%
+				\fi
+				%
+				\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		\fi
+	}%
+}%
+
+% #1 : the coordinate list to query
+% #2 : the mode
+%
+% POSTCONDITION:
+% 	- \pgfplotstable@fgc@abscissafirst and	\pgfplotstable@fgc@abscissasecond
+% 	contain the abscissa values
+%
+\def\pgfplotstable@fgc@getassociated#1#2{%
+	\c@pgfplotstable@counta=\pgfplotstable@fgc@index
+	\pgfplotslistselect\c@pgfplotstable@counta\of#1\to\pgfplotstable@fgc@abscissasecond
+	\advance\c@pgfplotstable@counta by-1
+	\pgfplotslistselect\c@pgfplotstable@counta\of#1\to\pgfplotstable@fgc@abscissafirst
+	\pgfmathfloatparsenumber{\pgfplotstable@fgc@abscissafirst}%
+	\let\pgfplotstable@fgc@abscissafirst=\pgfmathresult
+	\pgfmathfloatparsenumber{\pgfplotstable@fgc@abscissasecond}%
+	\let\pgfplotstable@fgc@abscissasecond=\pgfmathresult
+	\if1#2
+		\pgfmathln@{\pgfplotstable@fgc@abscissafirst}%
+		\let\pgfplotstable@fgc@abscissafirst=\pgfmathresult
+		\pgfmathln@{\pgfplotstable@fgc@abscissasecond}%
+		\let\pgfplotstable@fgc@abscissasecond=\pgfmathresult
+	\fi
+}%
+
+% Search for the (first) interval in #1 containing epsilon and return
+% \pgfplotstable@fgc@first and \pgfplotstable@fgc@second.
+%
+% #1 : the list of values.
+% #2 : the mode (0 = linear, 1 = log)
+%
+% PRECONDITION:
+% 	- \pgfplotstable@fgc@eps contains the value to search for
+%
+% POSTCONDITION
+% 	On success,
+% 	- \pgfplotstable@fgc@first and \pgfplotstable@fgc@second contain the interval.
+% 	- \pgfplotstable@fgc@index contains the index of the @second coordinate.
+% 	- \pgfplotstable@fgc@lastwasless is
+% 	     1 if \pgfplotstable@fgc@second < eps
+% 	     0 if \pgfplotstable@fgc@second >= eps
+% 	If there was no such interval,
+% 	\pgfplotstable@fgc@second will be empty.
+\def\pgfplotstable@fgc@findintervalwitheps#1#2{%
+	\global\let\pgfplotstable@fgc@first=\pgfutil@empty
+	\global\let\pgfplotstable@fgc@second=\pgfutil@empty
+	\global\def\pgfplotstable@fgc@lastwasless{2}%
+	\global\def\pgfplotstable@fgc@break{0}%
+	\global\def\pgfplotstable@fgc@index{0}%
+	\pgfplotslistforeach#1\as\pgfplotstable@fgc@val{%
+		\if\pgfplotstable@fgc@break0
+			\pgfmathfloatparsenumber{\pgfplotstable@fgc@val}%
+			\let\pgfplotstable@fgc@val=\pgfmathresult
+			\ifnum#2=1
+				\pgfmathln@{\pgfplotstable@fgc@val}%
+				\let\pgfplotstable@fgc@val=\pgfmathresult
+			\fi
+			\pgfmathfloatlessthan@{\pgfplotstable@fgc@val}{\pgfplotstable@fgc@eps}%
+			\ifpgfmathfloatcomparison
+				\pgfplotstable@fgc@findintervalwitheps@updateresult 01
+			\else
+				\pgfplotstable@fgc@findintervalwitheps@updateresult 10
+			\fi
+		\fi
+	}%
+}
+
+% #1 : the value of \pgfplotstable@fgc@lastwasless for which the loop
+% shall break.
+% #2 : the next value for \pgfplotstable@fgc@lastwasless
+\def\pgfplotstable@fgc@findintervalwitheps@updateresult#1#2{%
+	\if\pgfplotstable@fgc@lastwasless#1
+		% found it !
+		\global\let\pgfplotstable@fgc@second=\pgfplotstable@fgc@val
+		\global\def\pgfplotstable@fgc@break{1}%
+	\else
+		\global\let\pgfplotstable@fgc@first=\pgfplotstable@fgc@val
+		\c@pgfplotstable@counta=\pgfplotstable@fgc@index
+		\advance\c@pgfplotstable@counta by1
+		\xdef\pgfplotstable@fgc@index{\the\c@pgfplotstable@counta}%
+	\fi
+	\global\def\pgfplotstable@fgc@lastwasless{#2}%
 }%
 
 \endinput
