@@ -60,6 +60,7 @@
 \newif\ifpgfplotstabletypeset@includeoutfiles
 \newif\ifpgfplotstabletypeset@force@remake
 \newif\ifpgfplots@addplotimpl@readcompletely
+\newif\ifpgfplotstable@disable@rowcolstyles
 
 % should always be false; use only in grouped internal macros
 \newif\ifpgfplots@table@options@areset
@@ -107,6 +108,8 @@
 	/pgfplots/table/z error/.initial=,
 	/pgfplots/table/read completely/.is if=pgfplots@addplotimpl@readcompletely,
 	/pgfplots/table/read completely/.default=true,
+	/pgfplots/table/disable rowcol styles/.is if=pgfplotstable@disable@rowcolstyles,
+	/pgfplots/table/disable rowcol styles/.default=true,
 	/pgfplots/table/row predicate/.code={},
 	/pgfplots/table/skip rows between index/.style 2 args={%
 		/pgfplots/table/row predicate/.append code={%
@@ -768,6 +771,18 @@
 			\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1&}%
 		\fi
 	},
+	/pgfplots/table/reset styles/.style={
+		/pgfplots/table/every table/.code=,
+		/pgfplots/table/every odd column/.code=,
+		/pgfplots/table/every even column/.code=,
+		/pgfplots/table/every first column/.code=,
+		/pgfplots/table/every last column/.code=,
+		/pgfplots/table/every head row/.code=,
+		/pgfplots/table/every odd row/.code=,
+		/pgfplots/table/every even row/.code=,
+		/pgfplots/table/every first row/.code=,
+		/pgfplots/table/every last row/.code=,
+	},
 }
 
 % 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
@@ -901,6 +916,78 @@
 			\pgfmath@smuggleone\pgfmathresult
 		\endgroup
 	}%
+}%
+
+% \pgfplotstablesave[<options>]{<\tablename>}{file name}
+\def\pgfplotstablesave{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstablesave@impl
+	}{%
+		\pgfplotstablesave@impl[]%
+	}%
+}
+
+{
+\catcode`\^^I=12
+\gdef\pgfplotstablesave@impl@TAB{^^I}
+}
+
+\def\pgfplotstablesave@impl[#1]#2#3{%
+	\pgfplotstabletypeset[%
+		reset styles,%
+		disable rowcol styles,%
+		begin table={}, end table={},%
+		typeset cell/.code={%
+			\begingroup
+			\t@pgfplots@toka={##1}%
+			\ifcase\pgfplotstableread@OUTCOLSEP@CASE\relax
+				% SPACE:
+				\t@pgfplots@tokb=\expandafter{\pgfplotstablesave@impl@TAB}%
+				\pgfplots@ifempty{##1}{%
+					\t@pgfplots@toka={{}}%
+				}{}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% comma:
+				\t@pgfplots@tokb={,}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% semicolon:
+				\t@pgfplots@tokb={;}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% colon:
+				\t@pgfplots@tokb={:}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% braces:
+				\xdef\pgfplots@glob@TMPc{{\the\t@pgfplots@toka}}%
+			\fi
+			\endgroup
+			\pgfkeyslet{/pgfplots/table/@cell content}\pgfplots@glob@TMPc%
+		},%
+		before row=,after row=,%
+		skip coltypes, typeset=false, string type,%
+		TeX comment=,%
+		columns=,%
+		/pgfplots/table/col sep/.is choice,%
+		/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{0}},%
+		/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{1}},%
+		/pgfplots/table/col sep/semicolon/.code	= {\def\pgfplotstableread@OUTCOLSEP@CASE{2}},%
+		/pgfplots/table/col sep/colon/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{3}},%
+		/pgfplots/table/col sep/braces/.code	= {\def\pgfplotstableread@OUTCOLSEP@CASE{4}},%
+		/pgfplots/table/col sep=space,%
+		/pgfplots/table/in col sep/.is choice,%
+		/pgfplots/table/in col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},%
+		/pgfplots/table/in col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},%
+		/pgfplots/table/in col sep/semicolon/.code	= {\def\pgfplotstableread@COLSEP@CASE{2}},%
+		/pgfplots/table/in col sep/colon/.code		= {\def\pgfplotstableread@COLSEP@CASE{3}},%
+		/pgfplots/table/in col sep/braces/.code	= {\def\pgfplotstableread@COLSEP@CASE{4}},%
+		/pgfplots/table/in col sep=space,%
+		% WARNING: you NEED a '%' before '#1':
+		#1,%
+		outfile={#3}%
+	]{#2}%
 }%
 
 % \pgfplotstablenew[<options>]{<numrows>}{<\name>}
@@ -1138,6 +1225,8 @@
 % Typesets a table.
 %
 % \pgfplotstabletypeset[<options>]<\tablestructure>
+% or
+% \pgfplotstabletypeset[<options>]{<file name>}
 %
 % If you do not select any columns, the complete table is drawn.
 %
@@ -1160,16 +1249,16 @@
 		\pgfplotstabletypeset@opt[]%
 	}%
 }
+\def\pgfplotstabletypeset@opt[#1]#2{%
+	\pgfplotstable@isloadedtable{#2}%
+		{\pgfplotstabletypeset@opt@[#1]{#2}}%
+		{\pgfplotstabletypesetfile@opt@[#1]{#2}}%
+}
 
 % Like \pgfplotstabletypeset, but the first argument is a file name.
-\def\pgfplotstabletypesetfile{%
-	\pgfutil@ifnextchar[{%	
-		\pgfplotstabletypesetfile@opt
-	}{%
-		\pgfplotstabletypesetfile@opt[]%
-	}%
-}
-\def\pgfplotstabletypesetfile@opt[#1]#2{%
+% This is the same now; it will be recognised automatically.
+\let\pgfplotstabletypesetfile=\pgfplotstabletypeset
+\def\pgfplotstabletypesetfile@opt@[#1]#2{%
 	\begingroup
 	\ifpgfplots@table@options@areset
 	\else
@@ -1889,7 +1978,7 @@
 % TODO
 % - replace grouped list foreach by popfront-loop and use arrays
 %   directly -> group only the pgfkeys eval
-\def\pgfplotstabletypeset@opt[#1]#2{%
+\def\pgfplotstabletypeset@opt@[#1]#2{%
 	\begingroup
 	%--------------------------------------------------
 	% \pgfutil@ifundefined{#2}{%
@@ -1998,6 +2087,8 @@
 			\global\c@pgfplotstable@numrows=\c@pgfplotstable@numrows
 		\fi
 		%
+		%
+		% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		% Set keys for columns!
 		\ifodd\c@pgfplotstable@colindex
 			\t@pgfplots@toka={every odd column}%
@@ -2014,17 +2105,24 @@
 		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
 			\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last column}%
 		\fi
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname}%
-		\expandafter\pgfplotstable@checkspecialchars@pgfkeys\the\t@pgfplots@tokb\pgfplotstable@EOI
-		\ifpgfutil@in@
-			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/{\the\t@pgfplots@tokb}/.try}%
+		\ifpgfplotstable@disable@rowcolstyles
+			% ok, then don't check for 'columns/<name>' and 
+			% 'display columns/<index>':
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka}%
 		\else
-			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\the\t@pgfplots@tokb/.try}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname}%
+			\expandafter\pgfplotstable@checkspecialchars@pgfkeys\the\t@pgfplots@tokb\pgfplotstable@EOI
+			\ifpgfutil@in@
+				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/{\the\t@pgfplots@tokb}/.try}%
+			\else
+				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\the\t@pgfplots@tokb/.try}%
+			\fi
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@displaycolkey}%
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
 		\fi
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
-		\t@pgfplots@tokb=\expandafter{\pgfplotstable@displaycolkey}%
-		\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
 		\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+		% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 		%
 		\pgfkeysgetvalue{/pgfplots/table/column name}{\pgfplotstable@colname@out}%
 		\ifx\pgfplotstable@colname@out\pgfplotstabletypeset@nocolname
@@ -2199,15 +2297,18 @@
 				\ifnum\c@pgfplotstable@rowindex=0\relax
 					\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first row}%
 				\fi
+				\ifpgfplotstable@disable@rowcolstyles
+				\else
+					\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+				\fi
 				% misuse as temporary variable:
 				\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
 				\advance\c@pgfplotstable@colindex by1\relax
 				\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numrows
-					\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try,every last row}%
-				\else
-					\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
+					\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last row}%
 				\fi
-				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+				\expandafter\pgfplotstableset\expandafter{\the\t@pgfplots@toka}%
 				\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
 				\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
 				\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
