@@ -1671,8 +1671,9 @@
 	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#2}%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#5}%
 	%
+	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
+	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
-	\pgfplots@gettikzinternal@keyval{samples at}{tikz@plot@samplesat}{-5,-4.6,...,5}%
 	%
 	% Determine whether the x range is parameterized or uniform and
 	% prepare a macro which assigns \pgfplots@current@point@x:
@@ -1693,7 +1694,7 @@
 			\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
 		\fi
 	\fi
-	\if\pgfplots@addplotimpl@expression@hasuniform@x1
+	\if\pgfplots@addplotimpl@expression@hasuniform@x1%
 		% if '#3' is '\x' or 'x', we don't need the math parser -
 		% we can simply take \tikz@plot@var.
 		\def\pgfplots@addplotimpl@expression@prepare@x{%
@@ -1727,18 +1728,26 @@
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
 		\ifx\pgfplots@plot@ydomain\pgfutil@empty
-			\def\y{0}%
-		\else
-			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
-			% Assemble a 
-			% \pgfplots@plot@data##1 -> 
-			% 	\foreach \x in {-5,-4.6,...,5} 
-			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
-			%  macro:
-			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} 
-					{\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplotslocretval} {##1}}}%
+			\def\pgfplots@plot@ydomain{0:0}%
 		\fi
+		\ifx\pgfplots@plot@samples@at\pgfutil@empty
+			% we don't have 'samples at' -> use domain!
+			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
+			\let\pgfplots@loc@TMPa=\pgfplotslocretval
+		\else
+			% use 'samples at':
+			\let\pgfplots@loc@TMPa=\pgfplots@plot@samples@at
+		\fi
+		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
+		\let\pgfplots@loc@TMPb=\pgfplotslocretval
+		% Assemble a 
+		% \pgfplots@plot@data##1 -> 
+		% 	\foreach \x in {-5,-4.6,...,5} 
+		% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
+		%  macro:
+		\edef\pgfplots@plot@data##1{%
+			\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa} 
+				{\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@loc@TMPb} {##1}}}%
 	\else
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
@@ -1752,18 +1761,19 @@
 		\def\pgfplots@samples@logarithmically{0}%
 		\ifpgfplots@xislinear
 		\else
-			\if\pgfplots@addplotimpl@expression@hasuniform@x1
-				\if\pgfplots@prefer@domain@over@samplesat1
+			\if\pgfplots@addplotimpl@expression@hasuniform@x1%
+				\ifx\pgfplots@plot@samples@at\pgfutil@empty
+					% we don't have 'samples at' -> use domain!
 					\def\pgfplots@samples@logarithmically{1}%
 				\fi
 			\fi
 		\fi
-		\if\pgfplots@samples@logarithmically1
+		\if\pgfplots@samples@logarithmically1%
 			% sample logarithmically:
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachlogarithmicungrouped
 				\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log 
-					in {\tikz@plot@domain} {##1}}%
+					in {\pgfplots@plot@domain} {##1}}%
 			%  we have a logarithmic sampling sequence,
 			% \pgfplots@current@point@x@log is already available
 			% logarithmic! We can safe time and accuracy for the x
@@ -1785,8 +1795,16 @@
 					}%
 				}%
 		\else
+			\ifx\pgfplots@plot@samples@at\pgfutil@empty
+				% we don't have 'samples at' -> use domain!
+				\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
+				\let\pgfplots@loc@TMPa=\pgfplotslocretval
+			\else
+				% use 'samples at':
+				\let\pgfplots@loc@TMPa=\pgfplots@plot@samples@at
+			\fi
 			\edef\pgfplots@plot@data##1{
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\tikz@plot@samplesat} {##1}}%
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa} {##1}}%
 		\fi
 		\def\y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
@@ -1864,17 +1882,12 @@
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
 	\pgfplots@start@plot@with@behavioroptions{%
-		% Overwrite the implementation of domain here!
-		% Reason: 'plot function' allows MUCH higher data domains than
-		% the standard implementation of 'domain'.
-		/tikz/domain/.estore in=\tikz@plot@domain,
 		#2,#3}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
-	\pgfplots@gettikzinternal@keyval{samples}{tikz@plot@samples}{25}%
-	\pgfplots@gettikzinternal@keyval{domain}{tikz@plot@domain}{-5:5}%
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
+	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 	%
 	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
@@ -1908,16 +1921,16 @@
 		\fi
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 			\pgfplots@gnuplot@format;
-			set samples \tikz@plot@samples;
+			set samples \pgfkeysvalueof{/pgfplots/samples};
 			\ifx\pgfplots@gnuplot@logdirs\pgfutil@empty
 			\else
 				set logscale \pgfplots@gnuplot@logdirs\space 2.71828182845905; 
 			\fi
 			\iftikz@plot@parametric	set parametric;\fi
 			\ifpgfplots@curplot@threedim 
-				splot [x=\tikz@plot@domain] [y=\pgfplots@plot@ydomain] #4;%
+				splot [x=\pgfplots@plot@domain] [y=\pgfplots@plot@ydomain] #4;%
 			\else
-				plot [x=\tikz@plot@domain] #4;%
+				plot [x=\pgfplots@plot@domain] #4;%
 			\fi
 			}}%
 	\fi%
@@ -1944,6 +1957,8 @@
 		 % character may cause problems due to catcode mismatches.
 		 % *sigh*.
 		\pgfplots@addplotimpl@file@opt@@{#1}{}{#3}{#2}%
+	\else
+		\expandafter\pgfplots@end@plot
 	\fi
 }
 
@@ -2435,8 +2450,7 @@
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
 		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
-			\pgfplots@addplot@nonlegend@options,
-			#1}%
+			\pgfplots@addplot@nonlegend@options,#1}%
 		\pgfplotsset{#1}%
 	\fi
 }%
