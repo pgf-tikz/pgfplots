@@ -21,6 +21,7 @@ tar czf pgfplots.tgz \
 		 --exclude='*.blg' \
 		 --exclude='pgfplots/doc/latex/pgfplots/gnuplot/*' \
 		 --exclude='pgfplots/doc/latex/pgfplots/gallery' \
+		 --exclude='pgfplots/generic/pgfplots/oldpgfcompatib/generatesymlinks.sh' \
 		 --exclude='pgfplotstest.pdf' \
 		 --exclude='pgfmathlogtest.pdf' \
 		 --exclude='numtabletest.pdf' \
