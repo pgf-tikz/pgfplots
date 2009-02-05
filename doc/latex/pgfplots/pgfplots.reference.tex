@@ -556,7 +556,115 @@ Please refer to \cite[section~18.6]{tikz} for more details about |plot function|
 	 Disables the use of |samples| and |domain|.
 \end{key}
 
+\subsubsection{Using External Graphics as Plot Sources}
 
+\begin{addplotoperation}[]{graphics}{\marg{file name}}
+	This plot type allows to extend the plotting capabilities of \PGFPlots\ beyond its own limitations. The idea is to generate the graphics as such (for example, a contour plot, a shaded surface or a large point cluster) with an external program like Matlab (tm) or |gnuplot|. The graphics, however, should \emph{not} contain an axis or descriptions. Then, we use |\includegraphics| and an \PGFPlots\ axis which fits exactly on top of the imported graphics.
+
+	Of course, one could do this manually by providing proper scales and such. The operation |plot graphics| is intended so simplify this process -- although the user will still have enough to do.
+
+	Let's start with an example: Suppose we use, for example, matlab to generate a surface plot like
+\begin{codeexample}[code only]
+[X,Y] = meshgrid( linspace(-3,3,500) );
+surf( X,Y, exp(-(X - Y).^2 - X.^2 ) );
+shading flat; view(0,90); axis off; 
+print -depsc external1
+\end{codeexample}
+	\noindent which is then found in |external1.eps| (possibly exported to |.pdf|). The |surf| command of Matlab generates the surface, the following commands disable the axis descriptions, initialise the desired view and export it. Then, we can use
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[enlargelimits=false]
+		\addplot graphics
+			[xmin=-3,xmax=3,ymin=-3,ymax=3] 
+			{external1};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent to load the graphics just as if we would have drawn it with \PGFPlots. Unsurprisingly, this wasn't enough. We observe that 
+\begin{enumerate} 
+	\item The bounding box of the graphics is not correct. This is a particular weakness of Matlab as far as I know -- it never produces tight bounding boxes.
+	\item The graphics is on top of the axis, it should be the other way.
+\end{enumerate}
+The second point can be done with |axis on top|. The first needs modifications of the bounding box -- which has to be done manually. There are a couple of tools around which a more or less successful in defining a correct bounding box. One is |pdfcrop|, for example. In most cases, you will need to adjust them manually. Some viewers allow to access the low--level image coordinates (like |gv|). You can use such a viewer to determine the exact bounding box. As soon as we know the correct bounding box, we can do one of the following things:
+\begin{enumerate} 
+	\item Write the correct bounding box in the |.eps| file with a text editor. That's not difficult.
+	\item Tell |\includegraphics| how to modify the existing bounding box. That's even simpler and more portable to |.pdf| documents.
+\end{enumerate}
+Let's follow the second approach here. Using |gv|, I determined that the bounding box needs to be shifted |1| to the left, |2| down. Furthermore, the right end is |3| too far and the top area has about |21| units space wasted. This can be provided to the |trim| option of |\includegraphics|, and we use |clip| to clip the rest away: 
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[enlargelimits=false,axis on top]
+		\addplot graphics
+			[xmin=-3,xmax=3,ymin=-3,ymax=3,
+			% trim=left bottom right top
+			includegraphics={trim=1 2 3 21,clip}]
+			{external1};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	So, |plot graphics| takes a graphics file along with options which can be passed to |\includegraphics|. Furthermore, it provides the information how to embed the graphics into an axis. The axis can contain any other |\addplot| command as well and will be resized properly.
+
+	Lets' try another example before we turn to the expected key--value options. We use |gnuplot| to draw a (relatively stupid) example data set. The gnuplot script
+\begin{codeexample}[code only]
+set samples 30000
+set parametric
+unset border
+unset xtics
+unset ytics
+set output "external2.eps"
+set terminal postscript eps color
+plot [t=0:1] rand(0),rand(0) with dots notitle lw 5
+\end{codeexample}
+\noindent generates |external2.eps| with a uniform random sample of size $30000$. As before, we import this scatter plot into \PGFPlots\ using |plot graphics|. Again, the bounding box is too large, so we need to adjust it.
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[axis on top]
+		\addplot graphics
+			[xmin=0,xmax=1,ymin=0,ymax=1,
+			% trim=left bottom right top
+			includegraphics={trim=12 9 12 8,clip}]
+			{external2};
+		\addplot coordinates {(0,0) (1,1)};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\paragraph{Details about \texttt{plot graphics}}:
+	The loaded graphics file is drawn with
+	
+	|\node[/pgfplots/plot graphics/node] {\includegraphics[|\meta{options}|]|\marg{file name}|};|
+
+	where the |node| style is a configurable style. The node is placed at the coordinate designated by |xmin|, |ymax|. 
+	
+	The \meta{options} are any arguments provided to the |includegraphics| key (see below) and |width| and |height| determined such that the graphics fits exactly into the rectangle denoted by the |xmin|, |ymin| and |xmax|, |ymax| coordinates.
+
+	The scaling will thus ignore the aspect ratio of the external image and prefer the one used by \PGFPlots. You will need to scale the axis if you want to adjust the \PGFPlots\ axis ratio. Use the |scale only axis| key in such a case.
+\end{addplotoperation}
+\begin{pgfplotsxykeylist}{
+	plot graphics/\x min=\marg{coordinate},
+	plot graphics/\x max=\marg{coordinate}}
+	These keys are required for |plot graphics| and provide information about the external data range. The graphics will be squeezed between these coordinates. 
+\end{pgfplotsxykeylist}
+\begin{pgfplotskey}{plot graphics/includegraphics=\marg{options}}
+	A list of options which will be passed as--is to |\includegraphics|. Interesting options include the |trim=|\meta{left} \meta{bottom} \meta{right} \meta{top} key which reduces the bounding box and |clip| which discards everything outside of the bounding box. The scaling options won't have any effect, they will be overwritten by \PGFPlots.
+\end{pgfplotskey}
+\begin{stylekey}{/pgfplots/plot graphics/node}
+	A predefined style which for the node containing the graphics. The predefined value is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	plot graphics/node/.style={
+		inner sep=0pt,
+		outer sep=0pt,
+		every node/.style={},
+		anchor=south west,
+		at={(0pt,0pt)},
+		rectangle
+	}
+}
+\end{codeexample}
+\end{stylekey}
+	
 \begin{command}{\addplot+\oarg{style options} \textcolor{gray}{\dots};}
 Does the same like |\addplot[|\meta{style options}|] ...;| except that \meta{style options} is \emph{appended} to the arguments which would have been taken for |\addplot ...| (the element of the default list).
 

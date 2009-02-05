@@ -1226,7 +1226,9 @@
 			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
 			\xdef\pgfplots@glob@TMPa{%
 				\the\t@pgfplots@toka
-				{% coordinates which need to be processed in \endaxis:
+				{% coordinates which need to be processed in \endaxis.
+				% See
+				% \pgfplots@coord@stream@finalize@storedcoords@START
 					normalized coordinates {\the\t@pgfplots@tokc}\the\t@pgfplots@tokb
 				}%
 			}%
@@ -1633,7 +1635,7 @@
 							\pgfplots@addplotimpl@expression@e{#1}{#2}%
 						}{%
 							\pgfutil@ifnextchar g{%
-								\pgfplots@addplotimpl@gnuplot{#1}{#2}%
+								\pgfplots@addplotimpl@g{#1}{#2}%
 							}{%
 								\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
 								\pgfplots@gobble@until@semicolon
@@ -1859,9 +1861,16 @@
   \catcode`\;=12
   \xdef\pgfplots@gnuplot@format{set format "%.7e";}
 }
+\def\pgfplots@addplotimpl@g#1#2g{%
+	\pgfutil@ifnextchar r{%
+		\pgfplots@addplotimpl@graphics{#1}{#2}%
+	}{%
+		\pgfplots@addplotimpl@gnuplot{#1}{#2}%
+	}%
+}%
 
 % |\addplot gnuplot| is an alias to |\addplot function|
-\def\pgfplots@addplotimpl@gnuplot#1#2gnuplot{\pgfplots@addplotimpl@function{#1}{#2}unction}%
+\def\pgfplots@addplotimpl@gnuplot#1#2nuplot{\pgfplots@addplotimpl@function{#1}{#2}unction}%
 
 % \addplot[<style options>]
 % 	plot[<behavior opts>] 
@@ -2070,6 +2079,40 @@
 	\def\pgfplots@current@point@meta{#3}%
 	\pgfplots@coord@stream@coord%
 }%
+
+
+\def\pgfplots@addplotimpl@graphics#1#2raphics{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@graphics@{#1}{#2}%
+	}{%
+		\pgfplots@addplotimpl@graphics@{#1}{#2}[]%
+	}%
+}%
+% \addplot[#1] plot[#2] graphics[#3] {#4} #5;
+\def\pgfplots@addplotimpl@graphics@#1#2[#3]#4#5;{\pgfplots@addplotimpl@graphics@@{#1}{#2}{#3}{#4}{#5}}%
+\def\pgfplots@addplotimpl@graphics@@#1#2#3#4#5{%
+	\pgfplots@start@plot@with@behavioroptions{#2,/pgfplots/plot graphics/.cd,#3,/pgfplots/plot graphics/src={#4}}%
+	\pgfplots@PREPARE@COORD@STREAM{#1,/pgfplots/plot graphics,/tikz/mark=}{#5}%
+	\pgfplots@coord@stream@start
+	\pgfkeysgetvalue{/pgfplots/plot graphics/xmin}{\pgfplots@current@point@x}%
+	\pgfkeysgetvalue{/pgfplots/plot graphics/ymin}{\pgfplots@current@point@y}%
+	\ifpgfplots@curplot@threedim
+		\pgfkeysgetvalue{/pgfplots/plot graphics/zmin}{\pgfplots@current@point@z}%
+	\fi
+	\pgfplots@coord@stream@coord
+	%
+	\pgfkeysgetvalue{/pgfplots/plot graphics/xmax}{\pgfplots@current@point@x}%
+	\pgfkeysgetvalue{/pgfplots/plot graphics/ymax}{\pgfplots@current@point@y}%
+	\ifpgfplots@curplot@threedim
+		\pgfkeysgetvalue{/pgfplots/plot graphics/zmax}{\pgfplots@current@point@z}%
+	\fi
+	\pgfplots@coord@stream@coord
+	%
+	\pgfplots@coord@stream@end
+}%
+
+
+
 
 \def\pgfplots@addplotimpl@table#1table{%
 	\pgfutil@ifnextchar[{%
@@ -3247,5 +3290,57 @@
 	\xdef\pgfplots@ZERO@x{\the\pgf@x}%
 	\xdef\pgfplots@ZERO@y{\the\pgf@y}%
 	\endpgfinterruptboundingbox%
+}%
+
+
+
+\def\pgfplotsplothandlergraphics{%
+	\def\pgf@plotstreamstart{%
+		\global\let\pgfplots@plot@handler@graphics@bb@first=\pgfutil@empty
+		\global\let\pgfplots@plot@handler@graphics@bb@second=\pgfutil@empty
+		\global\let\pgf@plotstreampoint=\pgfplots@plot@handler@graphics@collectbb%
+		\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+		\global\let\pgf@plotstreamend=\pgfplots@plot@handler@graphics@finish%
+	}%
+}%
+\def\pgfplots@plot@handler@graphics@collectbb#1{%
+	\pgf@process{#1}%
+	\ifx\pgfplots@plot@handler@graphics@bb@first\pgfutil@empty
+		% ok, this is the lower left corner.
+		\xdef\pgfplots@plot@handler@graphics@bb@first{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
+	\else
+		\ifx\pgfplots@plot@handler@graphics@bb@second\pgfutil@empty
+			% ok, this is the upper right corner.
+			\xdef\pgfplots@plot@handler@graphics@bb@second{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
+		\else
+			\pgfplots@error{Error using 'plot graphics': I encountered more than two coordinates!? I expected only the lower left and upper right corners!}%
+		\fi
+	\fi
+}%
+\def\pgfplots@plot@handler@graphics@finish{%
+	\ifx\pgfplots@plot@handler@graphics@bb@first\pgfutil@empty
+		\pgfplots@error{Error using 'plot graphics': I got too few coordinates! I expected the lower left and upper right corners!}%
+		\xdef\pgfplots@plot@handler@graphics@bb@first{\noexpand\pgfqpoint{0pt}{0pt}}%
+		
+	\fi	
+	\ifx\pgfplots@plot@handler@graphics@bb@second\pgfutil@empty
+		\pgfplots@error{Error using 'plot graphics': I got too few coordinates! I expected the lower left and upper right corners!}%
+		\xdef\pgfplots@plot@handler@graphics@bb@second{\noexpand\pgfqpoint{0pt}{0pt}}%
+	\fi
+	\pgfpointdiff{\pgfplots@plot@handler@graphics@bb@first}{\pgfplots@plot@handler@graphics@bb@second}%
+	\edef\pgfplots@loc@TMPa{\the\pgf@x}% width
+	\edef\pgfplots@loc@TMPb{\the\pgf@y}% height
+	\pgfkeysgetvalue{/pgfplots/plot graphics/includegraphics}{\pgfplots@loc@TMPc}%
+	\pgfkeysgetvalue{/pgfplots/plot graphics/src}{\pgfplots@loc@TMPd}%
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty
+		\pgfplots@error{Error using 'plot graphics': I don't have a graphics file name! Please set the '/pgfplots/plot graphics/src' key to the image file name. Skipping this plot.}%
+	\else
+		\begingroup
+		\pgftransformshift{\pgfplots@plot@handler@graphics@bb@first}%
+		\node[/pgfplots/plot graphics/node,rectangle] {%
+			\expandafter\includegraphics\expandafter[\pgfplots@loc@TMPc,width=\pgfplots@loc@TMPa,height=\pgfplots@loc@TMPb]{\pgfplots@loc@TMPd}%
+		};%
+		\endgroup
+	\fi
 }%
 
