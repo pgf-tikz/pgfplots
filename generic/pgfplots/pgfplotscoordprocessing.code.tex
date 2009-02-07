@@ -460,7 +460,8 @@
 % OUTPUT:
 % - #3 : a macro which will be set to '1' if and only if 
 %      the viewport is the standard XY axis (i.e. pitch=0,yaw=0).
-% - \pgfplots@[xyz]@veclength
+% - [xyz] vectors,
+%   \pgfplots@[xyz]@veclength,
 %   \pgfplots@[xyz]@inverseveclength
 %   are set properly
 \def\pgfplotssetaxesfrompitchyaw#1#2#3{%
@@ -494,21 +495,152 @@
 	\def\pgfplots@x@inverseveclength{1.0}%
 	\def\pgfplots@y@inverseveclength{1.0}%
 	\def\pgfplots@z@inverseveclength{1.0}%
-% FIXME :
-\def\scale{200}%
-\pgfmathreciprocal@{\scale}%
-\let\invscale=\pgfmathresult
-\pgfsetxvec{\pgfpointscale{\scale}{\pgfplots@glob@TMPa}}%
-\pgfsetyvec{\pgfpointscale{\scale}{\pgfplots@glob@TMPb}}%
-\pgfsetzvec{\pgfpointscale{\scale}{\pgfplots@glob@TMPc}}%
-\let\pgfplots@x@veclength=\scale%
-\let\pgfplots@y@veclength=\scale%
-\let\pgfplots@z@veclength=\scale%
-\let\pgfplots@x@inverseveclength=\invscale%
-\let\pgfplots@y@inverseveclength=\invscale%
-\let\pgfplots@z@inverseveclength=\invscale%
+\iftrue
+	\pgfplots@scaleaxes@to@BB{\pgfplots@width}{\pgfplots@height}% FIXME : width and height is wrong: labels missing
+\else
+	% FIXME :
+	\def\pgfplots@x@veclength{200}%
+	\pgfmathreciprocal@{\pgfplots@x@veclength}%
+	\let\pgfplots@x@inverseveclength=\pgfmathresult
+	\def\pgfplots@y@veclength{200}%
+	\pgfmathreciprocal@{\pgfplots@y@veclength}%
+	\let\pgfplots@y@inverseveclength=\pgfmathresult
+	\def\pgfplots@z@veclength{200}%
+	\pgfmathreciprocal@{\pgfplots@z@veclength}%
+	\let\pgfplots@z@inverseveclength=\pgfmathresult
+	\pgfsetxvec{\pgfpointscale{\pgfplots@x@veclength}{\pgfplots@glob@TMPa}}%
+	\pgfsetyvec{\pgfpointscale{\pgfplots@y@veclength}{\pgfplots@glob@TMPb}}%
+	\pgfsetzvec{\pgfpointscale{\pgfplots@z@veclength}{\pgfplots@glob@TMPc}}%
+\fi
+\message{After scaling: 
+	x = (\the\pgf@xx,\the\pgf@xy), 
+	y = (\the\pgf@yx,\the\pgf@yy),
+	z = (\the\pgf@zx,\the\pgf@zy).}%
 }%
 
+% Takes the current PGF x,y and z unit vectors and scales them such
+% that the bounding box of the final image has width #1 and height #2.
+%
+% The length of the input vectors is important for the 3D case: it
+% will be scaled as-is. 
+%
+% PRECONDITION
+% 	- the x, y and z unit vectors have been set to the proper
+% 	DIRECTIONS. Their relative vector lengths are set-up properly
+% 	(i.e. y is twice as large as x and half as large as z or so).
+%	- \pgfplots@[xyz]@veclength and
+%	  \pgfplots@[xyz]@inverseveclength
+%	  are set correctly.
+%	- the \ifpgfplots@threedim boolean is set.
+%	- the data limits have been initialised and transformed according
+%	to the data transformation.
+% 
+% POSTCONDITION
+% 	- the unit vectors have been re-scaled such that the final plot
+% 	has the desired dimensions.
+% 	- the @veclength and @inverseveclength have been re-scaled as
+% 	well.
+\def\pgfplots@scaleaxes@to@BB#1#2{%
+	\begingroup
+	\pgfinterruptboundingbox
+	% STEP 1: compute the bounding box for UNITS:
+	\ifpgfplots@threedim
+		\pgfpathmoveto{\pgfqpointxyz000}%
+		\pgfpathmoveto{\pgfqpointxyz001}%
+		\pgfpathmoveto{\pgfqpointxyz010}%
+		\pgfpathmoveto{\pgfqpointxyz011}%
+		\pgfpathmoveto{\pgfqpointxyz100}%
+		\pgfpathmoveto{\pgfqpointxyz101}%
+		\pgfpathmoveto{\pgfqpointxyz110}%
+		\pgfpathmoveto{\pgfqpointxyz111}%
+	\else
+		\pgfpathmoveto{\pgfqpointxy00}%
+		\pgfpathmoveto{\pgfqpointxy01}%
+		\pgfpathmoveto{\pgfqpointxy10}%
+		\pgfpathmoveto{\pgfqpointxy11}%
+	\fi
+	% TMPa = width
+	\pgf@xa=\pgf@pathmaxx
+	\advance\pgf@xa by-\pgf@pathminx
+	% TMPb = height
+	\pgf@xb=\pgf@pathmaxy
+	\advance\pgf@xb by-\pgf@pathminy
+	\pgf@ya=#1\relax
+	\pgf@yb=#2\relax
+\message{PGFPLOTS: the current unit vectors result in a UNIT BB of (\the\pgf@xa,\the\pgf@xb). Scaling it to (\the\pgf@ya,\the\pgf@yb)...}%
+	% STEP 2: compute the scales for x and y such 
+	% that the UNIT-BB will have size #1,#2:
+	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+		{\pgf@sys@tonumber\pgf@ya}%
+		{\pgf@sys@tonumber\pgf@xa}%
+	}%
+	% TMPa = scalex
+	\global\let\pgfplots@glob@TMPa=\pgfmathresult
+	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+		{\pgf@sys@tonumber\pgf@yb}%
+		{\pgf@sys@tonumber\pgf@xb}%
+	}%
+	% TMPb = scaley
+	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\pgfusepath{discard}%
+	\endpgfinterruptboundingbox
+	\endgroup
+\message{got scalex = \pgfplots@glob@TMPa\space and scaley = \pgfplots@glob@TMPb.}%
+	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
+	\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+\message{and 1/(xmax-xmin) = 1/(\pgfplots@xmax-\pgfplots@xmin) = \pgfmathresult.}%
+	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
+	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
+	\pgf@xx=\pgfmathresult\pgf@xx
+	\pgf@xy=\pgfmathresult\pgf@xy
+	%
+	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
+	\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+\message{and 1/(ymay-ymin) = 1/(\pgfplots@ymax-\pgfplots@ymin) = \pgfmathresult.}%
+	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
+	\pgf@yy=\pgfplots@glob@TMPb\pgf@yy
+	\pgf@yx=\pgfmathresult\pgf@yx
+	\pgf@yy=\pgfmathresult\pgf@yy
+	%
+	\ifpgfplots@threedim
+		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+\message{and 1/(zmaz-zmin) = 1/(\pgfplots@zmax-\pgfplots@zmin) = \pgfmathresult.}%
+		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
+		\pgf@zy=\pgfplots@glob@TMPb\pgf@zy
+		\pgf@zx=\pgfmathresult\pgf@zx
+		\pgf@zy=\pgfmathresult\pgf@zy
+	\fi
+	\pgfplots@computeunitvectorlengths
+}%
+
+\def\pgfplots@computeunitvectorlengths{%
+	\pgfplotsutil@edef@invoke\pgfmathveclen@{%
+		{\pgf@sys@tonumber\pgf@xx}%
+		{\pgf@sys@tonumber\pgf@xy}%
+	}%
+	\let\pgfplots@x@veclength=\pgfmathresult
+	\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+	\let\pgfplots@x@inverseveclength=\pgfmathresult
+	%
+	\pgfplotsutil@edef@invoke\pgfmathveclen@{%
+		{\pgf@sys@tonumber\pgf@yx}%
+		{\pgf@sys@tonumber\pgf@yy}%
+	}%
+	\let\pgfplots@y@veclength=\pgfmathresult
+	\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+	\let\pgfplots@y@inverseveclength=\pgfmathresult
+	%
+	\ifpgfplots@threedim
+		\pgfplotsutil@edef@invoke\pgfmathveclen@{%
+			{\pgf@sys@tonumber\pgf@zx}%
+			{\pgf@sys@tonumber\pgf@zy}%
+		}%
+		\let\pgfplots@z@veclength=\pgfmathresult
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+		\let\pgfplots@z@inverseveclength=\pgfmathresult
+	\fi
+}%
 
 
 % Internal stream methods.
@@ -1725,9 +1857,9 @@
 	%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
-		\def\pgfplots@addplotimpl@expression@split@yz##1,##3\pgfplots@EOI{%
+		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
 			\def\pgfplots@addplotimpl@expression@yEXPR{##1}%
-			\def\pgfplots@addplotimpl@expression@zEXPR{##3}%
+			\def\pgfplots@addplotimpl@expression@zEXPR{##2}%
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
 		\ifx\pgfplots@plot@ydomain\pgfutil@empty
