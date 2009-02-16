@@ -9,7 +9,7 @@ DOC_SRC=$(wildcard ../pgfplots.*.tex) ../pgfplotstable.tex
 
 PREPARED_SRC=$(wildcard example*.tex)
 
-.PHONY: all prepare clean prepared
+.PHONY: all clean prepared
 
 all: prepare
 	$(MAKE) prepared
@@ -17,6 +17,7 @@ all: prepare
 
 prepare: $(DOC_SRC)
 	./extractexamples.pl ./example ./index.html $(DOC_SRC) 
+	touch $@
 
 clean:
 	rm ./example* 

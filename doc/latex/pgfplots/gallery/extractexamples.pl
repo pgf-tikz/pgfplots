@@ -102,7 +102,7 @@ print OUTHTML
 </head>
 <body>
 <h2>PGFPlots Gallery</h2>
-<h4>The following graphics have been generated with the LaTeX Package <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a> and <a href="http://pgfplots.sourceforge.net/pgfplotstable.pdf">PGFPlotsTable</a>.</h4>
+<h4>The following graphics have been generated with the LaTeX Packages <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a> and <a href="http://pgfplots.sourceforge.net/pgfplotstable.pdf">PGFPlotsTable</a>.</h4>
 ';
 
 for($j = 2; $j<=$#ARGV; ++$j ) {

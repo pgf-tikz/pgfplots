@@ -1,4 +1,8 @@
 #!/bin/sh
+#
+# ATTENTION: this file is more or less deprecated.
+# Please take a look at the 'external' library which has been added to pgf.
+# At the time of this writing, this library is only available for pgf cvs (newer than 2.00).
 
 TEX_FILE=""
 TEX_LOG_FILE=""
@@ -58,7 +62,7 @@ function dumpHelp() {
 }
 
 
-LONGOPTS="mainfile:,eps,driver:,texdefs:,warnonly"
+LONGOPTS="mainfile:,eps,driver:,texdefs:,warnonly,help"
 SHORTOPTS="f:t:v"
 ARGS=`getopt -l "$LONGOPTS" "$SHORTOPTS" "$@"`
 if [ $? -ne 0 ]; then
@@ -78,6 +82,7 @@ while [ $# -gt 0 ]; do
 		--warnonly)		shift; WARN_ONLY_IF_TEXFILE_DOESNOT_INCLUDE_TARGET=1;;
 		-v)				shift; VERBOSE_LEVEL=$((VERBOSE_LEVEL+1));;
 		--)				shift; break;;
+		--help)			dumpHelp();;
 		*)				break;
 	esac
 done
