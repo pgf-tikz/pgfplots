@@ -27,6 +27,13 @@ BUGS / FIXES
 	- no, it works only partially:
 	  	draw=none or fill=none works as expected.
 		But 'blue' disables filling!?
+	- Possible fix:
+	  	Overwrite \filltrue \fillfalse, \drawtrue, \drawfalse:
+			they should set a further boolean '\drawbooleanhasbeenset' and
+			'\fillbooleanhasbeenset'.
+		-> Replace the \pgfusepathqfillstroke if and only if the respective
+		booleans have been set *explicitly*. If they are unchanged, fall back to
+		a "reasonable" default.
 	  
 
 + provide example for colormap changes - that should also verify the correctness
@@ -404,6 +411,90 @@ X verschiebung des ylabels ist komisch, wegen der rotate option
 FEATURES
 -------------------------------------------------------------
 
+- Ideas for 3D axes:
+  	- I could introduce '\addmesh' (or a 'mesh=true|false' option).
+	  -> this activates R^2 -> R^3 visualisation.
+	  -> \addplot is then always R^1 -> R^{2,3}
+	  - only \addplot3 {<expr>} is different: it should default to (x,y,<expr>)
+		using a mesh.
+	- mesh input:
+	  	- for plot expression: sample a matrix
+		- for coordinates, file, table: 
+		  	- describe how the linear sequence shall be mapped into a matrix
+			- requires the matrix' size and a flag 'ordering=rowwise|colwise'
+			- in principle, the matrix size is controlled by the samples key.
+			  But since we are describing a mapping here, we should (maybe)
+			  introduce a further key like |resulution={x}{y}| ...
+		- I need a |samples y| key anyway.
+		- visualization:
+		  	- case 'only marks': easy, just as before.
+			- all other cases:
+			  	- visualizations like surface and mesh are relatively simple:
+				  we can iterate through the matrix (for example row-by-row)
+				  and we ONLY need to access the CURRENT AND LAST ROW to 
+				  draw the required things.
+				-> Idea: provide an abstract datastructure which provides fast
+				  access and efficient storage for the last visited row!
+				  The best would be an array, but I should keep in mind that
+				  arrays may be too inefficient with respect to TeX storage.
+				- I can implement 'flat shading' (piecewise constant). Idea:
+				  	- use rectangular elements
+					- query the colormap for one of the four corner points
+					- simply draw+fill the element with that color.
+					- framework: either the same as for scatter plots, or maybe
+					  I can use the pgf basic- or system layer for the color
+					  commands. This is potentially faster.
+
+- Notes for how to finish the 3D axes visualisation:
+  	- a 3D axis consist of several different parts (all of them are now more or
+	  less ready).
+	  They are:
+	  	1. three axis vectors which determine the 2D projection.
+			- Input methods:
+			  	- |view| key (preferred)
+				- explicit |x,y,z| vectors
+				- |x,y,z| vectors given in the correct relative size.
+				  -> simply scale them uniformly to get the desired width and
+				  height
+		2. A method to scale those axis vectors to get the desired dimensions.
+		3. A decision for how to plot the axes:
+			3.1 a complete box.
+			3.2 only three surfaces visualized (the "back" of the axes)
+		4. A decision which of the (available!) axis lines shall be used for
+		   tick lines and tick labels.
+		   Of course, this depends on the choice in (3.). 
+		   Input methods:
+		   	- automatic placement. This is the preferred method.
+			  this requires
+			  	a) a decision which axis line gets the tick labels
+				b) a decision whether tick labels are "right of" or whatever
+				the chosen axis line.
+			- user defined placement: the user EXPLICITLY provides the desired
+			  axis.
+			- The point (4b) above shall be modifyable by a user interface.
+		5. An easily usable user interface to place axes descriptions like
+		   labels and title.
+		   Possible choices:
+		   	- Placement relative to axes vectors.
+			- Placement relative to a two-dimensional coordinate system,
+			  relative to the VIEWPORT ("left of figure", "right of figure",
+			  "above figure")
+			- Placement "parallel" to the axes which got tick labels
+			  	- "really" parallel? -> badly rotated text
+				- just "near" the respective axis line?
+
+	- Some more implementation notes:
+	  	- If one of the 2D x,y,z vectors has length 0, the respective axes
+		  should be hidden.
+		- a normal 2D axes should be considered to be an efficient special case
+		  of a three dimensional axes - hide the special treatment as far as
+		  possible.
+		- the routine which computes default tick positions needs
+		  veclength*(max-min). Verify that.
+		- view != '' => enable 3D visualization!
+
+	
+
 + the FPU uninstall command can be assembled ONCE (globally). No need to do that
   multiple times.
 
@@ -681,7 +772,7 @@ X perhaps I can use pdf line annotations to improve clickable lib?
 
 + axis equal option
 
-- consider 'plot image[xmin=,xmax=,ymin=,ymax=] {<graphics>};
++ consider 'plot image[xmin=,xmax=,ymin=,ymax=] {<graphics>};
   -> load external plot image!? Only useful for matlab, if matlab would allow 100% 
   control over bounding box. Unfortunately, it doesn't.
 
