@@ -432,7 +432,9 @@
 % 
 % Some details:
 % - If #2 is a UNIFORM SAMPLING RANGE, the algorithm is supposed to be
-%   most effective.
+%   most effective. This is considered to be the case for 
+%   \pgfplotsforeachungrouped \x in {1,2,...,8} or something like
+%   that.
 % - If \pgfmathadd@ is the standard PGF math version of \pgfmathadd@,
 %   we use fast TeX dimensions for any loops. Otherwise, \pgfmathadd@
 %   is used (assuming it has been replaced and should be used.
@@ -488,7 +490,7 @@
 		\fi
 		\ifpgfplots@loc@tmp
 			\edef#1{\pgf@sys@tonumber{\pgf@xa}}%
-			% FIXME : that's NOT nestable!
+			% FIXME : that's NOT nestable and maybe even wrong!
 			\pgfplots@foreach@loc@TMPc\relax
 			\advance\pgf@xa by\pgf@ya\relax
 		\pgfutil@repeat
@@ -496,39 +498,54 @@
 		\pgfplots@foreach@loc@TMPd
 	\else
 		% Use \pgfmath engine for the loop:
-		\edef\pgfplots@foreach@loc@TMPd{%
-			\noexpand\pgf@xa=\the\pgf@xa\noexpand\relax
-		}%
 		% mesh width:
 		\let\pgfplots@foreach@loc@meshwidth=\pgfmathresult
 		\pgfmathparse{0}% invoke the parser - in case the fpu is active.
 		\pgfmathlessthan@{\pgfplots@foreach@loc@meshwidth}{\pgfmathresult}%
-		\pgf@xa=\pgfmathresult pt
 		% the loop will run while ( NOT \pgfplots@foreach@loc@cmp{<cur>}{<last>} )
-		\ifdim\pgf@xa=1pt
-			\let\pgfplots@foreach@loc@cmp=\pgfmathlessthan@
+		\ifdim\pgfmathresult pt=1pt
+			\def\pgfplots@foreach@loc@cmp{\pgfmathlessthan@}%
 		\else
-			\let\pgfplots@foreach@loc@cmp=\pgfmathgreaterthan@
+			\def\pgfplots@foreach@loc@cmp{\pgfmathgreaterthan@}%
 		\fi
 		%
 		\pgfmathparse{#4}%
 		\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
-		\long\def\pgfplots@foreach@loc@TMPc{#5}%
 		%
-		\pgfutil@loop
-		\pgfplots@foreach@loc@cmp{\pgfplots@foreach@loc@TMPa}{\pgfplots@foreach@loc@TMPb}%
-		\pgf@xa=\pgfmathresult pt
-		\ifdim\pgf@xa=0pt
-			\let#1=\pgfplots@foreach@loc@TMPa%
-			% FIXME : that's NOT nestable!
-			\pgfplots@foreach@loc@TMPc\relax
-			\pgfmathadd@{\pgfplots@foreach@loc@TMPa}{\pgfplots@foreach@loc@meshwidth}%
-			\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
-		\pgfutil@repeat
-		% ok, restore them:
-		\pgfplots@foreach@loc@TMPd
+		\t@pgfplots@toka={#5}%
+		% to allow nesting without additional TeX groups of
+		% \pgfplotsforeachungroupeduniform, I introduce this loop
+		% structure here which does not need ANY state macro:
+		\edef\pgfplots@foreach@loc@TMPc{%
+			\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
+				{\expandafter\noexpand\pgfplots@foreach@loc@cmp}% #1= comparison fct
+				{\pgfplots@foreach@loc@TMPa}% #2 =lower limit (ITERATES)
+				{\pgfplots@foreach@loc@TMPb}% #3 = upper limit
+				{\noexpand#1}% #4 = the loop macro name
+				{\pgfplots@foreach@loc@meshwidth}% #5 =  h
+				{\the\t@pgfplots@toka}% #6 = the code to invoke
+		}%
+		\pgfplots@foreach@loc@TMPc
 	\fi
 }%
+\long\def\pgfplotsforeachungroupeduniform@loop@mathengine#1#2#3#4#5#6{%
+	#1{#2}{#3}%
+	\ifdim\pgfmathresult pt=0pt
+		\def#4{#2}%
+		#6\relax
+		\pgfmathadd@{#2}{#5}%
+		\t@pgfplots@toka={{#1}}%
+		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+		\t@pgfplots@tokc={{#3}{#4}{#5}{#6}}%
+		% loop!
+		\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
+			\the\t@pgfplots@toka
+			{\the\t@pgfplots@tokb}%
+			\the\t@pgfplots@tokc}%
+		\expandafter\pgfplots@loc@TMPa
+	\fi
+}%
+
 \long\def\pgfplotsforeachungroupednonuniform@#1#2#3{%
 	\pgfplotsapplistXXglobalnewempty
 	\foreach\pgfplots@foreach@loc@TMPa in {#2} {%
