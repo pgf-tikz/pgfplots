@@ -1041,6 +1041,7 @@
 	/pgfplots/domain/.initial=,% empty -> use value of /tikz/domain! see \pgfplots@validate@plot@domain@arguments
 	/pgfplots/samples at/.initial=,% empty -> use value of /tikz/samples at!
 	/pgfplots/samples/.initial=,% empty -> use /tikz/samples!
+	/pgfplots/samples 2/.initial=,% empty -> use the same as 'samples'. For use in mesh plots.
 	% and provide aliases in the '/pgfplots/' tree to avoid 
 	% search path problems just for these two options:
 	/pgfplots/name/.belongs to family=/pgfplots/naming commands,
@@ -1744,7 +1745,19 @@
 		rectangle
 	},
 	/pgfplots/mesh/.is choice,
-	/pgfplots/mesh/true/.code={\let\tikz@plot@handler=\pgfplotsplothandlermesh\pgfplots@meshmodetrue},
+	/pgfplots/mesh/true/.code={%
+		\pgfplots@meshmodetrue
+		\let\tikz@plot@handler=\pgfplotsplothandlermesh
+		\if\pgfplots@perpointmeta@choice0
+			% define default |per point meta|:
+			\ifpgfplots@curplot@threedim
+				\pgfkeysalso{/pgfplots/point meta=z}%
+			\else
+				\pgfkeysalso{/pgfplots/point meta=y}%
+			\fi
+		\fi
+		\pgfkeysalso{/tikz/draw=mapped color,/tikz/fill=none}%
+	},
 	/pgfplots/mesh/false/.code={
 		\pgfplots@meshmodefalse
 		\ifx\tikz@plot@handler\pgfplotsplothandlermesh
@@ -1757,6 +1770,9 @@
 	/pgfplots/mesh/ordering/rowwise/.code={\def\pgfplots@plot@mesh@ordering{0}},
 	/pgfplots/mesh/ordering/colwise/.code={\def\pgfplots@plot@mesh@ordering{1}},
 	/pgfplots/mesh/num points/.initial=\numcoords,% this is NOT part of the public interface. Don't change it.
+	/pgfplots/surf/.code={%
+		\pgfkeysalso{/pgfplots/mesh=#1,/tikz/draw=mapped color,/tikz/fill=mapped color}%
+	},%
 	/pgfplots/clip marker paths/.is if=pgfplots@clip@marker@paths,
 	/pgfplots/clip marker paths/.default=true,
 	/pgfplots/axis on top/.is if=pgfplots@axis@on@top,
@@ -2034,6 +2050,11 @@
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
 	\ifx\pgfplots@plot@domain\pgfutil@empty
+		% simply acquire /tikz/domain value:
+		\pgfplots@gettikzinternal@keyval{domain}{tikz@plot@domain}{-5:5}%
+		\pgfkeyslet{/pgfplots/domain}{\tikz@plot@domain}%
+		\let\pgfplots@plot@domain=\tikz@plot@domain
+		%
 		\ifx\pgfplots@plot@samples@at\pgfutil@empty
 			\if 1\pgfplots@loc@TMPa
 				% Resample! See above.
@@ -2045,12 +2066,11 @@
 		\else
 			% routines should use \pgfplots@plot@samples@at.
 		\fi
-	\else
-		% do that such that any active ':' sign will be expanded - for
-		% french babel support.
-		\edef\pgfplots@plot@domain{\pgfplots@plot@domain}%
-		\pgfkeyslet{/pgfplots/domain}\pgfplots@plot@domain
 	\fi
+	% do that such that any active ':' sign will be expanded - for
+	% french babel support.
+	\edef\pgfplots@plot@domain{\pgfplots@plot@domain}%
+	\pgfkeyslet{/pgfplots/domain}\pgfplots@plot@domain
 }%
 
 \def\pgfplots@set@at#1{\def\pgfplots@at{#1}}%
@@ -5806,7 +5826,7 @@
 		% 2. prepare \ref{#1} and \pageref{#1}:
 		\edef\pgfplots@loc@TMPa{%
 			\noexpand\begingroup
-			\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@tokb}}%
+			\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@tokb}%
 			\noexpand\pgfkeysdef{/pgfplots/every crossref picture}{\the\t@pgfplots@tokc}%
 			\noexpand\tikz[/pgfplots/every crossref picture]{\the\t@pgfplots@toka}%
 			\noexpand\endgroup%
@@ -5822,6 +5842,24 @@
 
 \def\pgfplots@interruptdatabb{\pgfplots@bb@isactivefalse}
 \def\endpgfplots@interruptdatabb{\pgfplots@bb@isactivetrue}
+
+% A helper method which defines 
+%  /tikz/current plot style to be {#1}  --- with properly set key
+%  search paths.
+\def\pgfplots@define@currentplotstyle@as#1{%
+	\pgfkeysdef{/tikz/current plot style}{%
+		\pgfplots@define@currentplotstyle@as@preparesearchpaths
+		\pgfqkeys{/pgfplots}{#1}%
+	}%
+%\pgfkeysgetvalue{/tikz/current plot style/.@cmd}\temp\message{/tikz/current plot style is now \meaning\temp'}%
+}%
+\def\pgfplots@define@currentplotstyle@as@preparesearchpaths{%
+	\pgfkeysdef{/pgfplots/.unknown}{%
+		\let\pgfplots@searchname=\pgfkeyscurrentname
+		\pgfkeysalso{/tikz/\pgfplots@searchname={##1}}%
+	}%
+	\pgfkeyssetdefaultpathforhandled{/tikz}%
+}%
 
 %
 % \begin{axis}[#1] :
@@ -6130,6 +6168,15 @@
 					% this code here means we REALLY have a plotting
 					% command!
 					\pgfplots@stored@current@precmd
+					\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+					% remember these technical things: they will be
+					% reset in \draw:
+					% FIXME : is that correct and portable!?
+					\pgfplots@assert@tikzinternal@exists{tikz@options}%
+					\pgfplots@assert@tikzinternal@exists{tikz@mode}%
+					\let\pgfplots@drawoptions=\tikz@options
+					\let\pgfplots@drawmodes=\tikz@mode
+					%
 					% de-activate the FPU here! I fear its number
 					% format may cause errors when used in low-level
 					% routines.
@@ -6142,6 +6189,7 @@
 						% modifies \pgfplots@stored@markerlist if necessary.
 						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 					\fi
+					\endscope
 				\fi
 				\pgfplots@stored@current@postcmd
 			}%

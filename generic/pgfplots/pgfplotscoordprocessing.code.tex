@@ -1365,7 +1365,7 @@
 					\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
 					\noexpand\pgfplots@initzerolevelhandler
 					\the\t@pgfplots@tokc% named start/end points (if already available)
-					\noexpand\pgfkeysdef{/tikz/current plot style}{\noexpand\pgfkeysalso{\the\t@pgfplots@toka}}%
+					\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}%
 					% per-point meta data ranges:
 					\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 					\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
@@ -1797,7 +1797,7 @@
 			\pgfplots@addplotimpl@f{#1}{#2}%
 		}{%
 			\pgfutil@ifnextchar t{%
-				\pgfplots@start@plot@with@behavioroptions{#2}%
+				\pgfplots@start@plot@with@behavioroptions{#1,#2}%
 				\pgfplots@addplotimpl@table{#1}%
 			}{%
 				\pgfutil@ifnextchar ({%
@@ -1845,10 +1845,17 @@
 	\else
 		\let\pgfplots@loc@TMPa=\pgfutil@empty
 	\fi
-	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#2}%
-	\pgfplots@PREPARE@COORD@STREAM{#1}{#5}%
+	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#1,#2}%
 	%
-	\pgfplots@validate@plot@domain@arguments
+	\ifpgfplots@meshmode
+		\pgfplots@PREPARE@COORD@STREAM{#1,#2,%
+			/pgfplots/mesh/rows=\pgfkeysvalueof{/pgfplots/samples},%
+			/pgfplots/mesh/cols=\pgfkeysvalueof{/pgfplots/samples}}%
+			{#5}%
+	\else
+		\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#5}%
+	\fi
+	%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
@@ -1899,33 +1906,34 @@
 	% scoping problems.
 	%
 	\ifpgfplots@curplot@threedim
-		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
 			\def\pgfplots@addplotimpl@expression@yEXPR{##1}%
 			\def\pgfplots@addplotimpl@expression@zEXPR{##2}%
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
-		\ifx\pgfplots@plot@ydomain\pgfutil@empty
+		%
+		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
+		\ifpgfplots@meshmode
+			\ifx\pgfplots@plot@ydomain\pgfutil@empty
+				\def\pgfplots@plot@ydomain{-5:5}%
+			\fi
+		\else
 			\def\pgfplots@plot@ydomain{0:0}%
 		\fi
-		\ifx\pgfplots@plot@samples@at\pgfutil@empty
-			% we don't have 'samples at' -> use domain!
-			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
-			\let\pgfplots@loc@TMPa=\pgfplotslocretval
-		\else
-			% use 'samples at':
-			\let\pgfplots@loc@TMPa=\pgfplots@plot@samples@at
-		\fi
+		% we don't have 'samples at' for 3D plots -> use domain!
+		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
+		\let\pgfplots@expression@xdomain=\pgfplotslocretval
 		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
-		\let\pgfplots@loc@TMPb=\pgfplotslocretval
+		\let\pgfplots@expression@ydomain=\pgfplotslocretval
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> 
 		% 	\foreach \x in {-5,-4.6,...,5} 
 		% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
 		%  macro:
 		\edef\pgfplots@plot@data##1{%
-			\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa} 
-				{\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@loc@TMPb} {##1}}}%
+			\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@expression@ydomain} 
+				{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}}%
+\message{pgfplots@plot@data = \meaning\pgfplots@plot@data'}%
 	\else
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
@@ -1990,6 +1998,7 @@
 	\fi
 	\pgfplots@coord@stream@start
 	\pgfplots@plot@data{%
+\message{running with (#3,\pgfplots@addplotimpl@expression@yEXPR,\ifpgfplots@curplot@threedim\pgfplots@addplotimpl@expression@zEXPR\fi).}%
 		\pgfplots@addplotimpl@expression@prepare@x%
 		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
 		\let\pgfplots@current@point@y=\pgfmathresult
@@ -2005,8 +2014,13 @@
 \long\def\pgfplots@addplotimpl@expression@curly#1#2#3#4;{\pgfplots@addplotimpl@expression@curly@{#1}{#2}{#3}{#4}}%
 \long\def\pgfplots@addplotimpl@expression@curly@#1#2#3#4{%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
-	\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
-	\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#3}{#4}%
+	\ifpgfplots@curplot@threedim
+		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{surf,#1}{#2}}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{\y,#3}{#4}%
+	\else
+		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#3}{#4}%
+	\fi
 }%
 % \addplot[#1] [#2] expression[#3] {#4} #5;
 \def\pgfplots@addplotimpl@expression@e#1#2expression{%
@@ -2066,13 +2080,11 @@
 \def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{%
-		#2,#3}%
+	\pgfplots@start@plot@with@behavioroptions{#2,#3}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
-	\pgfplots@validate@plot@domain@arguments
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 	\ifx\pgfplots@plot@domain\pgfutil@empty
@@ -2167,7 +2179,7 @@
 % \addplot[#1] [#2] file[#3] {#4} #5;
 \def\pgfplots@addplotimpl@file@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}{#5}}%
 \def\pgfplots@addplotimpl@file@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#2}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2}%
 	\pgfplots@addplotimpl@file@opt@@{#1}{#3}{#4}{#5}%
 }
 \def\pgfplots@addplotimpl@file@opt@@#1#2#3#4{%
@@ -2177,7 +2189,7 @@
 	\else
 		\pgfqkeys{/pgfplots/plot file}{#2}%
 	\fi
-	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#4}%
 	\pgfplots@coord@stream@start
 	\pgfplots@logfileopen{#3}%
 	\openin1=#3
@@ -2266,8 +2278,8 @@
 % \addplot[#1] plot[#2] graphics[#3] {#4} #5;
 \def\pgfplots@addplotimpl@graphics@#1#2[#3]#4#5;{\pgfplots@addplotimpl@graphics@@{#1}{#2}{#3}{#4}{#5}}%
 \def\pgfplots@addplotimpl@graphics@@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#2,/pgfplots/plot graphics/.cd,#3,/pgfplots/plot graphics/src={#4}}%
-	\pgfplots@PREPARE@COORD@STREAM{#1,/pgfplots/plot graphics,/tikz/mark=}{#5}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/plot graphics/.cd,#3,/pgfplots/plot graphics/src={#4}}%
+	\pgfplots@PREPARE@COORD@STREAM{#1,#2,/pgfplots/plot graphics,/tikz/mark=}{#5}%
 	\pgfplots@coord@stream@start
 	\pgfkeysgetvalue{/pgfplots/plot graphics/xmin}{\pgfplots@current@point@x}%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/ymin}{\pgfplots@current@point@y}%
@@ -2701,7 +2713,18 @@
 	\else
 		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
 			\pgfplots@addplot@nonlegend@options,#1}%
-		\pgfplotsset{#1}%
+		\pgfkeysinstallkeyfilter{/pgf/key filters/is descendant of}{/pgfplots}%
+		\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/ignore}{}%
+		\pgfqkeysfiltered{/pgfplots}{#1}%
+		\pgfplots@validate@plot@domain@arguments
+		\edef\pgfplots@loc@TMPa{%
+			/pgfplots/samples={\pgfplots@plot@samples},%
+			/pgfplots/samples at={\pgfplots@plot@samples@at},%
+			/pgfplots/domain={\pgfplots@plot@domain}%
+		}%
+		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@nonlegend@options}%
+		\edef\pgfplots@addplot@nonlegend@options{%
+			\the\t@pgfplots@toka,\pgfplots@loc@TMPa}%
 	\fi
 }%
 
@@ -2720,8 +2743,8 @@
 \long\def\pgfplots@addplotimpl@coordinates@#1#2#3#4{%
 %\tracingmacros=2\tracingcommands=2
 %\pgfplots@message{processing plots coords with trailing path '#4'}%
-	\pgfplots@start@plot@with@behavioroptions{#2}%
-	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2}%
+	\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#4}%
 	\ifpgfplots@curplot@threedim
 		\pgfplots@coord@stream@foreach@threedim{#3}%
 	\else
@@ -3048,7 +3071,7 @@
 %
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START normalized coordinates #1#2;\pgfplots@EOI{%
 	\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
-	\pgfplots@stored@current@cmd[current plot style]
+	\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
 	\pgfextra
 	\tikzset{every plot/.try}%
 	\pgfplots@coord@stream@INIT@finalize@storedcoords\pgfplots@recorded@marker@stream%
@@ -3064,7 +3087,7 @@
 			% Draw markers on top of the plot lines:
 			%
 			% FIXME: inefficient! Use \scope to set variables of 'current plot style' !?
-			\pgfplots@stored@current@cmd[current plot style]
+			\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
 			\pgfextra 
 				\pgfplots@install@plotmark@handler
 				\pgfplots@recorded@marker@stream 
@@ -3119,8 +3142,6 @@
 }%
 
 \def\pgfplots@install@plotmark@handler{%
-	\pgfplots@assert@tikzinternal@exists{tikz@options}%
-	\pgfplots@assert@tikzinternal@exists{tikz@mode}%
 	% note: I can't check on tikz@transform because it can be '\relax'.
 	\pgfplots@gettikzinternal@keyval{mark indices}{tikz@mark@list}{}%
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
@@ -3619,7 +3640,7 @@
 		\multiply\c@pgfplots@coordindex by\pgfplotsplothandlermesh@cols\relax
 		\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@numpoints\relax
 		\else
-			\pgfplots@error{Error: the arguments of plot[mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] do NOT multiply to the total number of data points N = \pgfplotsplothandlermesh@numpoints! The data matrix appears to be incomplete...}%
+			\pgfplots@error{Error: the arguments of plot[mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assumes \the\c@pgfplots@coordindex\space points, but I got actual N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete...}%
 		\fi
 		\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
 		\advance\c@pgfplots@coordindex by1
@@ -3630,8 +3651,8 @@
 		\c@pgfplots@coordindex=0
 		%
 		% acuiqre the \iftikz@mode@fill \iftikz@mode@draw flags:
-\message{executing MODE '\meaning\tikz@mode'}%
-		\tikz@mode
+\message{executing MODE '\meaning\pgfplots@drawmodes'}%
+		\pgfplots@drawmodes
 		\iftikz@mode@fill
 			\iftikz@mode@draw
 				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
@@ -3647,7 +3668,8 @@
 		\ifnum\pgfplots@perpointmeta@choice=0
 			\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
 			% This activates tikz colors:
-			\tikz@options
+			%\tikz@options
+			\pgfplots@drawoptions
 		\else
 			\pgfplots@perpointmeta@preparetrafo
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
@@ -3661,8 +3683,9 @@
 				\expandafter\pgfplots@loc@TMPb\expandafter{\pgfmathresult}%
 %				\pgfplotsplothandlermesh@setcolor{mapped color}%
 				% This activates tikz colors:
-\message{executing \meaning\tikz@options'}%
-				\tikz@options
+\message{executing \meaning\pgfplots@drawoptions'}%
+				%\tikz@options
+				\pgfplots@drawoptions
 			}%
 		\fi
 	}%
