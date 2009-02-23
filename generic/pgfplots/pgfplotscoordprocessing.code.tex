@@ -1851,10 +1851,17 @@
 	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#1,#2}%
 	%
 	\ifpgfplots@meshmode
-		\pgfplots@PREPARE@COORD@STREAM{#1,#2,%
-			/pgfplots/mesh/rows=\pgfkeysvalueof{/pgfplots/samples},%
-			/pgfplots/mesh/cols=\pgfkeysvalueof{/pgfplots/samples}}%
-			{#5}%
+		\ifpgfplots@curplot@threedim
+			\pgfplots@PREPARE@COORD@STREAM{#1,#2,%
+				/pgfplots/mesh/rows=\pgfkeysvalueof{/pgfplots/samples},%
+				/pgfplots/mesh/cols=\pgfkeysvalueof{/pgfplots/samples}}%
+				{#5}%
+		\else
+			\pgfplots@PREPARE@COORD@STREAM{#1,#2,%
+				/pgfplots/mesh/rows=\pgfkeysvalueof{/pgfplots/samples},%
+				/pgfplots/mesh/cols=1}%
+				{#5}%
+		\fi
 	\else
 		\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#5}%
 	\fi
@@ -1905,7 +1912,7 @@
 	%
 	% I am using \pgfplotsforeachungrouped in favor of
 	% \foreach because \foreach does NOT allow extended
-	% precision. Besided, \pgfplotsforeachungrouped avoids
+	% precision. Besides, \pgfplotsforeachungrouped avoids
 	% scoping problems.
 	%
 	\ifpgfplots@curplot@threedim
@@ -1918,7 +1925,7 @@
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\ifpgfplots@meshmode
 			\ifx\pgfplots@plot@ydomain\pgfutil@empty
-				\def\pgfplots@plot@ydomain{-5:5}%
+				\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
 			\fi
 		\else
 			\def\pgfplots@plot@ydomain{0:0}%
@@ -3604,15 +3611,19 @@
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
+		\edef\pgfplotsplothandlermesh@numpoints{\pgfplotsplothandlermesh@numpoints}%
+		\edef\pgfplotsplothandlermesh@cols{\pgfplotsplothandlermesh@cols}%
+		\edef\pgfplotsplothandlermesh@rows{\pgfplotsplothandlermesh@rows}%
+		%
 		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
 			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
-				\pgfplots@error{Sorry, 'plot mesh' needs either 'plot[mesh/rows=<N>]' or 'plot[mesh/cols=<N>]' set - it didn't find either...}%
+				\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - it didn't find either...}%
 				\def\pgfplotsplothandlermesh@cols{5}%
 				\def\pgfplotsplothandlermesh@rows{5}%
 			\else
 				% Compute 'rows' out of 'num points' and 'cols':
 				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid 'plot[mesh/num points=<N>]' variable if only one of 'plot[mesh/rows=<N>]' or 'plot[mesh/cols=<N>]' is given.}%
+					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/rows=<N>]' or '[mesh/cols=<N>]' is given.}%
 					\def\pgfplotsplothandlermesh@numpoints{100}%
 				\fi
 				\begingroup
@@ -3626,7 +3637,7 @@
 			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
 				% Compute 'cols' out of 'num points' and 'rows':
 				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid 'plot[mesh/num points=<N>]' variable if only one of 'plot[mesh/cols=<N>]' or 'plot[mesh/rows=<N>]' is given.}%
+					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/cols=<N>]' or '[mesh/rows=<N>]' is given.}%
 					\def\pgfplotsplothandlermesh@numpoints{100}%
 				\fi
 				\begingroup
@@ -3642,53 +3653,84 @@
 			\multiply\c@pgfplots@coordindex by \pgfplotsplothandlermesh@cols\relax
 			\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
 		\fi
+		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\ifnum\pgfplotsplothandlermesh@cols=1
-			\pgfplots@error{Sorry, mesh/cols=1 is not supported. I can't draw a mesh in this case.}%
+			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
 		\ifnum\pgfplotsplothandlermesh@rows=1
-			\pgfplots@error{Sorry, mesh/rows=1 is not supported. I can't draw a mesh in this case.}%
+			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
 		\c@pgfplots@coordindex=\pgfplotsplothandlermesh@rows\relax
 		\multiply\c@pgfplots@coordindex by\pgfplotsplothandlermesh@cols\relax
 		\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@numpoints\relax
 		\else
-			\pgfplots@error{Error: the arguments of plot[mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assumes \the\c@pgfplots@coordindex\space points, but I got actual N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete...}%
+			\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@coordindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
 		\fi
-		\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
-		\advance\c@pgfplots@coordindex by1
-		\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@coordindex}%
-		\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
-		\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
-		\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+		%
+		\if\pgfplotsplothandlermesh@ONEDIMMODE0
+			% ok, normal 2D mesh processing:
+			% Init memory:
+			\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
+			\advance\c@pgfplots@coordindex by1
+			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@coordindex}%
+			%
+			% And now finally: initialise the conversion from 
+			%  LINEARIZED COORD STREAM -> DATA MATRIX:
+			\if\pgfplots@plot@mesh@ordering0
+				% rowwise:
+				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
+			\else
+				% colwise:
+				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
+			\fi
+			%
+			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
+			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+		\else
+			% Special case: 1D mesh processing
+			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
+			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+		\fi
 		\c@pgfplots@coordindex=0
 		%
 		% acuiqre the \iftikz@mode@fill \iftikz@mode@draw flags:
 \message{executing MODE '\meaning\pgfplots@drawmodes'}%
+		% Prepare path usage commands:
 		\pgfplots@drawmodes
 		\iftikz@mode@fill
 			\iftikz@mode@draw
 				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
-%				\def\pgfplotsplothandlermesh@setcolor####1{\pgfsetstrokecolor{####1}\pgfsetfillcolor{####1}}%
 			\else
 				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
-%				\def\pgfplotsplothandlermesh@setcolor####1{\pgfsetfillcolor{####1}}%
 			\fi
 		\else
 			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
-%			\def\pgfplotsplothandlermesh@setcolor####1{\pgfsetstrokecolor{####1}}%
 		\fi
+		\if\pgfplotsplothandlermesh@ONEDIMMODE1
+			% no filling in a onedimensional mesh mode.
+			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
+		\fi
+		%
+		% Prepare color data source:
 		\ifnum\pgfplots@perpointmeta@choice=0
-			\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
+			% oh. There is no color data!? Well... then use a constant
+			% color.
+			% 
 			% This activates tikz colors:
 			%\tikz@options
 			\pgfplots@drawoptions
+			\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
 		\else
+			% Ok, we have color data.
+			%
+			% Prepare:
 			\pgfplots@perpointmeta@preparetrafo
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
-				\pgfplots@perpointmeta@trafo@APPLY
 				\expandafter\pgfplotscolormapfind\expandafter[\pgfplotspointmetatransformedrange]
 					[1.0]
-					{\pgfplotspointmetatransformed}
+					{\pgfplotsplothandlermesh@flatmode@cellcolor}
 					{\pgfkeysvalueof{/pgfplots/colormap name}}
 %\message{Color for current point is RGB '\pgfmathresult' (determined using meta 'phi(\pgfplotspointmeta) = \pgfplotspointmetatransformed'). metarange = [\pgfplots@metamin:\pgfplots@metamax] }%
 				\def\pgfplots@loc@TMPb{\definecolor{mapped color}{rgb}}%
@@ -3699,6 +3741,39 @@
 				%\tikz@options
 				\pgfplots@drawoptions
 			}%
+			% Now, process the 'mesh/flat mode=corner|mean  key here:
+			\if\pgfplotsplothandlermesh@flatmode0%
+				% use colordata of ONE corner point. That's easy, not
+				% much to do.
+				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@corner
+				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
+				\t@pgfplots@tokb={%
+					\pgfplots@perpointmeta@trafo@APPLY
+					\let\pgfplotsplothandlermesh@flatmode@cellcolor=\pgfplotspointmetatransformed}%
+				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
+					\the\t@pgfplots@tokb
+					\the\t@pgfplots@toka
+				}%
+			\fi
+			\if\pgfplotsplothandlermesh@flatmode1
+				% use colordata as mean of all corners for shading.
+				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@mean@accum
+				\global\pgfplots@tmpa=0pt
+				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
+				\if\pgfplotsplothandlermesh@ONEDIMMODE0
+					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by4 }%
+				\else
+					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
+				\fi
+				\t@pgfplots@tokc={%
+					\edef\pgfplotsplothandlermesh@flatmode@cellcolor{\the\pgfplots@tmpa\relax}%
+					\global\pgfplots@tmpa=0pt }%
+				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
+					\the\t@pgfplots@tokb
+					\the\t@pgfplots@tokc
+					\the\t@pgfplots@toka
+				}%
+			\fi
 		\fi
 	}%
 }%
@@ -3710,10 +3785,10 @@
 % the pgf@plotstreampoint routine for the first scan line:
 \def\pgfplotsplothandlermesh@fillscanline#1{%
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{\noexpand\pgf@x=\the\pgf@x\noexpand\relax\noexpand\pgf@y=\the\pgf@y\noexpand\relax}%
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\advance\c@pgfplots@coordindex by1
-	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
+	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@scanlinelength\relax
 		% second line!
 		\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@draw%%
 		\c@pgfplots@coordindex=0
@@ -3744,23 +3819,50 @@
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{\noexpand\pgf@x=\the\pgf@x\noexpand\relax\noexpand\pgf@y=\the\pgf@y\noexpand\relax}%
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
 %\message{##\the\c@pgfplots@coordindex: prepare rectangle with corner \pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\ifnum\c@pgfplots@coordindex>0
+		\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im@jm}%
+		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im@j}%
+		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i@j}%
+		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i@jm}%
 		\pgfplotsplothandlermesh@preparedrawforcurrent
-		\pgfpathmoveto{\pgfplotsplothandlermesh@im@jm}%
-		\pgfpathlineto{\pgfplotsplothandlermesh@im@j}%
-		\pgfpathlineto{\pgfplotsplothandlermesh@i@j}%
-		\pgfpathlineto{\pgfplotsplothandlermesh@i@jm}%
 		\pgfpathclose
 		\pgfplotsplothandlermesh@usepath
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
 	\advance\c@pgfplots@coordindex by1
-	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
+	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@scanlinelength\relax
 		\c@pgfplots@coordindex=0
 	\fi
+}%
+% #1: projected x coord
+% #2: projected y coord
+% #3: per point meta (if any)
+\def\pgfplotsplothandlermesh@unpack@corner#1#2#3{%
+	\pgf@x=#1pt
+	\pgf@y=#2pt
+}%
+\def\pgfplotsplothandlermesh@unpack@mean@accum#1#2#3{%
+	\pgf@x=#1pt
+	\pgf@y=#2pt
+	\def\pgfplots@current@point@meta{#3}%
+	\pgfplots@perpointmeta@trafo@APPLY
+	\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
+}%
+% same as above, just for one dim plots (rows == 1 || cols==1)
+\def\pgfplotsplothandlermesh@ONEDIM@draw#1{%
+	\pgf@process{#1}%
+	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+	\ifnum\c@pgfplots@coordindex>0
+		\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i}%
+		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im}%
+		\pgfplotsplothandlermesh@preparedrawforcurrent
+		\pgfplotsplothandlermesh@usepath
+	\fi
+	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
+	\advance\c@pgfplots@coordindex by1
 }%
