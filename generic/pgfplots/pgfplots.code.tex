@@ -244,13 +244,7 @@
 
 
 \pgfkeys{%
-	/pgfplots/search path for tikz/.unknown/.code={%
-		\let\searchname=\pgfkeyscurrentname%
-		\pgfkeysalso{%
-			/tikz/\searchname/.try=#1,
-			/pgfplots/\searchname/.lastretry=#1
-		}%
-	},%
+	/pgfplots/search path for tikz/.search also={/tikz,/pgfplots},
 	/pgfplots/.is family,
 	/pgfplots/scale/.is family,
 	/pgfplots/legend/.is family,
@@ -1722,10 +1716,7 @@
 	},
 	/pgfplots/plot file/skip first/.is if=pgfplots@plot@file@skipfirst,
 	/pgfplots/plot file/skip first/.default=true,
-	/pgfplots/plot file/.unknown/.code={%
-		\let\pgfplots@table@curkeyname=\pgfkeyscurrentname
-		\pgfqkeys{/pgfplots}{\pgfplots@table@curkeyname=##1}%
-	},
+	/pgfplots/plot file/.search also=/pgfplots,%
 	/pgfplots/plot graphics/.code={\let\tikz@plot@handler=\pgfplotsplothandlergraphics},%
 	/pgfplots/plot graphics/src/.initial=,
 	/pgfplots/plot graphics/includegraphics/.initial=,
@@ -2866,7 +2857,7 @@
 			\data@dimen@order=3
 		\fi
 		%
-	%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
+%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
 		\data@EXPONENT=\data@dimen@order
 		\advance\data@EXPONENT by-\data@max@order
 		% Now, I introduce a loop which shall avoid cancellation of
@@ -4491,7 +4482,7 @@
 	\pgfplots@prepare@ticklabel@anchors@for y
 	\pgfplots@prepare@ticklabel@anchors@for z
 	%
-\message{Ok, I am now in pgfplots@draw@axis; ready to do work. Hide flags: hide x = \ifpgfplots@hide@x true\else false\fi; hide y = \ifpgfplots@hide@y true\else false\fi hide z = \ifpgfplots@hide@z true \else false \fi. Vector length: x = \pgfplots@x@veclength (1/x = \pgfplots@x@inverseveclength). y = \pgfplots@y@veclength (1/y = \pgfplots@y@inverseveclength) z = \pgfplots@z@veclength (1/z = \pgfplots@z@inverseveclength)}%
+%\message{Ok, I am now in pgfplots@draw@axis; ready to do work. Hide flags: hide x = \ifpgfplots@hide@x true\else false\fi; hide y = \ifpgfplots@hide@y true\else false\fi hide z = \ifpgfplots@hide@z true \else false \fi. Vector length: x = \pgfplots@x@veclength (1/x = \pgfplots@x@inverseveclength). y = \pgfplots@y@veclength (1/y = \pgfplots@y@inverseveclength) z = \pgfplots@z@veclength (1/z = \pgfplots@z@inverseveclength)}%
 	% compute tick position lists
 	% 	\pgfplots@prepared@tick@positions@minor@x
 	% and
@@ -5698,10 +5689,7 @@
 		\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
 		\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	\fi
-	\pgfkeysdef{/pgfplots/.unknown}{%
-		\let\pgfplots@searchname=\pgfkeyscurrentname
-		\pgfkeysalso{/tikz/\pgfplots@searchname={##1}}%
-	}%
+	\pgfkeysalso{/pgfplots/.search also=/tikz}%
 }
 
 \def\pgfplots@install@abbrev@commands{
@@ -5848,13 +5836,44 @@
 %  search paths.
 \def\pgfplots@define@currentplotstyle@as#1{%
 	\pgfkeysdef{/tikz/current plot style}{%
-		\pgfplots@define@currentplotstyle@as@preparesearchpaths
+		% make sure the search path is set.
+		% Inside of an axis, this is already ok.
+		\pgfkeysifdefined{/pgfplots/.unknown/.@cmd}%
+			{\relax}% search path in /pgfplots is already set
+			{\pgfkeysalso{/pgfplots/.search also=/tikz}}%
+		%
+		% Make sure that 
+		% \addplot[every mark/.append style={...}]
+		% or something like that is interpreted as /tikz/ key:
+		\pgfkeysalso{/handler config=full or existing}% restrict
+		% set both, pgfplots and tikz keys:
 		\pgfqkeys{/pgfplots}{#1}%
+		\pgfkeysalso{/handler config=all}% unrestrict
+		%
+		% As of February 22, the final plot processing uses
+		% foreach stored \addplot command :
+		%   \scope[current plot style]
+		%   <finalize coord stream>
+		%   \draw <finalized coord stream>
+		%   \endscope
+		% -> the problem: \draw reset the modes 'draw,fill' etc which
+		%  have been set in \scope!
+		% -> ad-hoc-solution:
+		%    restore the modes manually.
+		%
+		% This is done here. The \pgfplots@drawmodes is ONLY set
+		% inside of this scope, so we can check for that particular
+		% case:
+		\pgfkeys{/tikz/every path/.append code={%
+			\pgfutil@ifundefined{pgfplots@drawmodes}%
+				{\relax}%
+				{%
+					\let\tikz@mode=\pgfplots@drawmodes
+%					\let\tikz@options=\pgfplots@drawoptions
+				}%
+			}%
+		}%
 	}%
-%\pgfkeysgetvalue{/tikz/current plot style/.@cmd}\temp\message{/tikz/current plot style is now \meaning\temp'}%
-}%
-\def\pgfplots@define@currentplotstyle@as@preparesearchpaths{%
-	\pgfkeysalso{/handler config=full or existing,/pgfplots/.search also=/tikz}
 }%
 
 %
