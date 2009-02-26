@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.1 2009/02/25 21:48:28 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.2 2009/02/26 20:19:09 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -317,25 +317,83 @@
 
 
 \pgfqkeys{/pgfplots/bin}{%
-	bytes/.store in=\pgfplotsbinary@bytes,%
+	bytes/.code={%
+		\def\pgfplotsbinary@bytes{#1}%
+		\ifcase\pgfplotsbinary@bytes\relax
+			\pgfplots@error{bytes=0 is unsupported, sorry.}%
+		\or
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 128 }%
+		\or
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 32768 }%
+		\or
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 8388608 }%
+		\or
+			\def\pgfplotsbinary@add@signed@largest@absolute{%
+				\advance\c@pgfplotsbin@input by 2147483647 % this is the absolute largest int that TeX can handle.
+				\advance\c@pgfplotsbin@input by 1 % but need need one more...
+			}%
+		\else
+			\def\pgfplotsbinary@add@signed@largest@absolute{%
+				\pgfplots@error{Sorry, but I can't perform \string\pgfplotsbinaryencodesignedmaplinearly\space for bytes=\pgfplotsbinary@bytes\space yet... bytes=4 is the maximum.}%
+			}%
+		\fi
+	},
 	bytes=4,
 	% ordering not yet implemented; uses always BIG ENDIAN.
 	ordering/.is choice,%
 	ordering/big endian/.code={%
 		\def\pgfplotsbinary@byteorder{0}%
-		\let\pgfplotsbinary@apphighorderbytes=\pgfplotsbinary@apphighorderbytes@BIGENDIAN},%
+		\let\pgfplotsbinary@apphighorderbytes=\pgfplotsbinary@apphighorderbytes@BIGENDIAN
+	},%
 	ordering/net/.style={/pgfplots/bin/ordering/big endian},%
 	ordering/little endian/.code={%
 		\def\pgfplotsbinary@byteorder{1}%
-		\let\pgfplotsbinary@apphighorderbytes=\pgfplotsbinary@apphighorderbytes@LITTLEENDIAN},%
+		\let\pgfplotsbinary@apphighorderbytes=\pgfplotsbinary@apphighorderbytes@LITTLEENDIAN
+	},
 	ordering/big endian,%
+	%
+	% Irreversibly change to VERBATIM output for debugging:
+	debug mode/.code={%
+		\let\pgfplotsbinary@apphighorderbytes@ORIG=\pgfplotsbinary@apphighorderbytes
+		\def\pgfplotsbinary@ZERO{[0]}%
+		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
+		\def\pgfplotsbinary@ZERO@LINEARMAP{[128]}%
+		\def\pgfplotsbinary@apphighorderbytes##1{%
+			\pgfutil@ifnextchar\csname{%
+				\pgfplotsbinary@apphighorderbytes@DEBUG@csname
+			}{%
+				\pgfplotsbinary@apphighorderbytes@DEBUG@normal
+			}%
+			##1\relax
+		}%
+	},
 }
 
 \expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@0\endcsname
+\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@128\endcsname
+\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
+\let\pgfplotsbinary@hook=\relax
 
-\newcount\c@pgfplotsbin@tmpa
-\newcount\c@pgfplotsbin@tmpb
-\newcount\c@pgfplotsbin@tmpc
+\def\pgfplotsbinary@hook@signed@linearmap{%
+	\ifnum\c@pgfplotsbin@byteno=0
+		\advance\c@pgfplotsbin@input by128
+	\fi
+}%
+
+\def\pgfplotsbinary@apphighorderbytes@DEBUG@csname \csname pgfp@bin@#1\endcsname\relax{%
+	\pgfplotsbinary@apphighorderbytes@ORIG{[#1]}%
+}%
+\def\pgfplotsbinary@apphighorderbytes@DEBUG@normal#1\relax{%
+	\pgfplotsbinary@apphighorderbytes@ORIG{#1}%
+}%
+
+%\pgfkeys{/pgfplots/bin/debug mode}
+
+
+\countdef\c@pgfplotsbin@input=0
+\countdef\c@pgfplotsbin@tmpa=1
+\countdef\c@pgfplotsbin@tmpb=2
+\countdef\c@pgfplotsbin@byteno=3
 \def\pgfplotsbinaryempty{}
 
 %--------------------------------------------------
@@ -355,67 +413,105 @@
 %
 % PRECONDITION:
 % - \pgfplotsbinaryresult= empty!
-% - \c@pgfplotsbin@tmpc=0
-\def\pgfplotsbinarydecimaltoFF@#1{%
-	\ifnum#1>0
-		\c@pgfplotsbin@tmpa=#1
+% - \c@pgfplotsbin@byteno=\pgfplotsbinary@bytes
+\def\pgfplotsbinaryencode@badic@unsigned@{%
+	\ifnum\c@pgfplotsbin@input>0
+		\c@pgfplotsbin@tmpa=\c@pgfplotsbin@input
 		\divide\c@pgfplotsbin@tmpa by256
 		\c@pgfplotsbin@tmpb=\c@pgfplotsbin@tmpa\relax
 		\multiply\c@pgfplotsbin@tmpa by256
-		\advance#1 by -\c@pgfplotsbin@tmpa\relax
-		\pgfplotsbinary@apphighorderbytes{\csname pgfp@bin@\the#1 \endcsname}%
-		#1=\c@pgfplotsbin@tmpb
-		\advance\c@pgfplotsbin@tmpc by1
-		\def\pgfplotsbinary@loc@TMPa{\pgfplotsbinarydecimaltoFF@{#1}}%
+		\advance\c@pgfplotsbin@input by -\c@pgfplotsbin@tmpa\relax
+		\advance\c@pgfplotsbin@byteno by-1
+		\pgfplotsbinary@hook% hooks for modifications.
+		\pgfplotsbinary@apphighorderbytes{\csname pgfp@bin@\the\c@pgfplotsbin@input\endcsname}%
+		\c@pgfplotsbin@input=\c@pgfplotsbin@tmpb
+%\message{RESULT SO FAR: \pgfplotsbinaryresult}%
+		\expandafter\pgfplotsbinaryencode@badic@unsigned@
 	\else
 		% pad with zeros:
-		\c@pgfplotsbin@tmpb=\pgfplotsbinary@bytes\relax
-		\advance\c@pgfplotsbin@tmpb by-\c@pgfplotsbin@tmpc
-		\ifcase\c@pgfplotsbin@tmpb
+		\ifcase\c@pgfplotsbin@byteno
 			% ok.
 		\or
 			% one byte missing.
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
 			% two bytes missing.
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\or
-			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+			\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 		\fi
-		\let\pgfplotsbinary@loc@TMPa=\relax
-	\fi
 %\message{RESULT SO FAR: \pgfplotsbinaryresult}%
-	\pgfplotsbinary@loc@TMPa
+	\fi
 }%
 
-% High level routine which accepts an register containing an unsigned
-% integer.
-\def\pgfplotsbinarydecimaltoFF#1{%
-	\begingroup
-	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
-	\c@pgfplotsbin@tmpc=0
-	\pgfplotsbinarydecimaltoFF@{#1}%
-	\endgroup
-}%
-
-% Defines \pgfplotsbinaryresult to be the binary representation of a
-% count register.
+% Defines \pgfplotsbinaryresult to be the binary representation of an
+% unsigned integer.
 %
 % The representation will use unsigned dual number representation.
 %
 % The assignment to \pgfplotsbinaryresult will be globally.
-% #1: an integer register containing an UNSIGNED integer.
-\let\pgfplotsbinaryunsignedcount=\pgfplotsbinarydecimaltoFF
+% #1: an unsigned integer .
+%
+% FIXME : fix  > 2^30
+\def\pgfplotsbinaryencodeunsigned#1{%
+	\begingroup
+	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
+	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+	\c@pgfplotsbin@input=#1 %
+	\pgfplotsbinaryencode@badic@unsigned@%
+	\endgroup
+}%
+
+% An implementation for signed integers which maps the signed integer linearly into 
+% the unsigned data range before it proceeds.
+%
+% The idea is thus, to first introduce a linear mapping
+%
+% phi : [- smallest_possible, +largest_possible ] -> [0, 256^bytes-1 ]
+%
+% The realization uses maps [ - smallest_possible, 0 ] -> [0,...]
+% and the positive numbers follow.
+%
+% Such an implementation is useful for pdf shadings - they work with
+% linear maps anyway.
+\def\pgfplotsbinaryencodesignedmaplinearly#1{%
+	\begingroup
+	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
+	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+	\c@pgfplotsbin@input=#1 %
+	%
+	% The implementation works as follows:
+	% 
+	% we map NEGATIVE numbers first into the range [0,...MAXINT]
+	% and POSITIVE numbers afterwards.
+	%
+	% Steps:
+	% 1. if #1 < 0: add the smallest allowed negative number.
+	% 2. if #1 >=0 : make sure we start at half the output range.
+	% This doesn't need TeX register arithmetics on the whole range.
+	%
+	\ifnum\c@pgfplotsbin@input<0
+		% map to positive range:
+		\pgfplotsbinary@add@signed@largest@absolute
+	\else
+		% change zero padding such that positive numbers
+		% start at the upper half of the output range:
+		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO@LINEARMAP
+		\let\pgfplotsbinary@hook=\pgfplotsbinary@hook@signed@linearmap
+	\fi
+	\pgfplotsbinaryencode@badic@unsigned@%
+	\endgroup
+}%
 
 \catcode`\@=\pgfplotsbinaryatcode
 \endinput
