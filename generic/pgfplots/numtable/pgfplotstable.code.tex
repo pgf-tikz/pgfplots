@@ -1089,6 +1089,80 @@
 	}%
 }
 
+
+% Iterates through every column of table '#1' and invokes the code
+% '#3' for each column. The current column name will be available as
+% '#2' and the current column index as |\pgfplotstablecol| (starting
+% with 0).
+%
+% Example:
+% \pgfplotstableforeachcolumn{\table}\as\colname{%
+% 	The column name is `\colname'; its index \pgfplotstablecol.\par
+% }%
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumn#1\as#2#3{%
+	\def\pgfplotstablecol{0}%
+	\pgfplotslistforeachungrouped#1\as#2{%
+		#3\relax%
+		\pgfplotsutil@advancestringcounter\pgfplotstablecol
+	}%
+	\let\pgfplotstablecol=\relax
+}%
+
+% Reports every element t_{ij} for a fixed column j (in read-only
+% mode).
+%
+% For every cell, the code '#4' will be executed where '#3' will
+% contain the cell's value. During code '#4', the macro
+% \pgfplotstablerow will contain the current row index.
+%
+% #1: either a column name or the string '[index]' followed by a
+% number denoting a column index Access by column name is much faster..
+% #2: the table
+% #3: the macro in which the cell values shall be written
+% #4: the code to execute.
+%
+% Example:
+% \pgfplotstableforeachcolumnelement{colname}\of\table\as\cellelem{%
+% 	I have now cell element `\cellelem' at row index
+% 	`\pgfplotstablerow'.
+% 	\par
+% }
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstable@loc@TMPb
+	\pgfplotslistforeachungrouped\pgfplotstable@loc@TMPb\as#3{%
+		#4\relax
+		\pgfplotsutil@advancestringcounter\pgfplotstablerow
+	}%
+	\let\pgfplotstablerow=\relax
+}%
+
+% Selects a single table element at row #1 and column #2 from table
+% #3.
+%
+% #1: a row index.
+% #2: a column name or the string '[index]' followed by a number
+% denoting a column index. Access by column name is much faster.
+% #3: the table.
+%
+% The cell value will be written into the macro \pgfplotslocretval.
+%
+% REMARK:
+% this routine is supposed to be very slow: it needs time O(N) where N
+% is the number of rows. This may change in future versions.
+%
+% Example:
+% \pgfplotstablegetelem{0}{2}\of\table
+% The elem is `\pgfplotslocretval'.
+\def\pgfplotstablegetelem#1#2\of#3{%
+	\pgfplotstablegetcolumn{#2}\of{#3}\to\pgfplotstable@loc@TMPa
+	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotslocretval
+}%
+
 \def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
 
 % Returns a column vector in form of \pgfplotslist
@@ -1188,12 +1262,13 @@
 % Invokes either \pgfplotstablegetcolumnbyindex or
 % \pgfplotstablegetcolumnbyname.
 \def\pgfplotstablegetcolumn#1\of#2\to#3{%
-	\pgfplotstable@is@colname{#1}%
+	\def\pgfplotstable@loc@TMPc{#1}%
+	\pgfplotstable@is@colname{\pgfplotstable@loc@TMPc}%%
 	\ifpgfplotstableread@foundcolnames
 	\else
-		\pgfplotstablegetcolumnnamebyindex{#1}\of{#2}\to{#3}
+		\expandafter\pgfplotstablegetcolumnnamebyindex\pgfplotstable@loc@TMPc\of{#2}\to\pgfplotstable@loc@TMPc
 	\fi
-	\pgfplotstablegetcolumnbyname{#1}\of#2\to{#3}%
+	\expandafter\pgfplotstablegetcolumnbyname\pgfplotstable@loc@TMPc\of#2\to{#3}%
 }%
 
 \def\pgfplotstablegetcolumnnamebyindex#1\of#2\to#3{%
@@ -1898,7 +1973,7 @@
 % Accepts a macro #1 which contains an argument denoting a column
 % name.
 %
-% It checks whether #1 starts with '#', indicating that it is actually
+% It checks whether #1 starts with '[index]', indicating that it is actually
 % a column INDEX. If that is the case,
 % \ifpgfplotstableread@foundcolnames is set to false and the index is
 % returned into #1.
@@ -1924,7 +1999,7 @@
 	\def\pgfplotstable@loc@TMPa{#1}%
 	\ifx\pgfplotstable@loc@TMPa\pgfplotstabletypeset@is@colname@index@@
 		\pgfplotstableread@foundcolnamesfalse
-		\def\pgfplotstable@loc@TMPa{#2}%
+		\edef\pgfplotstable@loc@TMPa{#2}%
 	\else
 		\pgfplotstableread@foundcolnamestrue
 	\fi

@@ -19,6 +19,7 @@
 % \pgfplotslistpushfront
 % \pgfplotslistsize
 % \pgfplotslistselect
+% \pgfplotslistset
 % \pgfplotslistcheckempty
 % \pgfplotslistforeach
 %
@@ -47,6 +48,9 @@
 
 \newif\ifpgfplotslistempty
 
+% Low-level IMPLEMENTATION NOTE 
+% the list is stored in the form 
+% '\pgfpl@@{<first>}\pgfpl@@{<second>}\pgfpl@@{<third>}....\pgfpl@@{<last>}'
 
 \newif\ifpgfplots@loop@CONTINUE
 \newif\ifpgfplotslist@is@backslash@terminated
@@ -241,10 +245,71 @@
 	\endgroup
 	\pgfplotslistselect@tmp
 }
+
+% Selects a list entry. If it does not exist, '#' will be empty.
 \def\pgfplotslistselectorempty#1\of#2\to#3{%
 	\global\def\pgfplotslistselect@tmp{\def#3{}}%
 	\pgfplotslistselect@{#1}\of{#2}\to{#3}%
 }
+
+% Changes the element at index '#1' of list '#2' to the content '#3'.
+%
+% This operation has quadratic (!) time in the worst case.
+\def\pgfplotslistset#1\of#2\to#3{%
+	\ifcase#1\relax
+		% change first:
+		\def\pgfplotslistset@\pgfpl@@##1##2\relax{\def#2{\pgfpl@@{#3}##2}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		% change second:
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2##3\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{#3}##2}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2\pgfpl@@##3##4\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{##2}\pgfpl@@{#3}##3}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2\pgfpl@@##3\pgfpl@@##4##5\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{##2}\pgfpl@@{##3}\pgfpl@@{#3}##4}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\else
+		\begingroup
+		\global\pgfplotslistnewempty\pgfplotslistnewempty\pgfplotslist@glob@TMPa
+		\let\pgfpl@@=\pgfutil@empty % make sure it is not \relax.
+		\count0=#1\relax
+		\count1=0
+		\def\pgfplotslistset@newelem{#3}%
+		\expandafter\pgfplotslistset@loop#2\relax
+		\ifnum\count1 =\count0
+		\else
+			\pgfplots@error{ERROR: \string\pgfplotslistset{\the\count0} failed because there are only \the\count1\space elements in the list. Use pushback to resize it.}%
+		\fi
+		\endgroup
+		\let#3=\pgfplotslist@glob@TMPa
+		\global\let\pgfplotslist@glob@TMPa=\relax
+	\fi
+}%
+
+\def\pgfplotslistset@loop{%
+	\pgfutil@ifnextchar\relax{%
+		\pgfplotslistset@loop@break
+	}{%
+		\pgfplotslistset@loop@next
+	}%
+}
+\def\pgfplotslistset@loop@break#1\relax{%
+	% re-append remaining elements:
+	\expandafter\gdef\expandafter\pgfplotslist@glob@TMPa\expandafter{\pgfplotslist@glob@TMPa#1}
+}%
+\def\pgfplotslistset@loop@next\pgfpl@@#1{%
+	\ifnum\count1 =\count0
+		% Ah - we found the element to replace!
+		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotslistset@newelem}\to\pgfplotslist@glob@TMPa
+		\expandafter\pgfplotslistset@loop@break
+	\else
+		\pgfplotslistpushbackglobal{#1}\to\pgfplotslist@glob@TMPa
+		\advance\count1 by1
+		\expandafter\pgfplotslistset@loop
+	\fi
+}%
 
 % Sets the boolean \ifpgfplotslistempty depending on whether list #1 is empty
 % or not.
@@ -287,8 +352,6 @@
 	\endgroup
 }
 
-\newif\ifpgfplotslistforeachungroupedrunning
-
 % The same but without groups around #3.
 %
 % The list can be nested.
@@ -329,16 +392,4 @@
 }%
 \def\pgfplotslistforeachungrouped@EOI{\pgfplotslistforeachungrouped@EOI}% equals only itself in \ifx
 
-%--------------------------------------------------
-% \long\def\pgfplotslistforeachungrouped#1\as#2#3{%
-% 	\ifpgfplotslistforeachungroupedrunning
-% 		\pgfplots@error{Sorry, you can't nest pgfplotslistforeachungrouped.}%
-% 	\else
-% 		\pgfplotslistforeachungroupedrunningtrue
-% 		\long\def\pgfpl@@##1{\def#2{##1}#3}%
-% 		#1\relax
-% 		\pgfplotslistforeachungroupedrunningfalse
-% 	\fi
-% }
-%-------------------------------------------------- 
 
