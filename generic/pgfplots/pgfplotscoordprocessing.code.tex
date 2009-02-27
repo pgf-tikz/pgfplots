@@ -3738,7 +3738,7 @@
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
 				\expandafter\pgfplotscolormapfind\expandafter[\pgfplotspointmetatransformedrange]
 					[1.0]
-					{\pgfplotsplothandlermesh@flatmode@cellcolor}
+					{\pgfplotsplothandlermesh@surfmode@cellcolor}
 					{\pgfkeysvalueof{/pgfplots/colormap name}}
 %\message{Color for current point is RGB '\pgfmathresult' (determined using meta 'phi(\pgfplotspointmeta) = \pgfplotspointmetatransformed'). metarange = [\pgfplots@metamin:\pgfplots@metamax] }%
 				\def\pgfplots@loc@TMPb{\definecolor{mapped color}{rgb}}%
@@ -3749,21 +3749,24 @@
 				%\tikz@options
 				\pgfplots@drawoptions
 			}%
-			% Now, process the 'mesh/flat mode=corner|mean  key here:
-			\if\pgfplotsplothandlermesh@flatmode0%
+			% Now, process the 'mesh/surf mode=corner|mean  key here:
+			\ifcase\pgfplotsplothandlermesh@surfmode
+				% 'flat corner':
+				%
 				% use colordata of ONE corner point. That's easy, not
 				% much to do.
 				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@corner
 				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
 				\t@pgfplots@tokb={%
 					\pgfplots@perpointmeta@trafo@APPLY
-					\let\pgfplotsplothandlermesh@flatmode@cellcolor=\pgfplotspointmetatransformed}%
+					\let\pgfplotsplothandlermesh@surfmode@cellcolor=\pgfplotspointmetatransformed}%
 				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
 					\the\t@pgfplots@tokb
 					\the\t@pgfplots@toka
 				}%
-			\fi
-			\if\pgfplotsplothandlermesh@flatmode1
+			\or
+				% 'flat mean':
+				%
 				% use colordata as mean of all corners for shading.
 				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@mean@accum
 				\global\pgfplots@tmpa=0pt
@@ -3774,19 +3777,32 @@
 					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
 				\fi
 				\t@pgfplots@tokc={%
-					\edef\pgfplotsplothandlermesh@flatmode@cellcolor{\the\pgfplots@tmpa\relax}%
+					\edef\pgfplotsplothandlermesh@surfmode@cellcolor{\the\pgfplots@tmpa\relax}%
 					\global\pgfplots@tmpa=0pt }%
 				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
 					\the\t@pgfplots@tokb
 					\the\t@pgfplots@tokc
 					\the\t@pgfplots@toka
 				}%
+			\or
+				% 'surf':
+				% very simple: defer work to surf library. Only
+				% provide the mapped colordata.
+				\let\pgfplotslibrarysurf@cols=\pgfplotsplothandlermesh@cols
+				\let\pgfplotsplothandlermesh@unpack=\relax % unused.
+				\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
+				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@draw@lowlevelsurf%
+				\pgfplotslibrarysurfstreamstart
 			\fi
 		\fi
 	}%
 }%
 
 \def\pgfplotsplothandlermesh@finish{%
+	\ifnum\pgfplotsplothandlermesh@surfmode=2
+		\pgfplotslibrarysurfstreamend
+		\pgfplotslibrarysurfdraw
+	\fi
 %	\endscope
 }%
 
@@ -3846,6 +3862,10 @@
 	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@scanlinelength\relax
 		\c@pgfplots@coordindex=0
 	\fi
+}%
+\def\pgfplotsplothandlermesh@draw@lowlevelsurf#1{%
+	\pgfplots@perpointmeta@trafo@APPLY
+	\pgfplotslibrarysurfstreamcoord{#1}{\pgfplotspointmetatransformed}%
 }%
 % #1: projected x coord
 % #2: projected y coord

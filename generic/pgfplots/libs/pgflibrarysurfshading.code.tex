@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.2 2009/02/26 13:25:20 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.3 2009/02/27 22:39:04 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -25,79 +25,174 @@
 %
 %--------------------------------------------
 
-\def\pgfplotslibrarysurf@width{5cm}%
-\def\pgfplotslibrarysurf@height{5cm}%
-\def\pgfplotslibrarysurf@cols{4}%
+%--------------------------------------------------
+% \def\pgfplotslibrarysurf@cols{2}
+% \pgfplotslibrarysurfstreamstart
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{10pt}}{0}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{100pt}{10pt}}{100}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{300pt}}{300}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{150pt}{300pt}}{1000}
+% \pgfplotslibrarysurfstreamend
+% \pgfplotslibrarysurfdraw
+%-------------------------------------------------- 
+
+
+
+\def\pgfplotslibrarysurf@width{15cm}%
+\def\pgfplotslibrarysurf@height{15cm}%
+\def\pgfplotslibrarysurf@cols{5}%
 \def\pgfplotslibrarysurf@binarystream{1234}%
-\def\pgfplotslibrarysurf@binarystreamlength{4}%
-\def\pgfplotslibrarysurf@decode{xmin xmax ymin ymax c1min c1max c2min c2max c3min c3max}%
+\def\pgfplotslibrarysurf@decode{-16348.9 16348.9 -16348.9 16348.9 0 10000}%
+
+\def\pgfplotslibrarysurfstreamstart{%
+	\pgfplotsapplistXnewempty\pgfplotslibrarysurf@binarystream@accum
+}%
+\def\pgfplotslibrarysurfstreamend{%
+	\pgfplotsapplistXlet\pgfplotslibrarysurf@binarystream=\pgfplotslibrarysurf@binarystream@accum
+}%
+
+% #1: a pgf point.
+% #2: a color coordinate in the range [0,1000]
+\def\pgfplotslibrarysurfstreamcoord#1#2{%
+	\pgfkeysvalueof{/pgfplots/bin/bytes/.@cmd}4\pgfeov
+	\pgf@process{#1}%
+	% The idea is to map 
+	% the low-level point coordinates LINEARLY into [0,2^{8*<bytes>}].
+	%
+	% This is what the pdf standard expects for surface shadings.
+	%
+	% To do that, we simply map
+	% [-16384,16384] linearly into [0,2^{32}]
+	% and write the resulting integer in big endian binary format to
+	% the pdf low level stream.
+	%
+	% The decode procedure tells the pdf viewer how to invert that
+	% stuff.
+	%
+	%% DEBUG NOTE: This mapping appears to work correctly according to
+	%% my tests.
+	%% For bc -l test codes: 
+	%% set ibase=16; 
+	%% -4000 +  809658FA. / (2^20) * 8000
+	%
+	% FIXME : these coordinates ARE NOT USER SPACE CORRECTED.
+	% SO: either use them as fill path for the surfaces rectangle
+	% (which may work, I don't know) or make sure they are mapped
+	% correctly into "user space".
+	\pgf@sys@bp@correct\pgf@x%
+\message{ENCODING x  = \the\pgf@x.}%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@x
+	\t@pgfplots@toka=\expandafter{\pgfplotsbinaryresult}%
+	\pgf@sys@bp@correct\pgf@y%
+\message{ENCODING y  = \the\pgf@y.}%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@y
+	\t@pgfplots@tokb=\expandafter{\pgfplotsbinaryresult}%
+	{%
+		\pgf@xa=#2pt
+		\multiply\pgf@xa by10
+		\afterassignment\pgfplotslibrarysurf@gobbletillrelax
+		\expandafter\c@pgf@counta\the\pgf@xa\relax
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	}%
+\message{ENCODING C = \pgfplots@glob@TMPa.}%
+	\pgfkeysvalueof{/pgfplots/bin/bytes/.@cmd}2\pgfeov
+	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+	\t@pgfplots@tokc=\expandafter{\pgfplotsbinaryresult}%
+	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
+}
+\def\pgfplotslibrarysurf@gobbletillrelax#1\relax{}%
+
+\def\pgfplotslibrarysurfdraw{%
+%	\pgftext[at=\pgfqpoint{0pt}{0pt}]%
+		{\pgfplotssys@do@surfshading}%
+}%
 
 \def\pgfplotssys@do@surfshading{%
 	{%
-\iffalse
 		\pdfobj stream attr {%
-			/Length \pgfplotslibrarysurf@binarystreamlength
+			% stream length will be computed automatically
 			%/Shading 
+			/ShadingType 5
+			/BitsPerCoordinate 32
+			/BitsPerComponent 16
+			/VerticesPerRow \pgfplotslibrarysurf@cols\space
+			/ColorSpace /DeviceRGB
+			/Decode [\pgfplotslibrarysurf@decode]
+			/Function 
 			<< 
-				/Sh << 
-					/ShadingType 5
-					/BitsPerCoordinate 32
-					/BitsPerComponent 16
-					/VerticesPerRow \pgfplotslibrarysurf@cols
-					/ColorSpace /DeviceRGB
-					/Decode [\pgfplotslibrarysurf@decode]
-				>> 
-			>>%
+				/FunctionType 3 
+				/Domain [0.0 10000] 
+				/Functions [ 
+					<< 
+						/FunctionType 2 
+						/Domain [0.0 10000] 
+						/C0 [0 0 1] /C1 [1 1 0] /N 1 
+					>>  
+					<< 
+						/FunctionType 2 
+						/Domain [0.0 10000] 
+						/C0 [1 1 0] /C1 [1 0.5 0] /N 1 
+					>>  
+					<< 
+						/FunctionType 2 
+						/Domain [0.0 10000] 
+						/C0 [1 0.5 0] /C1 [1 0 0] /N 1 
+					>>
+				]
+				/Bounds [ 2000 6000 ] 
+				/Encode [0 1  0 1 0 1] 
+			>> 
 		} {%
 			\pgfplotslibrarysurf@binarystream
 		}%
-\else
-		% A working temporary:
-		\pdfobj {
-			<< /Sh 
-				<<
-					/ShadingType 2 
-					/ColorSpace /DeviceRGB
-					/Domain [0.0 226.76788] 
-					/Coords [0.0 0 226.76788 0] 
-					/Function 
-					<< 
-						/FunctionType 3 
-						/Domain [0.0 226.76788] 
-						/Functions [ 
-							<< 
-								/FunctionType 2 
-								/Domain [0.0 226.76788] 
-								/C0 [0 0 1] /C1 [1 1 0] /N 1 
-							>>  
-							<< 
-								/FunctionType 2 
-								/Domain [0.0 226.76788] 
-								/C0 [1 1 0] /C1 [1 0.5 0] /N 1 
-							>>  
-							<< 
-								/FunctionType 2 
-								/Domain [0.0 226.76788] 
-								/C0 [1 0.5 0] /C1 [1 0 0] /N 1 
-							>>
-						]
-						/Bounds [ 75.5893 151.17859] 
-						/Encode [0 1  0 1 0 1] 
-					>> 
-					/Extend [false false] 
-				>> 
-			>>
-		}%
-\fi
+		%--------------------------------------------------
+		% \pdfobj {%
+		% 	/TemporaryShade % this can be deleted. I use it to check what works - substitute /Plotsurface with /TemporaryShade to activate it.
+		% 	<<
+		% 		/ShadingType 2 
+		% 		/ColorSpace /DeviceRGB
+		% 		/Domain [0.0 226.76788] 
+		% 		/Coords [0.0 0 226.76788 0] 
+		% 		/Function 
+		% 		<< 
+		% 			/FunctionType 3 
+		% 			/Domain [0.0 226.76788] 
+		% 			/Functions [ 
+		% 				<< 
+		% 					/FunctionType 2 
+		% 					/Domain [0.0 226.76788] 
+		% 					/C0 [0 0 1] /C1 [1 1 0] /N 1 
+		% 				>>  
+		% 				<< 
+		% 					/FunctionType 2 
+		% 					/Domain [0.0 226.76788] 
+		% 					/C0 [1 1 0] /C1 [1 0.5 0] /N 1 
+		% 				>>  
+		% 				<< 
+		% 					/FunctionType 2 
+		% 					/Domain [0.0 226.76788] 
+		% 					/C0 [1 0.5 0] /C1 [1 0 0] /N 1 
+		% 				>>
+		% 			]
+		% 			/Bounds [ 75.5893 151.17859] 
+		% 			/Encode [0 1  0 1 0 1] 
+		% 		>> 
+		% 		/Extend [false false] 
+		% 	>> 
+		% }%
+		%-------------------------------------------------- 
 		% I don't know how to insert the shading into a properly sized PDF entity - this here appears to work.
 		\setbox\pgfutil@tempboxa=\hbox to\pgfplotslibrarysurf@width{%
 			\vbox to\pgfplotslibrarysurf@height{%
 				\vfil
-				\pgfsys@invoke{/Sh sh}%
+				\pgfsys@invoke{%
+					/Plotsurface sh% invoke 'sh'ading operator on /Plotsurface
+				}%
 			}%
 			\hfil}%
 		\pdfxform resources {%
-			/Shading \the\pdflastobj\space 0 R
+			/Shading << /Plotsurface \the\pdflastobj\space 0 R >>
 		}\pgfutil@tempboxa
 		%--------------------------------------------------
 		% \pgf@process{\pgfpoint{\pgf@max}{#2}}%
