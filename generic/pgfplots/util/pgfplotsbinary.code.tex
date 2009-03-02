@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.6 2009/03/02 17:27:18 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.7 2009/03/02 22:45:18 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -337,6 +337,8 @@
 		\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
 	\or
 		\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO@HIGHEST}%
+	\else
+		\pgfplots@error{Sorry, I can't process byte no \the\c@pgfplotsbin@byteno... you may need to change bytes=\pgfplotsbinary@bytes.}%
 	\fi
 }%
 \def\pgfplotsbinaryencode@badic@unsigned@PAD@BIGENDIAN{%
@@ -361,6 +363,8 @@
 		\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO@HIGHEST\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
 	\or
 		\pgfplotsbinary@apphighorderbytes{\pgfplotsbinary@ZERO@HIGHEST\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+	\else
+		\pgfplots@error{Sorry, I can't process byte no \the\c@pgfplotsbin@byteno... you may need to change bytes=\pgfplotsbinary@bytes.}%
 	\fi
 }%
 
@@ -380,8 +384,8 @@
 			\def\pgfplotsbinary@dimen@scale{256}% ~= (2^31-1) /  (2^(8*3-1) -1)
 		\or
 			\def\pgfplotsbinary@add@signed@largest@absolute{%
-				\advance\c@pgfplotsbin@input by 2147483647 % this is the absolute largest int that TeX can handle.
-				\advance\c@pgfplotsbin@input by 1 % but need need one more...
+				\advance\c@pgfplotsbin@input by 2147483647 % this is the *absolute* largest int that TeX can handle.
+				\advance\c@pgfplotsbin@input by 1 % but need need to add one more... (the sum is in TeX range!)
 			}%
 			\def\pgfplotsbinary@dimen@scale{1}% ~= (2^31-1) /  (2^(8*4-1) -1)
 		\else
@@ -423,8 +427,25 @@
 			}%
 			##1\relax
 		}%
-	},
+	},%
+	% Write pdf objects in binary form:
+	% debug to pdf={\pgfplotsbinaryencodeunsigned}{1,2,3,...,16}
+	%
+	% works only with pdftex
+	debug to pdf/.code 2 args={%
+		\foreach \num in {#2} {%
+			#1{\num}%
+			\immediate \pdfobj stream attr {
+				/Decimal \num\space
+				/Routine (\string#1)
+			} {%
+				\pgfplotsbinaryresult
+			}%
+		}%
+	},%
 }
+
+
 
 \expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@0\endcsname
 \expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@128\endcsname
@@ -434,6 +455,9 @@
 \def\pgfplotsbinary@hook@signed@linearmap{%
 	\ifnum\c@pgfplotsbin@byteno=0
 		\advance\c@pgfplotsbin@input by128
+		\ifnum\c@pgfplotsbin@input>255
+			\pgfplots@error{Sorry, there are not enough bytes to store the current number. I tried to write \the\c@pgfplotsbin@input...}%
+		\fi
 	\fi
 }%
 
@@ -490,6 +514,7 @@
 	\fi
 }%
 
+
 % Defines \pgfplotsbinaryresult to be the binary representation of an
 % unsigned integer.
 %
@@ -520,6 +545,11 @@
 %
 % Such an implementation is useful for pdf shadings - they work with
 % linear maps anyway.
+	%% DEBUG NOTE: This mapping appears to work correctly according to
+	%% my tests.
+	%% For bc -l test codes: 
+	%% ibase=16; 
+	%% -4000 +  809658FA. / (2^20) * 8000
 \def\pgfplotsbinaryencodesignedmaplinearly#1{%
 	\begingroup
 	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
