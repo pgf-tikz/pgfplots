@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.4 2009/02/28 19:54:07 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.5 2009/03/02 15:26:01 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -26,7 +26,7 @@
 %--------------------------------------------
 
 %--------------------------------------------------
-% \def\pgfplotslibrarysurf@cols{2}
+% \pgfkeyssetvalue{/pgfplots/surf shading/cols}{2}
 % \pgfplotslibrarysurfstreamstart
 % \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{10pt}}{0}
 % \pgfplotslibrarysurfstreamcoord{\pgfqpoint{100pt}{10pt}}{100}
@@ -37,12 +37,21 @@
 %-------------------------------------------------- 
 
 
+\pgfkeys{%
+	/pgfplots/surf shading/south west corner/.initial={\pgfpointorigin},%
+	/pgfplots/surf shading/north east corner/.initial={\pgfqpoint{15cm}{15cm}},%
+	/pgfplots/surf shading/anchor/.initial=\pgfpointorigin,%
+	/pgfplots/surf shading/cols/.initial=,%
+}%
 
-\def\pgfplotslibrarysurf@width{15cm}%
-\def\pgfplotslibrarysurf@height{15cm}%
-\def\pgfplotslibrarysurf@cols{5}%
-\def\pgfplotslibrarysurf@binarystream{1234}%
-\def\pgfplotslibrarysurf@decode{-16348.9 16348.9 -16348.9 16348.9 0 10000}%
+\def\pgfplotslibrarysurf@corner@sw{\pgfkeysvalueof{/pgfplots/surf shading/south west corner}}
+\def\pgfplotslibrarysurf@corner@ne{\pgfkeysvalueof{/pgfplots/surf shading/north east corner}}%
+\def\pgfplotslibrarysurf@decode{%
+	-16384.9 16384.9 % map TeX coordinates 1:1
+	-16384.9 16384.9
+	0 65535% map cdata 1:1 ! It is a 2 byte integer.
+}%
+\def\pgfplotslibrarysurf@count{0}%
 
 \def\pgfplotslibrarysurfstreamstart{%
 	\pgfplotsapplistXnewempty\pgfplotslibrarysurf@binarystream@accum
@@ -107,11 +116,43 @@
 	\pgfplotssys@do@surfshading@fillpaths%
 }
 
-\def\pgfplotslibrarysurfdraw{%
-%	\pgftext[at=\pgfqpoint{0pt}{0pt}]%
-		{\pgfplotssys@do@surfshading}%
-}%
+%--------------------------------------------------
+% \def\pgfplotslibrarysurfdraw{%
+% %	\pgftext[at=\pgfqpoint{0pt}{0pt}]%
+% 		{\pgfplotssys@do@surfshading}%
+% }%
+%-------------------------------------------------- 
 
+\def\pgfplotslibrarysurfdrawinpicture{%
+	\begingroup
+	\pgftransformshift{\pgfplotslibrarysurf@corner@sw}%
+	\pgftext[at=\pgfqpoint{0pt}{0pt},left,bottom] {%
+		\pgfplotslibrarysurfdraw
+	}%
+	\endgroup
+}
+\def\pgfplotslibrarysurfdraw{%
+	\begingroup
+	\setbox\pgfutil@tempboxa=\hbox{%
+		\pgfpicture
+		\pgfplotslibrarysurfactivateshadefill
+		\pgfpathrectanglecorners
+			{\pgfplotslibrarysurf@corner@sw}
+			{\pgfplotslibrarysurf@corner@ne}%
+		\pgfusepath{fill}%
+		\endpgfpicture
+	}%
+	\pdfxform resources{}\pgfutil@tempboxa
+	\leavevmode
+	\pdfrefxform\pdflastxform
+	\endgroup
+}
+
+% FIXME : DEPRECATED  I can't use the '/sh' operator - it's not
+% powerfull enough (I need to change /Matrix which is not supported by
+% /sh).
+%
+% DEPRECATED
 \def\pgfplotssys@do@surfshading{%
 	{%
 		\pdfobj stream attr {%
@@ -120,7 +161,7 @@
 			/ShadingType 5
 			/BitsPerCoordinate 32
 			/BitsPerComponent 16
-			/VerticesPerRow \pgfplotslibrarysurf@cols\space
+			/VerticesPerRow \pgfkeysvalueof{/pgfplots/surf shading/cols}
 			/ColorSpace /DeviceRGB
 			/Decode [\pgfplotslibrarysurf@decode]
 			/Function 
@@ -187,11 +228,14 @@
 		% }%
 		%-------------------------------------------------- 
 		% I don't know how to insert the shading into a properly sized PDF entity - this here appears to work.
-		\setbox\pgfutil@tempboxa=\hbox to\pgfplotslibrarysurf@width{%
-			\vbox to\pgfplotslibrarysurf@height{%
+		\pgfpointdiff%
+			{\pgfplotslibrarysurf@corner@sw}%
+			{\pgfplotslibrarysurf@corner@ne}%
+		\setbox\pgfutil@tempboxa=\hbox to\pgf@x{%
+			\vbox to\pgf@y{%
 				\vfil
 				\pgfsys@invoke{%
-					/Plotsurface sh% invoke 'sh'ading operator on /Plotsurface
+					/Plotsurface\pgfplotslibrarysurf@count\space sh% invoke 'sh'ading operator on /Plotsurface
 				}%
 			}%
 			\hfil}%
@@ -199,8 +243,9 @@
 			% the /Shading is a resource directory (predefined name)
 			% while /Plotsurface is my name. Since type 5 shadings are
 			% a stream, we need to reference them this way:
-			/Shading << /Plotsurface \the\pdflastobj\space 0 R >>
+			/Shading << /Plotsurface\pgfplotslibrarysurf@count\space \the\pdflastobj\space 0 R >>
 		}\pgfutil@tempboxa
+		\pgfplotsutil@advancestringcounter@global\pgfplotslibrarysurf@count
 		%--------------------------------------------------
 		% \pgf@process{\pgfpoint{\pgf@max}{#2}}%
 		% \pdfxform resources {%
@@ -216,7 +261,7 @@
 		% 		>> 
 		% 	>>}\pgfutil@tempboxa% <<
 		%-------------------------------------------------- 
-		\xdef\pgfplots@glob@TMPa{
+		\xdef\pgfplots@glob@TMPa{%
 			\leavevmode
 			\noexpand\pdfrefobj\the\pdflastobj
 			\noexpand\pdfrefxform\the\pdflastxform}% 
@@ -230,7 +275,7 @@
 		/ShadingType 5
 		/BitsPerCoordinate 32
 		/BitsPerComponent 16
-		/VerticesPerRow \pgfplotslibrarysurf@cols\space
+		/VerticesPerRow \pgfkeysvalueof{/pgfplots/surf shading/cols}
 		/ColorSpace /DeviceRGB
 		/Decode [\pgfplotslibrarysurf@decode]
 		/Function 
@@ -261,16 +306,24 @@
 		\pgfplotslibrarysurf@binarystream
 	}%
 	\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
+	\pgf@sys@bp@correct\pgf@x%
+	\pgf@sys@bp@correct\pgf@y%
 	\immediate\pdfobj {<<
 		/Type /Pattern
 		/PatternType 2
-		% PGF's trafo matrix doesn't help. I need the canvas trafo
-		% matrix :-(
 %		/Matrix [\pgf@pt@aa\space\pgf@pt@ab\space\pgf@pt@ba\space\pgf@pt@bb\space\pgf@sys@tonumber\pgf@pt@x\space\pgf@sys@tonumber\pgf@pt@y]
-		% FIXME DEBUG EXPERIMENT
-		% these parameters belong to the global transformation matrix
-		% of the tikzpicture. It appears they are needed here:
-		/Matrix [1 0 0 1 226.533 518.141] 
+		% FIXME : where does the '2' come from? BUG!
+		% FIXME: INCORPORATE TIKZ CM
+		/Matrix [2 0 0 2 \pgf@sys@tonumber\pgf@x\space \pgf@sys@tonumber\pgf@y] %226.533 518.141] 
+		%--------------------------------------------------
+		% /ExtGState 
+		% 	<<
+		% 		/LW 2
+		% 		/OP true
+		% 		/OPM 1
+		% 	>>
+		%-------------------------------------------------- 
 		/Shading 
 			% A debug switch:
 			\iftrue
@@ -328,7 +381,7 @@
 			\fi
 	>>}%
 	\edef\pgfplots@loc@TMPa{%
-		/pgfpatPlotsurface \the\pdflastobj\space 0 R
+		/pgfpatPlotsurface\pgfplotslibrarysurf@count\space \the\pdflastobj\space 0 R
 		%--------------------------------------------------
 		% /pgfpatPlotsurface <<
 		% 	/Type /Pattern
@@ -338,7 +391,8 @@
 		%-------------------------------------------------- 
 	}%
 	\expandafter\pgfutil@addpdfresource@patterns\expandafter{\pgfplots@loc@TMPa}%%
-	\pgfsys@setpatterncolored{Plotsurface}%
+	\pgfsys@setpatterncolored{Plotsurface\pgfplotslibrarysurf@count}%
+	\pgfplotsutil@advancestringcounter@global\pgfplotslibrarysurf@count
 %	\pgfsetfillcolor{blue}%
 }
 
