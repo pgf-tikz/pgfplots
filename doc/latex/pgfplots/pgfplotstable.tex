@@ -1415,6 +1415,7 @@ It is possible to create new tables from scratch or to change tables after they 
 \end{command}
 
 \begin{command}{\pgfplotstablevertcat\marg{\textbackslash table1}\marg{\textbackslash table2 or filename}}
+\label{table:vertcat}
 	Appends the contents of \marg{\textbackslash table2} to \marg{\textbackslash table1} (``vertical cat''). To be more precise, only columns which exist already in \marg{\textbackslash table1} will be appended and every column which exists in \marg{\textbackslash table1} must exist in \marg{\textbackslash table2} (or there must be |alias| or |create on use| specifications to generate them).
 
 	If the second argument is a file name, that file will be loaded from disk. 
@@ -1854,6 +1855,87 @@ Empty cells will be filled with |{}| if |col sep=space|. Use the |empty cells wi
 \subsection{Plain \TeX\ and Con\TeX t support}
 \label{sec:pgfplotstable:context}
 The table code generator is initialised to produce \LaTeX\ |tabular| environments. However, it only relies on~`|&|' being the column separator and~`|\\|' the row terminator. The |column type| feature is more or less specific to |tabular|, but you can disable it completely. Replace |begin table| and |end table| with appropriate \TeX- or Con\TeX t commands to change it. If you have useful default styles (or bug reports), let me know.
+
+\subsection{Basic Level Table Access and Modification}
+\PGFPlotstable\ provides several methods to access and manipulate tables at an elementary level.
+
+Please keep in mind that \PGFPlotstable\ has been written as tool for table visualization. As such, it has been optimized for the case of relatively few rows (although it may have a lot of columns). The runtime for table creation and modification is currently $O(N^2)$ where $N$ is the number of rows\footnote{The runtime for \texttt{plot table} is linear in the number of rows using a special routine.}. This is completely acceptable for tables with few rows because \TeX\ can handle those structures relatively fast. Keep your tables small! \PGFPlotstable\ is \emph{not} a tool for large-scale matrix operations.
+
+Tables are always stored as a sequence of column vectors. Therefore, iteration over all values in one column is simple whereas iteration over all values in one row is complicated and expensive.
+
+\begin{command}{\pgfplotstableforeachcolumn\meta{table}\textbackslash as\marg{\textbackslash macro}\marg{code}}
+	Iterates over every column name of \meta{table}. The \meta{\textbackslash macro} will be set to the currently visited column name. Then, \marg{code} will be executed. During \marg{code}, |\pgfplotstablecol| denotes the current column index (starting with 0).
+\begin{codeexample}[]
+\begin{minipage}{\linewidth}
+\pgfplotstableread{pgfplotstable.example1.dat}\table
+\pgfplotstableforeachcolumn\table\as\col{%
+	The column name is `\col'; its index \pgfplotstablecol;\par
+}
+\end{minipage}
+\end{codeexample}
+
+	This routine does not introduce \TeX\ groups, variables inside of \marg{code} are not scoped.
+\end{command}
+
+\begin{command}{\pgfplotstableforeachcolumnelement\meta{column name}\textbackslash of\meta{table}\textbackslash as\meta{\textbackslash cellcontent}\marg{code}}
+	Reports every table cell $t_{ij}$ for a fixed column $j$ in read-only mode.
+
+	For every cell in the column named \meta{column name}, \marg{code} will be executed. During this invocation, the macro \meta{\textbackslash cellcontent} will contain the cell's content and |\pgfplotstablerow| will contain the current row's index.
+\begin{codeexample}[]
+\begin{minipage}{\linewidth}
+\pgfplotstableread{pgfplotstable.example1.dat}\table
+\pgfplotstableforeachcolumnelement{error1}\of\table\as\cell{%
+	I have now cell element `\cell' at row index `\pgfplotstablerow';\par
+}
+\end{minipage}
+\end{codeexample}
+	The argument \meta{column name} can also be a column index. In that case, it should contain |[index]|\meta{integer}, for example |[index]4|. Furthermore, column aliases and column which should be generated on-the-fly (see |create on use|) can be used for \meta{column name}.
+
+	This routine does not introduce \TeX\ groups, variables inside of \marg{code} are not scoped.
+\end{command}
+
+\begin{command}{\pgfplotstablemodifyeachcolumnelement\meta{column name}\textbackslash of\meta{table}\textbackslash as\meta{\textbackslash cellcontent}\marg{code}}
+	A routine which is similar to |\pgfplotstableforeachcolumnelement|,
+	but any changes of \meta{\textbackslash cellcontent} which might occur during \marg{code} will be written back into the respective cell.
+
+\begin{codeexample}[]
+\pgfplotstableread{pgfplotstable.example1.dat}\table
+\pgfplotstablemodifyeachcolumnelement{error1}\of\table\as\cell{%
+	\edef\cell{\#\pgfplotstablerow: \cell}%
+}
+\pgfplotstabletypeset[columns=error1,string type]{\table}
+\end{codeexample}
+
+	If \marg{column name} is a column alias or has been created on-the-fly, a new column named \meta{column name} will be created.
+\end{command}
+
+\begin{command}{\pgfplotstablegetelem\marg{row}\marg{col}\textbackslash of\meta{table}}
+	Selects a single table element at row \marg{row} and column \marg{col}. The second argument has the same format as that described in the last paragraph: it should be a column name or a column index (in which case it needs to be written as |[index]|\meta{number}).
+
+	The return value will be written to |\pgfplotsretval|.
+\begin{codeexample}[]
+\pgfplotstableread{pgfplotstable.example1.dat}{\table}
+\pgfplotstablegetelem{4}{error1}\of{\table}
+The value (4,error1) is `\pgfplotsretval'. 
+
+\pgfplotstablegetelem{2}{[index]0}\of{\table}
+The value (2,0) is `\pgfplotsretval'.
+\end{codeexample}
+
+	\paragraph{Attention:} If possible, avoid using this command inside of loops. It is quite slow.
+\end{command}
+
+\begin{command}{\pgfplotstablevertcat\marg{\textbackslash table1}\marg{\textbackslash table2 or filename}}
+	See page \pageref{table:vertcat} for details about this command.
+\end{command}
+
+\begin{command}{\pgfplotstablenew\oarg{options}\marg{row count}\marg{\textbackslash table}}
+	See section~\ref{pgfplotstable:createcol} for details about this command.
+\end{command}
+\begin{command}{\pgfplotstablecreatecol\oarg{options}\marg{row count}\marg{\textbackslash table}}
+	See section~\ref{pgfplotstable:createcol} for details about this command.
+\end{command}
+	
 
 \printindex
 

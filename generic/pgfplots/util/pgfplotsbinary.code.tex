@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.7 2009/03/02 22:45:18 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/util/pgfplotsbinary.code.tex,v 1.8 2009/03/03 12:46:56 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -374,18 +374,17 @@
 		\ifcase\pgfplotsbinary@bytes\relax
 			\pgfplots@error{bytes=0 is unsupported, sorry.}%
 		\or
-			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 128 }%
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 127 }%
 			\def\pgfplotsbinary@dimen@scale{16909320}% ~= (2^31-1) /  (2^(8*1-1) -1)
 		\or
-			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 32768 }%
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 32767 }%
 			\def\pgfplotsbinary@dimen@scale{65538}% ~= (2^31-1) /  (2^(8*2-1) -1)
 		\or
-			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 8388608 }%
+			\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 8388607 }%
 			\def\pgfplotsbinary@dimen@scale{256}% ~= (2^31-1) /  (2^(8*3-1) -1)
 		\or
 			\def\pgfplotsbinary@add@signed@largest@absolute{%
 				\advance\c@pgfplotsbin@input by 2147483647 % this is the *absolute* largest int that TeX can handle.
-				\advance\c@pgfplotsbin@input by 1 % but need need to add one more... (the sum is in TeX range!)
 			}%
 			\def\pgfplotsbinary@dimen@scale{1}% ~= (2^31-1) /  (2^(8*4-1) -1)
 		\else
@@ -545,27 +544,41 @@
 %
 % Such an implementation is useful for pdf shadings - they work with
 % linear maps anyway.
-	%% DEBUG NOTE: This mapping appears to work correctly according to
-	%% my tests.
-	%% For bc -l test codes: 
-	%% ibase=16; 
-	%% -4000 +  809658FA. / (2^20) * 8000
+%
+% More precislely, we have the following.
+% - We assume that signed number ranges are symmetric. A signed
+%   integer with N bits has the number range
+%   [ - (2^(N-1) -1), + 2^(N-1) -1 ].
+%   For 3 Bit, this is 
+%    -3 -2 -1 0 1 2 3
+%   and the number of different integers is 2^N - 1  (one is lost due
+%   to symmetry).
+% - The idea is now to map this number range to [0,2^N -1] LINEARLY.
+%   For the example with 3 Bit, there are two possibilities to do so:
+%
+%    -3 -2 -1 0 1 2 3 
+% ->  0  1  2 3 4 5 6
+% or
+% ->  1  2  3 4 5 6 7
+%   
+%   I've chosen the the second possibility because the addition of
+%   2^N-1 for non-negative numbers can be realized easily.
+%
+% - thus, negative numbers are mapped using
+%    [ - 2^(N-1) -1, 0[  -> [1,2^(N-1)-1]
+%   and non-negative numbers using
+%    [ 0, 2^(N-1)-1 ] -> [ 2^(N-1),  2^N-1 ]
+%
+% This doesn't need TeX register arithmetics on the whole range.
+%
+% As a consequence, the binary pattern 00 00 00 00 does never occur.
+% The smallest binary pattern will be 00 00 00 01.
+%
 \def\pgfplotsbinaryencodesignedmaplinearly#1{%
 	\begingroup
 	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
 	\c@pgfplotsbin@input=#1 %
 	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
-	%
-	% The implementation works as follows:
-	% 
-	% we map NEGATIVE numbers first into the range [0,...MAXINT]
-	% and POSITIVE numbers afterwards.
-	%
-	% Steps:
-	% 1. if #1 < 0: add the smallest allowed negative number.
-	% 2. if #1 >=0 : make sure we start at half the output range.
-	% This doesn't need TeX register arithmetics on the whole range.
-	%
 	\ifnum\c@pgfplotsbin@input<0
 		% map to positive range:
 		\pgfplotsbinary@add@signed@largest@absolute
@@ -589,19 +602,43 @@
 % The implementation is very fast and uses only integer arithmetics.
 % It relies on \pgfplotsbinaryencodesignedmaplinearly and a scale.
 %
-% So, what we do is to setup a linear map
-% phi: [-16384.9999, 16384.9999] -> [ - 2^{k*8-1} -1,  + 2^{k*8-1} -1 ]  % +- 1 somewhere
-% and another linear map which maps into
-% [0,2^{k*8}].
+% So, what we do is to setup a linear map into binary range with k
+% bytes,
+%   [-16383.99998, 16383.99998 ] -> [ - ( 2^{k*8-1} -1 ),  + 2^{k*8-1} -1 ] 
+%   							 -> [ 1, 2^{k*8} ]
+% where the second mapping is performed using
+% \pgfplotsbinaryencodesignedmaplinearly.
+%
 % The first step has a quantization error unless bytes=4 (which is
 % exact). The second step is lossless.
 %
 % If your numbers have a restricted data range, you should quantize
 % them manually as you may get better quality in that case.
+%
+% REMARKS:
+% -  due to the symmetry of TeX, one looses one number. The binary
+%    sequence 00 00 00 00 will never be used.
+% -  Technical background:
+% TeX uses only **31** bit for dimen registers. To be more precise, it
+% uses 14 bits before the decimal point and 16 afterwards, which leads
+% to the real data range
+% [ - (2^30 -1) / 2^16,  (2^30-1) / 2^16 ] = [ -16383.99998, +16383.99998 ]
+% thus, there are 2* (2^30 -1) +1 = 2^31 -1 numbers - instead of the
+% possible 2^32 numbers. The 2^16 = 65536 is the scaling factor: 1pt = 65536sp.
+%
+% Therefor, the implementation here converts a dimen to a count
+% register and multiplies by 2 before doing anything else.
+%
+	%% DEBUG NOTE: This mapping appears to work correctly according to
+	%% my tests.
+	%% For bc -l test codes: 
+	%% ibase=16; 
+	%% -4000 +  809658FA. / (2^20) * 8000
 \def\pgfplotsbinaryencodedimenmaplinearly#1{%
 	\begingroup
 	\dimen0=#1\relax
 	\c@pgfplotsbin@input=\dimen0
+	\multiply\c@pgfplotsbin@input by2
 	\divide\c@pgfplotsbin@input by\pgfplotsbinary@dimen@scale\relax
 %\message{LOWLEVEL ENCODING '\the\c@pgfplotsbin@input' with linear map}%
 	\pgfplotsbinaryencodesignedmaplinearly\c@pgfplotsbin@input

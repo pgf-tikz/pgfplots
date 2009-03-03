@@ -1135,11 +1135,68 @@
 	\def\pgfplotstablerow{0}%
 	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstable@loc@TMPb
 	\pgfplotslistforeachungrouped\pgfplotstable@loc@TMPb\as#3{%
-		#4\relax
-		\pgfplotsutil@advancestringcounter\pgfplotstablerow
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
 	}%
 	\let\pgfplotstablerow=\relax
 }%
+% helper method to allow nesting. It copies \pgfplotstablerow.
+% #1: the expanded value of \pgfplotstablerow. 
+\long\def\pgfplotstableforeachcolumnelement@#1#2{%
+	#2\relax
+	\def\pgfplotstablerow{#1}% restore to old value.
+	% advance.
+	\pgfplotsutil@advancestringcounter\pgfplotstablerow
+}%
+
+% A routine which is similar to \pgfplotstableforeachcolumnelement,
+% but this here checks for changes in \pgfplotsretval and writes them
+% back into the respected cell.
+%
+% The runtime is quadratic in the number of rows.
+\long\def\pgfplotstablemodifyeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	%
+	% Step 0: get the REAL column name for '#1'.
+	% This needs modifications if '#1' is [index]<integer>.
+	% -> store the colname to \pgfplotstable@loc@TMPc:
+	\def\pgfplotstable@loc@TMPc{#1}%
+	\pgfplotstable@is@colname{\pgfplotstable@loc@TMPc}%%
+	\ifpgfplotstableread@foundcolnames
+	\else
+		\expandafter\pgfplotstablegetcolumnnamebyindex\pgfplotstable@loc@TMPc\of{#2}\to\pgfplotstable@loc@TMPc
+	\fi
+	% Step 0.1: prepare a command which re-assembles column '#1'
+	% (using the real column name).
+	% The re-assemblation command will be invoked at the end of each
+	% iteration. This complicated macro preparation allows nested
+	% calls to \pgfplotstablemodifyeachcolumnelement.
+	\t@pgfplots@toka={\expandafter\pgfplotslistpushback\expandafter{#3}\to}%
+	\edef\pgfplotstable@loc@TMPd{%
+		\the\t@pgfplots@toka{\expandafter\noexpand\csname\string#2@\pgfplotstable@loc@TMPc\endcsname}}%
+	% Step 1: copy the column data to \pgfplotstable@loc@TMPb
+	\expandafter\pgfplotstablegetcolumnbyname\pgfplotstable@loc@TMPc\of#2\to\pgfplotstable@loc@TMPb%
+	%
+	% clear the original column:
+	\expandafter\pgfplotslistnewempty\csname\string#2@\pgfplotstable@loc@TMPc\endcsname
+	%
+	% Call loop. The prepared re-assemble macro will be provided as macro argument
+	% to allow nested calls:
+	\expandafter\pgfplotstablemodifyeachcolumnelement@\expandafter{\pgfplotstable@loc@TMPd}
+		{\pgfplotstable@loc@TMPb}{#3}{#4}%
+	\let\pgfplotstablerow=\relax
+}%
+% #1: post-iteration code
+% #2: the row list
+% #3: the loop macro to assign
+% #4: the loop body
+\long\def\pgfplotstablemodifyeachcolumnelement@#1#2#3#4{%
+	\pgfplotslistforeachungrouped{#2}\as#3{%
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
+		#1%
+	}%
+}
 
 % Selects a single table element at row #1 and column #2 from table
 % #3.
@@ -1149,18 +1206,18 @@
 % denoting a column index. Access by column name is much faster.
 % #3: the table.
 %
-% The cell value will be written into the macro \pgfplotslocretval.
+% The cell value will be written into the macro \pgfplotsretval.
 %
 % REMARK:
 % this routine is supposed to be very slow: it needs time O(N) where N
 % is the number of rows. This may change in future versions.
 %
 % Example:
-% \pgfplotstablegetelem{0}{2}\of\table
-% The elem is `\pgfplotslocretval'.
+% \pgfplotstablegetelem{0}{[index]2}\of\table
+% The elem is `\pgfplotsretval'.
 \def\pgfplotstablegetelem#1#2\of#3{%
 	\pgfplotstablegetcolumn{#2}\of{#3}\to\pgfplotstable@loc@TMPa
-	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotslocretval
+	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotsretval
 }%
 
 \def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
