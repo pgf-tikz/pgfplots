@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.10 2009/03/03 22:26:06 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.11 2009/03/04 16:36:53 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -55,9 +55,9 @@
 \def\pgfplotslibrarysurf@corner@ne{\pgfkeysvalueof{/pgfplots/surf shading/north east corner}}%
 
 \def\pgfplotslibrarysurf@decode{%
-	-16383.99998 16383.99998 % map TeX coordinates 1:1
+	-16383.99998 16383.99998 % map TeX dimen contents 1:1
 	-16383.99998 16383.99998
-	0 10306 % the 10000 should be used if CDATA is 64000 in binary encoding. Thus, 10306 has its equivalent at 65535
+	0 10240 % phi: [ 0, 2^16-1 ] -> [ 0, X ] with phi(64000) = 10000 is the real maximum. Thus, phi(x) = 1/64 * x  and phi(2^16-1) is the decode limits.
 }%
 \def\pgfplotslibrarysurf@count{0}%
 
@@ -103,7 +103,7 @@
 	% correctly into "user space".
 	\pgf@sys@bp@correct\pgf@x%
 	\pgfplotsbinaryencodedimenmaplinearly\pgf@x
-\message{ENCODING(x=\the\pgf@x)=\pgfplotsbinaryresult.}%
+%\message{ENCODING(x=\the\pgf@x)=\pgfplotsbinaryresult.}%
 	\t@pgfplots@toka=\expandafter{\pgfplotsbinaryresult}%
 	\pgf@sys@bp@correct\pgf@y%
 	\pgfplotsbinaryencodedimenmaplinearly\pgf@y
@@ -122,7 +122,7 @@
 		% (the remaining bits are unused)
 		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
 	}%
-%\message{ENCODING C = \pgfplots@glob@TMPa.}%
+\message{ENCODING C = \pgfplots@glob@TMPa.}%
 	\pgfkeysvalueof{/pgfplots/bin/bytes/.@cmd}2\pgfeov
 	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
 	\t@pgfplots@tokc=\expandafter{\pgfplotsbinaryresult}%
@@ -132,7 +132,8 @@
 }
 
 \def\pgfplotslibrarysurfactivateshadefill{%
-	\pgfplotssys@do@surfshading@fillpaths%
+	\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
+	\expandafter\pgfutil@addpdfresource@patterns\expandafter{\pgfplots@loc@TMPa}%%
 }
 
 %--------------------------------------------------
@@ -147,6 +148,8 @@
 	\pgftransformshift{\pgfplotslibrarysurf@corner@sw}%
 	\pgftext[at=\pgfqpoint{0pt}{0pt},left,bottom] {%
 		\pgfplotslibrarysurfdraw
+% this does NOT work because I can't undo the box' shift:
+%\pgfplotssys@do@surfshading
 	}%
 	\endgroup
 }
@@ -154,7 +157,8 @@
 	\begingroup
 	\setbox\pgfutil@tempboxa=\hbox{%
 		\pgfpicture
-		\pgfplotslibrarysurfactivateshadefill
+		\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
+		\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
 		\pgfpathrectanglecorners
 			{\pgfplotslibrarysurf@corner@sw}
 			{\pgfplotslibrarysurf@corner@ne}%
@@ -162,14 +166,22 @@
 		\endpgfpicture
 	}%
 	\pdfxform resources{
-		/Pattern << \pgfplots@glob@TMPa >> % is that necessary? FIXME HACKERY
+		/Pattern << \pgfplots@glob@TMPa >> % write the pattern resource dictionary
 	}\pgfutil@tempboxa
 	\leavevmode
 	\pdfrefxform\pdflastxform
 	\endgroup
 }
 
-\def\pgfplotssys@do@surfshading@fillpaths{%
+% To be used inside of a pgfpicture.
+%
+% #1: a macro name. The contents of this macro needs to be written
+% into the pdf pattern dictionary contained in the pdf resources of
+% the current context. The current context is either the current page
+% or an xform object.
+\def\pgfplotssys@do@surfshading@fillpaths#1{%
+	% DEBUG INFO: wenn ich dieses obj hier durch ein einfacheres
+	% shading ersetze, klappts auch im acroread!
 	\immediate\pdfobj stream attr {%
 		% stream length will be computed automatically
 		%/Shading 
@@ -284,7 +296,7 @@
 			\fi
 			\fi
 	>>}%
-	\xdef\pgfplots@glob@TMPa{%
+	\edef#1{%
 		/pgfpatPlotsurface\pgfplotslibrarysurf@count\space \the\pdflastobj\space 0 R
 		%--------------------------------------------------
 		% /pgfpatPlotsurface <<
@@ -294,7 +306,6 @@
 		% >>
 		%-------------------------------------------------- 
 	}%
-	%\expandafter\pgfutil@addpdfresource@patterns\expandafter{\pgfplots@glob@TMPa}%%
 	\pgfsys@setpatterncolored{Plotsurface\pgfplotslibrarysurf@count}%
 	\pgfplotsutil@advancestringcounter@global\pgfplotslibrarysurf@count
 %	\pgfsetfillcolor{blue}%
@@ -318,6 +329,9 @@
 			/ColorSpace /DeviceRGB
 			/Decode [\pgfplotslibrarysurf@decode]
 			/Function 
+			\iftrue
+				\pgfkeysvalueof{/pgfplots/surf shading/colormap}
+			\else
 			<< 
 				/FunctionType 3 
 				/Domain [0.0 10000] 
@@ -341,6 +355,7 @@
 				/Bounds [ 2000 6000 ] 
 				/Encode [0 1  0 1 0 1] 
 			>> 
+			\fi
 		} {%
 			\pgfplotslibrarysurf@binarystream
 		}%
