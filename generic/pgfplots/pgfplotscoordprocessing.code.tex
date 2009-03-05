@@ -1897,15 +1897,27 @@
 		}%
 	\fi
 	%
+	\gdef\pgfplots@noy@error{%
+		\pgfplots@error{Sorry, you can't use 'y' in this context. Please use the [mesh] option to indicate a twodimensional input domain.}%
+		\global\let\pgfplots@noy@error=\relax
+	}%
 	% Define a "function" x which sets \pgfmathresult := \x :
 	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
 		% We have PGF 2.00 :
 		\def\pgfmath@parsefunction@x{\edef\pgfmathresult{\tikz@plot@var}\pgfmath@postfunction}%
-		\def\pgfmath@parsefunction@y{\let\pgfmathresult=\y\pgfmath@postfunction}%
+		\ifpgfplots@meshmode
+			\def\pgfmath@parsefunction@y{\let\pgfmathresult=\y\pgfmath@postfunction}%
+		\else
+			\def\pgfmath@parsefunction@y{\pgfplots@noy@error\def\pgfmathresult{0.0}\pgfmath@postfunction}%
+		\fi
 	}{%
 		% We have PGF > 2.00 :
 		\pgfmathdeclarefunction{x}{0}{\edef\pgfmathresult{\tikz@plot@var}}%
-		\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
+		\ifpgfplots@meshmode
+			\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
+		\else
+			\pgfmathdeclarefunction{y}{0}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
+		\fi
 	}%
 	%
 	% Now, prepare the loops.
@@ -1922,27 +1934,32 @@
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
 		%
-		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
-		\ifpgfplots@meshmode
-			\ifx\pgfplots@plot@ydomain\pgfutil@empty
-				\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
-			\fi
-		\else
-			\def\pgfplots@plot@ydomain{0:0}%
-		\fi
 		% we don't have 'samples at' for 3D plots -> use domain!
 		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
 		\let\pgfplots@expression@xdomain=\pgfplotslocretval
-		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
-		\let\pgfplots@expression@ydomain=\pgfplotslocretval
-		% Assemble a 
-		% \pgfplots@plot@data##1 -> 
-		% 	\foreach \x in {-5,-4.6,...,5} 
-		% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
-		%  macro:
-		\edef\pgfplots@plot@data##1{%
-			\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@expression@ydomain} 
-				{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}}%
+		%
+		\ifpgfplots@meshmode
+			\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
+			\ifx\pgfplots@plot@ydomain\pgfutil@empty
+				\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
+			\fi
+			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
+			\let\pgfplots@expression@ydomain=\pgfplotslocretval
+			%
+			% Assemble a 
+			% \pgfplots@plot@data##1 -> 
+			% 	\foreach \x in {-5,-4.6,...,5} 
+			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
+			%  macro:
+			\edef\pgfplots@plot@data##1{%
+				\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@expression@ydomain} 
+					{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}}%
+		\else
+			\def\pgfplots@plot@ydomain{0:0}%
+			\def\y{y}% this provides an error message, see above.
+			\edef\pgfplots@plot@data##1{%
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}%
+		\fi
 	\else
 		% Assemble a 
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
@@ -3710,21 +3727,39 @@
 		\c@pgfplots@coordindex=0
 		%
 		% acuiqre the \iftikz@mode@fill \iftikz@mode@draw flags:
-\message{executing MODE '\meaning\pgfplots@drawmodes'}%
+%\message{executing MODE '\meaning\pgfplots@drawmodes'}%
 		% Prepare path usage commands:
 		\pgfplots@drawmodes
+		% Now, we also need to respect the shader rules - the
+		% 'shader=interp' case is a little bit special here.
+		%
 		\iftikz@mode@fill
-			\iftikz@mode@draw
-				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
-			\else
-				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
-			\fi
+			% Rule 3: fill!=none and draw==none is forbidden. Always
+			% stroke.
+			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
 		\else
+			\if\pgfplotsplothandlermesh@shader2
+				% Rule 1: fill=none => shader=interp is forbidden.
+				% Switch to 'flat mean'.
+				\def\pgfplotsplothandlermesh@shader{1}%
+			\fi
 			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
 		\fi
+		\iftikz@mode@draw
+			% Rule 2: draw != none => shader must not be interp
+			% because 'interp' does not support meshes.
+			\if\pgfplotsplothandlermesh@shader2
+				% Rule 1: fill=none => shader=interp is forbidden.
+				% Switch to 'flat mean'.
+				\def\pgfplotsplothandlermesh@shader{1}%
+			\fi
+		\fi
 		\if\pgfplotsplothandlermesh@ONEDIMMODE1
-			% no filling in a onedimensional mesh mode.
+			% no filling in onedimensional mesh mode.
 			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
+			\if\pgfplotsplothandlermesh@shader2
+				\def\pgfplotsplothandlermesh@shader{1}%
+			\fi
 		\fi
 		%
 		% Prepare color data source:
@@ -3744,7 +3779,7 @@
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
 				\expandafter\pgfplotscolormapfind\expandafter[\pgfplotspointmetatransformedrange]
 					[1.0]
-					{\pgfplotsplothandlermesh@surfmode@cellcolor}
+					{\pgfplotsplothandlermesh@shader@cellcolor}
 					{\pgfkeysvalueof{/pgfplots/colormap name}}
 %\message{Color for current point is RGB '\pgfmathresult' (determined using meta 'phi(\pgfplotspointmeta) = \pgfplotspointmetatransformed'). metarange = [\pgfplots@metamin:\pgfplots@metamax] }%
 				\def\pgfplots@loc@TMPb{\definecolor{mapped color}{rgb}}%
@@ -3756,7 +3791,7 @@
 				\pgfplots@drawoptions
 			}%
 			% Now, process the 'mesh/surf mode=corner|mean  key here:
-			\ifcase\pgfplotsplothandlermesh@surfmode
+			\ifcase\pgfplotsplothandlermesh@shader
 				% 'flat corner':
 				%
 				% use colordata of ONE corner point. That's easy, not
@@ -3765,7 +3800,7 @@
 				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
 				\t@pgfplots@tokb={%
 					\pgfplots@perpointmeta@trafo@APPLY
-					\let\pgfplotsplothandlermesh@surfmode@cellcolor=\pgfplotspointmetatransformed}%
+					\let\pgfplotsplothandlermesh@shader@cellcolor=\pgfplotspointmetatransformed}%
 				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
 					\the\t@pgfplots@tokb
 					\the\t@pgfplots@toka
@@ -3783,7 +3818,7 @@
 					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
 				\fi
 				\t@pgfplots@tokc={%
-					\edef\pgfplotsplothandlermesh@surfmode@cellcolor{\pgf@sys@tonumber\pgfplots@tmpa}%
+					\edef\pgfplotsplothandlermesh@shader@cellcolor{\pgf@sys@tonumber\pgfplots@tmpa}%
 					\global\pgfplots@tmpa=0pt }%
 				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
 					\the\t@pgfplots@tokb
@@ -3811,7 +3846,7 @@
 }%
 
 \def\pgfplotsplothandlermesh@finish{%
-	\ifnum\pgfplotsplothandlermesh@surfmode=2
+	\ifnum\pgfplotsplothandlermesh@shader=2
 		\pgfplotslibrarysurfstreamend
 		\pgfplotslibrarysurfdrawinpicture
 	\fi
