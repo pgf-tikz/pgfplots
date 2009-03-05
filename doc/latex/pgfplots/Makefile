@@ -1,9 +1,10 @@
 
 PDFLATEX=pdflatex -shell-escape
 
-all: pgfplots.pdf pgfplotstable.pdf
+all: pgfplots.pdf pgfplotstable.pdf TeX-programming-notes.pdf
 	@echo "$^ have been compiled successfully. I did NOT check for references, so you may need to rerun make several times."
 
+notes: TeX-programming-notes.pdf
 pgfplots: pgfplots.pdf
 pgfplotstable: pgfplotstable.pdf
 

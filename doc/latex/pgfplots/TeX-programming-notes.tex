@@ -1,0 +1,362 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Copyright 2007/2008 by Christian Feuersaenger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\input{pgfplots.preamble.tex}
+
+\usepackage{array}
+\usepackage{colortbl}
+\usepackage{booktabs}
+\usepackage{eurosym}
+
+\long\def\codeexamplenl{\noexpand\par}%
+\pgfqkeys{/codeexample}{%
+	every codeexample/.style={
+		width=4cm,
+		/pgfplots/every axis/.append style={legend style={fill=graphicbackground}}
+	},
+	narrow/.style={width=7cm},
+	tabsize=4,
+	pre={\begin{minipage}{\linewidth}\begingroup},
+	post={\endgroup\end{minipage}},
+	newline=\codeexamplenl,
+}
+
+\title{Programming in \TeX\\and Library Functions from \PGF\ and \PGFPlots}
+
+\begin{document}
+\maketitle
+\begin{abstract}%
+
+\end{abstract}
+\tableofcontents
+\section{Introduction}
+
+\section{Programming in \TeX}
+\subsection{Variables in Registers}
+\TeX\ provides several different variables and associated registers which can be manipulated freely.
+
+\begin{command}{\count\meta{num}}
+	There are 256 Integer registers which provide 32 Bit Integer arithmetics. The registers can be used for example with |\count0=42 | or |\count7=\macro | where |\macro| expands to a number.
+
+	The value of a register can be typeset using |\the|\meta{register}.
+\begin{codeexample}[]
+\count0=42
+The value is now `\the\count0'. 
+\def\macro{-123456}
+\count0=\macro 
+The value is now `\the\count0'.
+\end{codeexample}
+	
+	The `|=|' sign is optional and can be omitted. One thing is common among the registers: an assignment of the form |\count0=|\meta{$\cdots$} expands everything which follows until the expansion doesn't need more numbers -- even more than one following macro.
+\begin{codeexample}[]
+\def\firstmacro{123}
+\def\secondmacro{456}
+\def\thirdmacro{789}
+\count0=\firstmacro\secondmacro\thirdmacro
+The value is now `\the\count0'.
+\end{codeexample}
+ The precise rules can be found in~\cite{texbook}, but it should be kept in mind that care needs to be taken here. More than once, my code failed to produce the expected result because \TeX\ kept expanding macros and the registers got unexpected results. Here is the correct method:
+\begin{codeexample}[]
+1. \count0=42 % a white space after the number aborts the reading process.
+The value is now `\the\count0'.
+2. The following code will absorb the `3' of '3.':
+\def\macro{1234}
+\count0=\macro % a white space after a macro will be absorbed by TeX, so this is wrong.
+3. The value is now `\the\count0'.
+4. Use \textbackslash relax after an assignment to end scanning:
+\count0=\macro\relax
+5. The value is now `\the\count0'.
+\end{codeexample}
+\end{command}
+
+\begin{command}{\dimen\meta{num}}
+	There are also 255 registers for fixed point numbers which are used pretty much in the same way as the |\count| registers -- but |\dimen| register assignments require a unit like `|cm|' or `|pt|'.
+
+	String access with `|\the|' works in exactly the same way as for |\count| registers.
+\begin{codeexample}[]
+\dimen0=1pt
+The value is now \the\dimen0.
+\dimen0=0.0001pt
+The value is now \the\dimen0.
+\def\macro{1234.5678}
+\dimen0=\macro pt
+The value is now \the\dimen0.
+\end{codeexample}
+	The same rules with expansion of macros after assignments apply here as well.
+
+	The |\dimen| registers perform their arithmetics internally with 32 bit scaled integers, so called `scaled point' with unit `|sp|'. It holds |1sp=65536pt|=$2^{16}$|pt|. One of the 32 bits is used as sign. The total number range in |pt| is $[-(2^{30}-1)/2^{16}, (2^{30}-1)/2^{16} ] = [-16383.9998,+16383.9998]$\footnote{Please note that this does not cover the complete range of a 32 bit integer, I do not know why.}.
+\end{command}
+
+\begin{command}{\toks\meta{number}}
+	There are also 255 token registers which can be thought of as special string variables. Of course, every macro assignment |\def\macro|\marg{content} is also some kind of string variable, but token registers are special: their contents won't be expanded when used with |\the\toks|\meta{number}. This can be used for fine grained expansion control, see section~\ref{sec:expansion:control} below.
+\end{command}
+
+\subsection{Arithmetics in \TeX}
+\begin{command}{\advance\meta{register}| by|\meta{quantity}}
+\begin{codeexample}[]
+\count0=42
+\advance\count0 by 10
+The value is now \the\count0.
+\end{codeexample}
+
+\begin{codeexample}[]
+\dimen0=1pt
+\advance\dimen0 by 10pt
+The value is now \the\dimen0.
+\end{codeexample}
+\end{command}
+
+\begin{command}{\multiply\meta{register}| by|\meta{integer}}
+\begin{codeexample}[]
+\count0=42
+\multiply\count0 by -10
+The value is now \the\count0.
+\end{codeexample}
+
+\begin{codeexample}[]
+\dimen0=0.5pt
+\multiply\dimen0 by 20
+The value is now \the\dimen0.
+\end{codeexample}
+\end{command}
+
+\begin{command}{\divide\meta{register}| by|\meta{integer}}
+	This allows integer division by \meta{integer} with truncation.
+\begin{codeexample}[]
+\count0=5
+\divide\count0 by 2
+The value is now \the\count0.
+\end{codeexample}
+
+	Scaling of |\dimen| registers:
+\begin{codeexample}[]
+\dimen0=10pt
+\divide\dimen0 by 20
+The value is now \the\dimen0.
+\end{codeexample}
+\end{command}
+
+\begin{command}{\dimen\meta{number}|=|\meta{fixed point number without unit}\textbackslash dimen\meta{number}}
+	This allows fixed point multiplication in |\dimen| registers.
+\begin{codeexample}[]
+\dimen1=50pt
+\dimen0=0.6\dimen1
+The value is now \the\dimen0.
+\end{codeexample}
+\end{command}
+
+
+\subsection{Expansion Control}
+\label{sec:expansion:control}
+Expansion is what \TeX\ does all the time. Thus, expansion control is a key concept for understanding how to program in \TeX.
+
+The first thing to know is: \TeX\ deals the input as a long, long sequence of ``tokens''. A token is the smallest unit which is understood by \TeX. Each character becomes a token the first time it is seen by \TeX. Every macro becomes a (single!) token the first time it is seen by \TeX.
+
+The second thing to know is what characters are \emph{before} \TeX\ has seen them. Although this knowledge is rarely needed in every day's life, it is nevertheless important. The characters which are in the input document are nothing but characters at first. Even the characters known to have a special meaning like `|%|', `|\|' or the braces `|{}|' are \emph{not} special - until they have been converted to a token. This happens when \TeX\ encounters them the first time during its linear processing of the character stream. A token stays a token - and it will remain the same token forever. If you manage to tell \TeX\ that `|\|' is a normal character and \TeX\ sees just one backslash, this backslash will be a normal character token -- even if the meaning of all following backslashes is again special.
+
+Now, we are given a very long list of tokens \meta{token1}\meta{token2}\meta{token3}\meta{token4}\meta{token5}$\cdots$. \TeX\ processes these tokens one-by-one in linear sequence. If \meta{token1} is a character token like `|a|', it is typeset. This is not what I want to write about here now; my main point is how to program in \TeX\footnote{Of course, typesetting is an art in itsself and there is a lot to read about it. Just not here in these notes.}. So, the interesting thing in these notes is when \meta{token1} is a macro.
+
+\subsubsection{Macros}
+We have already seen some applications of macros above. Actually, most users who are willing to read notes about \TeX\ programming will have seen macros and may have written some on their own -- for example using |\newcommand| (|\newcommand| is a ``more high--level'' version of |\def| used only in \LaTeX).
+
+A macro has a name and is treated as an elementary token in \TeX\ (even if the name is very long). A macro has replacement text. As soon as \TeX\ encounters a macro, it replaces its occurance with the replacement text. Furthermore, a macro can consume one or more of the following tokens as arguments.
+\begin{codeexample}[]
+\def\macro{This here is actually the replacement text.}
+Executing it: `\macro'.
+\end{codeexample}
+\begin{codeexample}[]
+\def\macro#1{replacement with first argument=#1}
+Invoking it: \macro{hello!}.
+\end{codeexample}
+This here is not really a surprise. What might come as a surprise is that the accepted arguments can be pretty much anything.
+\begin{codeexample}[]
+\def\macro#1-#2.{replacement with arguments: `#1' and `#2'.}
+Invoking it: \macro a-sign.
+\end{codeexample}
+\noindent The last example |\macro| runs through the token list which follows the occurance of |\macro|. This token list is ``|a-sign.|''. Macro expansion is greedy, that means the first matching pattern is used. Now, our |\macro| expected something, then a minus sign `|-|', then another (possibly long) argument, then a period `|.|'. The arguments between |\macro| and the minus sign is available as |#1| and the tokens between the minus sign and the period as |#2|.
+
+\begin{codeexample}[]
+\def\macro(#1,#2,#3){I found arguments `#1', `#2' and `#3'.}
+\macro(42,43,44)
+\end{codeexample}
+
+As we have seen, macros can be used to manipulate the input tokens by expansion: they take some input arguments (maybe none) away and insert other tokens into the input token list. These tokens will be the next to process. We will soon learn more about that.
+
+There is a command which helps to understand what \TeX\ does here:
+
+\begin{command}{\meaning\meta{macro}}
+	This command expands to the contents of \meta{macro} as it is seen by \TeX.
+\begin{codeexample}[]
+\def\macro{Replacement \textmacro text  \count0=42 \the\count0.}
+\message{Debug message: '\meaning\macro'}
+\end{codeexample}
+As result, the log file and terminal output will contain
+
+|Debug message: 'macro:->Replacement \textmacro text \count 0=42 \the \count 0.'|
+\end{command}
+
+The last example already shows something about |\def|: the replacement text can still contain other macros.
+
+\begin{command}{\def\meta{\textbackslash macroname}\meta{argument pattern}\marg{replacement text}}
+	 A new macro named \meta{macroname} will be defined (or re-defined). The \marg{replacement text} is the macro body, whenever the macro is executed, it expands to \marg{replacement text}. The \marg{replacement text} is a token list which can contain other macros. On the time of the definition, \TeX\ does \emph{not} process (expand) the \marg{replacement text}.
+
+	 The \marg{replacement text} will only be expanded if the macro is executed. This does also apply to any macros which are inside of \marg{replacement text}.
+\begin{codeexample}[]
+\def\macroone{This is macro one}
+\def\macrotwo{Macro two contains \macroone.}
+Now, I execute it: \macrotwo.
+\def\macroone{Redefined macroone}
+Now, I exectute the second macro again: \macrotwo.
+\end{codeexample}
+
+	Macros can be defined almost everywhere in a \TeX\ document. They can also be invoked almost everywhere.
+
+	The \meta{argument pattern} is a token list which can contain simple strings or macro parameters `|#|\meta{number}'. The \meta{number} of the first parameter is always 1, the second must have 2 and so on up to at most 9. Valid argument patterns are `|#1#2#3|', `|(#1,#2,#3)|' or `|---\relax|'. If \TeX\ executes a macro, it searches for \meta{argument pattern} in the input token list until the first match is found. If no match can be found, it aborts with a (more or less helpful) error message.
+\begin{codeexample}[]
+\def\macroone abc{\macrotwo}
+\def\macrotwo def{\macrothree}
+\def\macrothree#1{Got `#1'}
+\macroone abcdefg
+\end{codeexample}
+	The last example contains three macro definitions. Then, \TeX\ encounters |\macroone|. The input token list is now
+	
+	`|\macroone abcdefg|'.
+
+	The space(s) following |\macroone| are ignored by \TeX, they delimit the \meta{\textbackslash macroname}. Now, \TeX\ attempts to find matches for \meta{argument pattern}. It expects `|abc|' -- and it finds `|abc|'. These three tokens are \emph{removed} from the input token list, and \TeX\ inserts the replacement text of |\macroone| which is |\macrotwo|. At that time, the input token list is
+
+	`|\macrotwo defg|'.
+
+	Now, the same game continues with |\macrotwo|: \TeX\ searches for the expected \marg{argument pattern} which is `|def|', erases these tokens from the input token list and inserts the replacement text of |\macrotwo| instead. This yields
+
+	`|\macrothree g|'.
+
+	Finally, |\macrothree| expects one parameter token. The next token is `|g|', which is consumed from the input token list and the replacement text is inserted -- and `|#1|' is replaced by `|g|'. Then, the token list is
+
+	`|Got `g'|'.
+
+	This text is finally typeset (because it doesn't expand further).
+\end{command}
+
+What we have seen now is how \TeX\ macros can be used to modify the token list. Using nested macros, one can even process a complete part of the token list, in a manner of loops (but we don't know yet how to influence macro expansion conditionally, that comes later).
+
+Let's try to solve the following task. Suppose you have a macro named |\point| with \meta{argument pattern} `|(#1,#2)|', i.e.
+
+|\def\point(#1,#2){we do something with #1 and #2}|.
+
+\noindent
+Suppose furthermore that you want to invoke |\point| with the contents which is stored in another macro. After all, macros are some kind of string variables -- it makes sense to accumulate or generate string variables which will then be used as input for other macros. Let's assume we have |\temp| and |\temp| contains `|(42,1234)|'. A first choice to invoke |\point| would be to use |\point\temp|. But: |\point| searches for an argument pattern which starts with `|(|', not with |\temp|! The invocation fails.
+
+\begin{command}{\expandafter\meta{token}\meta{next token}}
+	The |\expandafter| command is an -- at first sight confusing -- method to alter the input token list. But: it solves our problem with |\point\temp|!
+\begin{codeexample}[]
+\def\point(#1,#2){we do something with #1 and #2}
+\def\temp{(42,1234)}
+\expandafter\point\temp
+\end{codeexample}
+	Why did that work!? The command |\expandafter| scans for the token after |\expandafter| in the input token list. This is |\point| in our case. Then, it scans for the next token which is |\temp| in our case (remember: macros are considered to be elementary tokens, just like characters `|a|' or so). The two scanned arguments are removed from the input token list. Then, |\expandafter| \emph{expands} the \meta{next token} one time. In our case, \meta{next token} is |\temp|. The first level of expansion of |\temp| is `|(42,1234)|'.  Then, |\expansion| inserts the (unexpanded) \meta{token} followed by the (expanded) contents of \meta{next token} back into the input token list. In single steps:
+
+	\begin{enumerate}
+		\item |\expandafter\point\temp|
+		\item Expand |\expandafter|: next two tokens are `|\point\temp|'.
+		\item Use |\point| as \meta{token} and |\temp| as \meta{next token}.
+		\item Expand |\temp| once, which leads to the tokens `|(42,1234)|'.
+		\item re-insert \meta{token} and the expansion of \meta{next token} back into the input token list. The list is then
+			
+			`|\point(42,1234)|'.
+		\item Expand |\point| as next token.
+	\end{enumerate}
+
+	A further example: suppose we want to invoke |\theimportantmacro|\marg{argument}. However, \marg{argument} is contained in another macro! Furthermore, |\theimportantmacro| is defined to take exactly one parameter and our desired argument may have more than one token (which means we need to surround it with braces). This can be solved by the listing below.
+\begin{codeexample}[]
+\def\theimportantmacro#1{I got the pre-assembled argument `#1' here.}
+\def\temp{xyz}
+\expandafter\theimportantmacro\expandafter{\temp}
+\end{codeexample}
+	Now, what happens here? Let's apply the rules step by step again:
+	\begin{enumerate}
+		\item After the initial definitions, the token list is |\expandafter\theimportantmacro\expandafter{\temp}|.
+		\item \TeX\ expands |\expandafter|, using |\theimportantmacro| as \meta{token} and the second |\expandafter| as \meta{next token}.
+		\item According to the rules, \TeX\ expands \meta{next token} once. But: \meta{next token} is again a macro, namely |\expandafter|! Does that make a difference? No:
+			\begin{enumerate}
+				\item The token list after the second |\expandafter| is `|{\temp}|' (3 tokens).
+				\item The \meta{token} is thus `|{|' and \meta{next token} is `|\temp|'.
+				\item The expansion of \meta{next token} is `|xyz|'.
+				\item The second |\expandafter| re-inserts its \meta{token} and expanded \meta{next token}, which is
+					
+					`|{xyz|'.
+
+					Note that the closing brace `|}|' has not been touched at all, \TeX\ hasn't even seen it so far.
+			\end{enumerate}
+			We come back from the recursion. Remember: \meta{token} is |\theimportantmacro| and the top-level expansion of \meta{next token} is -- as we have seen above -- `|{xyz|'.
+		\item \TeX\ re-inserts \meta{token} and the expansion of \meta{next token} to the input token list, which leads to
+
+			`|\theimportantmacro{xyz}|'.
+
+			The closing brace `|}|' has not been touched, it simply resides in the input token list.
+		\item \TeX\ expands |\theimportantmacro|.
+	\end{enumerate}
+
+	The \meta{next token} is expanded exactly once. We have already seen that if \meta{next token} is a macro which does substitutions on its own, these substitutions will be performed recursively. But what means `once' exactly? We will need to use |\meaning| to check that (or the |\tracingmacros| tools) because we need to see what \TeX\ does.
+\begin{codeexample}[]
+\def\macroone{This is macro one \macrotwo}
+\def\macrotwo{--2--}
+\def\macrothree#1{\def\macrofour{4[#1]}}
+\expandafter\macrothree\expandafter{\macroone}%
+So far, nothing has been typeset. But now: \macrofour.
+\message{We have macrofour = \meaning\macrofour}%
+\end{codeexample}
+	The logfile (and terminal) will now contain
+
+	`|We have macrofour = macro:->4[This is macro one \macrotwo ]|'.
+
+	What happened? We can proceed as in the last example. After the two |\expandafter| expansions, \TeX\ finds the input token list
+
+	`|\macrothree{This is macro one \macrotwo}|'
+
+	which, after execution, defines |\macrofour| to be `|This is macro one \macrotwo|'. The top-level expansion of |\macroone| has not expanded the nested call to |\macrotwo|.
+\end{command}
+
+\subsubsection{Debugging Tools -- Understanding and Tracing What \TeX\ Does}
+\begin{command}{\meaning\meta{\textbackslash macro}}
+\end{command}
+\begin{command}{\tracingmacros=2}
+\end{command}
+\begin{command}{\tracingcommands=2}
+\end{command}
+\begin{command}{\tracingrestores=1}
+\end{command}
+
+\subsection{The Scope of a Variable}
+
+
+\subsection{Conditional Expressions}
+
+\subsection{Loops}
+
+
+\section{Utility Functions of \PGF}
+
+\section{Utility Function of \PGFPlots}
+
+\printindex
+
+\bibliographystyle{abbrv} %gerapali} %gerabbrv} %gerunsrt.bst} %gerabbrv}% gerplain}
+\bibliography{pgfplots}
+\end{document}
