@@ -1,5 +1,5 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.14 2009/03/05 16:29:58 ludewich Exp $
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.15 2009/03/06 10:14:50 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -100,7 +100,7 @@
 \def\pgfplotslibrarysurf@decode{%
 	-16383.999992 16384 % see the docs of \pgfplotsbinaryencodedimenmaplinearly
 	-16383.999992 16384 %
-	0 1.0240 % phi: [ 0, 2^16-1 ] -> [ 0, X ] with phi(64000) = 1 is the real maximum. Thus, phi(x) = 1/64000 * x  and phi(2^16-1) is the upper decode limit.
+	0 1 % map [0,2^BitsPerComponent-1] linearly to [0 1] for parametric color data
 }%
 \def\pgfplotslibrarysurf@count{0}%
 
@@ -150,23 +150,28 @@
 %\message{ENCODING(y=\the\pgf@y)=\pgfplotsbinaryresult.}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotsbinaryresult}%
 	{%
-		% convert to pt:
+		% read fixed point input (in the range [0,1000]).
 		\pgf@xa=#2pt
 		% convert to integer (= *65536):
 		\c@pgf@counta=\pgf@xa
-		% enlarge data range from 1000*65536 to 16000*65536 ~= 2^14 * 2^16:
-		\multiply\c@pgf@counta by16
-		% quantize into 16 bit range: divide by 2^14:
-		\divide\c@pgf@counta by16384
-		% Now, we have CDATA in the range [0,64000] 
-		% (the remaining bits are unused)
+		% provide map [0,1000] -> [0,2^16-1]
+		\divide\c@pgf@counta by1000
+		% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+		% the required range, that's ok.
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=0
+		\else
+			\ifnum\c@pgf@counta>65535
+				\c@pgf@counta=65535
+			\fi
+		\fi
+		% Now, we have CDATA in the range [0,65535] 
 		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+%\message{ENCODING C = \pgfplots@glob@TMPa\space (for \the\pgf@xa).}%
 	}%
-%\message{ENCODING C = \pgfplots@glob@TMPa.}%
 	\pgfplotsbinarysetbytes2%
 	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
 	\t@pgfplots@tokc=\expandafter{\pgfplotsbinaryresult}%
-%	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\csname pgfp@bin@128\endcsname\csname pgfp@bin@0\endcsname}%\the\t@pgfplots@tokc}%
 	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
 	\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
 }
@@ -230,34 +235,36 @@
 		/VerticesPerRow \pgfkeysvalueof{/pgfplots/surf shading/cols}
 		/ColorSpace /DeviceRGB
 		/Decode [\pgfplotslibrarysurf@decode]
+\iftrue
 		/Function 
 			\iftrue
 				\pgfkeysvalueof{/pgfplots/surf shading/colormap}
 			\else
 			<< 
 				/FunctionType 3 
-				/Domain [0.0 10000] 
+				/Domain [0.0 1] 
 				/Functions [ 
 					<< 
 						/FunctionType 2 
-						/Domain [0.0 10000] 
+						/Domain [0.0 1] 
 						/C0 [0 0 1] /C1 [1 1 0] /N 1 
 					>>  
 					<< 
 						/FunctionType 2 
-						/Domain [0.0 10000] 
+						/Domain [0.0 1] 
 						/C0 [1 1 0] /C1 [1 0.5 0] /N 1 
 					>>  
 					<< 
 						/FunctionType 2 
-						/Domain [0.0 10000] 
+						/Domain [0.0 1] 
 						/C0 [1 0.5 0] /C1 [1 0 0] /N 1 
 					>>
 				]
-				/Bounds [ 2300 4600 ] 
+				/Bounds [ 0.3 0.6 ] 
 				/Encode [0 1  0 1 0 1] 
 			>> 
 			\fi
+\fi
 	} {%
 		\pgfplotslibrarysurf@binarystream
 	}%
