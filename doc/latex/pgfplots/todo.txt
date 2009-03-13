@@ -23,6 +23,8 @@ MISC
 BUGS / FIXES
 -------------------------------------------------------------
 
+- ticklabel interval stuff doesn't work properly
+
 - pdf2ps still fails for interp shader - it has a limitcheck exception. Perhaps
   the number of bits is too large for ps?
   -> a very small stupid test with 8 bits per coordinate and 8 bits per cdata
@@ -31,6 +33,7 @@ BUGS / FIXES
 - interp shader is displayed transparently in evince
 
 - clickable plot lib produces visual artefacts in acroread
+	-> the 'hidden' flag appears to be incompatible with figure environments!?
 
 - 3D:  the use of \addplot3 and \addplot is not sanitized properly
 
@@ -50,6 +53,7 @@ BUGS / FIXES
    black] plot coordinates { (0,0) (1,1) };
  
 - The "xtick" value is not applied unless there is a coordinate in the x range:
+	-> that's the handling of empty figures...
 
 	not working:
 
@@ -242,12 +246,12 @@ X scaled ticks is not properly implemented for log axes
 - In 3D case axis [xyz] line != box, there is just ONE hyperplane.
   My implementation works only if either ALL are box or ALL are 'middle'.
 
-- 3D case : which hyperplane gets tick LABELS?
++ 3D case : which hyperplane gets tick LABELS?
   The current implementation based on  '[xzy]ticklabel pos' is not sufficient
 
-- 3D case: something fails with disabledatascaling
++ 3D case: something fails with disabledatascaling
 
-- 3D case : grid lines work correctly, but they are not satisfactory.
++ 3D case : grid lines work correctly, but they are not satisfactory.
   I'd like grid lines in the background only.
 
 - 3D case : tick/grid lines are on top of the axis lines. This leads to 
@@ -490,6 +494,57 @@ X verschiebung des ylabels ist komisch, wegen der rotate option
 FEATURES
 -------------------------------------------------------------
 
+- there are applications in which BOTH untransformed meta AND transformed meta
+  are required. In this case, the untransformed meta should be provided in a
+  more convenient way - perhaps as fixed point number?
+
+- in scatter point public interface: it would be interesting to know if we are
+  currently processing the first/last coordinate. is that information available?
+
+- write default styles for "string coordinates" which maps a set of
+user defined strings somehow into a numeric range (using a simple
+dictionary)
+
+- It is certainly possible to write some sort of CELL-BASED 'mesh/surf' shader -
+  a combination of 'flat corner' and cell based rectangles:
+  - every coordinate denotes a CELL instead of a corner,
+  - the "shader" maps the cdata into the colormap to determine the cell color
+  - details?
+  		- to get well-defined cells, I have to enforce either a non-parametric
+		  lattice grid or do a LOT of additional operations (?).
+		- alternative: define N*M cells by N+1 * M+1 points.
+		- perhaps a combination of both?
+		  	-> that's more or less the same as 'flat mean' up to the further
+			row/column pair
+  - it would be generally useful to have an "interval" or "cell" mode: 
+	the idea is that every input coordinate defines an interval (1d) or a cell
+	(2d). To define the last cell, one needs to add one "mesh width" somehow.
+	I just don't know where:
+		- the artificial cell should be processed with the normal streams -
+		  including limit updates, stacking etc.
+		- the artificial cell needs to know when the end-of-stream occurs.
+		  For 1d plots, that may be possible. For 2D plots, this information
+		  requires a valid 'cols' key.
+		- I suppose it would be best to patch @stream@coord.. at least for the
+		  'cell' mode.
+		- Idea:
+		  	- the \pgfplots@coord@stream@coord implementation realizes the
+			  cell-mode: after every 'cols' coordinate, a further one is
+			  replicated. This needs the "last mesh width".
+			  Furthermore, it needs to accumulate a row vector, the "last row".
+			  This last row is need during stream@end to replicate the further
+			  row:
+			- the \pgfplots@coord@stream@end implementation has to realize the
+			  last step of cell mode: the replication of a further row. It also
+			  has to realize the implementation of 'interval' mode (replication
+			  of last coordinate).
+			  My idea is to simply use an applist for this row accumulation. The
+			  format should be compatible with \pgfplots@coord@stream@foreach@NORMALIZED.
+			  That doesn't produce problems, even when the end command is invoked within
+			  a foreach@NORMALIZED loop - because the loop has already ended.
+
+
+
 
 - I have a funny idea to replace the memory intensive and slow TeX based data
   structures: I could write coordinate streams into a file like LaTeX's .aux
@@ -502,18 +557,18 @@ FEATURES
 	This would be the applistX with the same L1 and L2 caches - but the main
 	memory would be a file instead of a macro.
 
-- pdf supports REAL lattice shadings! See pdf reference 1.7, section 4.6.3.
++ pdf supports REAL lattice shadings! See pdf reference 1.7, section 4.6.3.
   It is possible to write the coordinates on a lattice and colors for each coordinate;
   resulting in a correctly interpolated shading. I suppose this uses a z buffer.
   The only problem: it requires binary integer input. The integers are then
   mapped linearly into the real space using the /Decode array.
   If I could somehow write binary data into pdf streams, this would work
   properly.
-   - Notes to finish that thing:
+   + Notes to finish that thing:
 	 	- the plot expression sampling could automatically respect the 'z buffer
 		  emul' -> and clear the variable afterwards (optimization)
-		- look into the implementation of \shadedraw - that appears to work.
-		- finish low level interface
+		+ finish low level interface
+		- write ps driver
 
 
 
@@ -522,7 +577,7 @@ FEATURES
   	- access, iterate and read table elements
 	- manipulate elements
 
-- binary input subroutines:
++ binary input subroutines:
   	use a simply scaling for dimen registers. The scaling should be such it maps
 	[-16384,16384] -> <range for N bytes>
 	properly, i.e. it is just an integer division. The resulting integer can be
@@ -533,7 +588,7 @@ FEATURES
   	-> Idea: for surface plots, it should be completely sufficient to start
 	drawing at the correct edge; in the correct direction.
 	Thus, the required operations to get a correct "z buffering" is either
-		- to reverse the sequence,
+		+ to reverse the sequence,
 		- to transpose the matrix
 	or a combination of both. The transposition is not efficiently possible,
 	probably. But the reversal *is* possible efficiently!
@@ -541,29 +596,29 @@ FEATURES
 	support fast macro-append). Since the number of cols should be much smaller
 	than N, this may be possible in TeX's memory restrictions.
 
-- provide better styles for 3D plots:
-  	- enlarge [xy] limits=false,
-	- view={45}{-30}
++ provide better styles for 3D plots:
+  	+ enlarge [xy] limits=false,
+	+ view={45}{-30}
 
 - Ideas for 3D axes:
-  	- I could introduce '\addmesh' (or a 'mesh=true|false' option).
+  	+ I could introduce '\addmesh' (or a 'mesh=true|false' option).
 	  -> this activates R^2 -> R^3 visualisation.
 	  -> \addplot is then always R^1 -> R^{2,3}
 	  - only \addplot3 {<expr>} is different: it should default to (x,y,<expr>)
 		using a mesh.
-	- mesh input:
-	  	- for plot expression: sample a matrix
-		- for coordinates, file, table: 
-		  	- describe how the linear sequence shall be mapped into a matrix
-			- requires the matrix' size and a flag 'ordering=rowwise|colwise'
-			- in principle, the matrix size is controlled by the samples key.
+	+ mesh input:
+	  	+ for plot expression: sample a matrix
+		+ for coordinates, file, table: 
+		  	+ describe how the linear sequence shall be mapped into a matrix
+			+ requires the matrix' size and a flag 'ordering=rowwise|colwise'
+			+ in principle, the matrix size is controlled by the samples key.
 			  But since we are describing a mapping here, we should (maybe)
 			  introduce a further key like |resulution={x}{y}| ...
 		- I need a |samples y| key anyway.
-		- visualization:
-		  	- case 'only marks': easy, just as before.
-			- all other cases:
-			  	- visualizations like surface and mesh are relatively simple:
+		+ visualization:
+		  	+ case 'only marks': easy, just as before.
+			+ all other cases:
+			  	+ visualizations like surface and mesh are relatively simple:
 				  we can iterate through the matrix (for example row-by-row)
 				  and we ONLY need to access the CURRENT AND LAST ROW to 
 				  draw the required things.
@@ -571,11 +626,11 @@ FEATURES
 				  access and efficient storage for the last visited row!
 				  The best would be an array, but I should keep in mind that
 				  arrays may be too inefficient with respect to TeX storage.
-				- I can implement 'flat shading' (piecewise constant). Idea:
-				  	- use rectangular elements
-					- query the colormap for one of the four corner points
-					- simply draw+fill the element with that color.
-					- framework: either the same as for scatter plots, or maybe
+				+ I can implement 'flat shading' (piecewise constant). Idea:
+				  	+ use rectangular elements
+					+ query the colormap for one of the four corner points
+					+ simply draw+fill the element with that color.
+					+ framework: either the same as for scatter plots, or maybe
 					  I can use the pgf basic- or system layer for the color
 					  commands. This is potentially faster.
 
@@ -618,7 +673,7 @@ FEATURES
 				- just "near" the respective axis line?
 
 	- Some more implementation notes:
-	  	- If one of the 2D x,y,z vectors has length 0, the respective axes
+	  	+ If one of the 2D x,y,z vectors has length 0, the respective axes
 		  should be hidden.
 		- a normal 2D axes should be considered to be an efficient special case
 		  of a three dimensional axes - hide the special treatment as far as
@@ -646,9 +701,27 @@ FEATURES
 			- place the label on the path, for example using pos=0.5
 			- the path could be (depending on the tick label position which is
 			  either LEFT or RIGHT) --  |-  -| or something like that.
-
-
-	
+		- Ideas how to get those axes / surfaces which are on the back/front of
+		  the 2d projection:
+		  	+ I need the 3d (!) view direction. For 'view=', the 3d view
+			  direction is directly available, for explicitly provided axis
+			  vectors, it should be possible to compute it using cross products
+			  and embedding in 3d (at least I hope so)
+			+ now, given the 3d view direction and the three 3d axis vectors, I can
+			  compute scalar products to check whether the view axis and the
+			  axis vector point into the same direction. If I am not mistaken,
+			  the following case distinctions hold:
+			  	v * e_x > 0 => the surface attached at the lower end of e_x is
+				FRONT, the surface attached at the upper end of e_x is BACK.
+		  	  This should hold for e_y and e_z as well. Furthermore, the 3d axis
+			  vectors are just unit vectors (if I suppose that only the view is
+			  rotated)
+			- given the flags "FOREGROUND=[0|1]" for each axis line / axis
+			  surface, I can also deduce
+			  	- which lines shall be drawn (or, in case of a complete box,
+				  *when* they shall be drawn - as foreground or as background),
+				- which lines shall contain tick labels
+				- which lines shall contain axis labels
 
 + the FPU uninstall command can be assembled ONCE (globally). No need to do that
   multiple times.

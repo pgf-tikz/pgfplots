@@ -1319,12 +1319,7 @@
 		\E\fi
 		%
 		% increase \pgfplots@current@point@coordindex:
-		\E\begingroup
-		\E\c@pgf@counta=\E\pgfplots@current@point@coordindex
-		\E\advance\E\c@pgf@counta by1\E\relax
-		\E\xdef\E\pgfplots@glob@TMPc{\E\the\E\c@pgf@counta}%
-		\E\endgroup
-		\E\let\E\pgfplots@current@point@coordindex=\E\pgfplots@glob@TMPc
+		\E\pgfplotsutil@advancestringcounter\E\pgfplots@current@point@coordindex
 	}%
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\endgroup
@@ -2247,6 +2242,7 @@
 		\let\pgfplots@current@point@x@error=\pgfutil@empty
 		\let\pgfplots@current@point@y@error=\pgfutil@empty
 		\let\pgfplots@current@point@z@error=\pgfutil@empty
+		\let\pgfplots@current@point@meta=\pgfutil@empty
 		\ifpgfplots@curplot@threedim
 			\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim
 			\ifnum\pgfplots@perpointmeta@choice=4
@@ -3671,9 +3667,59 @@
 		%
 		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
 			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
-				\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - it didn't find either...}%
-				\def\pgfplotsplothandlermesh@cols{5}%
-				\def\pgfplotsplothandlermesh@rows{5}%
+				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+					\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - or at least '[mesh/num points=<N>]'. But it did not find any of them...}%
+					\def\pgfplotsplothandlermesh@cols{5}%
+					\def\pgfplotsplothandlermesh@rows{5}%
+				\else
+					% We don't have rows/cols. Well, try using
+					% sqrt(num points) for both of them!
+					\ifnum\pgfplotsplothandlermesh@numpoints<16380
+						\pgfmath@basic@sqrt@{\pgfplotsplothandlermesh@numpoints}%
+					\else
+						\pgfmathfloatparsenumber{\pgfplotsplothandlermesh@numpoints}%
+						\pgfmathfloatsqrt@{\pgfmathresult}%
+						\pgfmathfloattofixed{\pgfmathresult}%
+					\fi
+					\begingroup
+					% Try whether this rows*rows yields numpoints:
+					\afterassignment\pgfplots@gobble@until@relax
+					\c@pgf@counta=\pgfmathresult\relax
+					\c@pgf@countb=\c@pgf@counta
+					\multiply\c@pgf@counta by\c@pgf@counta
+					\def\pgfplotslocretval{1}%
+					\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
+						% ok, rows*rows = numpoints.
+						\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
+					\else
+						% oh. Did not work. Check for rounding errors:
+						\c@pgf@counta=\c@pgf@countb
+						\advance\c@pgf@counta by1
+						\multiply\c@pgf@counta by\c@pgf@counta
+						\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
+							% ok, (rows+1)*(rows+1) = numpoints.
+							\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
+						\else
+							% no... did not work. num points doesn't
+							% appear to be a squared number.
+							\def\pgfplotslocretval{0}%
+							\xdef\pgfplots@glob@TMPa{5}%
+						\fi
+					\fi
+					\if\pgfplotslocretval1
+						\pgfplots@warning{%
+							'plot mesh' did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
+							Assuming [mesh/rows=\pgfplots@glob@TMPa,mesh/cols=\pgfplots@glob@TMPa] 
+							as sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints).}%
+					\else
+						\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set,
+							but it did not find any of them. 
+							I also tried rows = sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints) = \pgfmathresult\space without success.}%
+					\fi
+					\endgroup
+					\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
+					\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
+				\fi
 			\else
 				% Compute 'rows' out of 'num points' and 'cols':
 				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
