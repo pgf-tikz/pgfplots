@@ -30,6 +30,43 @@
 % - single coordinate processing
 
 
+% Converts a dimen (with unit!) to a corresponding x, y or z
+% coordinate.
+% The result will be written to \pgfmathresult (without units).
+%
+% It is possible to use the result within the \pointxyz command(s).
+%
+% #1: the axis (x,y or z)
+% #2: the dimen
+%
+% example:
+% \pgfplotsconvertunittocoordinate{x}{5pt}
+\def\pgfplotsconvertunittocoordinate#1#2{%
+	\begingroup
+	\pgf@xa=#2\relax
+	\multiply\pgf@xa by\csname pgfplots@#1@inverseveclength\endcsname\relax
+	\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+% This is the same as using \pgfplotsconvertunittocoordinate for each
+% component #1, #2 and #3. The results are directly communicated to
+% \pgfplotsqpointxyz.
+%
+% Expects #1, #2 and #3 to be numbers with units and issues a \pgfplotsqpointxyz 
+\def\pgfplotsqpointxyzabsolutesize#1#2#3{%
+	\begingroup
+	\pgf@xa=#1\relax
+	\multiply\pgf@xa by\pgfplots@x@inverseveclength\relax
+	\pgf@xb=#2\relax
+	\multiply\pgf@xb by\pgfplots@y@inverseveclength\relax
+	\pgf@ya=#3\relax
+	\multiply\pgf@ya by\pgfplots@z@inverseveclength\relax
+	\xdef\pgfplots@glob@TMPa{{\pgf@sys@tonumber\pgf@xa}{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@ya}}%
+	\endgroup
+	\expandafter\pgfplotsqpointxyz\pgfplots@glob@TMPa
+}%
 
 % Denotes a point in a twodimensional hyperplane. The hyperplane is
 % one of the six planes of the threedimensional axis cube.
@@ -800,7 +837,6 @@
 		%
 		%\let\pgfplots@coord@stream@recorded=\pgfutil@empty
 		%
-		\pgfplots@perpointmeta@usesfloattrue
 		% %%%%%%%%%%%%%%
 		%
 		% Define \pgfplots@set@perpointmeta properly:
@@ -816,7 +852,11 @@
 			}%
 			\ifpgfplots@xislinear
 			\else	
-				\pgfplots@perpointmeta@usesfloatfalse
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+					\pgfplots@set@perpointmeta
+					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+					\let\pgfplots@current@point@meta=\pgfmathresult
+				}%
 			\fi
 		\or
 			% point meta/y
@@ -825,7 +865,11 @@
 			}%
 			\ifpgfplots@yislinear
 			\else	
-				\pgfplots@perpointmeta@usesfloatfalse
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+					\pgfplots@set@perpointmeta
+					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+					\let\pgfplots@current@point@meta=\pgfmathresult
+				}%
 			\fi
 		\or
 			% point meta/z
@@ -834,7 +878,11 @@
 			}%
 			\ifpgfplots@zislinear
 			\else	
-				\pgfplots@perpointmeta@usesfloatfalse
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+					\pgfplots@set@perpointmeta
+					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+					\let\pgfplots@current@point@meta=\pgfmathresult
+				}%
 			\fi
 		\or
 			% point meta/explicit : parse the information found
@@ -862,39 +910,18 @@
 				% We need to work with per point meta data.
 				% So, also compute the data range on a per-stream basis!
 				% These limits are important later.
-				\ifpgfplots@perpointmeta@usesfloat
-					\pgfmathfloatcreate{1}{1.0}{2147483645}%
-					\let\pgfplots@invalidrange@metamin=\pgfmathresult
-					\pgfmathfloatcreate{2}{1.0}{2147483645}%
-					\let\pgfplots@invalidrange@metamax=\pgfmathresult
-					\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-					\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
-					\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
-						\pgfplots@set@perpointmeta
-						\ifx\pgfplots@current@point@meta\pgfutil@empty
-						\else
-							\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-							\global\let\pgfplots@metamin=\pgfmathresult
-							\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-							\global\let\pgfplots@metamax=\pgfmathresult
-						\fi
-					}%
-				\else
-					\def\pgfplots@invalidrange@metamin{16300}%
-					\def\pgfplots@invalidrange@metamax{-16300}%
-					\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-					\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
-					\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
-						\pgfplots@set@perpointmeta
-						\ifx\pgfplots@current@point@meta\pgfutil@empty
-						\else
-							\pgfplotsmathmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-							\global\let\pgfplots@metamin=\pgfmathresult
-							\pgfplotsmathmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-							\global\let\pgfplots@metamax=\pgfmathresult
-						\fi
-					}%
-				\fi
+				\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+				\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+					\pgfplots@set@perpointmeta
+					\ifx\pgfplots@current@point@meta\pgfutil@empty
+					\else
+						\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+						\global\let\pgfplots@metamin=\pgfmathresult
+						\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+						\global\let\pgfplots@metamax=\pgfmathresult
+					\fi
+				}%
 			\fi
 		\fi
 	}%
@@ -1328,6 +1355,17 @@
 	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
 	%
 	\def\pgfplots@coord@stream@end@{%
+		\ifx\pgfplots@metamin\pgfutil@empty
+		\else
+			\ifpgfplots@autocompute@metamin
+				\pgfplotsmathfloatmin{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
+				\global\let\pgfplots@axiswide@metamin=\pgfmathresult
+			\fi
+			\ifpgfplots@autocompute@metamax
+				\pgfplotsmathfloatmax{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
+				\global\let\pgfplots@axiswide@metamax=\pgfmathresult
+			\fi
+		\fi
 		\ifpgfplots@autocompute@all@limits
 			\global\let\pgfplots@data@xmin=\pgfplots@xmin
 			\global\let\pgfplots@data@xmax=\pgfplots@xmax
@@ -1384,14 +1422,10 @@
 					\noexpand\pgfplots@initzerolevelhandler
 					\the\t@pgfplots@tokc% named start/end points (if already available)
 					\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}%
-					% per-point meta data ranges:
+					% per-point meta data ranges which apply only to
+					% this plot:
 					\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 					\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-					\ifpgfplots@perpointmeta@usesfloat
-						\noexpand\pgfplots@perpointmeta@usesfloattrue
-					\else
-						\noexpand\pgfplots@perpointmeta@usesfloatfalse
-					\fi
 					\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
 				}%
 				{% draw command:
@@ -1458,55 +1492,49 @@
 	\ifx\pgfplots@metamax\pgfutil@empty
 		\def\pgfplots@perpointmeta@trafo##1{\def\pgfmathresult{##1}}%
 		\def\pgfplots@perpointmeta@traforange{0:0}%
+		\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 	\else
 		% The transformation is
 		%
 		% phi(m) = ( m- meta_min) * 1000/ (meta_max-meta_min).
 		%
 		% -> precompute the scaling factor!
-		\ifpgfplots@perpointmeta@usesfloat
-			\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
-			\ifnum\pgfplots@loc@TMPa=1000
-			\else
-				\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
-			\fi
+		\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
+		\ifnum\pgfplots@loc@TMPa=1000
+		\else
+			\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
+		\fi
+		\if\pgfplots@perpointmeta@rel@choice0
+			% point meta rel=axis wide:
+			\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
+			\edef\pgfplotspointmetarange{\pgfplots@axiswide@metamin:\pgfplots@axiswide@metamax}%
+			% Now, prepare the trafo as such.
+			% It assigns \pgfmathresult (in fixed point).
+			\def\pgfplots@perpointmeta@trafo##1{%
+				\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
+				\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+				\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+			}%
+		\else
+			% point meta rel=per plot:
 			\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
-			\let\pgfplots@loc@TMPa=\pgfmathresult
-			\pgfmathfloatcreate{1}{1.0}{3}%
-			\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
-			\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
-			%
-			% Now, setup the trafo as such.
+			\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
+			% Now, prepare the trafo as such.
 			% It assigns \pgfmathresult (in fixed point).
 			\def\pgfplots@perpointmeta@trafo##1{%
 				\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
 				\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
 				\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
 			}%
-			% Expands to the transformation range as 'a:b':
-			\def\pgfplots@perpointmeta@traforange{0:1000}%
-		\else
-			\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
-			\ifnum\pgfplots@loc@TMPa=1000
-			\else
-				\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
-			\fi
-			\pgfmathsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
-			\let\pgfplots@loc@TMPa=\pgfmathresult
-			\expandafter\pgfmathdivide@\expandafter{\pgfplotscolormaprange}{\pgfplots@loc@TMPa}%
-			\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
-			%
-			% Now, setup the trafo as such.
-			% It assigns \pgfmathresult (in fixed point).
-			\def\pgfplots@perpointmeta@trafo##1{%
-				\pgfmathsubtract@{##1}{\pgfplots@metamin}%
-				\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-			}%
-			% Expands to the transformation range as 'a:b':
-			\def\pgfplots@perpointmeta@traforange{0:1000}%
 		\fi
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfmathfloatcreate{1}{1.0}{3}%
+		\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+		\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
+		%
+		% Expands to the transformation range as 'a:b':
+		\def\pgfplots@perpointmeta@traforange{0:1000}%
 	\fi
-	\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 	\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
 }%
 \def\pgfplots@perpointmeta@trafo@APPLY{%
@@ -3133,7 +3161,7 @@
 % 	state of the \ifpgfplots@apply@datatrafo boolean)
 %
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START normalized coordinates #1#2;\pgfplots@EOI{%
-	\ifpgfplots@meshmode
+	\ifpgfplots@threedim
 		\pgfplotsplothandlermesh@apply@zbuffer{#1}%
 		\let\pgfplots@coord@stream@finalize@storedcoords@START@coords=\pgfplotsretval
 	\else
@@ -3191,11 +3219,6 @@
 		%
 		\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 		\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-		\ifpgfplots@perpointmeta@usesfloat
-			\noexpand\pgfplots@perpointmeta@usesfloattrue
-		\else
-			\noexpand\pgfplots@perpointmeta@usesfloatfalse
-		\fi
 		\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
 		%
 		\the\t@pgfplots@tokb

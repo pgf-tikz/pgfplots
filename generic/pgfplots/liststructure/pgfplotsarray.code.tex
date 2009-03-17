@@ -7,13 +7,21 @@
 %
 % \pgfplotsarraynewempty
 % \pgfplotsarraynew
+% \pgfplotsarrayresize
 % \pgfplotsarraycopy
 % \pgfplotsarraypushback
 % \pgfplotsarraysize
 % \pgfplotsarrayselect
+% \pgfplotsarrayset
 % \pgfplotsarrayletentry
 % \pgfplotsarraycheckempty
 % \pgfplotsarrayforeach
+%
+% and a subset also for global arrays:
+% \pgfplotsarraynewemptyglobal
+% \pgfplotsarrayresizeglobal
+% \pgfplotsarraysetglobal
+% \pgfplotsarrayletentryglobal
 %
 % Copyright 2007/2008 by Christian Feuersänger.
 %
@@ -39,7 +47,10 @@
 
 % Creates a new, empty array.
 \def\pgfplotsarraynewempty#1{%
-	\pgfplotsarray@@edef{#1@size}{0}%
+	\pgfplotsarray@@def{#1@size}{0}%
+}
+\def\pgfplotsarraynewemptyglobal#1{%
+	\expandafter\gdef\csname\string#1@size\endcsname{0}%
 }
 
 % resizes array #1 to size #2
@@ -47,6 +58,9 @@
 % the elements won't be initialised. Use 'set' for each element.
 \def\pgfplotsarrayresize#1#2{%
 	\pgfplotsarray@@edef{#1@size}{#2}%
+}
+\def\pgfplotsarrayresizeglobal#1#2{%
+	\expandafter\xdef\csname\string#1@size\endcsname{#2}%
 }
 
 % Invokes code '#2' if the array named '#1' exists and '#3' if it does
@@ -162,19 +176,28 @@
 	\c@pgfplotsarray@tmp=#1\relax
 	\expandafter\let\expandafter#3\expandafter=\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname%
 }
-\long\def\pgfplotsarrayletentry#1\of#2=#3{%
-	\c@pgfplotsarray@tmp=#1\relax
-	\expandafter\let\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname=#3\relax
-}
+
+% Expands to the value at index #1 of array #2.
+% #1: a number (not a register)
+% #2: an array
+\def\pgfplotsarrayvalueofelem#1\of#2{\csname\string#2@#1\endcsname}%
 
 % Sets element '#1' of array '#2' to '#3'.
 \def\pgfplotsarrayset#1\of#2\to#3{%
 	\c@pgfplotsarray@tmp=#1\relax
 	\pgfutil@namedef{\string#2@\the\c@pgfplotsarray@tmp}{#3}%
 }
+\def\pgfplotsarraysetglobal#1\of#2\to#3{%
+	\c@pgfplotsarray@tmp=#1\relax
+	\expandafter\gdef\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname{#3}%
+}
 \long\def\pgfplotsarrayletentry#1\of#2=#3{%
 	\c@pgfplotsarray@tmp=#1\relax
 	\expandafter\let\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname=#3\relax
+}
+\long\def\pgfplotsarrayletentryglobal#1\of#2=#3{%
+	\c@pgfplotsarray@tmp=#1\relax
+	\expandafter\global\expandafter\let\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname=#3\relax
 }
 
 % Sets the boolean \ifpgfplotsarrayempty depending on whether array #1 is empty
@@ -228,4 +251,166 @@
 	#3%
 	\advance\c@pgfplotsarray@tmp by1
 	\pgfutil@repeat
+}
+
+% #1: arg1 (possibly not fully expanded)
+% #2: arg2 (possibly not fully expanded)
+% #3: code to invoke in case arg1<arg2
+% #4: code to invoke in case arg1>=arg2
+\pgfkeys{/pgfplots/array/iflessthan/.code args={#1#2#3#4}{\ifnum#1<#2\relax#3\else#4\fi}}%
+
+\def\pgfplotsarraysort#1{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/array/iflessthan/.@cmd}\pgfplotsarraysort@iflt
+	\pgfplotsarraysize{#1}\to\c@pgfplotsarray@tmp
+	\pgfplotsarrayresizeglobal{pgfparraytmp}{\the\c@pgfplotsarray@tmp}%
+	\countdef\c@pgfplotsarraysort@m=0
+	\countdef\c@pgfplotsarraysort@k=1
+	\countdef\c@pgfplotsarraysort@i=2
+	\countdef\c@pgfplotsarraysort@l=3
+	\countdef\c@pgfplotsarraysort@j=4
+	\countdef\c@pgfplotsarraysort@q=5
+	\def\pgfplotsarray@mergesort@{\pgfplotsarray@mergesort{#1}}%
+	\def\pgfplotsarray@mergesort@recurse@{\pgfplotsarray@mergesort@recurse{#1}}%
+	\edef\pgfplotsarray@mergesort@@{{0}{\the\c@pgfplotsarray@tmp}}%
+	\expandafter\pgfplotsarray@mergesort@\pgfplotsarray@mergesort@@
+	%
+	% copy the complete, sorted result outside of the current scope.
+	% That's more or less efficient (although some runtime factors
+	% could be saved).
+\message{UNSCOPING RESULT...}%
+	\c@pgfplotsarraysort@i=0
+	\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{#1}\relax
+	\pgfutil@loop
+	\ifnum\c@pgfplotsarraysort@i<\c@pgfplotsarray@tmp
+		\pgfplotsarrayselect{\c@pgfplotsarraysort@i}\of{#1}\to\pgfplots@loc@TMPa
+		\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplots@loc@TMPa
+		\advance\c@pgfplotsarraysort@i by1
+	\pgfutil@repeat
+	\endgroup
+	% copy from global temp -> #1
+	\c@pgfplotsarray@tmp=0
+	\pgfplotsarraysizetomacro{#1}\to\pgfplots@loc@TMPb
+	\pgfutil@loop
+	\ifnum\c@pgfplotsarray@tmp<\pgfplots@loc@TMPb
+		\pgfplotsarrayselect{\c@pgfplotsarray@tmp}\of{pgfparraytmp}\to\pgfplots@loc@TMPa
+		\pgfplotsarrayletentry\c@pgfplotsarray@tmp\of{#1}=\pgfplots@loc@TMPa
+		\advance\c@pgfplotsarray@tmp by1
+	\pgfutil@repeat
+}%
+
+% #1: array name,
+% #2: start offset (as string number)
+% #3: number of elems (as string number)
+\def\pgfplotsarray@mergesort#1#2#3{%
+\message{merge sort start=#2, n=#3.   }%
+	\ifnum#3<2
+		% ready!
+	\else
+		\c@pgfplotsarraysort@m=#3\relax
+		\divide\c@pgfplotsarraysort@m by2
+		\c@pgfplotsarraysort@q=#3
+		\advance\c@pgfplotsarraysort@q by-\c@pgfplotsarraysort@m
+		\c@pgfplotsarraysort@i=\c@pgfplotsarraysort@m
+		\advance\c@pgfplotsarraysort@i by-#2\relax
+		\edef\pgfplotsarray@mergesort@@{%
+			{#2}{\the\c@pgfplotsarraysort@i}% start1, N_1
+			{\the\c@pgfplotsarraysort@m}{\the\c@pgfplotsarraysort@q}% start2, N_2
+		}%
+		\expandafter\pgfplotsarray@mergesort@recurse@\pgfplotsarray@mergesort@@
+		%
+		% Merge:
+\message{Merge step for mergesort(start=#2,n=#3) running...}%
+		% restore 'm':
+		\c@pgfplotsarraysort@m=#3\relax
+		\divide\c@pgfplotsarraysort@m by2
+		\c@pgfplotsarraysort@q=#3
+		\advance\c@pgfplotsarraysort@q by-\c@pgfplotsarraysort@m
+		\c@pgfplotsarraysort@k=0
+		\c@pgfplotsarraysort@l=0
+		\c@pgfplotsarraysort@i=0
+		%
+		% direct comparisons for merge:
+\message{direct comparisons ... looping!}%
+		\pgfutil@loop
+		\pgfplots@loop@CONTINUEtrue
+		\ifnum\c@pgfplotsarraysort@k<\c@pgfplotsarraysort@m
+			\ifnum\c@pgfplotsarraysort@l<\c@pgfplotsarraysort@q
+			\else
+				\pgfplots@loop@CONTINUEfalse
+			\fi
+		\else
+			\pgfplots@loop@CONTINUEfalse
+		\fi
+		\ifpgfplots@loop@CONTINUE
+			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@m
+			\advance\c@pgfplotsarraysort@j by\c@pgfplotsarraysort@l
+			\advance\c@pgfplotsarraysort@j by#2
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplotsarray@x@mpl
+\message{comparing \the\c@pgfplotsarraysort@j=\pgfplotsarray@x@mpl\space and}%
+			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@k
+			\advance\c@pgfplotsarraysort@j by#2
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplotsarray@x@k
+\message{\the\c@pgfplotsarraysort@j=\pgfplotsarray@x@k...}%
+			\pgfplotsarraysort@iflt
+				{\pgfplotsarray@x@mpl}%
+				{\pgfplotsarray@x@k}%
+				{% x[m+l] < x[k]
+					\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@mpl
+					\advance\c@pgfplotsarraysort@i by1
+					\advance\c@pgfplotsarraysort@l by1
+				}%
+				{% x[k] <= x[m+l]
+					\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@k
+					\advance\c@pgfplotsarraysort@i by1
+					\advance\c@pgfplotsarraysort@k by1
+				}%
+				\pgfeov
+		\pgfutil@repeat
+		%
+		% append:
+\message{append1 ... looping!}%
+		\pgfutil@loop
+		\ifnum\c@pgfplotsarraysort@k<\c@pgfplotsarraysort@m
+			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@k
+			\advance\c@pgfplotsarraysort@j by#2
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplots@loc@TMPa
+			\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplots@loc@TMPa
+			\advance\c@pgfplotsarraysort@i by1
+			\advance\c@pgfplotsarraysort@k by1
+		\pgfutil@repeat
+\message{append2 ... looping!}%
+		\pgfutil@loop
+		\ifnum\c@pgfplotsarraysort@l<\c@pgfplotsarraysort@q
+			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@m
+			\advance\c@pgfplotsarraysort@j by\c@pgfplotsarraysort@l
+			\advance\c@pgfplotsarraysort@j by#2
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplots@loc@TMPa
+			\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplots@loc@TMPa
+			\advance\c@pgfplotsarraysort@i by1
+			\advance\c@pgfplotsarraysort@l by1
+		\pgfutil@repeat
+		%
+		% copy back from temporary to '#1'
+		\c@pgfplotsarraysort@i=0
+		\c@pgfplotsarraysort@k=#3
+\message{copy back ... looping!}%
+		\pgfutil@loop
+		\ifnum\c@pgfplotsarraysort@i<\c@pgfplotsarraysort@k
+			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@i
+			\advance\c@pgfplotsarraysort@j by#2
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@i}\of{pgfparraytmp}\to\pgfplots@loc@TMPa
+			\pgfplotsarrayletentry\c@pgfplotsarraysort@j\of{#1}=\pgfplots@loc@TMPa
+			\advance\c@pgfplotsarraysort@i by1
+		\pgfutil@repeat
+	\fi
+}%
+% #1: array name
+% #2: start1
+% #3: N1
+% #4: start2
+% #5: N2
+\def\pgfplotsarray@mergesort@recurse#1#2#3#4#5{%
+	\pgfplotsarray@mergesort{#1}{#2}{#3}%
+	\pgfplotsarray@mergesort{#1}{#4}{#5}%
 }

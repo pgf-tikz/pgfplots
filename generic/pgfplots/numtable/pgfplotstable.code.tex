@@ -152,6 +152,52 @@
 			\endgroup
 		}%
 	},
+	% #1: colname
+	/pgfplots/table/unique/.code={%
+		\pgfkeys{/pgfplots/table/row predicate/.append code={%
+			\ifnum\pgfplotstablerow=0
+				\ifnum\pgfplotstablecol=0
+					% PREPARE ONCE! Assemble the boolean results into
+					% a list which is used for the complete table:
+					\expandafter\pgfplotstablegetcolumn\expandafter{\expandafter\pgfplotstablecolname\expandafter}\expandafter\of\pgfplotstablename\to\pgfplotstable@unique@col
+					\pgfplotslistnewempty\pgfplotstable@unique@bitlist
+					\let\pgfplotstable@unique@LAST=\relax
+					\pgfplotslistforeachungrouped\pgfplotstable@unique@col\as\pgfplotstable@unique@cur{%
+						\def\pgfplotstable@unique@bit{1}%
+						\ifx\pgfplotstable@unique@LAST\relax
+						\else
+							\ifx\pgfplotstable@unique@LAST\pgfplotstable@unique@cur
+								\def\pgfplotstable@unique@bit{0}%
+							\fi
+						\fi
+						\expandafter\pgfplotslistpushback\pgfplotstable@unique@bit\to\pgfplotstable@unique@bitlist
+						\let\pgfplotstable@unique@LAST=\pgfplotstable@unique@cur
+					}%
+					\global\let\pgfplotstable@unique@bitlist@backup=\pgfplotstable@unique@bitlist
+				\else
+					\ifx\pgfplotstable@unique@bitlist@backup\relax
+						% this sanity checking is NOT fool proof: it
+						% fails if there are different occurances of
+						% unique in the same file
+						\pgfplotstable@error{Sorry, the row predicate /pgfplots/table/unique={#1} has been used in the wrong context: it needs to be invoked for the very first processed column, not column no \pgfplotstablecol. Please provide it as argument to \string\pgfplotstabletypeset[unique={#1}] and not inside of column-specific styles.}%
+					\fi
+				\fi
+				% acquire the assembled list here: we'll do a lot of
+				% popfronts with it.
+				\let\pgfplotstable@unique@bitlist=\pgfplotstable@unique@bitlist@backup
+			\fi
+			\pgfplotslistcheckempty\pgfplotstable@unique@bitlist
+			\ifpgfplotslistempty
+				% should not happen!
+				\pgfplotstableuserowfalse
+			\else
+				\pgfplotslistpopfront\pgfplotstable@unique@bitlist\to\pgfplots@loc@TMPa
+				\if\pgfplots@loc@TMPa0%
+					\pgfplotstableuserowfalse
+				\fi
+			\fi
+		}}%
+	},%
 	/pgfplots/table/col sep/.is choice,
 	/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},
 	/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},
@@ -439,10 +485,13 @@
 	},
 	%
 	/pgfplots/table/font/.initial=,
-	/pgfplots/table/.unknown/.code={%
-		\let\pgfplots@table@curkeyname=\pgfkeyscurrentname
-		\pgfqkeys{/pgf/number format}{\pgfplots@table@curkeyname=#1}%
-	},%
+	/pgfplots/table/.search also={/pgf/number format,/pgfplots/table/create col},
+	%--------------------------------------------------
+	% /pgfplots/table/.unknown/.code={%
+	% 	\let\pgfplots@table@curkeyname=\pgfkeyscurrentname
+	% 	\pgfqkeys{/pgf/number format}{\pgfplots@table@curkeyname=#1}%
+	% },%
+	%-------------------------------------------------- 
 	/pgfplots/table/create col/assign first/.style={
 		/pgfplots/table/create col/assign%
 	},
@@ -1407,9 +1456,10 @@
 %
 % You will need to reconfigure the tables.
 %
-% Inside of \pgfplotstabletypeset, the macros \pgfplotstablecol and
-% \pgfplotstablerow will expand to the current column index and row
-% index.
+% Inside of \pgfplotstabletypeset, the macros
+% \pgfplotstablecol,\pgfplotstablecolname and
+% \pgfplotstablerow will expand to the current column index, column
+% name and row index, respectively.
 \def\pgfplotstabletypeset{%
 	\pgfutil@ifnextchar[{%	
 		\pgfplotstabletypeset@opt
@@ -2165,6 +2215,8 @@
 	% 	\pgfplotslistnewempty#2
 	% }{}%
 	%-------------------------------------------------- 
+	\def\pgfplotstablename{#2}%
+	\def\pgfplotstablecolname{\pgfplotstable@colname}%
 	\def\pgfplotstablecol{\the\c@pgfplotstable@colindex}%
 	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
 	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
@@ -2248,6 +2300,7 @@
 	\def\pgfplotstable@firstnumrows{-1}%
 	\c@pgfplotstable@numrows=-1\relax
 	\c@pgfplotstable@colindex=0\relax
+	% FOREACH COLUMN:
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
 		\c@pgfplotstable@rowindex=0\relax
 		\pgfplotstable@is@colname\pgfplotstable@colname
@@ -2285,6 +2338,8 @@
 		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
 			\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last column}%
 		\fi
+		% temporarily restore it: we may need it in row predicates:
+		\global\advance\c@pgfplotstable@colindex by-1\relax
 		\ifpgfplotstable@disable@rowcolstyles
 			% ok, then don't check for 'columns/<name>' and 
 			% 'display columns/<index>':
@@ -2309,13 +2364,9 @@
 			\let\pgfplotstable@colname@out=\pgfplotstable@colname
 		\fi
 		\expandafter\pgfplotstabletypeset@assign@final@colname\expandafter{\pgfplotstable@colname@out}\pgfplotstable@colname@out
-		{\globaldefs=1
-		\expandafter\pgfplotslistpushback\pgfplotstable@colname@out\to\pgfplotstabletypeset@final@colnames
-		}%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@colname@out\to\pgfplotstabletypeset@final@colnames
 		\pgfkeysgetvalue{/pgfplots/table/column type}{\pgfplotstable@coltype}%
-		{\globaldefs=1
-		\expandafter\pgfplotslistpushback\pgfplotstable@coltype\to\pgfplotstabletypeset@final@coltypes
-		}%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@coltype\to\pgfplotstabletypeset@final@coltypes
 		%
 		\pgfplotslistnewempty\pgfplotstable@col@processed
 		\c@pgfplotstable@counta=0 
@@ -2326,7 +2377,8 @@
 			\ifpgfplotstableuserow
 				\ifnum\pgfplotstable@firstnumrows=-1\relax
 				\else
-					\ifnum\c@pgfplotstable@counta=\pgfplotstable@firstnumrows
+					\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
+					\else
 						\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
 						\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out}%
 						\pgfplots@warning{Unbalanced cell with content '\the\t@pgfplots@toka' of column '\the\t@pgfplots@tokb' has been skipped: row count \the\c@pgfplotstable@counta+1 > \pgfplotstable@firstnumrows (which is the number of rows in the first column)}%
@@ -2347,9 +2399,8 @@
 			% balance columns:
 			\pgfplotstable@insertemptycells@forbalance
 		\fi
-		{\globaldefs=1
-		\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
-		}%
+		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
+		\global\advance\c@pgfplotstable@colindex by1\relax
 	}%
 	%
 	% Ok, I have now everything which will come into the final table.
@@ -2419,6 +2470,7 @@
 	\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
 	\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
 	%
+	\def\pgfplotstablecolname{\pgfplotstable@colname@out}%
 	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
 		%
 		\advance\c@pgfplotstable@colindex by1\relax
@@ -2460,6 +2512,7 @@
 	\else
 		\pgfplots@loop@CONTINUEfalse
 	\fi
+	\def\pgfplotstablecolname{\pgfplots@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
 	\pgfutil@loop
 	\ifpgfplots@loop@CONTINUE
 		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
