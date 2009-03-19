@@ -257,9 +257,91 @@
 % #2: arg2 (possibly not fully expanded)
 % #3: code to invoke in case arg1<arg2
 % #4: code to invoke in case arg1>=arg2
-\pgfkeys{/pgfplots/array/iflessthan/.code args={#1#2#3#4}{\ifnum#1<#2\relax#3\else#4\fi}}%
+\pgfkeys{%
+	/pgfplots/array/iflessthan/.code args={#1#2#3#4}{\ifnum#1<#2\relax#3\else#4\fi},%
+	/pgfplots/array/unscope pre/.code={%
+		% That's more or less efficient (although some runtime factors
+		% could be saved).
+		\c@pgfplotsarraysort@i=0
+		\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{#1}\relax
+		\pgfutil@loop
+		\ifnum\c@pgfplotsarraysort@i<\c@pgfplotsarray@tmp
+			\pgfplotsarrayselect{\c@pgfplotsarraysort@i}\of{#1}\to\pgfplots@loc@TMPa
+			\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplots@loc@TMPa
+			\advance\c@pgfplotsarraysort@i by1
+		\pgfutil@repeat
+	},%
+	/pgfplots/array/unscope post/.code={%
+		% copy from global temp -> #1
+		\c@pgfplotsarray@tmp=0
+		\pgfplotsarraysizetomacro{#1}\to\pgfplots@loc@TMPb
+		\pgfutil@loop
+		\ifnum\c@pgfplotsarray@tmp<\pgfplots@loc@TMPb
+			\pgfplotsarrayselect{\c@pgfplotsarray@tmp}\of{pgfparraytmp}\to\pgfplots@loc@TMPa
+			\pgfplotsarrayletentry\c@pgfplotsarray@tmp\of{#1}=\pgfplots@loc@TMPa
+			\advance\c@pgfplotsarray@tmp by1
+		\pgfutil@repeat
+	},%
+}%
 
+% Sorts array '#1' using N log N time.
+% 
+% The sort key is provided as argument in
+% /pgfplots/array/iflessthan/.code args={#1#2#3#4}, see above.
+%
+% Remarks:
+% - the sorting algorithm is a sub-optimal mergesort currently -
+% but it has runtime N log N. 
+% - As usual, it is very difficult to move the final result out of the
+%   current scope. The initial configuration allocates a *global* copy of #1 
+%   to carry results out of one TeX group. This means that memory will NEVER be freed.
+%   I don't see a general N log N alternative for doing so (short of discarding
+%   the scopes for local groups).
+%   BUT:
+%   you can redefine the code key pair 
+%     |/pgfplots/array/unscope pre|
+%   and
+%     |/pgfplots/array/unscope post|
+%   to define your own routine which may benefit from special needs of
+%   your application. The |... pre| command is invoked JUST before the
+%   \endgroup and the |... post| JUST after the |\endgroup|.
+%
+%
+% EXAMPLE:
+%--------------------------------------------------
+% \pgfplotsarraynewempty\testarray
+% \pgfplotsarraypushback503\to\testarray
+% \pgfplotsarraypushback087\to\testarray
+% \pgfplotsarraypushback512\to\testarray
+% \pgfplotsarraypushback061\to\testarray
+% \pgfplotsarraypushback908\to\testarray
+% \pgfplotsarraypushback170\to\testarray
+% \pgfplotsarraypushback897\to\testarray
+% \pgfplotsarraypushback275\to\testarray
+% \pgfplotsarraypushback653\to\testarray
+% \pgfplotsarraypushback426\to\testarray
+% \pgfplotsarraypushback154\to\testarray
+% \pgfplotsarraypushback509\to\testarray
+% \pgfplotsarraypushback612\to\testarray
+% \pgfplotsarraypushback677\to\testarray
+% \pgfplotsarraypushback765\to\testarray
+% \pgfplotsarraypushback703\to\testarray
+% 
+% Unsorted: 
+% 
+% [\pgfplotsarrayforeach\testarray\as\elem{\elem\space}]
+% 
+% \pgfplotsarraysort\testarray
+% 
+% sorted: 
+% 
+% [\pgfplotsarrayforeach\testarray\as\elem{\elem\space}]
+% 
+%-------------------------------------------------- 
 \def\pgfplotsarraysort#1{%
+	% I admit, the implementation is more-or less copy-paste of an
+	% experiment I had done at university. It does its job, but it is
+	% certainly not optimal.
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/array/iflessthan/.@cmd}\pgfplotsarraysort@iflt
 	\pgfplotsarraysize{#1}\to\c@pgfplotsarray@tmp
@@ -276,51 +358,31 @@
 	\expandafter\pgfplotsarray@mergesort@\pgfplotsarray@mergesort@@
 	%
 	% copy the complete, sorted result outside of the current scope.
-	% That's more or less efficient (although some runtime factors
-	% could be saved).
-\message{UNSCOPING RESULT...}%
-	\c@pgfplotsarraysort@i=0
-	\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{#1}\relax
-	\pgfutil@loop
-	\ifnum\c@pgfplotsarraysort@i<\c@pgfplotsarray@tmp
-		\pgfplotsarrayselect{\c@pgfplotsarraysort@i}\of{#1}\to\pgfplots@loc@TMPa
-		\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplots@loc@TMPa
-		\advance\c@pgfplotsarraysort@i by1
-	\pgfutil@repeat
+	\pgfkeysvalueof{/pgfplots/array/unscope pre/.@cmd}#1\pgfeov
 	\endgroup
-	% copy from global temp -> #1
-	\c@pgfplotsarray@tmp=0
-	\pgfplotsarraysizetomacro{#1}\to\pgfplots@loc@TMPb
-	\pgfutil@loop
-	\ifnum\c@pgfplotsarray@tmp<\pgfplots@loc@TMPb
-		\pgfplotsarrayselect{\c@pgfplotsarray@tmp}\of{pgfparraytmp}\to\pgfplots@loc@TMPa
-		\pgfplotsarrayletentry\c@pgfplotsarray@tmp\of{#1}=\pgfplots@loc@TMPa
-		\advance\c@pgfplotsarray@tmp by1
-	\pgfutil@repeat
+	\pgfkeysvalueof{/pgfplots/array/unscope post/.@cmd}#1\pgfeov
 }%
 
 % #1: array name,
 % #2: start offset (as string number)
 % #3: number of elems (as string number)
 \def\pgfplotsarray@mergesort#1#2#3{%
-\message{merge sort start=#2, n=#3.   }%
 	\ifnum#3<2
 		% ready!
 	\else
 		\c@pgfplotsarraysort@m=#3\relax
 		\divide\c@pgfplotsarraysort@m by2
-		\c@pgfplotsarraysort@q=#3
+		\c@pgfplotsarraysort@q=#3\relax
 		\advance\c@pgfplotsarraysort@q by-\c@pgfplotsarraysort@m
 		\c@pgfplotsarraysort@i=\c@pgfplotsarraysort@m
-		\advance\c@pgfplotsarraysort@i by-#2\relax
+		\advance\c@pgfplotsarraysort@i by#2\relax
 		\edef\pgfplotsarray@mergesort@@{%
-			{#2}{\the\c@pgfplotsarraysort@i}% start1, N_1
-			{\the\c@pgfplotsarraysort@m}{\the\c@pgfplotsarraysort@q}% start2, N_2
+			{#2}{\the\c@pgfplotsarraysort@m}% start1, N_1
+			{\the\c@pgfplotsarraysort@i}{\the\c@pgfplotsarraysort@q}% start2, N_2
 		}%
 		\expandafter\pgfplotsarray@mergesort@recurse@\pgfplotsarray@mergesort@@
 		%
 		% Merge:
-\message{Merge step for mergesort(start=#2,n=#3) running...}%
 		% restore 'm':
 		\c@pgfplotsarraysort@m=#3\relax
 		\divide\c@pgfplotsarraysort@m by2
@@ -331,7 +393,6 @@
 		\c@pgfplotsarraysort@i=0
 		%
 		% direct comparisons for merge:
-\message{direct comparisons ... looping!}%
 		\pgfutil@loop
 		\pgfplots@loop@CONTINUEtrue
 		\ifnum\c@pgfplotsarraysort@k<\c@pgfplotsarraysort@m
@@ -347,11 +408,9 @@
 			\advance\c@pgfplotsarraysort@j by\c@pgfplotsarraysort@l
 			\advance\c@pgfplotsarraysort@j by#2
 			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplotsarray@x@mpl
-\message{comparing \the\c@pgfplotsarraysort@j=\pgfplotsarray@x@mpl\space and}%
 			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@k
 			\advance\c@pgfplotsarraysort@j by#2
 			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplotsarray@x@k
-\message{\the\c@pgfplotsarraysort@j=\pgfplotsarray@x@k...}%
 			\pgfplotsarraysort@iflt
 				{\pgfplotsarray@x@mpl}%
 				{\pgfplotsarray@x@k}%
@@ -369,7 +428,6 @@
 		\pgfutil@repeat
 		%
 		% append:
-\message{append1 ... looping!}%
 		\pgfutil@loop
 		\ifnum\c@pgfplotsarraysort@k<\c@pgfplotsarraysort@m
 			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@k
@@ -379,7 +437,6 @@
 			\advance\c@pgfplotsarraysort@i by1
 			\advance\c@pgfplotsarraysort@k by1
 		\pgfutil@repeat
-\message{append2 ... looping!}%
 		\pgfutil@loop
 		\ifnum\c@pgfplotsarraysort@l<\c@pgfplotsarraysort@q
 			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@m
@@ -394,7 +451,6 @@
 		% copy back from temporary to '#1'
 		\c@pgfplotsarraysort@i=0
 		\c@pgfplotsarraysort@k=#3
-\message{copy back ... looping!}%
 		\pgfutil@loop
 		\ifnum\c@pgfplotsarraysort@i<\c@pgfplotsarraysort@k
 			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@i
@@ -403,8 +459,13 @@
 			\pgfplotsarrayletentry\c@pgfplotsarraysort@j\of{#1}=\pgfplots@loc@TMPa
 			\advance\c@pgfplotsarraysort@i by1
 		\pgfutil@repeat
+%\pgfplotsarraysort@DEBUGTEST{#1}{after mergesort(start=#2,n=#3):}%
 	\fi
 }%
+\long\def\pgfplotsarraysort@DEBUGTEST#1#2{%
+	\par#2\par
+	[\pgfplotsarrayforeach{#1}\as\elem{\elem\space}]\par%
+}
 % #1: array name
 % #2: start1
 % #3: N1

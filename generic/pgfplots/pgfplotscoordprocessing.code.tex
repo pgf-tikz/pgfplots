@@ -522,7 +522,7 @@
 %   \pgfplots@[xyz]@veclength,
 %   \pgfplots@[xyz]@inverseveclength
 %   are set properly
-%   \pgfplots@view@normalvec@[xyz] will contain the three components
+%   \pgfplots@view@dir@threedim@[xyz] will contain the three components
 %   of 'n'.
 \def\pgfplotssetaxesfrompitchyaw#1#2#3{%
 	\begingroup
@@ -555,9 +555,9 @@
 	\pgfsetyvec{\pgfplots@glob@TMPb}%
 	\pgfsetzvec{\pgfplots@glob@TMPc}%
 	\def\pgfplots@loc@TMPa##1##2##3{%
-		\def\pgfplots@view@normalvec@x{##1}%
-		\def\pgfplots@view@normalvec@y{##2}%
-		\def\pgfplots@view@normalvec@z{##3}%
+		\def\pgfplots@view@dir@threedim@x{##1}%
+		\def\pgfplots@view@dir@threedim@y{##2}%
+		\def\pgfplots@view@dir@threedim@z{##3}%
 	}%
 	\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPd\relax
 	\def#3{0}%
@@ -3162,7 +3162,7 @@
 %
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START normalized coordinates #1#2;\pgfplots@EOI{%
 	\ifpgfplots@threedim
-		\pgfplotsplothandlermesh@apply@zbuffer{#1}%
+		\pgfplots@apply@zbuffer{#1}%
 		\let\pgfplots@coord@stream@finalize@storedcoords@START@coords=\pgfplotsretval
 	\else
 		\def\pgfplots@coord@stream@finalize@storedcoords@START@coords{#1}%
@@ -4036,10 +4036,10 @@
 % #1: a normalized coordinate stream.
 %
 % Output: a normalized coordinate stream in \pgfplotsretval.
-\def\pgfplotsplothandlermesh@apply@zbuffer#1{%
-	\let\pgfplotsplothandlermesh@apply@zbuffer@start@BACKUP=\pgfplots@coord@stream@start
-	\let\pgfplotsplothandlermesh@apply@zbuffer@end@BACKUP=\pgfplots@coord@stream@end
-	\let\pgfplotsplothandlermesh@apply@zbuffer@coord@BACKUP=\pgfplots@coord@stream@coord
+\def\pgfplots@apply@zbuffer#1{%
+	\let\pgfplots@apply@zbuffer@start@BACKUP=\pgfplots@coord@stream@start
+	\let\pgfplots@apply@zbuffer@end@BACKUP=\pgfplots@coord@stream@end
+	\let\pgfplots@apply@zbuffer@coord@BACKUP=\pgfplots@coord@stream@coord
 	\let\pgfplots@current@point@x=\pgfutil@empty
 	\let\pgfplots@current@point@y=\pgfutil@empty
 	\let\pgfplots@current@point@z=\pgfutil@empty
@@ -4049,11 +4049,19 @@
 		% none.
 		\gdef\pgfplotsretval{#1}%
 	\or
-		% reverse x seq:
+		% reverse x seq: only for 'mesh'
 		% FIXME IMPLEMENT!
+		\ifpgfplots@meshmode
+		\else
+			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse x seq' can only be used for mesh/surf plots.}%
+		\fi
 		\gdef\pgfplotsretval{#1}%
 	\or
-		% reverse y seq:
+		% reverse y seq: only for 'mesh'
+		\ifpgfplots@meshmode
+		\else
+			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse y seq' can only be used for mesh/surf plots.}%
+		\fi
 		\gdef\pgfplotsretval{#1}%
 	\or
 		% reverse xy seq:
@@ -4070,8 +4078,76 @@
 			\global\let\pgfplotsretval=\pgfplots@loc@TMPa
 		}%
 		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+	\or
+		% sort coordinates.
+		\begingroup
+		\def\pgfplots@coord@stream@start{%
+			\pgfplotsarraynewempty\pgfplots@zbuffer@local
+			\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
+			\c@pgfplots@coordindex=0
+			\def\pgfplots@zbuffer@local@SETCUR####1{%
+				\expandafter\pgfplotsarrayset\c@pgfplots@coordindex\of\pgfplots@zbuffer@local\to{####1}%
+			}%
+		}%
+		\def\pgfplots@coord@stream@coord{%
+			\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
+			\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@loc@TMPa}%
+			\advance\c@pgfplots@coordindex by1
+		}%
+		\def\pgfplots@coord@stream@end{%
+			\ifnum\c@pgfplots@coordindex=\numcoords
+			\else
+				\pgfplots@error{INTERNAL LOGIC ERROR: either \string\numcoords=\numcoords\space is wrong or the z buffer algorithm failed.}%
+			\fi
+			\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
+			\pgfkeysdef{/pgfplots/array/unscope pre}{%
+				\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
+				\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
+					\expandafter\pgfplotsapplistXpushback\curelem\to{\pgfp@sortedlist}%
+				}%
+				\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
+				\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+			}%
+			\pgfkeysdef{/pgfplots/array/unscope post}{}%
+			\pgfplotsarraysort\pgfplots@zbuffer@local
+		}%
+		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+		\endgroup
 	\fi
-	\let\pgfplots@coord@stream@start=\pgfplotsplothandlermesh@apply@zbuffer@start@BACKUP
-	\let\pgfplots@coord@stream@end=\pgfplotsplothandlermesh@apply@zbuffer@end@BACKUP
-	\let\pgfplots@coord@stream@coord=\pgfplotsplothandlermesh@apply@zbuffer@coord@BACKUP
+	\let\pgfplots@coord@stream@start=\pgfplots@apply@zbuffer@start@BACKUP
+	\let\pgfplots@coord@stream@end=\pgfplots@apply@zbuffer@end@BACKUP
+	\let\pgfplots@coord@stream@coord=\pgfplots@apply@zbuffer@coord@BACKUP
+}%
+
+% A special '<' operation which returns true if the point coordinate
+% '#1' is BEHIND #2 with respect to the current 3D view.
+\def\pgfplots@apply@zbuffer@SORT@iflessthan#1#2#3#4\pgfeov{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPa\relax
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfplotslocretval
+	\edef\pgfplots@loc@TMPb{#2}%
+	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPb\relax
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfplotslocretval
+	\pgfmathfloatlessthan@{\pgfplots@apply@zbuffer@SORT@iflessthan@b}{\pgfplots@apply@zbuffer@SORT@iflessthan@a}%
+	\ifpgfmathfloatcomparison
+		#3\relax
+	\else
+		#4\relax
+	\fi
+}%
+\def\pgfplots@apply@zbuffer@SORT@iflessthan@#1,#2,#3,#4;{%
+	% FIXME : that operators only in float. Provide special cases!
+	\pgfmathfloatmultiplyfixed@{#1}{\pgfplots@view@dir@threedim@x}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfmathfloatmultiplyfixed@{#2}{\pgfplots@view@dir@threedim@y}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfmathfloatmultiplyfixed@{#3}{\pgfplots@view@dir@threedim@z}%
+		\let\pgfplots@loc@TMPc=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+	\fi
+	\let\pgfplotslocretval=\pgfplots@loc@TMPb
 }%
