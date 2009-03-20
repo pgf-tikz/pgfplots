@@ -1419,6 +1419,24 @@
 					\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
 					\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
+					%
+					% save the possibly prepare/adjusted plot
+					% variables:
+					\noexpand\pgfkeyssetvalue{/pgfplots/samples}{\pgfplots@plot@samples}%
+					\noexpand\pgfkeyssetvalue{/pgfplots/domain}{\pgfplots@plot@domain}%
+					\noexpand\pgfkeyssetvalue{/pgfplots/samples at}{\pgfplots@plot@samples@at}%
+					%
+					% ... especially the rows/cols arguments which
+					% might have been reported by the coord input
+					% sources (from \pgfplots@validate@plot@domain@arguments):
+					\ifpgfplots@curplot@threedim
+						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
+						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
+					\else
+						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfplots@current@point@coordindex}%
+						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
+					\fi
+					%
 					\noexpand\pgfplots@initzerolevelhandler
 					\the\t@pgfplots@tokc% named start/end points (if already available)
 					\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}%
@@ -1894,27 +1912,39 @@
 	\else
 		\let\pgfplots@loc@TMPa=\pgfutil@empty
 	\fi
-	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#1,#2}%
-	%
-	\ifpgfplots@meshmode
-		\ifpgfplots@curplot@threedim
-			\pgfplots@PREPARE@COORD@STREAM{#1,#2,%
-				/pgfplots/mesh/rows=\pgfkeysvalueof{/pgfplots/samples},%
-				/pgfplots/mesh/cols=\pgfkeysvalueof{/pgfplots/samples}}%
-				{#5}%
-		\else
-			% the mesh data will be communicated automatically for 1D
-			% meshes.
-			\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#5}%
-			%
-		\fi
-	\else
-		\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#5}%
-	\fi
+	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#1,#2,/pgfplots/mesh/ordering/rowwise}%
 	%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
+	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
 	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
+	%
+	% Check if we have to sample a line.
+	\def\pgfplots@addplotimpl@expression@samplesLINE{0}%
+	\ifpgfplots@curplot@threedim
+		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
+		\edef\pgfplots@plot@ydomain{\pgfplots@plot@ydomain}%
+		\def\pgfplots@loc@TMPa{0:0}%
+		\ifx\pgfplots@plot@ydomain\pgfplots@loc@TMPa
+			\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+		\fi
+		\ifx\pgfplots@plot@samples@y\pgfutil@empty
+		\else
+			\ifnum\pgfplots@plot@samples@y=0
+				\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+			\fi
+		\fi
+	\else
+		\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+	\fi
+	%
+	\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/samples}}%
+	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples}}% FIXME: use samples y
+	\if1\pgfplots@addplotimpl@expression@samplesLINE
+		\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
+	\fi
+	%
+	\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#5}%
 	%
 	% Determine whether the x range is parameterized or uniform and
 	% prepare a macro which assigns \pgfplots@current@point@x:
@@ -1944,14 +1974,15 @@
 	\fi
 	%
 	\gdef\pgfplots@noy@error{%
-		\pgfplots@error{Sorry, you can't use 'y' in this context. Please use the [mesh] option to indicate a twodimensional input domain.}%
+		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
 		\global\let\pgfplots@noy@error=\relax
 	}%
 	% Define a "function" x which sets \pgfmathresult := \x :
 	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
 		% We have PGF 2.00 :
 		\def\pgfmath@parsefunction@x{\edef\pgfmathresult{\tikz@plot@var}\pgfmath@postfunction}%
-		\ifpgfplots@meshmode
+		\if0\pgfplots@addplotimpl@expression@samplesLINE
+			% surface:
 			\def\pgfmath@parsefunction@y{\let\pgfmathresult=\y\pgfmath@postfunction}%
 		\else
 			\def\pgfmath@parsefunction@y{\pgfplots@noy@error\def\pgfmathresult{0.0}\pgfmath@postfunction}%
@@ -1959,7 +1990,8 @@
 	}{%
 		% We have PGF > 2.00 :
 		\pgfmathdeclarefunction{x}{0}{\edef\pgfmathresult{\tikz@plot@var}}%
-		\ifpgfplots@meshmode
+		\if0\pgfplots@addplotimpl@expression@samplesLINE
+			% surface:
 			\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
 		\else
 			\pgfmathdeclarefunction{y}{0}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
@@ -1984,8 +2016,8 @@
 		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
 		\let\pgfplots@expression@xdomain=\pgfplotslocretval
 		%
-		\ifpgfplots@meshmode
-			\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
+		\if0\pgfplots@addplotimpl@expression@samplesLINE
+			% Samples twodimensionally (a lattice):
 			\ifx\pgfplots@plot@ydomain\pgfutil@empty
 				\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
 			\fi
@@ -2001,6 +2033,7 @@
 				\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@expression@ydomain} 
 					{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}}%
 		\else
+			% sample a line:
 			\def\pgfplots@plot@ydomain{0:0}%
 			\def\y{y}% this provides an error message, see above.
 			\edef\pgfplots@plot@data##1{%
@@ -2795,27 +2828,16 @@
 		% \addplot[every mark/.append style={}] will use
 		% /pgfplots/every mark/.append style.
 		% But that doesn't hurt here.
+		%
+		% FIXME : there are some exceptions like /tikz/id etc. These
+		% exceptions need special styles in the /pgfplots root - or I
+		% need to change the .unknown handler. See the available
+		% compatibility styles!
 		\pgfkeysdef{/pgfplots/.unknown}{%
 %\message{In \string\addplot[#1]: I am silently ignoring key `\pgfkeyscurrentkeyRAW' during the preparation phase.}%
 		}%
 		\pgfplotsset{#1}%
 		\pgfplots@validate@plot@domain@arguments
-		\edef\pgfplots@loc@TMPa{%
-			/pgfplots/samples={\pgfplots@plot@samples},% FIXME : samples 2
-			\ifpgfplots@meshmode
-				\ifpgfplots@curplot@threedim
-				\else
-					/pgfplots/mesh/rows=\noexpand\pgfkeysvalueof{/pgfplots/mesh/num points},%
-					/pgfplots/mesh/cols=1,%
-				\fi
-			\fi
-			/pgfplots/samples at={\pgfplots@plot@samples@at},%
-			/pgfplots/domain={\pgfplots@plot@domain}%
-		}%
-		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@nonlegend@options}%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
-		\edef\pgfplots@addplot@nonlegend@options{%
-			\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
 	\fi
 }%
 
@@ -2832,8 +2854,6 @@
 \long\def\pgfplots@addplotimpl@coordinates#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
 % \addplot[#1] [#2] coordinates {#3} #4;
 \long\def\pgfplots@addplotimpl@coordinates@#1#2#3#4{%
-%\tracingmacros=2\tracingcommands=2
-%\pgfplots@message{processing plots coords with trailing path '#4'}%
 	\pgfplots@start@plot@with@behavioroptions{#1,#2}%
 	\pgfplots@PREPARE@COORD@STREAM{#1,#2}{#4}%
 	\ifpgfplots@curplot@threedim
@@ -3789,33 +3809,6 @@
 			\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@coordindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
 		\fi
 		%
-		\if\pgfplotsplothandlermesh@ONEDIMMODE0
-			% ok, normal 2D mesh processing:
-			% Init memory:
-			\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
-			\advance\c@pgfplots@coordindex by1
-			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@coordindex}%
-			%
-			% And now finally: initialise the conversion from 
-			%  LINEARIZED COORD STREAM -> DATA MATRIX:
-			\if\pgfplots@plot@mesh@ordering0
-				% rowwise:
-				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
-			\else
-				% colwise:
-				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
-			\fi
-			%
-			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
-			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
-			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-		\else
-			% Special case: 1D mesh processing
-			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
-			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
-			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-		\fi
-		\c@pgfplots@coordindex=0
 		%
 		% acuiqre the \iftikz@mode@fill \iftikz@mode@draw flags:
 %\message{executing MODE '\meaning\pgfplots@drawmodes'}%
@@ -3849,6 +3842,12 @@
 			% no filling in onedimensional mesh mode.
 			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
 			\if\pgfplotsplothandlermesh@shader2
+				\def\pgfplotsplothandlermesh@shader{1}%
+			\fi
+		\fi
+		\if\pgfplotsplothandlermesh@zbuffer@choice4%
+			\if\pgfplotsplothandlermesh@shader2%
+				\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat mean' will be used.}%
 				\def\pgfplotsplothandlermesh@shader{1}%
 			\fi
 		\fi
@@ -3920,6 +3919,8 @@
 				% 'surf':
 				% very simple: defer work to surf library. Only
 				% provide the mapped colordata.
+				%
+				% This won't be used for 1d mesh plots, see above.
 				\pgfkeyssetvalue{/pgfplots/surf shading/north east corner}{\pgfplotspointbbupperright}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/south west corner}{\pgfplotspointbblowerleft}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/anchor}{\pgfpointorigin}%
@@ -3933,6 +3934,54 @@
 				\pgfplotslibrarysurfstreamstart
 			\fi
 		\fi
+		% PREPARE THE STREAM PROCESSING:
+		\if\pgfplotsplothandlermesh@ONEDIMMODE0
+			% ok, normal 2D mesh processing:
+			% Init memory:
+			\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
+			\advance\c@pgfplots@coordindex by1
+			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@coordindex}%
+			%
+			% And now finally: initialise the conversion from 
+			%  LINEARIZED COORD STREAM -> DATA MATRIX:
+			\if\pgfplots@plot@mesh@ordering0
+				% rowwise:
+				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
+			\else
+				% colwise:
+				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
+			\fi
+			\if2\pgfplotsplothandlermesh@shader
+				% shader=interp  does not support z buffering.
+				% It also has its own \pgf@plotstreampoint method, see
+				% above.
+			\else
+				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
+				\if\pgfplotsplothandlermesh@zbuffer@choice4%
+					% z buffer=sort:
+					% create a z buffer:
+					% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+					\pgfplotsarraynewempty\pgfplots@zbuffer@local
+				\fi
+			\fi
+			%
+			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
+		\else
+			% Special case: 1D mesh processing
+			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
+			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@line
+			\if\pgfplotsplothandlermesh@zbuffer@choice4%
+				% z buffer=sort:
+				% create a z buffer:
+				% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+				\pgfplotsarraynewempty\pgfplots@zbuffer@local
+			\fi
+		\fi
+		\c@pgfplots@coordindex=0
 	}%
 }%
 
@@ -3940,6 +3989,19 @@
 	\ifnum\pgfplotsplothandlermesh@shader=2
 		\pgfplotslibrarysurfstreamend
 		\pgfplotslibrarysurfdrawinpicture
+	\else
+		\if\pgfplotsplothandlermesh@zbuffer@choice4%
+			% z buffer=sort:
+			% process the z buffer:
+			\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
+			\pgfkeysdef{/pgfplots/array/unscope pre}{%
+				\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
+					\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
+				}%
+			}%
+			\pgfkeysdef{/pgfplots/array/unscope post}{}%
+			\pgfplotsarraysort\pgfplots@zbuffer@local
+		\fi
 	\fi
 %	\endscope
 }%
@@ -3981,18 +4043,32 @@
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}% FIXME relies on pgfplots macros
 %\message{##\the\c@pgfplots@coordindex: prepare rectangle with corner \pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\ifnum\c@pgfplots@coordindex>0
-		\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im@jm}%
-		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im@j}%
-		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i@j}%
-		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i@jm}%
-		\pgfplotsplothandlermesh@preparedrawforcurrent
-		\pgfpathclose
-		\pgfplotsplothandlermesh@usepath
+		\if\pgfplotsplothandlermesh@zbuffer@choice4%
+			% z buffer=sort:
+			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+			% assemble array element:
+			\edef\pgfplots@loc@TMPa{%
+				{\pgfmathresult}%
+				{%
+					{\pgfplotsplothandlermesh@im@jm}%
+					{\pgfplotsplothandlermesh@im@j}%
+					{\pgfplotsplothandlermesh@i@j}%
+					{\pgfplotsplothandlermesh@i@jm}%
+				}%
+			}%
+			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+		\else
+			\pgfplotsplothandlermesh@draw@element
+				\pgfplotsplothandlermesh@im@jm
+				\pgfplotsplothandlermesh@im@j
+				\pgfplotsplothandlermesh@i@j
+				\pgfplotsplothandlermesh@i@jm
+		\fi
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
@@ -4005,6 +4081,45 @@
 	\pgfplots@perpointmeta@trafo@APPLY
 	\pgfplotslibrarysurfstreamcoord{#1}{\pgfplotspointmetatransformed}%
 }%
+
+\def\pgfplotsplothandlermesh@draw@zbufferelement#1#2{%
+	\pgfplotsplothandlermesh@draw@element#2\relax
+}%
+% a possible value for \pgfplotsplothandlermesh@draw@element
+\def\pgfplotsplothandlermesh@draw@element@line#1#2{%
+	\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack#1}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#2}%
+	\pgfplotsplothandlermesh@preparedrawforcurrent
+	\pgfplotsplothandlermesh@usepath
+}%
+% a possible value for \pgfplotsplothandlermesh@draw@element
+\def\pgfplotsplothandlermesh@draw@element@rectangle#1#2#3#4{%
+	\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack#1}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#2}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#3}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#4}%
+	\pgfplotsplothandlermesh@preparedrawforcurrent
+	\pgfpathclose
+	\pgfplotsplothandlermesh@usepath
+}%
+
+\def\pgfplotsplothandlermesh@zbuffer@sort@iflessthen#1#2#3#4\pgfeov{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@\pgfplots@loc@TMPa\relax
+	\let\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@a=\pgfmathresult
+	\edef\pgfplots@loc@TMPb{#2}%
+	\expandafter\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@\pgfplots@loc@TMPb\relax
+	\let\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@b=\pgfmathresult
+	\ifdim\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@b pt<\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@a pt%
+		#3\relax
+	\else
+		#4\relax
+	\fi
+}%
+\def\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@#1#2{%
+	\def\pgfmathresult{#1}%
+}%
+
 % #1: projected x coord
 % #2: projected y coord
 % #3: per point meta (if any)
@@ -4024,10 +4139,23 @@
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
 	\ifnum\c@pgfplots@coordindex>0
-		\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@i}%
-		\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack\pgfplotsplothandlermesh@im}%
-		\pgfplotsplothandlermesh@preparedrawforcurrent
-		\pgfplotsplothandlermesh@usepath
+		\if\pgfplotsplothandlermesh@zbuffer@choice4%
+			% z buffer=sort:
+			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+			% assemble array element:
+			\edef\pgfplots@loc@TMPa{%
+				{\pgfmathresult}%
+				{%
+					{\pgfplotsplothandlermesh@i}%
+					{\pgfplotsplothandlermesh@im}%
+				}%
+			}%
+			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+		\else
+			\pgfplotsplothandlermesh@draw@element
+				\pgfplotsplothandlermesh@i
+				\pgfplotsplothandlermesh@im
+		\fi
 	\fi
 	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
 	\advance\c@pgfplots@coordindex by1
@@ -4080,39 +4208,44 @@
 		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
 	\or
 		% sort.
-		\begingroup
-		\def\pgfplots@coord@stream@start{%
-			\pgfplotsarraynewempty\pgfplots@zbuffer@local
-			\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
-			\c@pgfplots@coordindex=0
-			\def\pgfplots@zbuffer@local@SETCUR####1{%
-				\expandafter\pgfplotsarrayset\c@pgfplots@coordindex\of\pgfplots@zbuffer@local\to{####1}%
-			}%
-		}%
-		\def\pgfplots@coord@stream@coord{%
-			\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
-			\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@loc@TMPa}%
-			\advance\c@pgfplots@coordindex by1
-		}%
-		\def\pgfplots@coord@stream@end{%
-			\ifnum\c@pgfplots@coordindex=\numcoords
-			\else
-				\pgfplots@error{INTERNAL LOGIC ERROR: either \string\numcoords=\numcoords\space is wrong or the z buffer algorithm failed.}%
-			\fi
-			\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
-			\pgfkeysdef{/pgfplots/array/unscope pre}{%
-				\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
-				\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
-					\expandafter\pgfplotsapplistXpushback\curelem\to{\pgfp@sortedlist}%
+		\ifpgfplots@meshmode
+			% meshmode handles sort separately!
+			\gdef\pgfplotsretval{#1}%
+		\else
+			\begingroup
+			\def\pgfplots@coord@stream@start{%
+				\pgfplotsarraynewempty\pgfplots@zbuffer@local
+				\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
+				\c@pgfplots@coordindex=0
+				\def\pgfplots@zbuffer@local@SETCUR####1{%
+					\expandafter\pgfplotsarrayset\c@pgfplots@coordindex\of\pgfplots@zbuffer@local\to{####1}%
 				}%
-				\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
-				\global\let\pgfplotsretval=\pgfplots@loc@TMPa
 			}%
-			\pgfkeysdef{/pgfplots/array/unscope post}{}%
-			\pgfplotsarraysort\pgfplots@zbuffer@local
-		}%
-		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
-		\endgroup
+			\def\pgfplots@coord@stream@coord{%
+				\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
+				\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@loc@TMPa}%
+				\advance\c@pgfplots@coordindex by1
+			}%
+			\def\pgfplots@coord@stream@end{%
+				\ifnum\c@pgfplots@coordindex=\numcoords
+				\else
+					\pgfplots@error{INTERNAL LOGIC ERROR: either \string\numcoords=\numcoords\space is wrong or the z buffer algorithm failed.}%
+				\fi
+				\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
+				\pgfkeysdef{/pgfplots/array/unscope pre}{%
+					\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
+					\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
+						\expandafter\pgfplotsapplistXpushback\curelem\to{\pgfp@sortedlist}%
+					}%
+					\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
+					\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+				}%
+				\pgfkeysdef{/pgfplots/array/unscope post}{}%
+				\pgfplotsarraysort\pgfplots@zbuffer@local
+			}%
+			\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+			\endgroup
+		\fi
 	\fi
 	\let\pgfplots@coord@stream@start=\pgfplots@apply@zbuffer@start@BACKUP
 	\let\pgfplots@coord@stream@end=\pgfplots@apply@zbuffer@end@BACKUP
@@ -4124,10 +4257,10 @@
 \def\pgfplots@apply@zbuffer@SORT@iflessthan#1#2#3#4\pgfeov{%
 	\edef\pgfplots@loc@TMPa{#1}%
 	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPa\relax
-	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfplotslocretval
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfmathresult
 	\edef\pgfplots@loc@TMPb{#2}%
 	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPb\relax
-	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfplotslocretval
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfmathresult
 	\pgfmathfloatlessthan@{\pgfplots@apply@zbuffer@SORT@iflessthan@b}{\pgfplots@apply@zbuffer@SORT@iflessthan@a}%
 	\ifpgfmathfloatcomparison
 		#3\relax
@@ -4136,9 +4269,22 @@
 	\fi
 }%
 
+% returns the view depth of the provided serialized coordinate into
+% \pgfmathresult
+%
 % FIXME : relies on the internal repr in
 % \pgfplots@coord@stream@foreach@NORMALIZED :
 \def\pgfplots@apply@zbuffer@SORT@iflessthan@#1,#2,#3,#4;{%
+	\pgfplotsmathcomputeviewdepth{#1}{#2}{#3}%
+}%
+
+% Defines \pgfmathresult to be the view depth of a three component
+% vector. The third component will be used if and only if the boolean
+% \ifpgfplots@curplot@threedim is true.
+% The return value will be assigned in floating point.
+%
+% @see \pgfplotsmathcomputeviewdepthfixed
+\def\pgfplotsmathcomputeviewdepth#1#2#3{%
 	% FIXME : that operates only in float. Provide special cases for
 	% fixed!
 	\pgfmathfloatmultiplyfixed@{#1}{\pgfplots@view@dir@threedim@x}%
@@ -4151,6 +4297,24 @@
 		\pgfmathfloatmultiplyfixed@{#3}{\pgfplots@view@dir@threedim@z}%
 		\let\pgfplots@loc@TMPc=\pgfmathresult
 		\pgfmathfloatadd@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+	\fi
+	\let\pgfplotslocretval=\pgfplots@loc@TMPb
+}%
+
+% Similar to \pgfplotsmathcomputeviewdepth, but this always relies on
+% fixed point arithmetics.
+\def\pgfplotsmathcomputeviewdepthfixed#1#2#3{%
+	\pgfmath@basic@multiply@{#1}{\pgfplots@view@dir@threedim@x}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfmath@basic@multiply@{#2}{\pgfplots@view@dir@threedim@y}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfmath@basic@add@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfmath@basic@multiply@{#3}{\pgfplots@view@dir@threedim@z}%
+		\let\pgfplots@loc@TMPc=\pgfmathresult
+		\pgfmath@basic@add@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
 		\let\pgfplots@loc@TMPb=\pgfmathresult
 	\fi
 	\let\pgfplotslocretval=\pgfplots@loc@TMPb
