@@ -81,19 +81,26 @@
 % \pgfplotspointonorientedsurfaceN.
 %
 % Example:
-% \pgfplotspointonorientedsurfaceabsetupforxyz{0}
+% \pgfplotspointonorientedsurfaceabsetupforxyz
+% \pgfplotspointonorientedsurfaceabsetupforsetz{<lower z limit>}{0}
+%
 % ->
 %  \pgfplotspointonorientedsurfaceA = x
 %  \pgfplotspointonorientedsurfaceB = y
 %  \pgfplotspointonorientedsurfaceN = z
-%  \pgfplotspointonorientedsurfaceab{3}{4} = \pgfqpointxyz{3}{4}{0}
+%  \pgfplotspointonorientedsurfacespec = {ab0}
+%  \pgfplotspointonorientedsurfacespecunordered = {vv0}
+%  \pgfplotspointonorientedsurfaceab{3}{4} =\pgfqpointxyz{3}{4}{<lower z limit>}
 %
-% \pgfplotspointonorientedsurfaceabsetupforyxz{0}
+% \pgfplotspointonorientedsurfaceabsetupforyxz
+% \pgfplotspointonorientedsurfaceabsetupforsetz{<lower z limit>}{0}
 % ->
 %  \pgfplotspointonorientedsurfaceA = y
 %  \pgfplotspointonorientedsurfaceB = x
 %  \pgfplotspointonorientedsurfaceN = z
-%  \pgfplotspointonorientedsurfaceab{3}{4} = \pgfqpointxyz{4}{3}{0}
+%  \pgfplotspointonorientedsurfacespec = {ba0}
+%  \pgfplotspointonorientedsurfacespecunordered = {vv0}
+%  \pgfplotspointonorientedsurfaceab{3}{4} =\pgfqpointxyz{4}{3}{<lower z limit>}
 %
 % @see \pgfplotspointonorientedsurfaceabsetupforxyz
 \def\pgfplotspointonorientedsurfaceab#1#2{%
@@ -231,9 +238,27 @@
 % - b=2: 'v02'
 %
 % To check which of them should be drawn, this macro here converts 'a'
-% to 'v' and 'b' to '#1'.
+% to 'v' and 'b' to '#1'. The remaining possible character will be
+% copied as-is.
 %
 % The resulting three-character-string is written into '#2'.
+%
+% #1 : the replacement value which will be inserted instead of 'b' in
+% the currently active oriented surface.
+% #2 : the macro which will contain the output axis line specification
+% (three-char-string).
+% 
+% Example:
+% \pgfplotspointonorientedsurfaceabsetupforxyz
+% \pgfplotspointonorientedsurfaceabsetupforsetz{<lower z limit>}{0}
+% -> the oriented surface is 'ab0'
+%  ...
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{0}\pgfplotslocretval
+% -> \pgfplotslocretval = 'v00'
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{1}\pgfplotslocretval
+% -> \pgfplotslocretval = 'v10'
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{2}\pgfplotslocretval
+% -> \pgfplotslocretval = 'v20'
 \def\pgfplotspointonorientedsurfaceabgetcontainedaxisline#1#2{%
 	\expandafter\pgfplotspointonorientedsurfaceabgetcontainedaxisline@\pgfplotspointonorientedsurfacespec\relax{#1}%
 	\let#2=\pgfplots@loc@TMPa
@@ -287,6 +312,74 @@
 			\def#5{#1vv}%
 		\fi
 	\fi
+}%
+
+% Executes code '#2' if the axis surface denoted by the
+% three-character-string '#1' is a foreground surface and code '#3' if
+% the surface '#1' is a background surface.
+%
+% #1: a three-char-string with the keys 
+% 	'v' = 'varying', 
+% 	'0' = 'lower axis limit',
+% 	'1' = 'upper axis limit'.
+% 	The string 'v0v' means that x and z are varying in that surface
+% 	and 'y' is fixed to the lower axis limit.
+% #2: code to execute if '#1' is foreground.
+% #3: code to execute if '#1' is background.
+\def\pgfplotsifaxissurfaceisforeground#1#2#3{%
+	\pgfutil@ifundefined{pgfplots@surfenabled@#1}{%
+		\pgfplots@error{\string\pgfplotsifaxissurfaceisforeground{#1}: undefined three-character-string '#1' provided.}%
+	}{%
+		\if0\csname pgfplots@surfenabled@#1\endcsname #2\else #3\fi
+	}%
+}%
+
+% As \pgfplotsifaxissurfaceisforeground, but for axis lines.
+%
+% #1: a three-character string with the same keys as in
+% \pgfplotsifaxissurfaceisforeground. However, there should be only
+% one varying direction as we are dealing with an axis line.
+% #2: code to execute if '#1' is foreground.
+% #3: code to execute if '#1' is background.
+%
+\def\pgfplotsifaxislineisforeground#1#2#3{%
+	\pgfplotsgetadjacentsurfsforaxisline#1\to\pgfplots@loc@TMPb\pgfplots@loc@TMPc
+	\if1\csname pgfplots@surfenabled@\pgfplots@loc@TMPb\endcsname
+		#2%
+	\else
+		\if1\csname pgfplots@surfenabled@\pgfplots@loc@TMPc\endcsname
+			#2%
+		\else
+			#3%
+		\fi
+	\fi
+}%
+% Executes code '#2' if the axis surface denoted by the
+% three-char-string '#1' is on the convex hull of the projected axis
+% cube or code '#3' if that is not the case.
+%
+% The arguments are the same as for \pgfplotsifaxislineisforeground:
+% #1: a three-character string with the same keys as in
+% \pgfplotsifaxissurfaceisforeground. However, there should be only
+% one varying direction as we are dealing with an axis line.
+% #2: code to execute if '#1' is foreground.
+% #3: code to execute if '#1' is background.
+\def\pgfplotsifaxislineisonconvexhull#1#2#3{%
+	\pgfplotsgetadjacentsurfsforaxisline#1\to\pgfplots@loc@TMPb\pgfplots@loc@TMPc
+	% '#1' is on the convex hull if ONE of the adjacent surfs is
+	% foreground and the other one is background.
+	\pgfplots@loc@tmpfalse
+	\if0\csname pgfplots@surfenabled@\pgfplots@loc@TMPb\endcsname
+		\if1\csname pgfplots@surfenabled@\pgfplots@loc@TMPc\endcsname
+			\pgfplots@loc@tmptrue
+		\fi
+	\fi
+	\if1\csname pgfplots@surfenabled@\pgfplots@loc@TMPb\endcsname
+		\if0\csname pgfplots@surfenabled@\pgfplots@loc@TMPc\endcsname
+			\pgfplots@loc@tmptrue
+		\fi
+	\fi
+	\ifpgfplots@loc@tmp #2\else #3\fi
 }%
 
 % Executes code '#2' if the axis line with 'b=#1' on the current
