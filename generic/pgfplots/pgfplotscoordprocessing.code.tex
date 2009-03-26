@@ -1467,7 +1467,7 @@
 		\E\fi
 		%
 		% increase \pgfplots@current@point@coordindex:
-		\E\pgfplotsutil@advancestringcounter\E\pgfplots@current@point@coordindex
+		\E\advance\E\c@pgfplots@coordindex by1
 	}%
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\endgroup
@@ -1540,6 +1540,10 @@
 					\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
 					\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
+					% \pgfplots@current@point@coordindex will always contain the current index.
+					% Maybe overwritten if not provided using \c@pgfplots@coordindex.
+					\noexpand\def\noexpand\pgfplots@current@point@coordindex{\noexpand\the\noexpand\c@pgfplots@coordindex}%
+					\noexpand\def\noexpand\coordindex{\noexpand\pgfplots@current@point@coordindex}% valid inside of \addplot
 					%
 					% save the possibly prepare/adjusted plot
 					% variables:
@@ -2025,15 +2029,7 @@
 \long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] (#3,#4) #5;
 \long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
-	\ifpgfplots@usefpu
-		\pgfkeys{/pgf/fpu=true}%
-		% FIXME : enable or disable FPU in current plot style!?
-		%\def\pgfplots@loc@TMPa{/pgf/fpu=true}%
-		\let\pgfplots@loc@TMPa=\pgfutil@empty
-	\else
-		\let\pgfplots@loc@TMPa=\pgfutil@empty
-	\fi
-	\expandafter\pgfplots@start@plot@with@behavioroptions\expandafter{\pgfplots@loc@TMPa,#1,#2,/pgfplots/mesh/ordering/rowwise}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/mesh/ordering/rowwise}%
 	%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
@@ -2727,10 +2723,32 @@
 % It has linear complexity in the number of rows (as long as the
 % number of rows is less than about 110000).
 %
+% Input can be provided using
+% - column names, 
+%   	for example '/pgfplots/table/x=firstcol'
+% - column indices,
+%   	for example '/pgfplots/table/x index=3'
+% - expressions involving any of the table's data cells in the
+%   currently processed cell,
+%   	for example '/pgfplots/table/x expr={\x * \y +	\thisrow{columnxxx}/2'
+%   During expr, the following (non-exhaustive) list of macros is
+%   available:
+%   	- \x, \y, \z, \meta, \errorx, \errory, \errorz
+%   	 denote the input coordinate columns, the meta column (if any) and
+%   	 configured, the error data (if any). It is allowed to provide
+%   	 both, 'x' and 'x expr'.
+%   	- \coordindex 
+%   	- \lineno
+%   	- \thisrow{<colname>}
+%   	- \getthisrow{<colname>}{<\macro>}
+%   The FPU will be used to generate content.
+%   FIXME : this does only work for direct file input up to now.
+%
 % #1: arguments to \addplot[...]
 % #2: arguments to table[...]
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
+%
 \long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{\pgfplots@addplotimpl@table@startprocessing{#1}{#2}{#3}{#4}}%
 % \addplot[#1] table[#2] {#3} {#4};
 \long\def\pgfplots@addplotimpl@table@fromfile@#1#2#3#4{%
@@ -2752,34 +2770,51 @@
 		\endgroup
 	\else
 		\pgfplotsapplistXXglobalnewempty
-		\pgfkeysgetvalue{/pgfplots/table/x}{\pgfplots@plot@tbl@x}%
-		\pgfkeysgetvalue{/pgfplots/table/x index}{\pgfplots@plot@tbl@xindex}%
-		\pgfkeysgetvalue{/pgfplots/table/y}{\pgfplots@plot@tbl@y}%
-		\pgfkeysgetvalue{/pgfplots/table/y index}{\pgfplots@plot@tbl@yindex}%
-		\pgfkeysgetvalue{/pgfplots/table/z}{\pgfplots@plot@tbl@z}%
-		\pgfkeysgetvalue{/pgfplots/table/z index}{\pgfplots@plot@tbl@zindex}%
-		\pgfkeysgetvalue{/pgfplots/table/meta}{\pgfplots@plot@tbl@meta}%
-		\pgfkeysgetvalue{/pgfplots/table/meta index}{\pgfplots@plot@tbl@metaindex}%
+		%
+		% these data pointers will be prepared to allow fast access
+		% into the current row while we read rows succesively from
+		% disk.
+		% Note: their initialisation must be postponed until
+		% \pgfplotstableread is running - otherwise, we can't query
+		% pointers into the table. See below.
 		\let\pgfplots@table@PTR@x=\pgfutil@empty
 		\let\pgfplots@table@PTR@y=\pgfutil@empty
 		\let\pgfplots@table@PTR@z=\pgfutil@empty
 		\let\pgfplots@table@PTR@meta=\pgfutil@empty
+		%
+		%
 		\let\pgfplots@current@point@meta=\pgfutil@empty
 		\let\pgfplots@current@point@z=\pgfutil@empty
+		%
+		% high level user interface functions:
+		\def\coordindex{\pgfplotstablerow}%
+		\def\lineno{\pgfplotstablelineno}%
+		\def\x{\pgfplotstablereadvalueofptr{\pgfplots@table@PTR@x}}%
+		\def\y{\pgfplotstablereadvalueofptr{\pgfplots@table@PTR@y}}%
+		\def\z{\pgfplotstablereadvalueofptr{\pgfplots@table@PTR@z}}%
+		\def\meta{\pgfplotstablereadvalueofptr{\pgfplots@table@PTR@meta}}%
+		%
 		\ifpgfplots@errorbars@enabled
+			% more fast-access pointers for error data:
 			\let\pgfplots@table@ERRPTR@x=\pgfutil@empty
 			\let\pgfplots@table@ERRPTR@y=\pgfutil@empty
 			\let\pgfplots@table@ERRPTR@z=\pgfutil@empty
-			\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
-			\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
-			\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
-			\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
-			\pgfkeysgetvalue{/pgfplots/table/z error index}\pgfplots@plot@tbl@error@zindex
-			\pgfkeysgetvalue{/pgfplots/table/z error}\pgfplots@plot@tbl@error@z
+			%
+			% prepare:
+			\let\pgfplots@current@point@x@error=\pgfutil@empty
+			\let\pgfplots@current@point@y@error=\pgfutil@empty
+			\let\pgfplots@current@point@z@error=\pgfutil@empty
+			%
+			% high level user interface functions:
+			\def\errorx{\pgfplotstablereadvalueofptr{\pgfplots@table@ERRPTR@x}}%
+			\def\errory{\pgfplotstablereadvalueofptr{\pgfplots@table@ERRPTR@y}}%
+			\def\errorz{\pgfplotstablereadvalueofptr{\pgfplots@table@ERRPTR@z}}%
+			%
 			\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL
 		\else
 			\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 		\fi
+		% FIXME : i'd be glad if I could save this group: check why not
 		\endgroup
 		%
 		\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
@@ -2809,96 +2844,208 @@
 	}%
 	\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
 }
-\def\pgfplots@addplotimpl@table@fromfile@listener@{%
-	\ifx\pgfplots@table@PTR@x\pgfutil@empty
-		% this here is only evaluated ONCE.
-		\ifx\pgfplots@plot@tbl@x\pgfutil@empty
-			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@table@PTR@x}%
-		\else
-			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@x}{\pgfplots@table@PTR@x}%
-		\fi
-		\ifx\pgfplots@plot@tbl@y\pgfutil@empty
-			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@table@PTR@y}%
-		\else
-			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@y}{\pgfplots@table@PTR@y}%
-		\fi
-		\ifpgfplots@curplot@threedim
-			\ifx\pgfplots@plot@tbl@z\pgfutil@empty
-				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@zindex}{\pgfplots@table@PTR@z}%
-			\else
-				\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@z}{\pgfplots@table@PTR@z}%
-			\fi
-		\fi
-		\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
-			\ifx\pgfplots@plot@tbl@metaindex\pgfutil@empty
-			\else
-				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@metaindex}{\pgfplots@table@PTR@meta}%
-			\fi
-		\else
-			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@meta}{\pgfplots@table@PTR@meta}%
-		\fi
-	\fi
-	\pgfplotstablereadevalptr\pgfplots@table@PTR@x\pgfplots@current@point@x
-	\pgfplotstablereadevalptr\pgfplots@table@PTR@y\pgfplots@current@point@y
-	\ifpgfplots@curplot@threedim
-		\pgfplotstablereadevalptr\pgfplots@table@PTR@z\pgfplots@current@point@z
-	\fi
-	\ifx\pgfplots@table@PTR@meta\pgfutil@empty
+\def\pgfplots@addplotimpl@table@fromfile@listener@PREPARE{%
+	% this here is only evaluated ONCE.
+	\pgfkeysgetvalue{/pgfplots/table/x}{\pgfplots@plot@tbl@x}%
+	\pgfkeysgetvalue{/pgfplots/table/x index}{\pgfplots@plot@tbl@xindex}%
+	\pgfkeysgetvalue{/pgfplots/table/y}{\pgfplots@plot@tbl@y}%
+	\pgfkeysgetvalue{/pgfplots/table/y index}{\pgfplots@plot@tbl@yindex}%
+	\pgfkeysgetvalue{/pgfplots/table/z}{\pgfplots@plot@tbl@z}%
+	\pgfkeysgetvalue{/pgfplots/table/z index}{\pgfplots@plot@tbl@zindex}%
+	\pgfkeysgetvalue{/pgfplots/table/meta}{\pgfplots@plot@tbl@meta}%
+	\pgfkeysgetvalue{/pgfplots/table/meta index}{\pgfplots@plot@tbl@metaindex}%
+	%
+	\pgfkeysgetvalue{/pgfplots/table/x expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@dereferencepointer@and@ASSIGN@x{%
+			\pgfplotstablereadevalptr\pgfplots@table@PTR@x\pgfplots@current@point@x
+		}%
 	\else
-		\pgfplotstablereadevalptr\pgfplots@table@PTR@meta\pgfplots@current@point@meta
+		\def\pgfplots@dereferencepointer@and@ASSIGN@x{%
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/x expr}}%
+			\let\pgfplots@current@point@x=\pgfmathresult
+		}%
 	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/table/y expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@dereferencepointer@and@ASSIGN@y{%
+			\pgfplotstablereadevalptr\pgfplots@table@PTR@y\pgfplots@current@point@y
+		}%
+	\else
+		\def\pgfplots@dereferencepointer@and@ASSIGN@y{%
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/y expr}}%
+			\let\pgfplots@current@point@y=\pgfmathresult
+		}%
+	\fi
+	%
+	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
+		\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@xindex}{\pgfplots@table@PTR@x}%
+	\else
+		\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@x}{\pgfplots@table@PTR@x}%
+	\fi
+	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
+		\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@yindex}{\pgfplots@table@PTR@y}%
+	\else
+		\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@y}{\pgfplots@table@PTR@y}%
+	\fi
+	\ifpgfplots@curplot@threedim
+		%
+		\pgfkeysgetvalue{/pgfplots/table/z expr}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\def\pgfplots@dereferencepointer@and@ASSIGN@z{%
+				\pgfplotstablereadevalptr\pgfplots@table@PTR@z\pgfplots@current@point@z
+			}%
+		\else
+			\def\pgfplots@dereferencepointer@and@ASSIGN@z{%
+				\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/z expr}}%
+				\let\pgfplots@current@point@z=\pgfmathresult
+			}%
+		\fi
+		\ifx\pgfplots@plot@tbl@z\pgfutil@empty
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@zindex}{\pgfplots@table@PTR@z}%
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@z}{\pgfplots@table@PTR@z}%
+		\fi
+	\else
+		\let\pgfplots@dereferencepointer@and@ASSIGN@z=\relax
+	\fi
+	%
+	%
+	\def\pgfplots@dereferencepointer@and@ASSIGN@meta{%
+		\pgfplotstablereadevalptr\pgfplots@table@PTR@meta\pgfplots@current@point@meta
+	}%
+	\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
+		\ifx\pgfplots@plot@tbl@metaindex\pgfutil@empty
+			\let\pgfplots@dereferencepointer@and@ASSIGN@meta=\relax
+		\else
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@metaindex}{\pgfplots@table@PTR@meta}%
+		\fi
+	\else
+		\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@meta}{\pgfplots@table@PTR@meta}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/meta expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\def\pgfplots@dereferencepointer@and@ASSIGN@meta{%
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/meta expr}}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		}%
+	\fi
+	\let\pgfplots@addplotimpl@table@fromfile@listener@PREPARE=\relax
 }%
+\def\pgfplots@addplotimpl@table@fromfile@listener@{%
+	\pgfplots@addplotimpl@table@fromfile@listener@PREPARE
+	\pgfplots@dereferencepointer@and@ASSIGN@x
+	\pgfplots@dereferencepointer@and@ASSIGN@y
+	\pgfplots@dereferencepointer@and@ASSIGN@z
+	\pgfplots@dereferencepointer@and@ASSIGN@meta
+}%
+\def\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL@prepare{%
+	% this here is only evaluated ONCE.
+	\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
+	\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
+	\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
+	\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
+	\pgfkeysgetvalue{/pgfplots/table/z error index}\pgfplots@plot@tbl@error@zindex
+	\pgfkeysgetvalue{/pgfplots/table/z error}\pgfplots@plot@tbl@error@z
+	%
+	\def\pgfplots@dereferencepointer@and@ASSIGN@error@x{%
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@x\pgfplots@current@point@x@error
+	}%
+	\def\pgfplots@dereferencepointer@and@ASSIGN@error@y{%
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@y\pgfplots@current@point@y@error
+	}%
+	\def\pgfplots@dereferencepointer@and@ASSIGN@error@z{%
+		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@z\pgfplots@current@point@z@error
+	}%
+	%
+	\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+		\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
+			\let\pgfplots@table@ERRPTR@x=\relax%
+			\let\pgfplots@dereferencepointer@and@ASSIGN@error@x=\relax
+		\else
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@xindex}{\pgfplots@table@ERRPTR@x}%
+		\fi
+	\else
+		\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@x}{\pgfplots@table@ERRPTR@x}%
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/table/x error expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@dereferencepointer@and@ASSIGN@error@x{%
+			\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@x\pgfplots@current@point@x@error
+		}%
+	\else
+		\def\pgfplots@dereferencepointer@and@ASSIGN@error@x{%
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/x error expr}}%
+			\let\pgfplots@current@point@x@error=\pgfmathresult
+		}%
+	\fi
+	%
+	%
+	\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+		\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
+			\let\pgfplots@table@ERRPTR@y=\relax%
+			\let\pgfplots@dereferencepointer@and@ASSIGN@error@y=\relax
+		\else
+			\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@yindex}{\pgfplots@table@ERRPTR@y}%
+		\fi
+	\else
+		\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@y}{\pgfplots@table@ERRPTR@y}%
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/table/y error expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@dereferencepointer@and@ASSIGN@error@y{%
+			\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@y\pgfplots@current@point@y@error
+		}%
+	\else
+		\def\pgfplots@dereferencepointer@and@ASSIGN@error@y{%
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/y error expr}}%
+			\let\pgfplots@current@point@y@error=\pgfmathresult
+		}%
+	\fi
+	%
+	%
+	\ifpgfplots@curplot@threedim
+		\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
+			\ifx\pgfplots@plot@tbl@error@zindex\pgfutil@empty
+				\let\pgfplots@table@ERRPTR@z=\relax%
+				\let\pgfplots@dereferencepointer@and@ASSIGN@error@z=\relax
+			\else
+				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@zindex}{\pgfplots@table@ERRPTR@z}%
+			\fi
+		\else
+			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@z}{\pgfplots@table@ERRPTR@z}%
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/table/z error expr}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\def\pgfplots@dereferencepointer@and@ASSIGN@error@z{%
+				\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@z\pgfplots@current@point@z@error
+			}%
+		\else
+			\def\pgfplots@dereferencepointer@and@ASSIGN@error@z{%
+				\pgfmathparse{\pgfkeysvalueof{/pgfplots/table/z error expr}}%
+				\let\pgfplots@current@point@z@error=\pgfmathresult
+			}%
+		\fi
+		%
+		%
+	\else
+		\let\pgfplots@dereferencepointer@and@ASSIGN@error@z=\relax
+	\fi
+	\let\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL@prepare=\relax
+}
 \def\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
+	\pgfplots@addplotimpl@table@fromfile@listener@witherrors@COLLECTHIGHLEVEL@prepare
 	%
-	\ifx\pgfplots@table@ERRPTR@x\pgfutil@empty
-		% this here is only evaluated ONCE.
-		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
-			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
-				\let\pgfplots@table@ERRPTR@x=\relax%
-			\else
-				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@xindex}{\pgfplots@table@ERRPTR@x}%
-			\fi
-		\else
-			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@x}{\pgfplots@table@ERRPTR@x}%
-		\fi
-		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
-			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
-				\let\pgfplots@table@ERRPTR@y=\relax%
-			\else
-				\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@yindex}{\pgfplots@table@ERRPTR@y}%
-			\fi
-		\else
-			\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@y}{\pgfplots@table@ERRPTR@y}%
-		\fi
-		\ifpgfplots@curplot@threedim
-			\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
-				\ifx\pgfplots@plot@tbl@error@zindex\pgfutil@empty
-					\let\pgfplots@table@ERRPTR@z=\relax%
-				\else
-					\pgfplotstablereadgetptrtocolindex{\pgfplots@plot@tbl@error@zindex}{\pgfplots@table@ERRPTR@z}%
-				\fi
-			\else
-				\pgfplotstablereadgetptrtocolname{\pgfplots@plot@tbl@error@z}{\pgfplots@table@ERRPTR@z}%
-			\fi
-		\fi
-	\fi
-	\ifx\relax\pgfplots@table@ERRPTR@x
-		\let\pgfplots@current@point@x@error=\pgfutil@empty
-	\else
-		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@x\pgfplots@current@point@x@error
-	\fi
-	\ifx\relax\pgfplots@table@ERRPTR@y
-		\let\pgfplots@current@point@y@error=\pgfutil@empty
-	\else
-		\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@y\pgfplots@current@point@y@error
-	\fi
+	\pgfplots@dereferencepointer@and@ASSIGN@error@x
+	\pgfplots@dereferencepointer@and@ASSIGN@error@y
 	\ifpgfplots@curplot@threedim
-		\ifx\relax\pgfplots@table@ERRPTR@z
-			\let\pgfplots@current@point@z@error=\pgfutil@empty
-		\else
-			\pgfplotstablereadevalptr\pgfplots@table@ERRPTR@z\pgfplots@current@point@z@error
-		\fi
+		\pgfplots@dereferencepointer@and@ASSIGN@error@z
 		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error,\pgfplots@current@point@z@error) [\pgfplots@current@point@meta]}%
 	\else
 		\edef\pgfplots@current@point{(\pgfplots@current@point@x,\pgfplots@current@point@y)+-(\pgfplots@current@point@x@error,\pgfplots@current@point@y@error) [\pgfplots@current@point@meta]}%
@@ -2917,8 +3064,12 @@
 %   immediately.
 \def\pgfplots@start@plot@with@behavioroptions#1{%
 	%\begingroup%<-- has been moved to \pgfplots@addplotimpl@plot@withoptions
-	\def\pgfplots@current@point@coordindex{0}% can be used inside of coordinate filters.
+	\c@pgfplots@coordindex=0
+	\def\pgfplots@current@point@coordindex{\the\c@pgfplots@coordindex}% can be used inside of coordinate filters.
 	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
+	\ifpgfplots@usefpu
+		\pgfkeys{/pgf/fpu=true}%
+	\fi
 	\ifx\pgfplots@execute@at@begin@plot\pgfutil@empty
 	\else
 		\pgfplots@execute@at@begin@plot
@@ -3066,7 +3217,9 @@
 % this is a convenience macro to save storage in the long coordinate
 % lists.
 \def\pgfplots@stream#1#2{\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
+\def\pgfplots@stream@#1#2#3{\def\pgfplots@current@point@coordindex{#1}\pgfplots@stream{#2}{#3}}
 \def\pgfplots@stream@withmeta#1#2#3{\def\pgfplots@current@point@meta{#3}\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
+\def\pgfplots@stream@withmeta@#1#2#3#4{\def\pgfplots@current@point@coordindex{#1}\pgfplots@stream@withmeta{#2}{#3}{#4}}
 
 \newif\ifpgfplots@record@marker@stream
 % Takes a sequence of PREPARED coordinates which are given in floating
@@ -3140,6 +3293,7 @@
 			}%
 		\else
 		\fi
+		\c@pgfplots@coordindex=0
 	}%
 	\def\pgfplots@coord@stream@end@{%
 		\ifpgfplots@apply@datatrafo
@@ -3168,11 +3322,11 @@
 		\ifnum\pgfplots@perpointmeta@choice=0
 			% we don't have per-point meta data. Nothing special to
 			% do:
-			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
 			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
 		\else
 			% Ok, then we need to process the meta data as well:
-			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@withmeta{\E\the\E\pgf@x}{\E\the\E\pgf@y}{\E\pgfplots@current@point@meta}}%
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@withmeta@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}{\E\pgfplots@current@point@meta}}%
 			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
 		\fi
 	}%
@@ -3223,6 +3377,7 @@
 			\E\fi
 		\fi
 		\E\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
+		\advance\c@pgfplots@coordindex by1
 	}%
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\endgroup
@@ -3912,8 +4067,8 @@
 			\fi
 		\fi
 		\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-			\c@pgfplots@coordindex=\pgfplotsplothandlermesh@rows\relax
-			\multiply\c@pgfplots@coordindex by \pgfplotsplothandlermesh@cols\relax
+			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
+			\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
 			\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
 		\fi
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
@@ -3923,11 +4078,11 @@
 		\ifnum\pgfplotsplothandlermesh@rows=1
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
-		\c@pgfplots@coordindex=\pgfplotsplothandlermesh@rows\relax
-		\multiply\c@pgfplots@coordindex by\pgfplotsplothandlermesh@cols\relax
-		\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@numpoints\relax
+		\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
+		\multiply\c@pgfplots@scanlineindex by\pgfplotsplothandlermesh@cols\relax
+		\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@numpoints\relax
 		\else
-			\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@coordindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
+			\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@scanlineindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
 		\fi
 		%
 		%
@@ -4059,9 +4214,9 @@
 		\if\pgfplotsplothandlermesh@ONEDIMMODE0
 			% ok, normal 2D mesh processing:
 			% Init memory:
-			\c@pgfplots@coordindex=\pgfplotsplothandlermesh@cols\relax
-			\advance\c@pgfplots@coordindex by1
-			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@coordindex}%
+			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@cols\relax
+			\advance\c@pgfplots@scanlineindex by1
+			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
 			%
 			% And now finally: initialise the conversion from 
 			%  LINEARIZED COORD STREAM -> DATA MATRIX:
@@ -4102,7 +4257,7 @@
 				\pgfplotsarraynewempty\pgfplots@zbuffer@local
 			\fi
 		\fi
-		\c@pgfplots@coordindex=0
+		\c@pgfplots@scanlineindex=0
 	}%
 }%
 
@@ -4132,11 +4287,11 @@
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
-	\advance\c@pgfplots@coordindex by1
-	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@scanlinelength\relax
+	\advance\c@pgfplots@scanlineindex by1
+	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
 		% second line!
 		\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@draw%%
-		\c@pgfplots@coordindex=0
+		\c@pgfplots@scanlineindex=0
 	\fi
 }%
 
@@ -4165,10 +4320,10 @@
 	% 	'jm == (j-1)'
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}% FIXME relies on pgfplots macros
-%\message{##\the\c@pgfplots@coordindex: prepare rectangle with corner \pgfplotsplothandlermesh@i@j.}%
+%\message{##\the\c@pgfplots@scanlineindex: prepare rectangle with corner \pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
-	\ifnum\c@pgfplots@coordindex>0
+	\ifnum\c@pgfplots@scanlineindex>0
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
 			% z buffer=sort:
 			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
@@ -4193,9 +4348,9 @@
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
-	\advance\c@pgfplots@coordindex by1
-	\ifnum\c@pgfplots@coordindex=\pgfplotsplothandlermesh@scanlinelength\relax
-		\c@pgfplots@coordindex=0
+	\advance\c@pgfplots@scanlineindex by1
+	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+		\c@pgfplots@scanlineindex=0
 	\fi
 }%
 \def\pgfplotsplothandlermesh@draw@lowlevelsurf#1{%
@@ -4259,7 +4414,7 @@
 \def\pgfplotsplothandlermesh@ONEDIM@draw#1{%
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
-	\ifnum\c@pgfplots@coordindex>0
+	\ifnum\c@pgfplots@scanlineindex>0
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
 			% z buffer=sort:
 			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
@@ -4279,7 +4434,7 @@
 		\fi
 	\fi
 	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
-	\advance\c@pgfplots@coordindex by1
+	\advance\c@pgfplots@scanlineindex by1
 }%
 
 % #1: a normalized coordinate stream.
@@ -4337,18 +4492,18 @@
 			\def\pgfplots@coord@stream@start{%
 				\pgfplotsarraynewempty\pgfplots@zbuffer@local
 				\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
-				\c@pgfplots@coordindex=0
+				\c@pgfplots@scanlineindex=0
 				\def\pgfplots@zbuffer@local@SETCUR####1{%
-					\expandafter\pgfplotsarrayset\c@pgfplots@coordindex\of\pgfplots@zbuffer@local\to{####1}%
+					\expandafter\pgfplotsarrayset\c@pgfplots@scanlineindex\of\pgfplots@zbuffer@local\to{####1}%
 				}%
 			}%
 			\def\pgfplots@coord@stream@coord{%
 				\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
 				\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@loc@TMPa}%
-				\advance\c@pgfplots@coordindex by1
+				\advance\c@pgfplots@scanlineindex by1
 			}%
 			\def\pgfplots@coord@stream@end{%
-				\ifnum\c@pgfplots@coordindex=\numcoords
+				\ifnum\c@pgfplots@scanlineindex=\numcoords
 				\else
 					\pgfplots@error{INTERNAL LOGIC ERROR: either \string\numcoords=\numcoords\space is wrong or the z buffer algorithm failed.}%
 				\fi

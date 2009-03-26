@@ -94,18 +94,25 @@
 	/pgfplots/table/header=true,
 	/pgfplots/table/x index/.initial=0,
 	/pgfplots/table/x/.initial=,
+	/pgfplots/table/x expr/.initial=,
 	/pgfplots/table/y index/.initial=1,
 	/pgfplots/table/y/.initial=,
+	/pgfplots/table/y expr/.initial=,
 	/pgfplots/table/z index/.initial=2,
 	/pgfplots/table/z/.initial=,
+	/pgfplots/table/z expr/.initial=,
 	/pgfplots/table/meta index/.initial=,
 	/pgfplots/table/meta/.initial=,
+	/pgfplots/table/meta expr/.initial=,
 	/pgfplots/table/x error index/.initial=,
 	/pgfplots/table/y error index/.initial=,
 	/pgfplots/table/z error index/.initial=,
 	/pgfplots/table/x error/.initial=,
 	/pgfplots/table/y error/.initial=,
 	/pgfplots/table/z error/.initial=,
+	/pgfplots/table/x error expr/.initial=,
+	/pgfplots/table/y error expr/.initial=,
+	/pgfplots/table/z error expr/.initial=,
 	/pgfplots/table/read completely/.is if=pgfplots@addplotimpl@readcompletely,
 	/pgfplots/table/read completely/.default=true,
 	/pgfplots/table/disable rowcol styles/.is if=pgfplotstable@disable@rowcolstyles,
@@ -927,6 +934,10 @@
 % following methods can be used to query values:
 %   \pgfplotstablereadgetcolindex{<index>}{<\macro>}
 %   \pgfplotstablereadgetcolname{<name>}{<\macro>}
+%   \pgfplotstablereadvalueofcolname{<name>}
+%   \pgfplotstablereadvalueofcolindex{<index>}
+%   \thisrow{<name>} (equivalent to \pgfplotstablereadvalueofcolname)
+%   \getthisrow{<name>}{<\macro>} (equivalent to \pgfplotstablereadgetcolname)
 % Attention: 'to listener' is scoped by TeX groups, so any assignments
 % need to be done globally (or with aftergroup magic).
 \def\pgfplotstableread{%
@@ -1289,6 +1300,7 @@
 		% *** \pgfplotstablereadgetptrtocolname ***
 		% *** \pgfplotstablegetcolumnbyname ***
 		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
 		\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
 		\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%	
 			% aah - a 'create on use' style exists. Apply it!
@@ -1341,6 +1353,7 @@
 		% *** \pgfplotstablereadgetptrtocolname ***
 		% *** \pgfplotstablegetcolumnbyname ***
 		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
 		\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
 		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
 			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
@@ -1591,6 +1604,8 @@
 		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\else
 		\ifpgfplots@tableread@to@listener
+			\def\pgfplotstablerow{\the\pgfplotstableread@usablelineno}%
+			\def\pgfplotstablelineno{\the\pgfplotstableread@lineno}%
 			\let\pgfplotstable@listener=#3%
 			\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
 			\let\pgfplotstablereadgetcolindex=\pgfplotstablereadgetcolindex@
@@ -1598,6 +1613,9 @@
 			\let\pgfplotstablereadgetptrtocolname=\pgfplotstablereadgetptrtocolname@
 			\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
 			\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
+			\let\pgfplotstablereadvalueofptr=\pgfplotstablereadvalueofptr@
+			\let\getthisrow=\pgfplotstablereadgetcolname
+			\let\thisrow=\pgfplotstablereadvalueofcolname@
 		\fi
 		%
 		\pgfplotstableread@loop@over@lines
@@ -1883,17 +1901,76 @@
 	}%
 }%
 
-% \pgfplotstablereadgetcolname{<index>}{<name>}
+\pgfkeysdef{/pgfplots/table/@undefined column text}{undefined column #1.}%
+\def\pgfplotstable@undefinedtext#1{\pgfkeysvalueof{/pgfplots/table/@undefined text/.@cmd}#1\pgfeov}%
+
+% As \pgfplotstablereadgetcolindex, but
+% \pgfplotstablereadvalueofcolindex{<index>}
+% directly expands to the value stored in the desired column.
+%
+% Example:
+% \pgfplotstablereadvalueofcolindex{3}  -> expands to '42' if '42' is
+% written in column no 3.
+%
+% Column indexing starts at 0.
+%
+% @ATTENTION: since such a command may occur within an \edef or an
+% \csname, it can't perform sanity checking. Proving an invalid index
+% expands to \pgfkeysvalueof{/pgfplots/table/@undefined column text}.
+\def\pgfplotstablereadvalueofcolindex@#1{%
+	\pgfutil@ifundefined{pgfplotstblread@colcontent@no#1}{%
+		\pgfplotstable@undefinedtext{no #1}%
+	}{%
+		\csname pgfplotstblread@colcontent@no#1\endcsname
+	}%
+}
+
+% \pgfplotstablereadgetcolname{<name>}{<\content>}
 % performs \let\content=<content of column named <name> >
 \def\pgfplotstablereadgetcolname@#1#2{%
 	\pgfplotstablereadgetptrtocolname{#1}{\pgfplots@loc@TMPa}%
 	\pgfplotstablereadevalptr\pgfplots@loc@TMPa{#2}%
 }%
 
+% This here is the implementation of \pgfplotstablereadvalueofcolname
+% (and \thisrow{<colname>}) for use inside of the 'read to listener'
+% framework.
+%
+% Like \pgfplotstablereadgetcolname, but this one expands directly to
+% the value of the desired column.
+%
+% #1: a column name or a column alias.
+%
+% @ATTENTION: since such a command may occur within an \edef or an
+% \csname, it can't perform sanity checking. Proving an invalid index
+% expands to \pgfkeysvalueof{/pgfplots/table/@undefined column text}.
+\def\pgfplotstablereadvalueofcolname@#1{%
+	\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}%
+	{%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
+		\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
+			\pgfutil@ifundefined{pgfplotstblread@colindex@for@name\pgfkeysvalueof{/pgfplots/table/alias/#1}}{%
+				\pgfplotstable@undefinedtext{\pgfkeysvalueof{/pgfplots/table/alias/#1}}%
+			}{%
+				\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name\pgfkeysvalueof{/pgfplots/table/alias/#1}\endcsname\endcsname
+			}%
+		}{%
+			\pgfplotstable@undefinedtext{#1}%
+		}%
+	}%
+	{%
+		\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name#1\endcsname\endcsname
+	}%
+}%
+
 % \pgfplotstablereadgetptrtocolname{<name>}{\ptr}
 % Creates some sort of "pointer" to the column named <name>. This
 % pointer can than be used every time a new line has been reported to
-% the listener. IT works like this:
+% the listener. It works like this:
 %
 % \let\ptr=\pgfutil@empty
 % \def\macro{%
@@ -1907,6 +1984,11 @@
 % \pgfplotstableread{<file>} to listener<\macro>
 %
 % -> will evaluate \macro foreach row.
+%
+% The advantage of such a prepared pointer over \thisrow{#1} or
+% \getthisrow{#1} is simply efficiency and sanity checking: the checks
+% are done at the time of pointer creation, dereferencing the pointer
+% is fast.
 \def\pgfplotstablereadgetptrtocolname@#1#2{%
 	% Implementation note: it is necessary to replicate code becuase
 	% in this context, the table structure is NOT available.
@@ -1919,6 +2001,7 @@
 		% *** \pgfplotstablereadgetptrtocolname ***
 		% *** \pgfplotstablegetcolumnbyname ***
 		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
 		%
 		\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
 		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
@@ -1952,6 +2035,12 @@
 % writes the current value of <\ptr> to <\content>. The pointer <\ptr>
 % must be initialised with \pgfplotstablereadgetptrtocolname
 \let\pgfplotstablereadevalptr@=\pgfplotstablereadgetcolindex@
+
+% \pgfplotstablereadvalueofptr{<\ptr>} -> expands to the pointers value.
+%
+% The pointer \ptr must be initialised with
+% \pgfplotstablereadgetptrtocolname.
+\let\pgfplotstablereadvalueofptr@=\pgfplotstablereadvalueofcolindex@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \long\def\pgfplotstableread@impl@nextrow@NEXT@listener#1{%
