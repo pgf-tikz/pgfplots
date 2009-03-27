@@ -938,8 +938,27 @@
 %   \pgfplotstablereadvalueofcolindex{<index>}
 %   \thisrow{<name>} (equivalent to \pgfplotstablereadvalueofcolname)
 %   \getthisrow{<name>}{<\macro>} (equivalent to \pgfplotstablereadgetcolname)
+%   \pgfplotstableforeachcolumn\as{<\iteratemacro>}{<loop body>}
+%   	(the '\as' is required directly after
+%   	\pgfplotstableforeachcolumn in this context)
 % Attention: 'to listener' is scoped by TeX groups, so any assignments
 % need to be done globally (or with aftergroup magic).
+%
+% More remarks about scoping:
+% \pgfplotstableread to listener works as follows:
+%     \begingroup
+%     // load table
+%     while file has more lines:
+%     	load line, read every column;
+%     	invoke listener;
+%     repeat
+%     \endgroup
+%
+%  In short: all invocations of listener have the same level of
+%  scoping: they are inside of one TeX group. But single listener
+%  invocations as such are not scoped. Make sure you don't
+%  accidentally overwrite one of the internals in listener. And: make
+%  sure you don't change temporary registers without scoping them!
 \def\pgfplotstableread{%
 	\pgfutil@ifnextchar[{%
 		\pgfplotstableread@impl
@@ -1165,6 +1184,18 @@
 	\def\pgfplotstablecol{0}%
 	\pgfplotslistforeachungrouped#1\as#2{%
 		#3\relax%
+		\pgfplotsutil@advancestringcounter\pgfplotstablecol
+	}%
+	\let\pgfplotstablecol=\relax
+}%
+% A variant of \pgfplotstableforeachcolumn which is used inside of
+% \pgfplotstableread to listener.
+%
+% It is used as \pgfplotstableforeachcolumn\as\cur{<do something with \cur>}
+\long\def\pgfplotstableforeachcolumn@listener\as#1#2{%
+	\def\pgfplotstablecol{0}%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as#1{%
+		#2\relax%
 		\pgfplotsutil@advancestringcounter\pgfplotstablecol
 	}%
 	\let\pgfplotstablecol=\relax
@@ -1614,6 +1645,7 @@
 			\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
 			\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
 			\let\pgfplotstablereadvalueofptr=\pgfplotstablereadvalueofptr@
+			\let\pgfplotstableforeachcolumn=\pgfplotstableforeachcolumn@listener
 			\let\getthisrow=\pgfplotstablereadgetcolname
 			\let\thisrow=\pgfplotstablereadvalueofcolname@
 		\fi
@@ -2069,7 +2101,7 @@
 %\pgfplots@message{Got column name no \the\pgfplotstableread@curcol\ as '#1'}%
 	\pgfutil@ifundefined{pgfplotstableread@impl@COLNAME@#1}{%
 		\def\pgfplotstable@loc@TMPa{#1}%
-	}{% generate unique column names
+	}{% generate unique column names warning:
 		\pgfplots@warning{Table '\pgfplotstableread@filename' has non-unique column name '#1'. Only the first occurence can be accessed via column names.}%
 		\edef\pgfplotstable@loc@TMPa{#1--index\the\pgfplotstableread@curcol}%
 	}%

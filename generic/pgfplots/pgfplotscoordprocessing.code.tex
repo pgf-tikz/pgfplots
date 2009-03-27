@@ -939,6 +939,14 @@
 % 		- recorded error bar commands: local,
 % 		- what about stacked plot stuff: appears to be a combination
 % 		of local/global.
+% 		- all that will be serialized and written into
+% 		\pgfplots@stored@plotlist in \pgfplots@coord@stream@end.
+% 	This list is global, so, if I am not mistaken, the scoping
+% 	level of the complete stream operation from setup to @end can
+% 	be as deep as necessary - as long as all operations have the
+% 	same level of scoping.
+% 	FIXME : that's not completely clear. VERIFY! the
+% 	\pgfplots@end@plot command issues an \endgroup. Is that ok?
 %
 \long\def\pgfplots@PREPARE@COORD@STREAM#1#2{%
 	\ifpgfplots@curplot@threedim
@@ -1531,6 +1539,12 @@
 			\else
 				\t@pgfplots@tokc={}%
 			\fi
+			% SERIALIZE RESULT:
+			%
+			% everything which has been accumulated so far (including the
+			% preprocessed coordinates) will be serialized into the
+			% structure \pgfplots@stored@plotlist (globally).
+			%
 			% assembe a \pgfplots@addplot@enqueue@coords command ...
 			% BEGIN HERE ...
 			% vvvvvvvvvv
@@ -2534,6 +2548,54 @@
 
 
 
+% \addplot[#1] table[#2] [from] {<\macro>} #4;
+% or
+% \addplot[#1] table[#2] {<filename>} #4;
+%
+% The distinction between <\macr> and <filename> is done
+% automatically.
+%
+% Input options can be provided in '#2' using
+% - column names, 
+%   	for example '/pgfplots/table/x=firstcol' or just 'x=firstcol'
+%
+% - column indices,
+%   	for example '/pgfplots/table/x index=3' or just 'x index=3'
+%
+% - expressions involving any of the table's data cells in the
+%   currently processed cell,
+%   	for example '/pgfplots/table/x expr={\x * \y + \thisrow{columnxxx}/2}'
+%   During expr, the following (non-exhaustive) list of macros is
+%   available:
+%   	- \x, \y, \z, \meta, \errorx, \errory, \errorz
+%   	Provide access to the cell content which would be used without
+%   	'expr'.
+%   	The first three access the input coordinate columns, \meta the meta column 
+%   	(if any) and the last three the error data (if any). 
+%
+%		That means it is allowed to provide both, 'x' and 'x expr': 
+%		'x expr' can use the (old) value stored in 'x'. the final x
+%		coordinate will be that returned of 'x expr'.
+%
+%   	- \coordindex 
+%
+%   	- \lineno (physical line numbers including comments etc)
+%
+%   	- \thisrow{<colname>}
+%   		allows access to any columns.
+%
+%   	- \getthisrow{<colname>}{<\macro>}
+%   		this is a fragile command! Don't use it directly inside of
+%   		a math expression, prefer \thisrow.
+%
+%   The FPU will be used to evaluate any expressions.
+%
+% @REMARKS the implementation for '* expr' differs for the '<\macro>'
+% and '<filename>' input types:
+% - for '{<filename>}', only the current row is available.
+% - for '{<\macro>}', the `create on use' framework of the table
+%   package is used - with all its features, including comfortable
+%   access to the previous and next row and accumulation features.
 \def\pgfplots@addplotimpl@table#1table{%
 	\pgfutil@ifnextchar[{%
 		\pgfplots@addplotimpl@table@getopts{#1}%
@@ -2590,36 +2652,57 @@
 	\pgfkeysgetvalue{/pgfplots/table/z index}{\pgfplots@plot@tbl@zindex}%
 	\pgfkeysgetvalue{/pgfplots/table/meta}{\pgfplots@plot@tbl@meta}%
 	\pgfkeysgetvalue{/pgfplots/table/meta index}{\pgfplots@plot@tbl@metaindex}%
+	%
 	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
-		\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\addplot@tbl@x
-	\else
-		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@x\of\pgfplots@table\to\addplot@tbl@x
+		\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\pgfplots@plot@tbl@x
 	\fi
 	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
-		\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@yindex\of\pgfplots@table\to\addplot@tbl@y
-	\else
-		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
+		\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@yindex\of\pgfplots@table\to\pgfplots@plot@tbl@y
 	\fi
 	\ifpgfplots@curplot@threedim
 		\ifx\pgfplots@plot@tbl@z\pgfutil@empty
-			\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@zindex\of\pgfplots@table\to\addplot@tbl@z
-		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@z\of\pgfplots@table\to\addplot@tbl@z
+			\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@zindex\of\pgfplots@table\to\pgfplots@plot@tbl@z
 		\fi
 	\fi
-	\let\addplot@tbl@meta=\pgfutil@empty
 	\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
 		\ifx\pgfplots@plot@tbl@metaindex\pgfutil@empty
 		\else
-			\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@metaindex\of\pgfplots@table\to\addplot@tbl@meta
+			\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@metaindex\of\pgfplots@table\to\pgfplots@plot@tbl@meta
 		\fi
+	\fi
+	%
+	%
+	% high level user interface functions:
+	\def\coordindex{\pgfplotstablerow}%
+	\let\lineno=\coordindex% is the same here
+	%
+	% modify \pgfplots@plot@tbl@{x,y,z,meta} if there are
+	% corresponding '#1 expr' statements:
+	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for x\x%
+	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for y\y%
+	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {meta}\meta%
+	\ifpgfplots@curplot@threedim
+		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for z\z%
+	\fi
+	%
+	\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@x\of\pgfplots@table\to\addplot@tbl@x
+	\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
+\message{using `\pgfplots@plot@tbl@x' as x column, `\pgfplots@plot@tbl@y' as y column; Value: x column = {\meaning\addplot@tbl@x};   ycol = {\meaning\addplot@tbl@y}}%
+	\ifpgfplots@curplot@threedim
+		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@z\of\pgfplots@table\to\addplot@tbl@z
+	\fi
+	%
+	\let\addplot@tbl@meta=\pgfutil@empty
+	\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
 	\else
 		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@meta\of\pgfplots@table\to\addplot@tbl@meta
 	\fi
 	%
+	%
+	\let\addplot@tbl@error@x=\pgfutil@empty
+	\let\addplot@tbl@error@y=\pgfutil@empty
+	\let\addplot@tbl@error@z=\pgfutil@empty
 	\ifpgfplots@errorbars@enabled
-		\let\addplot@tbl@error@x=\pgfutil@empty
-		\let\addplot@tbl@error@z=\pgfutil@empty
 		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
 		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
 		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
@@ -2629,38 +2712,56 @@
 		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
 			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
 			\else
-				\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@error@xindex\of\pgfplots@table\to\addplot@tbl@error@x
+				\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@xindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@x
 			\fi
-		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@x\of\pgfplots@table\to\addplot@tbl@error@x
 		\fi
+		%
 		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
 			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
 			\else
-				\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@error@yindex\of\pgfplots@table\to\addplot@tbl@error@y
+				\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@yindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@y
 			\fi
-		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@y\of\pgfplots@table\to\addplot@tbl@error@y
 		\fi
+		%
 		\ifpgfplots@curplot@threedim
 			\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
 				\ifx\pgfplots@plot@tbl@error@zindex\pgfutil@empty
 				\else
-					\pgfplotstablegetcolumnbyindex\pgfplots@plot@tbl@error@zindex\of\pgfplots@table\to\addplot@tbl@error@z
+					\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@zindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@z
 				\fi
-			\else
-				\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@z\of\pgfplots@table\to\addplot@tbl@error@z
 			\fi
+		\else
+			\let\pgfplots@plot@tbl@error@z=\pgfutil@empty
 		\fi
-	\fi
-	%
-	\ifpgfplots@errorbars@enabled
+		%
+		% modify \pgfplots@plot@tbl@{x error,y error,z error} if there are
+		% corresponding '#1 expr' statements:
+		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {x error}\errorx%
+		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {y error}\errory%
+		\ifpgfplots@curplot@threedim
+			\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {z error}\errorz%
+		\fi
+		%
+		% now: load the columns:
+		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
+		\else
+			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@x\of\pgfplots@table\to\addplot@tbl@error@x
+		\fi
+		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
+		\else
+			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@y\of\pgfplots@table\to\addplot@tbl@error@y
+		\fi
+		\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
+		\else
+			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@z\of\pgfplots@table\to\addplot@tbl@error@z
+		\fi
+		%
 	\else
 		\let\pgfplots@current@point@x@error=\pgfutil@empty
 		\let\pgfplots@current@point@y@error=\pgfutil@empty
 		\let\pgfplots@current@point@z@error=\pgfutil@empty
 	\fi
-	\let\pgfplots@current@point@meta=\pgfutil@empty
+	%
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	\pgfplots@coord@stream@start
 	\pgfutil@loop
@@ -2699,21 +2800,60 @@
 			\else
 				\pgfplotslistpopfront\addplot@tbl@error@y\to\pgfplots@current@point@y@error
 			\fi
-			\ifpgfplots@errorbars@enabled
-				\ifx\addplot@tbl@error@z\pgfutil@empty
-					\let\pgfplots@current@point@z@error=\pgfutil@empty
-				\else
-					\pgfplotslistpopfront\addplot@tbl@error@z\to\pgfplots@current@point@z@error
-				\fi
+			\ifx\addplot@tbl@error@z\pgfutil@empty
+				\let\pgfplots@current@point@z@error=\pgfutil@empty
+			\else
+				\pgfplotslistpopfront\addplot@tbl@error@z\to\pgfplots@current@point@z@error
 			\fi
-			\pgfplots@coord@stream@coord
-		\else
-			\pgfplots@coord@stream@coord
 		\fi
+		\pgfplots@coord@stream@coord
 	\pgfutil@repeat
 	\pgfplots@coord@stream@end
 	\endgroup
 }
+
+% A private helper macro which initialises the '#1 expr' keys for plot
+% table from structure.
+%
+% PRECONDITION:
+% 	\pgfplots@plot@tbl@#1 contains the column name which would be used
+% 	if '#1 expr' is empty.
+% 
+% POSTCONDITION:
+% 	\pgfplots@plot@tbl@#1 will be CHANGED to use the 'expr' column (a
+% 	temporary name).
+% 	The old value of \pgfplots@plot@tbl@#1 is available as column
+% 	alias.
+% 	the high level user interface command '#2' will be set correctly.
+\def\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for#1#2{%
+	% get old column name into a register:
+	\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname pgfplots@plot@tbl@#1\endcsname}%
+	%
+	% high level user interface command:
+	\edef#2{\noexpand\thisrow{\the\t@pgfplots@tokb}}%
+	%
+	\pgfkeysgetvalue{/pgfplots/table/#1 expr}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		% get expression into register: 
+		\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
+		%
+		%
+		% assemble pgfkeys statement which expands the names above
+		% just one time:
+		\edef\pgfplots@loc@TMPa{%
+			/pgfplots/table/create on use/#1expr@tempcol/.style={%
+				/pgfplots/table/create col/expr={\the\t@pgfplots@toka}%
+			},%
+			/pgfplots/table/alias/#1/.initial={\the\t@pgfplots@tokb}%
+		}%
+		\expandafter\pgfkeysalso\expandafter{\pgfplots@loc@TMPa}%
+		%
+		% tell `plot table' which column should be used for '#1': the
+		% temporary column.
+		\expandafter\def\csname pgfplots@plot@tbl@#1\endcsname{#1expr@tempcol}%
+	\fi
+}%
 
 
 % \addplot[#1] table[#2] {#3} #4;
@@ -2722,27 +2862,6 @@
 %
 % It has linear complexity in the number of rows (as long as the
 % number of rows is less than about 110000).
-%
-% Input can be provided using
-% - column names, 
-%   	for example '/pgfplots/table/x=firstcol'
-% - column indices,
-%   	for example '/pgfplots/table/x index=3'
-% - expressions involving any of the table's data cells in the
-%   currently processed cell,
-%   	for example '/pgfplots/table/x expr={\x * \y +	\thisrow{columnxxx}/2'
-%   During expr, the following (non-exhaustive) list of macros is
-%   available:
-%   	- \x, \y, \z, \meta, \errorx, \errory, \errorz
-%   	 denote the input coordinate columns, the meta column (if any) and
-%   	 configured, the error data (if any). It is allowed to provide
-%   	 both, 'x' and 'x expr'.
-%   	- \coordindex 
-%   	- \lineno
-%   	- \thisrow{<colname>}
-%   	- \getthisrow{<colname>}{<\macro>}
-%   The FPU will be used to generate content.
-%   FIXME : this does only work for direct file input up to now.
 %
 % #1: arguments to \addplot[...]
 % #2: arguments to table[...]
@@ -2815,6 +2934,8 @@
 			\pgfplotstableread{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 		\fi
 		% FIXME : i'd be glad if I could save this group: check why not
+		% perhaps because \pgfplotstableread uses several pgf
+		% variables?
 		\endgroup
 		%
 		\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
