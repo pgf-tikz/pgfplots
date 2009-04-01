@@ -44,7 +44,7 @@
 \def\pgfplotsconvertunittocoordinate#1#2{%
 	\begingroup
 	\pgf@xa=#2\relax
-	\multiply\pgf@xa by\csname pgfplots@#1@inverseveclength\endcsname\relax
+	\pgf@xa=\csname pgfplots@#1@inverseveclength\endcsname\pgf@xa
 	\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
@@ -58,11 +58,11 @@
 \def\pgfplotsqpointxyzabsolutesize#1#2#3{%
 	\begingroup
 	\pgf@xa=#1\relax
-	\multiply\pgf@xa by\pgfplots@x@inverseveclength\relax
+	\pgf@xa=\pgfplots@x@inverseveclength\pgf@xa
 	\pgf@xb=#2\relax
-	\multiply\pgf@xb by\pgfplots@y@inverseveclength\relax
+	\pgf@xb=\pgfplots@y@inverseveclength\pgf@xb
 	\pgf@ya=#3\relax
-	\multiply\pgf@ya by\pgfplots@z@inverseveclength\relax
+	\pgf@ya=\pgfplots@z@inverseveclength\pgf@ya
 	\xdef\pgfplots@glob@TMPa{{\pgf@sys@tonumber\pgf@xa}{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@ya}}%
 	\endgroup
 	\expandafter\pgfplotsqpointxyz\pgfplots@glob@TMPa
@@ -963,6 +963,15 @@
 		\ifpgfplots@stackedmode
 			\pgfplots@stacked@beginplot
 		\fi
+		\pgfplotsmathdeclarepseudoconstant{x0}{\let\pgfmathresult=\pgfplots@current@point@x}%
+		\pgfplotsmathdeclarepseudoconstant{x1}{\let\pgfmathresult=\pgfplots@current@point@y}%
+		\pgfplotsmathdeclarepseudoconstant{x2}{\let\pgfmathresult=\pgfplots@current@point@z}%
+		\pgfplotsmathdeclarepseudoconstant{meta}{%
+			\let\pgfmathresult=\pgfplots@current@point@meta
+			\ifx\pgfmathresult\pgfutil@empty
+				\pgfmathfloatcreate{0}{0.0}{0}%
+			\fi
+		}%
 		%
 		%\let\pgfplots@coord@stream@recorded=\pgfutil@empty
 		%
@@ -1695,16 +1704,16 @@
 	\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
 }%
 \def\pgfplots@perpointmeta@trafo@APPLY{%
-	\pgfutil@ifundefined{pgfplots@current@point@meta}{%
+	\ifx\pgfplots@current@point@meta\pgfutil@empty%
 		\pgfplots@error{'scatter' could not access its data source. Maybe you need to add '\string\addplot\space plot[scatter src=y]' or something like that?}%
 		\pgfmathfloatcreate{1}{1.0}{0}%
 		\def\pgfplotspointmetatransformed{1.0}%
-	}{%
+	\else
 		% prepare arguments:
 		\let\pgfplotspointmeta=\pgfplots@current@point@meta
 		\pgfplots@perpointmeta@trafo{\pgfplotspointmeta}%
 		\let\pgfplotspointmetatransformed=\pgfmathresult
-	}%
+	\fi
 }%
 
 % A looping method which applies
@@ -2109,25 +2118,13 @@
 		\global\let\pgfplots@noy@error=\relax
 	}%
 	% Define a "function" x which sets \pgfmathresult := \x :
-	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
-		% We have PGF 2.00 :
-		\def\pgfmath@parsefunction@x{\edef\pgfmathresult{\tikz@plot@var}\pgfmath@postfunction}%
-		\if0\pgfplots@addplotimpl@expression@samplesLINE
-			% surface:
-			\def\pgfmath@parsefunction@y{\let\pgfmathresult=\y\pgfmath@postfunction}%
-		\else
-			\def\pgfmath@parsefunction@y{\pgfplots@noy@error\def\pgfmathresult{0.0}\pgfmath@postfunction}%
-		\fi
-	}{%
-		% We have PGF > 2.00 :
-		\pgfmathdeclarefunction{x}{0}{\edef\pgfmathresult{\tikz@plot@var}}%
-		\if0\pgfplots@addplotimpl@expression@samplesLINE
-			% surface:
-			\pgfmathdeclarefunction{y}{0}{\let\pgfmathresult=\y}%
-		\else
-			\pgfmathdeclarefunction{y}{0}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
-		\fi
-	}%
+	\pgfplotsmathdeclarepseudoconstant{x}{\edef\pgfmathresult{\tikz@plot@var}}%
+	\if0\pgfplots@addplotimpl@expression@samplesLINE
+		% surface:
+		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
+	\else
+		\pgfplotsmathdeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
+	\fi
 	%
 	% Now, prepare the loops.
 	%
