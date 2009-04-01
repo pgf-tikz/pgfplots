@@ -1604,10 +1604,6 @@
 
 \def\pgfplotstableread@impl@#1#2#3{%
 	\begingroup
-	\ifpgfplots@table@options@areset
-	\else
-		\pgfplotstableset{/pgfplots/table/every table={#2},#1}%
-	\fi
 %\pgfplots@message{ATTEMPTING TO READ #2}%
 	\openin1=#2.tex
 	\ifeof1
@@ -1621,34 +1617,11 @@
 		\openin1=#2\relax
 	\fi
 	\pgfplots@logfileopen{#2}%
-	\def\pgfplotstableread@filename{#2}%
-	\let\pgfplotstableread@lineno=\c@pgf@counta
-	\let\pgfplotstableread@numcols=\c@pgf@countb
-	\let\pgfplotstableread@curcol=\c@pgf@countc
-	\let\pgfplotstableread@usablelineno=\c@pgf@countd
-	\pgfplotstableread@lineno=0
-	\pgfplotstableread@usablelineno=0
-	\pgfplotstableread@numcols=0
-	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+	\pgfplotstableread@impl@prepare{#1}{#2}{#3}%
 	\ifeof1
 		\pgfplotstable@error{Could not read table file '#2'.}%
 		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\else
-		\ifpgfplots@tableread@to@listener
-			\def\pgfplotstablerow{\the\pgfplotstableread@usablelineno}%
-			\def\pgfplotstablelineno{\the\pgfplotstableread@lineno}%
-			\let\pgfplotstable@listener=#3%
-			\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
-			\let\pgfplotstablereadgetcolindex=\pgfplotstablereadgetcolindex@
-			\let\pgfplotstablereadgetcolname=\pgfplotstablereadgetcolname@
-			\let\pgfplotstablereadgetptrtocolname=\pgfplotstablereadgetptrtocolname@
-			\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
-			\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
-			\let\pgfplotstablereadvalueofptr=\pgfplotstablereadvalueofptr@
-			\let\pgfplotstableforeachcolumn=\pgfplotstableforeachcolumn@listener
-			\let\getthisrow=\pgfplotstablereadgetcolname
-			\let\thisrow=\pgfplotstablereadvalueofcolname@
-		\fi
 		%
 		\pgfplotstableread@loop@over@lines
 		\closein1
@@ -1665,6 +1638,40 @@
 		\pgfplotstable@copy@globalbuffers@to#3
 	\fi
 }
+
+% #1: any options to set (respect \ifpgfplots@table@options@areset )
+% #2: the file name
+% #3: the output macro (or listener)
+\def\pgfplotstableread@impl@prepare#1#2#3{%
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset{/pgfplots/table/every table={#2},#1}%
+	\fi
+	\def\pgfplotstableread@filename{#2}%
+	\let\pgfplotstableread@lineno=\c@pgf@counta
+	\let\pgfplotstableread@numcols=\c@pgf@countb
+	\let\pgfplotstableread@curcol=\c@pgf@countc
+	\let\pgfplotstableread@usablelineno=\c@pgf@countd
+	\pgfplotstableread@lineno=0
+	\pgfplotstableread@usablelineno=0
+	\pgfplotstableread@numcols=0
+	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+	\ifpgfplots@tableread@to@listener
+		\def\pgfplotstablerow{\the\pgfplotstableread@usablelineno}%
+		\def\pgfplotstablelineno{\the\pgfplotstableread@lineno}%
+		\let\pgfplotstable@listener=#3%
+		\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
+		\let\pgfplotstablereadgetcolindex=\pgfplotstablereadgetcolindex@
+		\let\pgfplotstablereadgetcolname=\pgfplotstablereadgetcolname@
+		\let\pgfplotstablereadgetptrtocolname=\pgfplotstablereadgetptrtocolname@
+		\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
+		\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
+		\let\pgfplotstablereadvalueofptr=\pgfplotstablereadvalueofptr@
+		\let\pgfplotstableforeachcolumn=\pgfplotstableforeachcolumn@listener
+		\let\getthisrow=\pgfplotstablereadgetcolname
+		\let\thisrow=\pgfplotstablereadvalueofcolname@
+	\fi
+}%
 
 % Copies the table column list and the column vectors of #1 to global buffers. 
 % @see \pgfplotstable@copy@globalbuffers@to
@@ -1722,81 +1729,86 @@
 		\read1 to\pgfplotstable@LINE
 		\ifeof1
 		\else
-		\expandafter\pgfplotstableread@checkspecial@line\pgfplotstable@LINE\pgfplotstable@EOI
-		\ifpgfplotstableread@skipline
-		\else
-			%--------------------------------------------------
-			% \ifnum\pgfplotstableread@lineno=0
-			% 	\let\pgfplotstable@firstline=\pgfplotstable@LINE
-			% \fi
-			%-------------------------------------------------- 
-%\pgfplots@message{READING LINE \the\pgfplotstableread@lineno: '\meaning\pgfplotstable@LINE'.}%
-			\pgfplotstableread@curline@contains@colnamesfalse
-			\ifnum\pgfplotstableread@numcols=0\relax
-				% STEP 0: initialise
-				% 	- count columns
-				% 	- find header data
-				\pgfplotstableread@curcol=0\relax
-				\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
-				%\expandafter\pgfplotstableread@impl@countcols@and@identifynames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
-				\pgfplotstableread@numcols=\pgfplotstableread@curcol
-				\pgfplotstableread@curcol=0\relax
-				% Create empty column lists:
-				\pgfplotstableread@create@column@lists
-				%
-				\ifnum\pgfplotstableread@usablelineno=0\relax
-				\ifnum\pgfplotstableread@lineno=2\relax
-				\ifnum\pgfplotstableread@numcols=3\relax
-					% The file started with
-					% #...
-					% #...
-					% X Y i
-					% -> thats a gnuplot file!
-					\pgfplotstableread@curline@contains@colnamesfalse
-				\fi
-				\fi
-				\fi
-				% Now, read the first line.
-				% It contains either
-				% - column names,
-				% - numerical data,
-				% - nothing (comments).
-				\ifpgfplotstableread@curline@contains@colnames
-					\pgfplotstableread@foundcolnamestrue
-					\pgfplotstableread@curcol=0\relax
-					\pgfplotstableread@impl@DO\pgfplotstableread@impl@collectcolnames@NEXT\pgfplotstable@LINE
-					%\expandafter\pgfplotstableread@impl@collectcolnames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
-				\else
-					\pgfplotstableread@foundcolnamesfalse
-					\pgfplotstableread@curcol=0\relax
-					% Leave column name lists empty...
-					\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
-					%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
-				\fi
-%\pgfplots@message{After reading first row: found '\the\pgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames@glob'}%
-			\else
-				\pgfplotstableread@curcol=0\relax
-				\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
-				%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
-			\fi
-			\ifnum\pgfplotstableread@curcol=\pgfplotstableread@numcols
-			\else
-				\pgfplotstable@error{ERROR: the input table has an unexpected number of columns in row '\the\pgfplotstableread@lineno'. Expected: '\the\pgfplotstableread@numcols'; got '\the\pgfplotstableread@curcol. Maybe the input table is corrupted?}%
-			\fi
-			\ifpgfplots@tableread@to@listener
-				\ifpgfplotstableread@curline@contains@colnames
-				\else
-					% report row!
-					\pgfplotstable@listener
-				\fi
-			\fi
-			\advance\pgfplotstableread@usablelineno by1\relax
+			\pgfplotstableread@loop@processnextline
 		\fi
-		\fi
-		\advance\pgfplotstableread@lineno by1\relax
 		\expandafter\pgfplotstableread@loop@over@lines
 	\fi
 }
+% PRECONDITION: 
+% 	\pgfplotstable@LINE contains the current input line.
+\def\pgfplotstableread@loop@processnextline{%
+	\expandafter\pgfplotstableread@checkspecial@line\pgfplotstable@LINE\pgfplotstable@EOI
+	\ifpgfplotstableread@skipline
+	\else
+		%--------------------------------------------------
+		% \ifnum\pgfplotstableread@lineno=0
+		% 	\let\pgfplotstable@firstline=\pgfplotstable@LINE
+		% \fi
+		%-------------------------------------------------- 
+%\pgfplots@message{READING LINE \the\pgfplotstableread@lineno: '\meaning\pgfplotstable@LINE'.}%
+		\pgfplotstableread@curline@contains@colnamesfalse
+		\ifnum\pgfplotstableread@numcols=0\relax
+			% STEP 0: initialise
+			% 	- count columns
+			% 	- find header data
+			\pgfplotstableread@curcol=0\relax
+			\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
+			%\expandafter\pgfplotstableread@impl@countcols@and@identifynames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+			\pgfplotstableread@numcols=\pgfplotstableread@curcol
+			\pgfplotstableread@curcol=0\relax
+			% Create empty column lists:
+			\pgfplotstableread@create@column@lists
+			%
+			\ifnum\pgfplotstableread@usablelineno=0\relax
+			\ifnum\pgfplotstableread@lineno=2\relax
+			\ifnum\pgfplotstableread@numcols=3\relax
+				% The file started with
+				% #...
+				% #...
+				% X Y i
+				% -> thats a gnuplot file!
+				\pgfplotstableread@curline@contains@colnamesfalse
+			\fi
+			\fi
+			\fi
+			% Now, read the first line.
+			% It contains either
+			% - column names,
+			% - numerical data,
+			% - nothing (comments).
+			\ifpgfplotstableread@curline@contains@colnames
+				\pgfplotstableread@foundcolnamestrue
+				\pgfplotstableread@curcol=0\relax
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@collectcolnames@NEXT\pgfplotstable@LINE
+				%\expandafter\pgfplotstableread@impl@collectcolnames@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+			\else
+				\pgfplotstableread@foundcolnamesfalse
+				\pgfplotstableread@curcol=0\relax
+				% Leave column name lists empty...
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+				%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+			\fi
+%\pgfplots@message{After reading first row: found '\the\pgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames@glob'}%
+		\else
+			\pgfplotstableread@curcol=0\relax
+			\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+			%\expandafter\pgfplotstableread@impl@nextrow@ITERATE\pgfplotstable@LINE\pgfplotstable@EOI
+		\fi
+		\ifnum\pgfplotstableread@curcol=\pgfplotstableread@numcols
+		\else
+			\pgfplotstable@error{ERROR: the input table has an unexpected number of columns in row '\the\pgfplotstableread@lineno'. Expected: '\the\pgfplotstableread@numcols'; got '\the\pgfplotstableread@curcol. Maybe the input table is corrupted?}%
+		\fi
+		\ifpgfplots@tableread@to@listener
+			\ifpgfplotstableread@curline@contains@colnames
+			\else
+				% report row!
+				\pgfplotstable@listener
+			\fi
+		\fi
+		\advance\pgfplotstableread@usablelineno by1\relax
+	\fi
+	\advance\pgfplotstableread@lineno by1\relax
+}%
 
 % WARNING: this routine is also use in pgfplots.code.tex ...
 \def\pgfplotstableread@checkspecial@line{%
