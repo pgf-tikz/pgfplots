@@ -592,83 +592,81 @@
 % a rotation around the original coordinate system's z axis.
 %
 % The method works by computing 
-% Az = [ cos(yaw) -sin(yaw) 0; ...
-%     sin(yaw) cos(yaw) 0; ...
+% Az = [ cos(azimuth) -sin(azimuth) 0; ...
+%     sin(azimuth) cos(azimuth) 0; ...
 %     0 0 1 ];
+% 
+%
 % Ax = [ 1 0 0; ...
-%     0 cos(pitch) -sin(pitch) ;...
-%     0 sin(pitch) cos(pitch) ];
+%     0 cos(elevation) -sin(elevation) ;...
+%     0 sin(elevation) cos(elevation) ];
+%
 % v= Ax * Az;
-%
 % = [ ...
-% 	cosy  -siny cosp  siny sinp; ...
-% 	siny  cosy cosp   -sinp cosy; ...
-% 	0	  sinp         cosp ];
+% 	cosaz  -sinaz cosel  sinaz sinel; ...
+% 	sinaz  cosaz cosel   -sinel cosaz; ...
+% 	0	  sinel         cosel ];
 %
-% Then, we use the rotated XY plane as viewport, that means 
-%   xvec = v * [1 0 0]'
-%   yvec = v * [0 1 0]'
+% Then, we use the rotated XZ plane as viewport, that means 
+%   xvec = v * [1 0 0]' = <first column of v>
+%   zvec = v * [0 0 1]' = <third column of v>
 % and we define the projection onto the twodimensional surface
-% spanned by 'xvec' and 'yvec' as
-%   P( q ) = [ q^T xvec,  q^T yvec ]'
+% spanned by 'xvec' and 'zvec' as
+%   P( q ) = [ q^T xvec,  q^T zvec ]'
 % for q in R^3.
 % As a consequence, we compute the three unit vectors as
 %  x = P( [1 0 0] )
+%  	 = [ cosaz,  sinaz sinel ]'
 %  y = P( [0 1 0] )
+%    = [ sinaz,  -sinel cosaz ]'
 %  z = P( [0 0 1] )
-% and get thus in matlab notation:
-%
-% proj = 1:2;
-% x = v(1,proj);
-% y = v(2,proj);
-% z = v(3,proj);
+%    = [ 0,  cosel]'
 %
 % Furthermore, the 3D view vector which points into the direction of the view
 % is
-%   n = v * [0 0 -1]' = - (siny sinp, -sinp cos y, cosp )'
-% because the normal view point was the XY plane with -z as its normal
+%   n = v * [0 1 0 ]' = <second column of v> =  [-sinaz cosel,  cosaz cosel,  sinel]' 
+% because the normal view point was the XZ plane with y as its normal
 % vector.
 % The 3D vector n is returned by this routine as well - it is
 % necessary for some kind of z buffering (determining what is
 % foreground and what is background).
 %
 % INPUT:
-% - #1 : pitch
-% - #2 : yaw
+% - #1 : azimuth ("yaw")
+% - #2 : elevation ("pitch")
 % OUTPUT:
 % - #3 : a macro which will be set to '1' if and only if 
-%      the viewport is the standard XY axis (i.e. pitch=0,yaw=0).
+%      the viewport is the standard XY axis (i.e. azimuth=0, elevation=90).
 % - [xyz] vectors,
 %   \pgfplots@[xyz]@veclength,
 %   \pgfplots@[xyz]@inverseveclength
 %   are set properly
 %   \pgfplots@view@dir@threedim@[xyz] will contain the three components
 %   of 'n'.
-\def\pgfplotssetaxesfrompitchyaw#1#2#3{%
+\def\pgfplotssetaxesfromazel#1#2#3{%
 	\begingroup
 	\pgfmathsin@{#1}%
-	\let\sinp=\pgfmathresult
-	\pgfmathsin@{#2}%
-	\let\siny=\pgfmathresult
+	\let\sinaz=\pgfmathresult
 	\pgfmathcos@{#1}%
-	\let\cosp=\pgfmathresult
-	\pgfmathcos@{#2}%
-	\let\cosy=\pgfmathresult
+	\let\cosaz=\pgfmathresult
+	\pgfmathsin@{-#2}%
+	\let\sinel=\pgfmathresult
+	\pgfmathcos@{-#2}%
+	\let\cosel=\pgfmathresult
 	% x:
-	\pgfmathmultiply@{\siny}{-1}%
-	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\cosp}%
-	\xdef\pgfplots@glob@TMPa{\noexpand\pgfqpoint{\cosy pt}{\pgfmathresult pt}}%
+	\pgfmathmultiply@{\sinaz}{\sinel}%
+	\xdef\pgfplots@glob@TMPa{\noexpand\pgfqpoint{\cosaz pt}{\pgfmathresult pt}}%
 	% y:
-	\pgfmathmultiply@{\cosy}{\cosp}%
-	\xdef\pgfplots@glob@TMPb{\noexpand\pgfqpoint{\siny pt}{\pgfmathresult pt}}%
+	\pgfmathmultiply@{-\sinel}{\cosaz}%
+	\xdef\pgfplots@glob@TMPb{\noexpand\pgfqpoint{\sinaz pt}{\pgfmathresult pt}}%
 	% z:
-	\xdef\pgfplots@glob@TMPc{\noexpand\pgfqpoint{0pt}{\sinp pt}}%
+	\xdef\pgfplots@glob@TMPc{\noexpand\pgfqpoint{0pt}{\cosel pt}}%
 	%
 	% n (3D!)
-	\pgfmathmultiply@{-\siny}{\sinp}%
+	\pgfmathmultiply@{-\sinaz}{\cosel}%
 	\let\pgfmathresultNx=\pgfmathresult
-	\pgfmathmultiply@{\sinp}{\cosy}%
-	\xdef\pgfplots@glob@TMPd{{\pgfmathresultNx pt}{\pgfmathresult pt}{-\cosp pt}}%
+	\pgfmathmultiply@{\cosaz}{\cosel}%
+	\xdef\pgfplots@glob@TMPd{{\pgfmathresultNx pt}{\pgfmathresult pt}{\sinel pt}}%
 	\endgroup
 %\message{Setting x,y and z from {#1}{#2} to x = \meaning\pgfplots@glob@TMPa, y = \meaning\pgfplots@glob@TMPb, z = \meaning\pgfplots@glob@TMPc...n = \pgfplots@glob@TMPd.}%
 	\pgfsetxvec{\pgfplots@glob@TMPa}%
