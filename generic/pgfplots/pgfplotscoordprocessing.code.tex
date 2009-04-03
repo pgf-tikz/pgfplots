@@ -960,9 +960,9 @@
 		\ifpgfplots@stackedmode
 			\pgfplots@stacked@beginplot
 		\fi
-		\pgfplotsmathdeclarepseudoconstant{x0}{\let\pgfmathresult=\pgfplots@current@point@x}%
-		\pgfplotsmathdeclarepseudoconstant{x1}{\let\pgfmathresult=\pgfplots@current@point@y}%
-		\pgfplotsmathdeclarepseudoconstant{x2}{\let\pgfmathresult=\pgfplots@current@point@z}%
+		\pgfplotsmathdeclarepseudoconstant{x}{\let\pgfmathresult=\pgfplots@current@point@x}%
+		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\pgfplots@current@point@y}%
+		\pgfplotsmathdeclarepseudoconstant{z}{\let\pgfmathresult=\pgfplots@current@point@z}%
 		\pgfplotsmathdeclarepseudoconstant{meta}{%
 			\let\pgfmathresult=\pgfplots@current@point@meta
 			\ifx\pgfmathresult\pgfutil@empty
@@ -1034,30 +1034,49 @@
 			% information, no math.
 			\def\pgfplots@set@perpointmeta{}%
 		\fi
+		% check 
+		%   if( we have point meta )...
+		\pgfplots@loc@tmptrue
 		\ifnum\pgfplots@perpointmeta@choice=0
+			\pgfplots@loc@tmpfalse
 			\global\let\pgfplots@metamin=\pgfutil@empty
 			\global\let\pgfplots@metamax=\pgfutil@empty
 		\else
 			\ifnum\pgfplots@perpointmeta@choice=5
-				\global\let\pgfplots@metamin=\pgfutil@empty
-				\global\let\pgfplots@metamax=\pgfutil@empty
-			\else
-				% We need to work with per point meta data.
-				% So, also compute the data range on a per-stream basis!
-				% These limits are important later.
-				\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-				\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
-				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
-					\pgfplots@set@perpointmeta
-					\ifx\pgfplots@current@point@meta\pgfutil@empty
-					\else
-						\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-						\global\let\pgfplots@metamin=\pgfmathresult
-						\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-						\global\let\pgfplots@metamax=\pgfmathresult
-					\fi
-				}%
+				\pgfplots@loc@tmpfalse
 			\fi
+		\fi
+		\pgfkeysgetvalue{/pgfplots/meta expr}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+				\pgfplots@set@perpointmeta
+				\pgfmathparse{\pgfkeysvalueof{/pgfplots/meta expr}}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+			% update limits in this case:
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifpgfplots@loc@tmp
+			% We need to work with per point meta data.
+			% So, also compute the data range on a per-stream basis!
+			% These limits are important later.
+			\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+			\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+				\pgfplots@set@perpointmeta
+				\ifx\pgfplots@current@point@meta\pgfutil@empty
+				\else
+					\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+					\global\let\pgfplots@metamin=\pgfmathresult
+					\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+					\global\let\pgfplots@metamax=\pgfmathresult
+				\fi
+			}%
+		\else
+			% there is no point meta:
+			\global\let\pgfplots@metamin=\pgfutil@empty
+			\global\let\pgfplots@metamax=\pgfutil@empty
 		\fi
 	}%
 	\begingroup
@@ -2110,18 +2129,6 @@
 		}%
 	\fi
 	%
-	\gdef\pgfplots@noy@error{%
-		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
-		\global\let\pgfplots@noy@error=\relax
-	}%
-	% Define a "function" x which sets \pgfmathresult := \x :
-	\pgfplotsmathdeclarepseudoconstant{x}{\edef\pgfmathresult{\tikz@plot@var}}%
-	\if0\pgfplots@addplotimpl@expression@samplesLINE
-		% surface:
-		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
-	\else
-		\pgfplotsmathdeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
-	\fi
 	%
 	% Now, prepare the loops.
 	%
@@ -2226,8 +2233,39 @@
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
 		\def\pgfplots@current@point@z{}%
 	\fi
+	%
+	% START:
+	%  (NOTE: this does also define 'x', 'y', and 'z' math
+	%  expressions!)
 	\pgfplots@coord@stream@start
+	%
+	% create a backup of the 'x' and 'y' math expressions which 
+	% have been defined in \pgfplots@coord@stream@start:
+	\let\pgfplots@addplotimpl@expression@pseudoconst@old@x=\pgfmathx@
+	\let\pgfplots@addplotimpl@expression@pseudoconst@old@y=\pgfmathy@
+	%
+	% Prepare 'x' and 'y' as pseudo constants in expressions:
+	\gdef\pgfplots@noy@error{%
+		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
+		\global\let\pgfplots@noy@error=\relax
+	}%
+	% Define a "function" x which sets \pgfmathresult := \x :
+	\pgfplotsmathredeclarepseudoconstant{x}{\edef\pgfmathresult{\tikz@plot@var}}%
+	\if0\pgfplots@addplotimpl@expression@samplesLINE
+		% surface:
+		\pgfplotsmathredeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
+	\else
+		\pgfplotsmathredeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
+	\fi
+	% remember them here:
+	\let\pgfplots@addplotimpl@expression@pseudoconst@x=\pgfmathx@
+	\let\pgfplots@addplotimpl@expression@pseudoconst@y=\pgfmathy@
+	%
+	%
 	\pgfplots@plot@data{%
+		\let\pgfmathx@=\pgfplots@addplotimpl@expression@pseudoconst@x
+		\let\pgfmathy@=\pgfplots@addplotimpl@expression@pseudoconst@y
+		% eval expressions:
 		\pgfplots@addplotimpl@expression@prepare@x%
 		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
 		\let\pgfplots@current@point@y=\pgfmathresult
@@ -2235,6 +2273,11 @@
 			\pgfmathparse{\pgfplots@addplotimpl@expression@zEXPR}%
 			\let\pgfplots@current@point@z=\pgfmathresult
 		\fi
+		% restore 'x' and 'y':
+		\let\pgfmathx@=\pgfplots@addplotimpl@expression@pseudoconst@old@x
+		\let\pgfmathy@=\pgfplots@addplotimpl@expression@pseudoconst@old@y
+		%
+		% process coords as usual:
 		\pgfplots@coord@stream@coord
 	}%
 	\pgfplots@coord@stream@end
