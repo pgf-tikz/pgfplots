@@ -960,9 +960,9 @@
 		\ifpgfplots@stackedmode
 			\pgfplots@stacked@beginplot
 		\fi
-		\pgfplotsmathdeclarepseudoconstant{x0}{\let\pgfmathresult=\pgfplots@current@point@x}%
-		\pgfplotsmathdeclarepseudoconstant{x1}{\let\pgfmathresult=\pgfplots@current@point@y}%
-		\pgfplotsmathdeclarepseudoconstant{x2}{\let\pgfmathresult=\pgfplots@current@point@z}%
+		\pgfplotsmathdeclarepseudoconstant{x}{\let\pgfmathresult=\pgfplots@current@point@x}%
+		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\pgfplots@current@point@y}%
+		\pgfplotsmathdeclarepseudoconstant{z}{\let\pgfmathresult=\pgfplots@current@point@z}%
 		\pgfplotsmathdeclarepseudoconstant{meta}{%
 			\let\pgfmathresult=\pgfplots@current@point@meta
 			\ifx\pgfmathresult\pgfutil@empty
@@ -1034,30 +1034,49 @@
 			% information, no math.
 			\def\pgfplots@set@perpointmeta{}%
 		\fi
+		% check 
+		%   if( we have point meta )...
+		\pgfplots@loc@tmptrue
 		\ifnum\pgfplots@perpointmeta@choice=0
-			\global\let\pgfplots@metamin=\pgfutil@empty
-			\global\let\pgfplots@metamax=\pgfutil@empty
+			\pgfplots@loc@tmpfalse
 		\else
 			\ifnum\pgfplots@perpointmeta@choice=5
-				\global\let\pgfplots@metamin=\pgfutil@empty
-				\global\let\pgfplots@metamax=\pgfutil@empty
-			\else
-				% We need to work with per point meta data.
-				% So, also compute the data range on a per-stream basis!
-				% These limits are important later.
-				\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-				\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
-				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
-					\pgfplots@set@perpointmeta
-					\ifx\pgfplots@current@point@meta\pgfutil@empty
-					\else
-						\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-						\global\let\pgfplots@metamin=\pgfmathresult
-						\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-						\global\let\pgfplots@metamax=\pgfmathresult
-					\fi
-				}%
+				\pgfplots@loc@tmpfalse
 			\fi
+		\fi
+		\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+				\pgfplots@set@perpointmeta
+				\pgfmathparse{\pgfkeysvalueof{/pgfplots/point meta/expr}}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+			% update limits in this case:
+			\pgfplots@loc@tmptrue
+			% make sure it is not 'none':
+			\def\pgfplots@perpointmeta@choice{4}%
+		\fi
+		\ifpgfplots@loc@tmp
+			% We need to work with per point meta data.
+			% So, also compute the data range on a per-stream basis!
+			% These limits are important later.
+			\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+			\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+				\pgfplots@set@perpointmeta
+				\ifx\pgfplots@current@point@meta\pgfutil@empty
+				\else
+					\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+					\global\let\pgfplots@metamin=\pgfmathresult
+					\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+					\global\let\pgfplots@metamax=\pgfmathresult
+				\fi
+			}%
+		\else
+			% there is no point meta:
+			\global\let\pgfplots@metamin=\pgfutil@empty
+			\global\let\pgfplots@metamax=\pgfutil@empty
 		\fi
 	}%
 	\begingroup
@@ -2110,18 +2129,6 @@
 		}%
 	\fi
 	%
-	\gdef\pgfplots@noy@error{%
-		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
-		\global\let\pgfplots@noy@error=\relax
-	}%
-	% Define a "function" x which sets \pgfmathresult := \x :
-	\pgfplotsmathdeclarepseudoconstant{x}{\edef\pgfmathresult{\tikz@plot@var}}%
-	\if0\pgfplots@addplotimpl@expression@samplesLINE
-		% surface:
-		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
-	\else
-		\pgfplotsmathdeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
-	\fi
 	%
 	% Now, prepare the loops.
 	%
@@ -2226,8 +2233,39 @@
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
 		\def\pgfplots@current@point@z{}%
 	\fi
+	%
+	% START:
+	%  (NOTE: this does also define 'x', 'y', and 'z' math
+	%  expressions!)
 	\pgfplots@coord@stream@start
+	%
+	% create a backup of the 'x' and 'y' math expressions which 
+	% have been defined in \pgfplots@coord@stream@start:
+	\let\pgfplots@addplotimpl@expression@pseudoconst@old@x=\pgfmathx@
+	\let\pgfplots@addplotimpl@expression@pseudoconst@old@y=\pgfmathy@
+	%
+	% Prepare 'x' and 'y' as pseudo constants in expressions:
+	\gdef\pgfplots@noy@error{%
+		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
+		\global\let\pgfplots@noy@error=\relax
+	}%
+	% Define a "function" x which sets \pgfmathresult := \x :
+	\pgfplotsmathredeclarepseudoconstant{x}{\edef\pgfmathresult{\tikz@plot@var}}%
+	\if0\pgfplots@addplotimpl@expression@samplesLINE
+		% surface:
+		\pgfplotsmathredeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
+	\else
+		\pgfplotsmathredeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
+	\fi
+	% remember them here:
+	\let\pgfplots@addplotimpl@expression@pseudoconst@x=\pgfmathx@
+	\let\pgfplots@addplotimpl@expression@pseudoconst@y=\pgfmathy@
+	%
+	%
 	\pgfplots@plot@data{%
+		\let\pgfmathx@=\pgfplots@addplotimpl@expression@pseudoconst@x
+		\let\pgfmathy@=\pgfplots@addplotimpl@expression@pseudoconst@y
+		% eval expressions:
 		\pgfplots@addplotimpl@expression@prepare@x%
 		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
 		\let\pgfplots@current@point@y=\pgfmathresult
@@ -2235,6 +2273,11 @@
 			\pgfmathparse{\pgfplots@addplotimpl@expression@zEXPR}%
 			\let\pgfplots@current@point@z=\pgfmathresult
 		\fi
+		% restore 'x' and 'y':
+		\let\pgfmathx@=\pgfplots@addplotimpl@expression@pseudoconst@old@x
+		\let\pgfmathy@=\pgfplots@addplotimpl@expression@pseudoconst@old@y
+		%
+		% process coords as usual:
 		\pgfplots@coord@stream@coord
 	}%
 	\pgfplots@coord@stream@end
@@ -3184,7 +3227,7 @@
 		\pgfplots@execute@at@begin@plot
 	\fi
 	\let\pgfplots@addplot@nonlegend@options=\pgfutil@empty
-	\pgfplots@process@behavioroptions{#1,/pgfplots/error bars/x dir=none,/pgfplots/error bars/y dir=none}% FIXME ERROR BARS ARE BROKEN
+	\pgfplots@process@behavioroptions{#1}%
 	% these styles may contain behavior options (error bars,
 	% samples,... ) activate them!
 	\ifpgfplots@curplot@isirrelevant
@@ -3393,14 +3436,6 @@
 			\pgfplotsapplistXXnewempty
 			\pgfplotsapplistXXpushback{\pgfplotstreamstart}%
 			%\gdef#1{\pgfplotstreamstart}%
-		\fi
-		% Define \pgfplots@process@perpointmeta properly:
-		\ifnum\pgfplots@perpointmeta@choice=0
-			% disabled.
-			\def\pgfplots@process@perpointmeta{%	
-				\let\pgfplots@current@point@meta=\pgfutil@empty
-			}%
-		\else
 		\fi
 		\c@pgfplots@coordindex=0
 	}%
@@ -3825,7 +3860,7 @@
 		\or% fixed relative error:
 			\pgfmathparse{(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
 			\let\pgfplots@error@coord=\pgfmathresult
-			\pgfmathfloatmultiplyfixed@{\pgfplots@error@src}{\pgfplots@error@coord}%
+			\pgfmathfloatmultiply@{\pgfplots@error@src}{\pgfplots@error@coord}%
 			\let\pgfplots@error@coord=\pgfmathresult
 		\or% explicit absolute:
 			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
@@ -3846,7 +3881,7 @@
 			\else
 				\pgfmathparse{(1#2\pgfplots@error@coord)}%
 				\let\pgfplots@error@coord=\pgfmathresult
-				\pgfmathfloatmultiplyfixed@{\pgfplots@error@src}{\pgfplots@error@coord}%
+				\pgfmathfloatmultiply@{\pgfplots@error@src}{\pgfplots@error@coord}%
 				\let\pgfplots@error@coord=\pgfmathresult
 			\fi
 		\fi
@@ -3873,6 +3908,9 @@
 		\or% fixed relative, log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
 			\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
 			\pgfmathparse{\pgfplots@error@src + ln(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
+			\pgflibraryfpuifactive
+				{\pgfmathfloattofixed{\pgfmathresult}}%
+				{}%
 			\let\pgfplots@error@coord=\pgfmathresult%
 		\or% explicit absolute
 			\edef\pgfplots@error@src{\csname pgfplots@#1arg@unfiltered\endcsname}%
@@ -3897,6 +3935,9 @@
 			\ifx\pgfplots@error@coord\pgfutil@empty
 			\else
 				\pgfmathparse{\pgfplots@error@src + ln(1#2 \pgfplots@error@coord)}%
+				\pgflibraryfpuifactive
+					{\pgfmathfloattofixed{\pgfmathresult}}%
+					{}%
 				\let\pgfplots@error@coord=\pgfmathresult%
 			\fi
 		\fi
@@ -4433,7 +4474,7 @@
 	\ifnum\c@pgfplots@scanlineindex>0
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
 			% z buffer=sort:
-			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
 			% assemble array element:
 			\edef\pgfplots@loc@TMPa{%
 				{\pgfmathresult}%
@@ -4524,7 +4565,7 @@
 	\ifnum\c@pgfplots@scanlineindex>0
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
 			% z buffer=sort:
-			\pgfplotsmathcomputeviewdepthfixed{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
 			% assemble array element:
 			\edef\pgfplots@loc@TMPa{%
 				{\pgfmathresult}%
@@ -4658,7 +4699,7 @@
 % FIXME : relies on the internal repr in
 % \pgfplots@coord@stream@foreach@NORMALIZED :
 \def\pgfplots@apply@zbuffer@SORT@iflessthan@#1,#2,#3,#4;{%
-	\pgfplotsmathcomputeviewdepth{#1}{#2}{#3}%
+	\pgfplotsmathfloatviewdepthxyz{#1}{#2}{#3}%
 }%
 
 % Defines \pgfmathresult to be the view depth of a three component
@@ -4666,8 +4707,12 @@
 % \ifpgfplots@curplot@threedim is true.
 % The return value will be assigned in floating point.
 %
-% @see \pgfplotsmathcomputeviewdepthfixed
-\def\pgfplotsmathcomputeviewdepth#1#2#3{%
+% @see \pgfplotsmathviewdepthxyz
+\def\pgfplotsmathfloatviewdepthxyz#1#2#3{%
+	\pgfplots@error{Sorry, you can't use \string\pgfplotsmathfloatviewdepthxyz\space in this context.}%
+}%
+
+\def\pgfplotsmathfloatviewdepthxyz@infigure#1#2#3{%
 	% FIXME : that operates only in float. Provide special cases for
 	% fixed!
 	\pgfmathfloatmultiplyfixed@{#1}{\pgfplots@view@dir@threedim@x}%
@@ -4685,9 +4730,12 @@
 	\let\pgfplotslocretval=\pgfplots@loc@TMPb
 }%
 
-% Similar to \pgfplotsmathcomputeviewdepth, but this always relies on
+% Similar to \pgfplotsmathfloatviewdepthxyz, but this always relies on
 % fixed point arithmetics.
-\def\pgfplotsmathcomputeviewdepthfixed#1#2#3{%
+\def\pgfplotsmathviewdepthxyz#1#2#3{%
+	\pgfplots@error{Sorry, you can't use \string\pgfplotsmathviewdepthxyz\space in this context.}%
+}
+\def\pgfplotsmathviewdepthxyz@infigure#1#2#3{%
 	\pgfmath@basic@multiply@{#1}{\pgfplots@view@dir@threedim@x}%
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfmath@basic@multiply@{#2}{\pgfplots@view@dir@threedim@y}%
