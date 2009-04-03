@@ -312,10 +312,7 @@
 \fi
 \endgroup
 
-\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@0\endcsname
-\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@128\endcsname
-\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
-\let\pgfplotsbinary@hook=\relax
+\let\pgfplotsbinary@hook=\pgfutil@empty
 
 \def\pgfplotsbinary@apphighorderbytes@BIGENDIAN#1{\xdef\pgfplotsbinaryresult{#1\pgfplotsbinaryresult}}%
 \def\pgfplotsbinary@apphighorderbytes@LITTLEENDIAN#1{\xdef\pgfplotsbinaryresult{\pgfplotsbinaryresult#1}}%
@@ -401,18 +398,7 @@
 \expandafter\let\csname pgfplotsbinary@bytes@7\endcsname=\pgfplotsbinarysetbytes@@
 \expandafter\let\csname pgfplotsbinary@bytes@8\endcsname=\pgfplotsbinarysetbytes@@
 
-\def\pgfplotsbinarysetbytes#1{%
-	\pgfutil@ifundefined{pgfplotsbinarysetbytes@#1}{%
-		\pgfplots@error{Sorry, I can't write binary output with '#1' bytes yet...}%
-	}{%
-		\def\pgfplotsbinary@bytes{#1}%
-		\csname pgfplotsbinarysetbytes@#1\endcsname
-	}%
-}%
-
 \pgfqkeys{/pgfplots/bin}{%
-	bytes/.code={\pgfplotsbinarysetbytes{#1}},%
-	bytes=4,
 	% ordering not yet implemented; uses always BIG ENDIAN.
 	ordering/.is choice,%
 	ordering/big endian/.code={%
@@ -428,9 +414,109 @@
 	},
 	ordering/big endian,%
 	%
+	binary encoding/.code={%
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@0\endcsname
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@128\endcsname
+		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
+		\def\pgfplotsbinary@basis{256}%
+		\def\pgfplotsbinary@hook@signed@linearmap{%
+			\ifnum\c@pgfplotsbin@byteno=0
+				\advance\c@pgfplotsbin@input by128
+				\ifnum\c@pgfplotsbin@input>255
+					\pgfplots@error{Sorry, there are not enough bytes to store the current number. I tried to write \the\c@pgfplotsbin@input...}%
+				\fi
+			\fi
+		}%
+		\def\pgfplotsbinarysetbytes##1{%
+			\pgfutil@ifundefined{pgfplotsbinarysetbytes@##1}{%
+				\pgfplots@error{Sorry, I can't write binary output with '##1' bytes yet...}%
+			}{%
+				\def\pgfplotsbinary@bytes{##1}%
+				\csname pgfplotsbinarysetbytes@##1\endcsname
+			}%
+		}%
+	},
+	ASCIIHex encoding/.code={%
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@48\endcsname
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@56\endcsname
+		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
+		\pgfkeysalso{/pgfplots/bin/ordering/big endian}%
+		\def\pgfplotsbinary@basis{16}%
+		\def\pgfplotsbinary@hook@hex{%
+			\ifnum\c@pgfplotsbin@input<10
+				\advance\c@pgfplotsbin@input by48
+			\else
+				\advance\c@pgfplotsbin@input by55
+			\fi
+		}%
+		\let\pgfplotsbinary@hook=\pgfplotsbinary@hook@hex
+		\def\pgfplotsbinary@hook@signed@linearmap{%
+			\ifnum\c@pgfplotsbin@byteno=0
+				\advance\c@pgfplotsbin@input by8
+				\ifnum\c@pgfplotsbin@input>16
+					\pgfplots@error{Sorry, there are not enough bytes to store the current number. I tried to write \the\c@pgfplotsbin@input...}%
+				\fi
+			\fi
+			\pgfplotsbinary@hook@hex
+		}%
+		\def\pgfplotsbinarysetbytes##1{%
+			\pgfutil@ifundefined{pgfplotsbinarysetbytes@##1}{%
+				\pgfplots@error{Sorry, I can't write binary output with '##1' bytes yet...}%
+			}{%
+				\csname pgfplotsbinarysetbytes@##1\endcsname
+				\begingroup
+					\count0=##1\relax
+					\multiply\count0 by2
+					\xdef\pgfplotsbinary@glob@TMP{\the\count0 }%
+				\endgroup
+				\let\pgfplotsbinary@bytes=\pgfplotsbinary@glob@TMP
+			}%
+		}%
+	},%
+	%
+	% limited only - it works just for ONE number, not for a stream of
+	% numbers.
+	ASCII85 encoding/.code={%
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@33\endcsname
+		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@42\endcsname
+		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
+		\pgfkeysalso{/pgfplots/bin/ordering/big endian}%
+		\edef\pgfplotsbinary@ASCII@specialzero{\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO\pgfplotsbinary@ZERO}%
+		\expandafter\def\expandafter\pgfplotsbinaryencode@badic@unsigned@PAD\expandafter{%
+			\pgfplotsbinaryencode@badic@unsigned@PAD
+			\ifx\pgfplotsbinaryresult\pgfplotsbinary@ASCII@specialzero
+				% PDF standard: 0 is encoded as 'z':
+				\gdef\pgfplotsbinaryresult{z}%
+			\fi
+		}%
+		\def\pgfplotsbinary@basis{85}%
+		\def\pgfplotsbinary@hook{%
+			\advance\c@pgfplotsbin@input by33
+		}%
+		\def\pgfplotsbinary@hook@signed@linearmap{%
+			\advance\c@pgfplotsbin@input by33
+			\ifnum\c@pgfplotsbin@byteno=0
+				\advance\c@pgfplotsbin@input by42
+				\ifnum\c@pgfplotsbin@input>85
+					\pgfplots@error{Sorry, there are not enough bytes to store the current number. I tried to write \the\c@pgfplotsbin@input...}%
+				\fi
+			\fi
+		}%
+		% I know, that does only work efficiently if bytes=4 for every
+		% encoded number.
+		\def\pgfplotsbinarysetbytes##1{%
+			\def\pgfplotsbinary@bytes{5}%
+			\csname pgfplotsbinarysetbytes@4\endcsname
+		}%
+		\pgfplotsbinarysetbytes4%
+	},%
+	binary encoding,%
+	%
+	bytes/.code={\pgfplotsbinarysetbytes{#1}},%
+	bytes=4,
+	%
 	% Irreversibly change to VERBATIM output for debugging:
 	debug mode/.code={%
-		\pgfplotsbinarylazyload
 		\let\pgfplotsbinary@apphighorderbytes@ORIG=\pgfplotsbinary@apphighorderbytes
 		\def\pgfplotsbinary@ZERO{[Pad-0]}%
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
@@ -463,15 +549,6 @@
 
 
 
-\def\pgfplotsbinary@hook@signed@linearmap{%
-	\ifnum\c@pgfplotsbin@byteno=0
-		\advance\c@pgfplotsbin@input by128
-		\ifnum\c@pgfplotsbin@input>255
-			\pgfplots@error{Sorry, there are not enough bytes to store the current number. I tried to write \the\c@pgfplotsbin@input...}%
-		\fi
-	\fi
-}%
-
 \def\pgfplotsbinary@apphighorderbytes@DEBUG@csname \csname pgfp@bin@#1\endcsname\relax{%
 	\pgfplotsbinary@apphighorderbytes@ORIG{[#1]}%
 }%
@@ -486,6 +563,7 @@
 \countdef\c@pgfplotsbin@tmpa=1
 \countdef\c@pgfplotsbin@tmpb=2
 \countdef\c@pgfplotsbin@byteno=3
+\countdef\c@pgfplotsbin@basis=4
 \def\pgfplotsbinaryempty{}
 
 %--------------------------------------------------
@@ -509,9 +587,9 @@
 \def\pgfplotsbinaryencode@badic@unsigned@{%
 	\ifnum\c@pgfplotsbin@input>0
 		\c@pgfplotsbin@tmpa=\c@pgfplotsbin@input
-		\divide\c@pgfplotsbin@tmpa by256
+		\divide\c@pgfplotsbin@tmpa by\c@pgfplotsbin@basis\relax
 		\c@pgfplotsbin@tmpb=\c@pgfplotsbin@tmpa\relax
-		\multiply\c@pgfplotsbin@tmpa by256
+		\multiply\c@pgfplotsbin@tmpa by\c@pgfplotsbin@basis\relax
 		\advance\c@pgfplotsbin@input by -\c@pgfplotsbin@tmpa\relax
 		\advance\c@pgfplotsbin@byteno by-1
 		\pgfplotsbinary@hook% hooks for modifications.
@@ -540,6 +618,7 @@
 	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
 	\c@pgfplotsbin@input=#1 %
 	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+	\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
 	\pgfplotsbinaryencode@badic@unsigned@%
 	\endgroup
 }%
@@ -588,6 +667,7 @@
 	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
 	\c@pgfplotsbin@input=#1 %
 	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+	\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
 	\ifnum\c@pgfplotsbin@input<0
 		% compute + 2^31 - 1
 		\pgfplotsbinary@add@signed@largest@absolute
