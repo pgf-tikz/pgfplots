@@ -312,8 +312,6 @@
 \fi
 \endgroup
 
-\let\pgfplotsbinary@hook=\pgfutil@empty
-
 \def\pgfplotsbinary@apphighorderbytes@BIGENDIAN#1{\xdef\pgfplotsbinaryresult{#1\pgfplotsbinaryresult}}%
 \def\pgfplotsbinary@apphighorderbytes@LITTLEENDIAN#1{\xdef\pgfplotsbinaryresult{\pgfplotsbinaryresult#1}}%
 
@@ -372,25 +370,47 @@
 
 \expandafter\def\csname pgfplotsbinarysetbytes@1\endcsname{%
 	\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 127 }%
-	\def\pgfplotsbinary@dimen@scale{16909320}% ~= (2^31-1) /  (2^(8*1-1) -1)
+	\def\pgfplotsbinaryencodesignedmaplinearly@prepare{%
+		% warning: \pgfplotsbinary@bytes is NOT necessarily 1 (ASCII
+		% encoding features)
+		\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+		\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
+		\divide\c@pgfplotsbin@input by16909320 % ~= (2^31-1) /  (2^(8*1-1) -1)
+	}%
 }%
 \expandafter\def\csname pgfplotsbinarysetbytes@2\endcsname{%
 	\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 32767 }%
-	\def\pgfplotsbinary@dimen@scale{65538}% ~= (2^31-1) /  (2^(8*2-1) -1)
+	\def\pgfplotsbinaryencodesignedmaplinearly@prepare{%
+		\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+		\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
+		\divide\c@pgfplotsbin@input by65538 % ~= (2^31-1) /  (2^(8*2-1) -1)
+	}%
 }%
 \expandafter\def\csname pgfplotsbinarysetbytes@3\endcsname{%
 	\def\pgfplotsbinary@add@signed@largest@absolute{\advance\c@pgfplotsbin@input by 8388607 }%
-	\def\pgfplotsbinary@dimen@scale{256}% ~= (2^31-1) /  (2^(8*3-1) -1)
+	\def\pgfplotsbinaryencodesignedmaplinearly@prepare{%
+		\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+		\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
+		\divide\c@pgfplotsbin@input by256 % ~= (2^31-1) /  (2^(8*3-1) -1)
+	}%
 }%
 \expandafter\def\csname pgfplotsbinarysetbytes@4\endcsname{%
 	\def\pgfplotsbinary@add@signed@largest@absolute{%
 		\advance\c@pgfplotsbin@input by 2147483647 % this is the *absolute* largest int that TeX can handle.
 	}%
-	\def\pgfplotsbinary@dimen@scale{1}% ~= (2^31-1) /  (2^(8*4-1) -1)
+	\def\pgfplotsbinaryencodesignedmaplinearly@prepare{%
+		\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+		\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
+	}%
 }%
 \def\pgfplotsbinarysetbytes@@{%
-	\def\pgfplotsbinary@add@signed@largest@absolute{%
+	\def\pgfplotsbinaryencodesignedmaplinearly@prepare{%
+		\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
+		\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
 		\pgfplots@error{Sorry, but I can't perform \string\pgfplotsbinaryencodesignedmaplinearly\space for bytes=\pgfplotsbinary@bytes\space yet... bytes=4 is the maximum.}%
+	}%
+	\def\pgfplotsbinary@add@signed@largest@absolute{
+		\advance\c@pgfplotsbin@input by 2147483647 
 	}%
 }%
 \expandafter\let\csname pgfplotsbinary@bytes@5\endcsname=\pgfplotsbinarysetbytes@@
@@ -414,11 +434,13 @@
 	},
 	ordering/big endian,%
 	%
+	% The standard method - it results in binary encoded numbers.
 	binary encoding/.code={%
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@0\endcsname
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@128\endcsname
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
 		\def\pgfplotsbinary@basis{256}%
+		\let\pgfplotsbinary@hook=\relax
 		\def\pgfplotsbinary@hook@signed@linearmap{%
 			\ifnum\c@pgfplotsbin@byteno=0
 				\advance\c@pgfplotsbin@input by128
@@ -431,12 +453,18 @@
 			\pgfutil@ifundefined{pgfplotsbinarysetbytes@##1}{%
 				\pgfplots@error{Sorry, I can't write binary output with '##1' bytes yet...}%
 			}{%
-				\def\pgfplotsbinary@bytes{##1}%
+				\edef\pgfplotsbinary@bytes{##1}%
 				\csname pgfplotsbinarysetbytes@##1\endcsname
 			}%
 		}%
-	},
-	ASCIIHex encoding/.code={%
+	},%
+	%
+	% This applies 'binary encoding' and encodes the resulting bytes
+	% in Hex. It corresponds to the ASCIIHexEncode in postscript or
+	% pdf.
+	% Please note that 'bytes' sets the number of binary bytes - the
+	% actual encoding length is exactly twice as large.
+	ASCIIHexEncode/.code={%
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@48\endcsname
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@56\endcsname
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
@@ -474,9 +502,18 @@
 		}%
 	},%
 	%
-	% limited only - it works just for ONE number, not for a stream of
-	% numbers.
-	ASCII85 encoding/.code={%
+	% 
+	% This applies 'binary encoding' and encodes the resulting bytes
+	% using a base 85 encoding. It corresponds to the ASCII85Encode in postscript or
+	% pdf.
+	% Handle this method with care - it works just for ONE number, not for a stream of
+	% numbers as in pdf. Therefore, it might not be useful at all.
+	% Please note that 'bytes' will be ignored; ASCII85Encode assumes
+	% 4 binary bytes and uses 5 bytes to encode them.
+	%
+	% @ATTENTION bytes is ALWAYS 4, regardless of the setting of
+	% 'bytes'!
+	ASCII85Encode/.code={%
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO\csname pgfp@bin@33\endcsname
 		\expandafter\let\expandafter\pgfplotsbinary@ZERO@LINEARMAP\csname pgfp@bin@42\endcsname
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
@@ -530,8 +567,12 @@
 			##1\relax
 		}%
 	},%
-	% Write pdf objects in binary form:
-	% debug to pdf={\pgfplotsbinaryencodeunsigned}{1,2,3,...,16}
+	% Write pdf objects in binary form. This does only work with
+	% pdftex, and its output is only useful in conjunction with
+	% \pdfcompresslevel=0
+	% and a text editor.
+	% Usage:
+	% \pgfkeys{/pgfplots/bin/debug to pdf={\pgfplotsbinaryencodeunsigned}{1,2,3,...,16}}
 	%
 	% works only with pdftex
 	debug to pdf/.code 2 args={%
@@ -578,7 +619,7 @@
 %  }
 %-------------------------------------------------- 
 % with x = #1
-% b = 256
+% b = basis
 % will store stuff into \pgfplotsbinaryresult in binary format
 %
 % PRECONDITION:
@@ -610,7 +651,10 @@
 % The representation will use unsigned dual number representation.
 %
 % The assignment to \pgfplotsbinaryresult will be globally.
-% #1: an unsigned integer .
+% #1: an unsigned integer. It won't be transformed in any way, so make
+% sure it fits into the configured number of bytes. It is an error if
+% the number is too large or too small. Please note that only unsigned
+% numbers are supported with this method.
 %
 % FIXME : fix  > 2^30
 \def\pgfplotsbinaryencodeunsigned#1{%
@@ -644,7 +688,7 @@
 %
 % phi(x) = ( x + 2^31 -1 ) / (2^31-1 + 2^31-1) * (2^32-2) = x+ 2^31-1.
 %
-% The same map phi(x) = x + 2^31 -1 whith target space  [0, 2^32-1 ]
+% The same map phi(x) = x + 2^31 -1 with target space  [0, 2^32-1 ]
 % could be realized with the input space [- (2^31-1), 2^31 ].
 %
 % I am using this encoding procedure, phi(x) = x + 2^31 -1.
@@ -661,19 +705,23 @@
 %
 % This doesn't need TeX register arithmetics on the whole range.
 %
-% ATTENTION: only bytes=4 is implemented for this technique currently!
+% REMARK: the whole operation does also work if bytes<4 (i.e. we have
+% less than 32 bits in the target range). In this case, the mapping is
+% phi : [  -(2^31-1), 2^31-1 ] -> [ 0, 2^{8*bytes}-1 ]
+% and a further, *lossy* quantization still will be applied. The
+% quantization step is an integer division performed in signed number
+% arithmetics (i.e. it is symmetric around 0). 
 \def\pgfplotsbinaryencodesignedmaplinearly#1{%
 	\begingroup
 	\global\let\pgfplotsbinaryresult=\pgfplotsbinaryempty
 	\c@pgfplotsbin@input=#1 %
-	\c@pgfplotsbin@byteno=\pgfplotsbinary@bytes\relax
-	\c@pgfplotsbin@basis=\pgfplotsbinary@basis\relax
+	\pgfplotsbinaryencodesignedmaplinearly@prepare
 	\ifnum\c@pgfplotsbin@input<0
 		% compute + 2^31 - 1
 		\pgfplotsbinary@add@signed@largest@absolute
 	\else
 		% change zero padding such that positive numbers
-		% to get the effect of + 2^31.
+		% get the EFFECT of + 2^31.
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO@LINEARMAP
 		\let\pgfplotsbinary@hook=\pgfplotsbinary@hook@signed@linearmap
 		% and compute the -1 explicitly here:
@@ -689,7 +737,7 @@
 % range using a quantization technique to respect the (possibly)
 % restricted number of bytes.
 %
-% The implementation is very fast and uses only integer arithmetics.
+% The implementation is fast and uses only integer arithmetics.
 % It relies on \pgfplotsbinaryencodesignedmaplinearly and a scale.
 %
 % So, what we do is to setup a linear map into binary range with k
@@ -702,7 +750,7 @@
 %  phi: [ -(2^30-1) / 2^16, (2^30-1) / 2^16 ] -> [-(2^31 -2), 2^31-2].
 %
 % I simply use the \pgfplotsbinaryencodesignedmaplinearly to process
-% this further. Do simplify the computation, I simply compute
+% this further. To simplify the computation, I simply compute
 %   phi_signed( phi(x) ), 
 % where phi_signed denotes an application of
 % \pgfplotsbinaryencodesignedmaplinearly:
@@ -720,7 +768,13 @@
 % representation in TeX's arithmetics.
 % 
 %
-% ATTENTION: only bytes=4 is implemented for this technique currently!
+% REMARK: the whole operation does also work if bytes<4 (i.e. we have
+% less than 32 bits in the target range). In this case, a further
+% *lossy* quantization step is applied in phi_signed. The inverse
+% transformations are the same, however. See
+% \pgfplotsbinaryencodesignedmaplinearly for details about the
+% quantization step (or try it out).
+%
 	%
 	%% DEBUG NOTE: This mapping appears to work correctly according to
 	%% my tests.
@@ -732,7 +786,6 @@
 	\dimen0=#1\relax
 	\c@pgfplotsbin@input=\dimen0
 	\multiply\c@pgfplotsbin@input by2
-%	\divide\c@pgfplotsbin@input by\pgfplotsbinary@dimen@scale\relax
 %\message{LOWLEVEL ENCODING '\the\c@pgfplotsbin@input' with linear map}%
 	\pgfplotsbinaryencodesignedmaplinearly\c@pgfplotsbin@input
 	\endgroup

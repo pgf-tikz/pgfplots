@@ -55,6 +55,27 @@
 	/pgfplots/surf shading/south west corner/.initial={\pgfpointorigin},%
 	/pgfplots/surf shading/north east corner/.initial={\pgfqpoint{6cm}{6cm}},%
 	/pgfplots/surf shading/anchor/.initial=\pgfpointorigin,%
+	/pgfplots/surf shading/precision/.is choice,
+	/pgfplots/surf shading/precision/pdf/.code={%
+		% Lossless coordinate output.
+		\def\pgfplotslibrarysurf@bitspercoordinate{32}%
+		\def\pgfplotslibrarysurf@bytespercoordinate{4}%
+		\def\pgfplotslibrarysurf@filter@encode{}% raw binary.
+		\def\pgfplotslibrarysurf@filter@decode{}%
+	},%
+	/pgfplots/surf shading/precision/ps/.code={%
+		% quantized coordinate output (introduces quantization error).
+		\def\pgfplotslibrarysurf@bitspercoordinate{24}%
+		\def\pgfplotslibrarysurf@bytespercoordinate{3}%
+		% doesn't improve behavior of pdf2ps:
+		%\def\pgfplotslibrarysurf@filter@encode{ASCIIHexEncode}%
+		%\def\pgfplotslibrarysurf@filter@decode{ASCIIHexDecode}%
+		\def\pgfplotslibrarysurf@filter@encode{}% raw binary.
+		\def\pgfplotslibrarysurf@filter@decode{}%
+	},%
+	/pgfplots/surf shading/precision/postscript/.style={%
+		/pgfplots/surf shading/precision/ps},%
+	/pgfplots/surf shading/precision/ps,% 
 	/pgfplots/surf shading/cols/.initial=,%
 	/pgfplots/surf shading/colormap/.initial={%
 		<<
@@ -97,6 +118,7 @@
 \def\pgfplotslibrarysurf@corner@sw{\pgfkeysvalueof{/pgfplots/surf shading/south west corner}}
 \def\pgfplotslibrarysurf@corner@ne{\pgfkeysvalueof{/pgfplots/surf shading/north east corner}}%
 
+
 \def\pgfplotslibrarysurf@decode{%
 	-16383.999992 16384 % see the docs of \pgfplotsbinaryencodedimenmaplinearly
 	-16383.999992 16384 %
@@ -105,12 +127,16 @@
 \def\pgfplotslibrarysurf@count{0}%
 
 % driver specific:
-\def\pgfplotslibrarysurf@initstreamlen{}
+\def\pgfplotslibrarysurf@initstream{}
 \def\pgfplotslibrarysurf@advancestreamlen#1{}%
 
 \def\pgfplotslibrarysurfstreamstart{%
 	\pgfplotsapplistXnewempty\pgfplotslibrarysurf@binarystream@accum
-	\pgfplotslibrarysurf@initstreamlen
+	\pgfplotslibrarysurf@initstream
+	\ifx\pgfplotslibrarysurf@filter@encode\pgfutil@empty
+	\else
+		\pgfkeysalso{/pgfplots/bin/\pgfplotslibrarysurf@filter@encode}%
+	\fi
 }%
 \def\pgfplotslibrarysurfstreamend{%
 	\pgfplotsapplistXlet\pgfplotslibrarysurf@binarystream=\pgfplotslibrarysurf@binarystream@accum
@@ -121,7 +147,7 @@
 \def\pgfplotslibrarysurfstreamcoord#1#2{%
 %\message{SAMPLES NO: \the\c@pgfplots@coordindex.}%
 %\advance\c@pgfplots@coordindex by1
-	\pgfplotsbinarysetbytes4%
+	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
 	\pgf@process{#1}%
 	% The idea is to map 
 	% the low-level point coordinates LINEARLY into [0,2^{8*<bytes>}].
@@ -136,16 +162,6 @@
 	% The decode procedure tells the pdf viewer how to invert that
 	% stuff.
 	%
-	%% DEBUG NOTE: This mapping appears to work correctly according to
-	%% my tests.
-	%% For bc -l test codes: 
-	%% ibase=16; 
-	%% -4000 +  809658FA. / (2^20) * 8000
-	%
-	% FIXME : these coordinates ARE NOT USER SPACE CORRECTED.
-	% SO: either use them as fill path for the surfaces rectangle
-	% (which may work, I don't know) or make sure they are mapped
-	% correctly into "user space".
 	\pgf@sys@bp@correct\pgf@x%
 	\pgfplotsbinaryencodedimenmaplinearly\pgf@x
 %\message{ENCODING(x=\the\pgf@x)=\pgfplotsbinaryresult.}%
