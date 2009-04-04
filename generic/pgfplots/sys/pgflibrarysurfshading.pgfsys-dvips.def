@@ -33,57 +33,26 @@
 	% binary doesn't work due to limitations of DVI.
 	% We NEED an ASCII encoding.
 	%
-	%\def\pgfplotslibrarysurf@binarystream@len{0}%
-	%\pgfkeysalso{/pgfplots/bin/ASCII85 encoding}%
 	\def\pgfplotslibrarysurf@filter@encode{ASCIIHexEncode}%
 	\def\pgfplotslibrarysurf@filter@decode{ASCIIHexDecode}%
 }%
-%--------------------------------------------------
-% \def\pgfplotslibrarysurf@advancestreamlen#1{%
-% 	\begingroup
-% 		\c@pgf@counta=\pgfplotslibrarysurf@binarystream@len\relax
-% 		\advance\c@pgf@counta by#1
-% 		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-% 	\endgroup
-% 	\let\pgfplotslibrarysurf@binarystream@len=\pgfplots@glob@TMPa
-% }%
-%-------------------------------------------------- 
 
 % The lowlevel call for surface shadings. It uses a pattern type 2
-% dictionary as fill color and has thus several things to do. This is
-% a little bit more complicated than using the '/sh' operator (as
-% other pgf shadings do): the surface shading must be positioned
-% exactly at the requested coordinates, otherwise it is quite useless.
+% dictionary as fill color and has thus several things to do. 
 %
-% Since shadings are *not* affected by changes in the canvas
-% transformation matrix (shifts, rotations etc), it is necessary to
-% pack the shading into a separate xform object which is then rotated
-% and translated correctly. 
-%
-% There is just one more transformation necessary: the shift inside of
-% the xform. This shift is done using changes in the canvas
-% transformation matrix and it is UNDONE in the /Matrix argument of
-% the pattern dictionary. This last step can't be done with the /sh
-% operator which is why I am using pattern dictionaries.
+% It appears the dvips implementation is simpler than the pdftex
+% implementation - I did not need to adjust the matrix (don't know
+% why).
 \def\pgfplotslibrarysurfdraw{%
-	%\pgfplots@error{Sorry, surfshading (shader=interp) is NOT available for the selected driver `\pgfsysdriver'.}%
-	\begingroup
-%	\setbox\pgfutil@tempboxa=\hbox{%
-		\pgfpicture
-		\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
-		\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
-		\pgfpathrectanglecorners
-			{\pgfplotslibrarysurf@corner@sw}
-			{\pgfplotslibrarysurf@corner@ne}%
-		\pgfusepath{fill}%
-		\endpgfpicture
-%	}%
-%	\pdfxform resources{
-%		/Pattern << \pgfplots@glob@TMPa >> % write the pattern resource dictionary
-%	}\pgfutil@tempboxa
-	\leavevmode
-%	\pdfrefxform\pdflastxform
-	\endgroup
+	\pgfpicture
+	\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
+	\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
+	\pgfpathrectanglecorners
+		{\pgfplotslibrarysurf@corner@sw}
+		{\pgfplotslibrarysurf@corner@ne}%
+	\pgfusepath{fill}%
+	\endpgfpicture
+	\leavevmode% ??
 }
 
 % To be used inside of a pgfpicture.
@@ -97,30 +66,9 @@
 \def\pgfplotssys@do@surfshading@fillpaths#1{%
 %http://www.ghostscript.com/pipermail/gs-devel/2002-September/005763.html
 %http://www.tek-tips.com/viewthread.cfm?qid=1183719&page=4
-	%--------------------------------------------------
-	% \edef\pgf@sys@marshal{%
-	% 	\noexpand\pgfutil@insertatbegincurrentpage{\noexpand\pgfsys@outerinvoke{
-	% 		save true setglobal globaldict begin /pgfpat#1
-	% 		{
-	% 			/Pattern
-	% 			setcolorspace
-	% 			gsave
-	% 			initgraphics
-	% 			<<
-	% 				/Type /Pattern
-	% 				/PatternType 2
-	% 			>>
-	% 			matrix
-	% 			makepattern
-	% 			grestore
-	% 			setcolor
-	% 		} bind def end restore
-	% 	}}% <<
-	% }%
-	%-------------------------------------------------- 
-	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
-	\pgf@sys@bp@correct\pgf@x%
-	\pgf@sys@bp@correct\pgf@y%
+%	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
+%	\pgf@sys@bp@correct\pgf@x%
+%	\pgf@sys@bp@correct\pgf@y%
 	\pgfsys@invoke{%
 		<<	
 			%/Type /Pattern
@@ -129,56 +77,32 @@
 			<<
 				/ShadingType 5
 				/BitsPerCoordinate \pgfplotslibrarysurf@bitspercoordinate\space
-				/BitsPerComponent 16 % FIXME : 32 CAN'T work because 24 (or 16?) is maximum! need better impl for ASCII85Decode
+				/BitsPerComponent 16 % Note: this here is the reason why I can't use ASCII85Decode
 				/VerticesPerRow \pgfkeysvalueof{/pgfplots/surf shading/cols}
 				/ColorSpace /DeviceRGB
 				/Decode [\pgfplotslibrarysurf@decode]
 				/Function \pgfkeysvalueof{/pgfplots/surf shading/colormap}
 				/DataSource	
 					currentfile 
+						% direct binary output not possible: DVI
+						% doesn't support it (?)
 						%<< /EODCount \pgfplotslibrarysurf@binarystream@len\space /EODString () >>  /SubFileDecode filter
+						% not completely implemented :
 						%/ASCII85Decode filter
+						% works:
 						/ASCIIHexDecode filter
 						/ReusableStreamDecode filter
 							\pgfplotslibrarysurf@binarystream
-							%\csname pgfp@bin@126\endcsname% tilde ~>
-							> %\space
+							%\csname pgfp@bin@126\endcsname% tilde ~> is end-of-input indicator for ASCII85Decode
+							> % end-of-input indicator for ASCIIHexDecode
 			>>
 		>> [ 1 0 0 1 0 0 ] makepattern setpattern
+		% I don't know why I don't need the shifts here !? But it
+		% appears to work, so never mind.
 %		>> [ 1 0 0 1 \pgf@sys@tonumber\pgf@x\space \pgf@sys@tonumber\pgf@y ] makepattern setpattern
 		% 'setpattern' is a shortcut for changing the colorspace and
 		% the color to pattern.
-		%/Matrix [1 0 0 1 \pgf@sys@tonumber\pgf@x\space \pgf@sys@tonumber\pgf@y] %226.533 518.141] 
 	}%
-%	\begingroup
-%	\immediate\openout13=binarydata.bin
-%	\immediate\write13{\pgfplotslibrarysurf@binarystream}%
-%	\immediate\closeout13
-%	\endgroup
-	%--------------------------------------------------
-	% \edef\pgfplots@loc@TMPa{\the\pdflastobj}%
-	% \immediate\pdfobj {<<
-	% 	/PatternType 2
-	%-------------------------------------------------- 
-%		/Matrix [\pgf@pt@aa\space\pgf@pt@ab\space\pgf@pt@ba\space\pgf@pt@bb\space\pgf@sys@tonumber\pgf@pt@x\space\pgf@sys@tonumber\pgf@pt@y]
-	%--------------------------------------------------
-	% 	% FIXME: INCORPORATE TIKZ CM
-	% 	%--------------------------------------------------
-	% 	% /ExtGState 
-	% 	% 	<<
-	% 	% 		/LW 2
-	% 	% 		/OP true
-	% 	% 		/OPM 1
-	% 	% 	>>
-	% 	%-------------------------------------------------- 
-	% 	/Shading \pgfplots@loc@TMPa\space 0 R 
-	% >>}%
-	% \edef#1{%
-	% 	/pgfpatPlotsurface\pgfplotslibrarysurf@count\space \the\pdflastobj\space 0 R
-	% }%
-	% \pgfsys@setpatterncolored{Plotsurface\pgfplotslibrarysurf@count}%
-	% \pgfplotsutil@advancestringcounter@global\pgfplotslibrarysurf@count
-	%-------------------------------------------------- 
 }
 
 \endinput
