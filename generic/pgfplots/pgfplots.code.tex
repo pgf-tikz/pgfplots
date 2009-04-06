@@ -2243,6 +2243,8 @@
 	\draw[
 		/pgfplots/every outer x axis line, % FIXME! these outer styles need much more attention :-(
 		/pgfplots/every outer y axis line]
+	% FIXME : replace this here with basic layer! This should also
+	% allow closed paths:
 	(\pgfplots@xmin,	\pgfplots@ymin)
 \ifpgfplots@hide@y
 	{ (\pgfplots@xmin,	\pgfplots@ymax) }
@@ -3418,6 +3420,37 @@
 	%
 }
 
+% Defines \pgfmathresult to be the desired width without axis labels.
+%
+\def\pgfplots@initsizes@get@width@withoutlabels{%
+	\pgfplots@initsizes@handle@label@const{\pgfplots@width}{45pt}{width}%
+}
+
+% Defines \pgfmathresult to be the desired height without axis labels.
+\def\pgfplots@initsizes@get@height@withoutlabels{%
+	\pgfplots@initsizes@handle@label@const{\pgfplots@height}{45pt}{height}%
+}
+\def\pgfplots@initsizes@handle@label@const#1#2#3{%
+	\begingroup
+	\pgf@xa=#1\relax
+	% EXPECTED WIDTH = X = \pgfplots@width
+	% ACTUAL WIDTH = c + x * (xmax-xmin)
+	% where c is a CONSTANT (for the axis labels/tick labels).
+	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
+	%
+	% \pgf@xa := X-c:
+	\ifpgfplots@scale@only@axis
+	\else
+		\advance\pgf@xa by-#2 % FIXME determine 'c' correctly!
+	\fi
+	\ifdim\pgf@xa<0pt
+		\pgfplots@error{Error: Plot #3 `#1' is too small. This can't be realised while maintaining constant size for labels. Sorry, label sizes are only approximate. You will need to adjust your #3.}%
+		\pgf@xa=0pt
+	\fi
+	\edef\pgfmathresult{\the\pgf@xa}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
 
 % Helper method for initsizes.
 %
@@ -3433,25 +3466,17 @@
 % #2: the output argument for the SCALE.
 \def\pgfplots@initsizes@getXscale#1\into#2{%
 	\begingroup
-	\pgf@xa=\pgfplots@width\relax
+	\pgfplots@initsizes@get@width@withoutlabels
 	% EXPECTED WIDTH = X = \pgfplots@width
 	% ACTUAL WIDTH = c + x * (xmax-xmin)
 	% where c is a CONSTANT (for the axis labels/tick labels).
 	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
 	%
 	% \pgf@xa := X-c:
-	\ifpgfplots@scale@only@axis
-	\else
-		\advance\pgf@xa by-45pt% FIXME determine 'c' correctly!
-	\fi
-	\ifdim\pgf@xa<0pt
-		\pgfplots@error{Error: Plot width `\pgfplots@width' is too small. This can't be realised while maintaining constant width for y-labels. Sorry, label width are only approximate. You will need to adjust your width.}%
-		\pgf@xa=0pt
-	\fi
 	% \pgf@xb := x*(xmax-xmin):
 	\pgf@xb=#1\relax
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@xa}%
+		{\pgfmathresult}%
 		{\pgf@sys@tonumber\pgf@xb}%
 	}%
 %\pgfplots@message{pgfplots.sty: Computing 'x' such that 'width = c + x*(xmax-xmin)';
@@ -3467,25 +3492,11 @@
 % The same as \pgfplots@initsizes@getXscale, just for the height.
 \def\pgfplots@initsizes@getYscale#1\into#2{%
 	\begingroup
-	\pgf@xa=\pgfplots@height\relax
-	% EXPECTED WIDTH = X = \pgfplots@width
-	% ACTUAL WIDTH = c + x * (xmax-xmin)
-	% where c is a CONSTANT (for the axis labels/tick labels).
-	% -> \pgfplots@tmpXscale = (X - c) / (x *(xmax-xmin))
-	%
-	% \pgf@xa := X-c:
-	\ifpgfplots@scale@only@axis
-	\else
-		\advance\pgf@xa by-45pt\relax% FIXME determine 'c' correctly!
-	\fi
-	\ifdim\pgf@xa<0pt
-		\pgfplots@error{Error: Plot height `\pgfplots@height' is too small. This can't be realised while maintaining constant height for x-labels. Sorry, label heights are only approximate. You will need to adjust your height.}%
-		\pgf@xa=0pt
-	\fi
+	\pgfplots@initsizes@get@height@withoutlabels
 	% \pgf@xb := y*(ymax-ymin):
 	\pgf@xb=#1%
 	\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@xa}%
+		{\pgfmathresult}%
 		{\pgf@sys@tonumber\pgf@xb}%
 	}%
 %\pgfplots@message{pgfplots.sty: Computing 'y' such that 'height = c + y*(ymax-ymin)';
@@ -3921,7 +3932,7 @@
 	\global\let\pgfplots@glob@TMPb=\pgfmathresult
 	% 
 	% If the datascaling transformation is active (which is almost
-	% every the case here), we need to respect it here.
+	% everytime the case here), we need to respect it here.
 	%
 	% We only need to respect the SCALING, translations (shifts) are
 	% not interesting.
@@ -5615,7 +5626,7 @@
 % Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
 \long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
 	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
-	\def\pgfmathresult{#2}%
+	\edef\pgfmathresult{#2}%
 	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
 	\else
 		\expandafter\pgfplots@loc@TMPc\expandafter{\pgfmathresult}\pgfeov
@@ -5635,14 +5646,31 @@
 	\begingroup
 	\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}%
 	\let\pgfplots@evaluate@tikz@coord@x=\pgfmathresult
-	\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
+	\edef\pgfplots@loc@TMPa{#2}%
+	\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfutil@in@
+		\def\pgfplots@loc@TMPb##1,##2\pgfplots@EOI{%
+			\def\pgfplots@axiscs@y{##1}%
+			\def\pgfplots@axiscs@z{##2}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI
+		\pgfplots@evalute@tikz@coord@system@interface@for{y}{\pgfplots@axiscs@y}%
+		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
+		\pgfplots@evalute@tikz@coord@system@interface@for{z}{\pgfplots@axiscs@z}%
+		\let\pgfplots@evaluate@tikz@coord@z=\pgfmathresult
+	\else
+		\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
+		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
+		\let\pgfplots@evaluate@tikz@coord@z=\pgfutil@empty
+	\fi
 	\xdef\pgfplots@glob@TMPa{\pgfplots@evaluate@tikz@coord@x}%
-	\xdef\pgfplots@glob@TMPb{\pgfmathresult}%
+	\xdef\pgfplots@glob@TMPb{\pgfplots@evaluate@tikz@coord@y}%
+	\xdef\pgfplots@glob@TMPc{\pgfplots@evaluate@tikz@coord@z}%
 	\endgroup
 	\ifx\pgfplots@glob@TMPc\pgfutil@empty
 		\pgfplotsqpointxy{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
 	\else
-		\pgfplotsqpointxyz{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}{\pgfplots@glob@TMPc}% FIXME: read 3D!
+		\pgfplotsqpointxyz{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}{\pgfplots@glob@TMPc}%
 	\fi
 }
 
