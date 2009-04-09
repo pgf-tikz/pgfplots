@@ -1118,24 +1118,19 @@
 		%
 		% Step 2: determine how to place tick labels OUTSIDE:
 		%
-		% Step 2.1: anchors.
-		% see \pgfplots@init@ticklabelaxisspecfor
-		\edef\pgfplots@loc@TMPa{anchor=\csname pgfplots@#1ticklabel@suggested@anchor\endcsname}%
-		\expandafter\tikzset\expandafter{\pgfplots@loc@TMPa}%
-		%
-		% Step 2.2: the 'tick distance' feature:
+		% Prepare auto anchors and the 'tick distance' feature:
 		% FIXME : this here is NOT fool proof. I suppose it works
 		% reasonably for the default tick placement...
 		% I am not really sure WHY it works.
 		\if0\pgfplots@ticklabelside
 			% this means : the 'b' axis of the surface is on the lower axis
-			% limit. Since we want tick labels OUTSIDE of the axis, we need
-			% sign = -1.
-			\def\pgfplots@loc@baxissign{-}%
-		\else
-			% in this case, we the OUTSIDE area requires a plus sign - the b
-			% axis already points to the outside.
+			% limit. Since I need a vector pointing to the INSIDE of
+			% the axis, I need sign = +1
 			\def\pgfplots@loc@baxissign{+}%
+		\else
+			% in this case, the INSIDE area requires a minus sign - the b
+			% axis already points to the outside.
+			\def\pgfplots@loc@baxissign{-}%
 		\fi
 		\pgfplotsmath@ifzero{\csname pgfplots@\pgfplotspointonorientedsurfaceB @veclength\endcsname}{%
 			\def\pgfplots@loc@baxissign{0}%
@@ -1150,10 +1145,10 @@
 			}{%
 				\if0\pgfplotspointonorientedsurfaceabsetupfor@fixedsymbol
 					% same as before: the N axis is on the lower axis limit.
-					% So: sign -1
-					\def\pgfplots@loc@naxissign{-}%
-				\else
+					% So: sign +1
 					\def\pgfplots@loc@naxissign{+}%
+				\else
+					\def\pgfplots@loc@naxissign{-}%
 				\fi
 				\edef\pgfplots@loc@naxisscale{\pgfplots@loc@naxissign\csname pgfplots@\pgfplotspointonorientedsurfaceN @inverseveclength\endcsname}%
 			}%
@@ -1172,23 +1167,68 @@
 		\if\pgfplots@loc@naxissign0%
 			\def\pgfplots@loc@TMPc{1}%
 		\fi
-		% compute ticklabel distance:
+		%
+		%
+		% Process anchors.
+		% see \pgfplots@init@ticklabelaxisspecfor
+		%
+		% FIXME : perhaps this implementation here is better than the
+		% auto-anchor thing below:
+		%\edef\pgfplots@loc@TMPa{anchor=\csname pgfplots@#1ticklabel@suggested@anchor\endcsname}%
+		%\expandafter\tikzset\expandafter{\pgfplots@loc@TMPa}%
+		% ADVANTAGE of the fixed anchor: all labels appear on the same
+		% line. 
+		%
+		% My ideas are as follows:
+		% - the CENTER of tick labels should be on a line starting at
+		%   the tick position in direction
+		%   \pgfplots@loc@vector@to@outside.
+		% - the ANCHOR should be on the boundary of the shape.
+		%   
+		% Implementation: create a new, temporary anchor and invoke
+		% the respective 'border' anchor processing.
+		% Unfortunately, this is relatively low-level and may not be
+		% portable.
+		%
+		% 1. initialise the direction vector for tick label anchors:
+		\pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale}%
+		\edef\pgfplots@loc@vector@to@inside{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		% 2. init the anchors.
+		\pgfkeysalso{/tikz/every node/.append code={%
+				% define and use an "auto" anchor:
+				\expandafter\def\csname pgf@anchor@\tikz@shape @pgfplotsautoanchor\endcsname{%
+					\csname pgf@anchor@\tikz@shape @border\endcsname{\pgfplots@loc@vector@to@inside}%					
+				}%
+			},%
+			/tikz/anchor=pgfplotsautoanchor%
+		}%
+		%
+		% process the (optional) ticklabel distance:
 		\begingroup
-			\afterassignment\pgfplots@gobble@until@relax
-			\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel dist}pt\relax
-			\if\pgfplots@loc@TMPc0%
-				% ok, we can divide by 2.
-				\divide\pgf@xa by2
+			\pgfkeysgetvalue{/pgfplots/#1ticklabel dist}\pgfmathresult
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\afterassignment\pgfplots@gobble@until@relax
+				\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel dist}pt\relax
+				\if\pgfplots@loc@TMPc0%
+					% ok, we can divide by 2.
+					\divide\pgf@xa by2
+				\fi
+				\multiply\pgf@xa by-1 % the direction vector points to the INSIDE. the shift should have opposite sign.
+				\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
 			\fi
-			\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
 			\pgfmath@smuggleone\pgfmathresult
 		\endgroup
 		\let\pgfplots@loc@TMPc=\pgfmathresult
 %\message{pgfplots@drawticklabels@onorientedsurf@prepareanchor{#1}: Installing a SHIFT TRANSFORMATION of \pgfplots@loc@TMPc * pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale} where b = \pgfplotspointonorientedsurfaceB; N = \pgfplotspointonorientedsurfaceN. pgfplotspointonorientedsurfbN = \meaning\pgfplotspointonorientedsurfbN.}%
-		\pgftransformshift{%
-			\pgfpointscale
-				{\pgfplots@loc@TMPc}
-				{\pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale}}}%
+		\ifx\pgfplots@loc@TMPc\pgfutil@empty
+		\else
+			\pgftransformshift{%
+				\pgfpointscale
+					{\pgfplots@loc@TMPc}
+					{\pgfplots@loc@vector@to@inside}%
+			}%
+		\fi
 		%
 		% these things are irrelevant here:
 		\let\pgfplots@tickposchoicea=\pgfutil@empty
