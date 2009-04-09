@@ -72,15 +72,30 @@
 % Creates a new array with an abirtrary number of elements.
 % Arguments:
 % #1: the array's name (a macro name)
-% #2: the elements in the form 
+% #2: the elements in one of the following forms
+% 	a) a '\\' terminated list:
 %     first\\second\\third\\ ...\\
-%     like in tabular with one column.
+%     like in tabular with one column. The final '\\' necessary!
+%   b) a comma-separated list:
+%     first,second,third,5,10,last
+%     ATTENTION: arrays do not support the '...' syntax of tikz!
 %
 % Example:
 % \pgfplotsarraynew\fooarray{First Element\\Second Element\\Third Element\\}
+% \pgfplotsarraynew\fooarray{First Element,Second Element,Third Element}
+% \pgfplotsarraynew\fooarray{0,1,2,...,10}
 %
-% WARNING: do NOT forget the final '\\'!
+%
 \long\def\pgfplotsarraynew#1#2{%
+	\pgfplots@check@backwards@compatible@list@format #2\\\pgfplots@EOI
+	\ifpgfplots@is@old@list@format
+		\pgfplotsarraynew@backslash{#1}{#2}%
+	\else
+		\pgfplotsarraynew@commasep{#1}{#2}%
+	\fi
+}
+
+\def\pgfplotsarraynew@backslash#1#2{%
 	\pgfplotsarraynewempty{#1}%
 	\long\def\pgfplotsarraynew@impl@rest{#2}%
 	\pgfutil@loop
@@ -92,8 +107,16 @@
 	\ifpgfplots@loop@CONTINUE
 		\expandafter\pgfplotsarraynew@impl\pgfplotsarraynew@impl@rest\toarray#1\relax
 	\pgfutil@repeat
-}
+}%
 
+% converts a comma-separated list (PGF foreach)  to my internal list
+% structure.
+\long\def\pgfplotsarraynew@commasep#1#2{%
+	\pgfplotsarraynewempty{#1}%
+	\pgfplotsutilforeachcommasep{#2}\as\pgfplotsarraynew@elem{%
+		\expandafter\pgfplotsarraypushback\expandafter{\pgfplotsarraynew@elem}\to#1%
+	}%
+}
 % helper macro for \pgfplotsarraynew
 \long\def\pgfplotsarraynew@impl#1\\#2\toarray#3{%
 	\pgfplotsarraypushback#1\to#3\relax%
@@ -174,7 +197,7 @@
 %   \pgfplotsarrayselect\count1\of\foo\to\elem
 \def\pgfplotsarrayselect#1\of#2\to#3{%
 	\c@pgfplotsarray@tmp=#1\relax
-	\expandafter\let\expandafter#3\expandafter=\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname%
+	\expandafter\let\expandafter#3\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname%
 }
 
 % Expands to the value at index #1 of array #2.
@@ -228,29 +251,35 @@
 %  Element Zwei
 %  Element Drei
 % Each single element will be grouped with TeX groups.
+%
+% During the loop, \pgfplotsarrayforeachindex expands to the current index.
 \long\def\pgfplotsarrayforeach#1\as#2#3{%
 	\pgfplotsarray@@getsizeto{#1}{\pgfplotsarray@TMP}%
 	\c@pgfplotsarray@tmp=0\relax
+	\def\pgfplotsarrayforeachindex{\the\c@pgfplotsarray@tmp}%
 	\pgfutil@loop
-	\ifnum\c@pgfplotsarray@tmp<\pgfplotsarray@TMP\relax
-	\begingroup
-	\expandafter\let\expandafter#2\expandafter=\csname\string#1@\the\c@pgfplotsarray@tmp\endcsname%
-	#3%
-	\endgroup
-	\advance\c@pgfplotsarray@tmp by1
+		\ifnum\c@pgfplotsarray@tmp<\pgfplotsarray@TMP\relax
+		\begingroup
+		\expandafter\let\expandafter#2\expandafter=\csname\string#1@\the\c@pgfplotsarray@tmp\endcsname%
+		#3%
+		\endgroup
+		\advance\c@pgfplotsarray@tmp by1
 	\pgfutil@repeat
+	\let\pgfplotsarrayforeachindex=\relax%
 }
 
 % The same but without groups around #3.
 \long\def\pgfplotsarrayforeachungrouped#1\as#2#3{%
 	\pgfplotsarray@@getsizeto{#1}{\pgfplotsarray@TMP}%
 	\c@pgfplotsarray@tmp=0\relax
+	\def\pgfplotsarrayforeachindex{\the\c@pgfplotsarray@tmp}%
 	\pgfutil@loop
 	\ifnum\c@pgfplotsarray@tmp<\pgfplotsarray@TMP\relax
 	\expandafter\let\expandafter#2\expandafter=\csname\string#1@\the\c@pgfplotsarray@tmp\endcsname%
 	#3%
 	\advance\c@pgfplotsarray@tmp by1
 	\pgfutil@repeat
+	\let\pgfplotsarrayforeachindex=\relax%
 }
 
 % #1: arg1 (possibly not fully expanded)
