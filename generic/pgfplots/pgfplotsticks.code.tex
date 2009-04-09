@@ -952,12 +952,12 @@
 			\pgfplots@if{pgfplots@#1islinear}{%
 				\pgfplots@init@scaled@tick@for{#1}%
 			}{\relax}%
+			\def\pgfplots@auto@anchor@mode{1}%
 			\begingroup
+		%	\pgfkeysalso{/tikz/anchor/.append code={\def\pgfplots@auto@anchor@mode{0}}}%
+			\pgfkeysalso{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
 			\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1%
 			%
-			% FIXME: instead of styles, I could set them directly.
-			% Whould be faster.
-			\pgfkeys{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
 			\pgfplotsmath@ifzero{\csname pgfplots@\pgfplotspointonorientedsurfaceB @veclength\endcsname}{%
 				\def\pgfmathresult{0}%
 			}{%
@@ -1059,9 +1059,18 @@
 % 			if called, sets keys such that tick labels are LEFT
 % 			(BOTTOM) of the axis,
 \def\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1{%
+	\if\csname pgfplots@ticklabel@anchor@#1\endcsname0%
+		\ifpgfplots@threedim
+			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% 3D => paraxial
+		\else
+			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% use the general paraxial mode!
+			\if0\pgfplots@auto@anchor@mode
+				\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{2}% use only tikz mode.
+			\fi
+		\fi
+	\fi
 	\ifcase\csname pgfplots@ticklabel@anchor@#1\endcsname%
-		% 0: doesn't happen.
-		\pgfplots@error{Internal logic error: #1ticklabel anchor=auto should be processed already!}%
+		% 0: doesn't happen, see above.
 	\or
 		% 1: paraxial.
 		% The following code contains automatically
@@ -1096,11 +1105,11 @@
 			% z == (0,0) anyway. Use that here.
 			\if x\pgfplotspointonorientedsurfaceB
 				% N == z:
-				\def\pgfplotspointonorientedsurfbN##1##2{\pgfplotsqpointxy{##1}{0}{0}}%
+				\def\pgfplotspointonorientedsurfbN##1##2{\pgfplotsqpointxy{##1}{0}}%
 			\else
 				% B == y,
 				% N == z
-				\def\pgfplotspointonorientedsurfbN##1##2{\pgfplotsqpointxyz{0}{##1}{0}}%
+				\def\pgfplotspointonorientedsurfbN##1##2{\pgfplotsqpointxy{0}{##1}}%
 			\fi
 		\fi
 		%
@@ -1122,97 +1131,85 @@
 			% this means : the 'b' axis of the surface is on the lower axis
 			% limit. Since we want tick labels OUTSIDE of the axis, we need
 			% sign = -1.
-			\def\pgfplots@loc@TMPa{-}%
+			\def\pgfplots@loc@baxissign{-}%
 		\else
 			% in this case, we the OUTSIDE area requires a plus sign - the b
 			% axis already points to the outside.
-			\def\pgfplots@loc@TMPa{}%
+			\def\pgfplots@loc@baxissign{+}%
 		\fi
 		\pgfplotsmath@ifzero{\csname pgfplots@\pgfplotspointonorientedsurfaceB @veclength\endcsname}{%
-			\def\pgfplots@loc@TMPa{0}%
+			\def\pgfplots@loc@baxissign{0}%
+			\def\pgfplots@loc@baxisscale{0}%
 		}{%
-			\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
+			\edef\pgfplots@loc@baxisscale{\pgfplots@loc@baxissign\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
 		}%
 		\ifpgfplots@threedim
 			\pgfplotsmath@ifzero{\csname pgfplots@\pgfplotspointonorientedsurfaceN @veclength\endcsname}{%
-				\def\pgfplots@loc@TMPb{0}%
+				\def\pgfplots@loc@naxissign{0}%
+				\def\pgfplots@loc@naxisscale{0}%
 			}{%
 				\if0\pgfplotspointonorientedsurfaceabsetupfor@fixedsymbol
 					% same as before: the N axis is on the lower axis limit.
 					% So: sign -1
-					\def\pgfplots@loc@TMPb{-}%
+					\def\pgfplots@loc@naxissign{-}%
 				\else
-					\def\pgfplots@loc@TMPb{}%
+					\def\pgfplots@loc@naxissign{+}%
 				\fi
-				\edef\pgfplots@loc@TMPb{\pgfplots@loc@TMPb\csname pgfplots@\pgfplotspointonorientedsurfaceN @inverseveclength\endcsname}%
+				\edef\pgfplots@loc@naxisscale{\pgfplots@loc@naxissign\csname pgfplots@\pgfplotspointonorientedsurfaceN @inverseveclength\endcsname}%
 			}%
 		\else
 			% z == (0,0) anyway. Use that here.
-			\def\pgfplots@loc@TMPb{0}%
+			\def\pgfplots@loc@naxissign{0}%
+			\def\pgfplots@loc@naxisscale{0}%
 		\fi
 		%
 		% Ok, we want to compute (a+b)/2 . BUT: if a==0 or b==0, we
 		% don't want to divide by 2. Check that here:
 		\def\pgfplots@loc@TMPc{0}%
-		\if\pgfplots@loc@TMPa0%
+		\if\pgfplots@loc@baxissign0%
 			\def\pgfplots@loc@TMPc{1}%
 		\fi
-		\if\pgfplots@loc@TMPb0%
+		\if\pgfplots@loc@naxissign0%
 			\def\pgfplots@loc@TMPc{1}%
 		\fi
-		\if\pgfplots@loc@TMPc0%
-			% ok, we can divide by 2.
-			\pgfmathmultiply@
-				{\pgfkeysvalueof{/pgfplots/#1ticklabel dist}}
-				{0.5}%
-			\let\pgfplots@loc@TMPc=\pgfmathresult
-		\else
-			\pgfkeysgetvalue{/pgfplots/#1ticklabel dist}\pgfplots@loc@TMPc
-		\fi
-%\message{pgfplots@drawticklabels@onorientedsurf@prepareanchor{#1}: Installing a SHIFT TRANSFORMATION of \pgfplots@loc@TMPc * pgfplotspointonorientedsurfbN{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb} where b = \pgfplotspointonorientedsurfaceB; N = \pgfplotspointonorientedsurfaceN.\MessageBreak pgfplotspointonorientedsurfbN = \meaning\pgfplotspointonorientedsurfbN\MessageBreak}%
+		% compute ticklabel distance:
+		\begingroup
+			\afterassignment\pgfplots@gobble@until@relax
+			\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel dist}pt\relax
+			\if\pgfplots@loc@TMPc0%
+				% ok, we can divide by 2.
+				\divide\pgf@xa by2
+			\fi
+			\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+		\let\pgfplots@loc@TMPc=\pgfmathresult
+%\message{pgfplots@drawticklabels@onorientedsurf@prepareanchor{#1}: Installing a SHIFT TRANSFORMATION of \pgfplots@loc@TMPc * pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale} where b = \pgfplotspointonorientedsurfaceB; N = \pgfplotspointonorientedsurfaceN. pgfplotspointonorientedsurfbN = \meaning\pgfplotspointonorientedsurfbN.}%
 		\pgftransformshift{%
 			\pgfpointscale
 				{\pgfplots@loc@TMPc}
-				{\pgfplotspointonorientedsurfbN{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}}}%
+				{\pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale}}}%
 		%
 		% these things are irrelevant here:
 		\let\pgfplots@tickposchoicea=\pgfutil@empty
 		\let\pgfplots@tickposchoiceb=\pgfutil@empty
 	\or
-		% 2: tikz.
-		% We simply prepare the default anchor.
-		% Actually, this code is just for backwards compatibility -
-		% there may be people who prefer to set anchors. The
-		% 'paraxial' implementation is much more general, however.
-		\if\pgfplotspointonorientedsurfaceB x
-			\def\pgfplots@tickposchoicea{\tikzset{right}}%
-			\def\pgfplots@tickposchoiceb{\tikzset{left}}%
-		\else
-			\if\pgfplotspointonorientedsurfaceB y
-				\def\pgfplots@tickposchoicea{\tikzset{above}}%
-				\def\pgfplots@tickposchoiceb{\tikzset{below}}%
+		\if1\pgfplots@auto@anchor@mode
+			% 2: tikz.
+			% We simply prepare the default anchor.
+			% Actually, this code is just for backwards compatibility -
+			% there may be people who prefer to set anchors. The
+			% 'paraxial' implementation is much more general, however.
+			\if\pgfplotspointonorientedsurfaceB x
+				\def\pgfplots@tickposchoicea{\tikzset{right}}%
+				\def\pgfplots@tickposchoiceb{\tikzset{left}}%
 			\else
-				\def\pgfplots@tickposchoicea{\tikzset{anchor=north east}}%
-				\def\pgfplots@tickposchoiceb{\tikzset{anchor=south east}}%
-			\fi
-		\fi
-	\fi
-}%
-
-% Sets the values of '#1ticklabel anchor' to one of 'paraxial' (1) or
-% 'tikz' (2).
-% This does only change anything for the choice 'auto'.
-%
-% #1: one of [xyz]
-\def\pgfplots@prepare@ticklabel@anchors@for#1{%
-	\if\csname pgfplots@ticklabel@anchor@#1\endcsname0%
-		\ifpgfplots@threedim
-			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% 3D => paraxial
-		\else
-			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% non-orthogonal axis => paraxial
-			\if1\pgfplots@tmp@xisaxisparallel%
-				\if1\pgfplots@tmp@yisaxisparallel%
-					\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{2}% orthogonal axis => tikz
+				\if\pgfplotspointonorientedsurfaceB y
+					\def\pgfplots@tickposchoicea{\tikzset{above}}%
+					\def\pgfplots@tickposchoiceb{\tikzset{below}}%
+				\else
+					\def\pgfplots@tickposchoicea{\tikzset{anchor=north east}}%
+					\def\pgfplots@tickposchoiceb{\tikzset{anchor=south east}}%
 				\fi
 			\fi
 		\fi
