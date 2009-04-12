@@ -912,6 +912,18 @@
 % such that a following coordinate stream is processed properly. The
 % following coordinate stream may come from different input methods.
 %
+% This coordinate stream is the first time a coordinate will be
+% reported and processed by pgfplots. The task of this first pass is
+% to
+% - compute and update any axis limits,
+% - collect and prepare ranges for color data,
+% - handle stacked plots and error bars,
+% - store the complete state of the plot's preprocessing in an
+%   internal datastructure for later completion.
+%
+% Any \addplot command should issue \pgfplots@PREPARE@COORD@STREAM
+% eventually.
+%
 % Arguments:
 % #1:  all options of \addplot[...] (the plot style)
 % #2:  any trailing path commands after the 'plot' command as such,
@@ -953,136 +965,7 @@
 	\ifpgfplots@curplot@threedim
 		\global\pgfplots@threedimtrue
 	\fi
-	\def\pgfplots@coord@stream@start@{%
-		\pgfplotsapplistXXnewempty
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
-			\pgfplots@streamerrorbarstart
-		\else
-			\let\pgfplots@recordederrorbar=\pgfutil@empty
-		\fi
-		\ifpgfplots@stackedmode
-			\pgfplots@stacked@beginplot
-		\fi
-		\pgfplotsmathdeclarepseudoconstant{x}{\let\pgfmathresult=\pgfplots@current@point@x}%
-		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\pgfplots@current@point@y}%
-		\pgfplotsmathdeclarepseudoconstant{z}{\let\pgfmathresult=\pgfplots@current@point@z}%
-		\pgfplotsmathdeclarepseudoconstant{meta}{%
-			\let\pgfmathresult=\pgfplots@current@point@meta
-			\ifx\pgfmathresult\pgfutil@empty
-				\pgfmathfloatcreate{0}{0.0}{0}%
-			\fi
-		}%
-		%
-		%\let\pgfplots@coord@stream@recorded=\pgfutil@empty
-		%
-		% %%%%%%%%%%%%%%
-		%
-		% Define \pgfplots@set@perpointmeta properly:
-		\ifcase\pgfplots@perpointmeta@choice
-			% disabled.
-			\def\pgfplots@set@perpointmeta{%	
-				\let\pgfplots@current@point@meta=\pgfutil@empty
-			}%
-		\or
-			% point meta/x
-			\def\pgfplots@set@perpointmeta{%	
-				\let\pgfplots@current@point@meta=\pgfplots@current@point@x
-			}%
-			\ifpgfplots@xislinear
-			\else	
-				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-					\pgfplots@set@perpointmeta
-					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-					\let\pgfplots@current@point@meta=\pgfmathresult
-				}%
-			\fi
-		\or
-			% point meta/y
-			\def\pgfplots@set@perpointmeta{%	
-				\let\pgfplots@current@point@meta=\pgfplots@current@point@y
-			}%
-			\ifpgfplots@yislinear
-			\else	
-				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-					\pgfplots@set@perpointmeta
-					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-					\let\pgfplots@current@point@meta=\pgfmathresult
-				}%
-			\fi
-		\or
-			% point meta/z
-			\def\pgfplots@set@perpointmeta{%	
-				\let\pgfplots@current@point@meta=\pgfplots@current@point@z
-			}%
-			\ifpgfplots@zislinear
-			\else	
-				\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-					\pgfplots@set@perpointmeta
-					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-					\let\pgfplots@current@point@meta=\pgfmathresult
-				}%
-			\fi
-		\or
-			% point meta/explicit : parse the information found
-			% somewhere:
-			\def\pgfplots@set@perpointmeta{%	
-				\ifx\pgfplots@current@point@meta\pgfutil@empty
-				\else
-					\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\fi
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\or
-			% point meta/explicit symbolic : simply collect the
-			% information, no math.
-			\def\pgfplots@set@perpointmeta{}%
-		\fi
-		% check 
-		%   if( we have point meta )...
-		\pgfplots@loc@tmptrue
-		\ifnum\pgfplots@perpointmeta@choice=0
-			\pgfplots@loc@tmpfalse
-		\else
-			\ifnum\pgfplots@perpointmeta@choice=5
-				\pgfplots@loc@tmpfalse
-			\fi
-		\fi
-		\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		\else
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathparse{\pgfkeysvalueof{/pgfplots/point meta/expr}}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-			% update limits in this case:
-			\pgfplots@loc@tmptrue
-			% make sure it is not 'none':
-			\def\pgfplots@perpointmeta@choice{4}%
-		\fi
-		\ifpgfplots@loc@tmp
-			% We need to work with per point meta data.
-			% So, also compute the data range on a per-stream basis!
-			% These limits are important later.
-			\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
-			\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
-				\pgfplots@set@perpointmeta
-				\ifx\pgfplots@current@point@meta\pgfutil@empty
-				\else
-					\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
-					\global\let\pgfplots@metamin=\pgfmathresult
-					\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
-					\global\let\pgfplots@metamax=\pgfmathresult
-				\fi
-			}%
-		\else
-			% there is no point meta:
-			\global\let\pgfplots@metamin=\pgfutil@empty
-			\global\let\pgfplots@metamax=\pgfutil@empty
-		\fi
-	}%
+	%
 	\begingroup
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\let\E=\noexpand
@@ -1510,154 +1393,311 @@
 	\endgroup
 %\message{Prepared macro \string\pgfplots@update@limits@for@one@point: {\meaning\pgfplots@update@limits@for@one@point}}%
 %\message{Prepared macro \string\pgfplots@process@one@point: {\meaning\pgfplots@process@one@point}}%
+	% 
+	\let\pgfplots@coord@stream@start@=\pgfplots@PREPARE@COORD@STREAM@start@
 	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
+	\def\pgfplots@coord@stream@end@{\pgfplots@PREPARE@COORD@STREAM@end@{#1}{#2}}%
+}%
+
+% The \pgfplots@coord@stream@start@ routine used inside of
+% \pgfplots@PREPARE@COORD@STREAM.
+%
+% It prepares everything for the first pass through all input
+% coordinates.
+\def\pgfplots@PREPARE@COORD@STREAM@start@{%
+	% The current implementation of pgfplots stores the preprocessed
+	% coordinate stream into a long list of coordinates.
+	% Since macro append is an expensive operation, it uses the highly
+	% optimized 'applistXX' structure:
+	\pgfplotsapplistXXnewempty
 	%
-	\def\pgfplots@coord@stream@end@{%
-		\ifx\pgfplots@metamin\pgfutil@empty
-		\else
-			\ifpgfplots@autocompute@metamin
-				\pgfplotsmathfloatmin{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
-				\global\let\pgfplots@axiswide@metamin=\pgfmathresult
-			\fi
-			\ifpgfplots@autocompute@metamax
-				\pgfplotsmathfloatmax{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
-				\global\let\pgfplots@axiswide@metamax=\pgfmathresult
-			\fi
+	%
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@streamerrorbar@recordto{\pgfplots@recordederrorbar}%
+		\pgfplots@streamerrorbarstart
+	\else
+		\let\pgfplots@recordederrorbar=\pgfutil@empty
+	\fi
+	\ifpgfplots@stackedmode
+		\pgfplots@stacked@beginplot
+	\fi
+	%
+	% Inside of math expressions, 'x', 'y' and 'z' expand to the
+	% current x,y and z coords respectively. Introduce these (and some
+	% more) shortcuts:
+	\pgfplotsmathdeclarepseudoconstant{x}{\let\pgfmathresult=\pgfplots@current@point@x}%
+	\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\pgfplots@current@point@y}%
+	\pgfplotsmathdeclarepseudoconstant{z}{\let\pgfmathresult=\pgfplots@current@point@z}%
+	\pgfplotsmathdeclarepseudoconstant{meta}{%
+		\let\pgfmathresult=\pgfplots@current@point@meta
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfmathfloatcreate{0}{0.0}{0}%
 		\fi
-		\ifpgfplots@autocompute@all@limits
-			\global\let\pgfplots@data@xmin=\pgfplots@xmin
-			\global\let\pgfplots@data@xmax=\pgfplots@xmax
-			\global\let\pgfplots@data@ymin=\pgfplots@ymin
-			\global\let\pgfplots@data@ymax=\pgfplots@ymax
-			\global\let\pgfplots@data@zmin=\pgfplots@zmin
-			\global\let\pgfplots@data@zmax=\pgfplots@zmax
-		\fi
-		\ifpgfplots@errorbars@enabled
-			\pgfplots@streamerrorbarend
-		\fi
-		\ifpgfplots@stackedmode
-			\pgfplots@stacked@endplot
-		\fi
-		\ifpgfplots@coord@stream@isfirst
-			\pgfplots@warning{the current plot has no coordinates (left?)}%
-		\fi
-%		\else
-			% Idea: use
-			%   \scope[plot specification]
-			%   <any paths for error bars>
-			%   \endscope
-			%   \draw plot coordinates {...};
-			% to share plot specifications between error bars and plot
-			% coordinates. Unfortunately, it is NOT sufficient to use
-			% \tikzset{#1}
-			\ifpgfplots@curplot@isirrelevant
-				\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
-			\else
-				\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
-				\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
-			\fi
-			% warning: rememberplotspec calls list macros which
-			% overwrite \t@pgfplots@toka
-			\t@pgfplots@toka=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
-			\xdef\pgfplots@last@plot@style{\the\t@pgfplots@toka}% store it for \label commands.
-			% ATTENTION: do NOT call list macros from here on!
-			%
-			\ifpgfplots@datascaletrafo@initialised
-				\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
-				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
-			\else
-				\t@pgfplots@tokc={}%
-			\fi
-			% SERIALIZE RESULT:
-			%
-			% everything which has been accumulated so far (including the
-			% preprocessed coordinates) will be serialized into the
-			% structure \pgfplots@stored@plotlist (globally).
-			%
-			% assembe a \pgfplots@addplot@enqueue@coords command ...
-			% BEGIN HERE ...
-			% vvvvvvvvvv
-			\xdef\pgfplots@glob@TMPa{%
-				\noexpand\pgfplots@addplot@enqueue@coords
-				{% precommand(s):
-					\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
-					\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
-					\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
-					% \pgfplots@current@point@coordindex will always contain the current index.
-					% Maybe overwritten if not provided using \c@pgfplots@coordindex.
-					\noexpand\def\noexpand\pgfplots@current@point@coordindex{\noexpand\the\noexpand\c@pgfplots@coordindex}%
-					\noexpand\def\noexpand\coordindex{\noexpand\pgfplots@current@point@coordindex}% valid inside of \addplot
-					%
-					% save the possibly prepare/adjusted plot
-					% variables:
-					\noexpand\pgfkeyssetvalue{/pgfplots/samples}{\pgfplots@plot@samples}%
-					\noexpand\pgfkeyssetvalue{/pgfplots/domain}{\pgfplots@plot@domain}%
-					\noexpand\pgfkeyssetvalue{/pgfplots/samples at}{\pgfplots@plot@samples@at}%
-					%
-					% ... especially the rows/cols arguments which
-					% might have been reported by the coord input
-					% sources (from \pgfplots@validate@plot@domain@arguments):
-					\ifpgfplots@curplot@threedim
-						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
-						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
-					\else
-						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfplots@current@point@coordindex}%
-						\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
-					\fi
-					%
-					\noexpand\pgfplots@initzerolevelhandler
-					\the\t@pgfplots@tokc% named start/end points (if already available)
-					\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}%
-					% per-point meta data ranges which apply only to
-					% this plot:
-					\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
-					\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-					\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-				}%
-				{% draw command:
-					\noexpand\draw%
-				}%
-			}%
-			\pgfplotsapplistXXlet\pgfplots@coord@stream@recorded
-			\pgfplotsapplistXXclear
-			\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
-			\t@pgfplots@tokb={#2;}%
-			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-			\xdef\pgfplots@glob@TMPa{%
-				\the\t@pgfplots@toka
-				{% coordinates which need to be processed in \endaxis.
-				% See
-				% \pgfplots@coord@stream@finalize@storedcoords@START
-					normalized coordinates {\the\t@pgfplots@tokc}\the\t@pgfplots@tokb
-				}%
-			}%
-			%
-			% Ok, now assemble the POST COMMANDS. Error bar
-			% commands will be append here (if any)
-			\ifx\pgfplots@recordederrorbar\pgfutil@empty
-				\pgfplots@glob@TMPa
-					{%
-						% Post commands are empty here.
-					}%
-			\else
-				\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-				\t@pgfplots@tokb=\expandafter{\pgfplots@recordederrorbar}%
-				\def\pgfplots@loc@TMPb{%
-					\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\t@pgfplots@tokb}%
-				}%
-				\xdef\pgfplots@glob@TMPa{
-					\the\t@pgfplots@toka
-					{
-						% Post commands: append error bar commands.
-						\pgfplots@loc@TMPb
-					}%
-				}%
-				\pgfplots@glob@TMPa
-			\fi
-			%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
-%		\fi
-		\pgfplots@end@plot
 	}%
+	%
+	% %%%%%%%%%%%%%%
+	%
+	% Define \pgfplots@set@perpointmeta properly:
+	\ifcase\pgfplots@perpointmeta@choice
+		% disabled.
+		\def\pgfplots@set@perpointmeta{%	
+			\let\pgfplots@current@point@meta=\pgfutil@empty
+		}%
+	\or
+		% point meta/x
+		\def\pgfplots@set@perpointmeta{%	
+			\let\pgfplots@current@point@meta=\pgfplots@current@point@x
+		}%
+		\ifpgfplots@xislinear
+		\else	
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+				\pgfplots@set@perpointmeta
+				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+		\fi
+	\or
+		% point meta/y
+		\def\pgfplots@set@perpointmeta{%	
+			\let\pgfplots@current@point@meta=\pgfplots@current@point@y
+		}%
+		\ifpgfplots@yislinear
+		\else	
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+				\pgfplots@set@perpointmeta
+				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+		\fi
+	\or
+		% point meta/z
+		\def\pgfplots@set@perpointmeta{%	
+			\let\pgfplots@current@point@meta=\pgfplots@current@point@z
+		}%
+		\ifpgfplots@zislinear
+		\else	
+			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+				\pgfplots@set@perpointmeta
+				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+				\let\pgfplots@current@point@meta=\pgfmathresult
+			}%
+		\fi
+	\or
+		% point meta/explicit : parse the information found
+		% somewhere:
+		\def\pgfplots@set@perpointmeta{%	
+			\ifx\pgfplots@current@point@meta\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\fi
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		}%
+	\or
+		% point meta/explicit symbolic : simply collect the
+		% information, no math.
+		\def\pgfplots@set@perpointmeta{}%
+	\fi
+	% check 
+	%   if( we have point meta )...
+	\pgfplots@loc@tmptrue
+	\ifnum\pgfplots@perpointmeta@choice=0
+		\pgfplots@loc@tmpfalse
+	\else
+		\ifnum\pgfplots@perpointmeta@choice=5
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
+			\pgfplots@set@perpointmeta
+			\pgfmathparse{\pgfkeysvalueof{/pgfplots/point meta/expr}}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		}%
+		% update limits in this case:
+		\pgfplots@loc@tmptrue
+		% make sure it is not 'none':
+		\def\pgfplots@perpointmeta@choice{4}%
+	\fi
+	\ifpgfplots@loc@tmp
+		% We need to work with per point meta data.
+		% So, also compute the data range on a per-stream basis!
+		% These limits are important later.
+		\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
+		\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
+		\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%
+			\pgfplots@set@perpointmeta
+			\ifx\pgfplots@current@point@meta\pgfutil@empty
+			\else
+				\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+				\global\let\pgfplots@metamin=\pgfmathresult
+				\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+				\global\let\pgfplots@metamax=\pgfmathresult
+			\fi
+		}%
+	\else
+		% there is no point meta:
+		\global\let\pgfplots@metamin=\pgfutil@empty
+		\global\let\pgfplots@metamax=\pgfutil@empty
+	\fi
+}%
+% This is the \pgfplots@coord@stream@end@ routine which is invoked by
+% \pgfplots@PREPARE@COORD@STREAM. 
+%
+% It finalizes the first pass through the input coordinates and
+% remembers the preprocessed \addplot command.
+%
+% Technical note: The parameters provided to
+% \pgfplots@PREPARE@COORD@STREAM
+% are needed here. This doesn't fit directly into the framework of
+% coordinate streams, see \pgfplots@PREPARE@COORD@STREAM how this
+% invocation works.
+\def\pgfplots@PREPARE@COORD@STREAM@end@#1#2{%
+	\ifx\pgfplots@metamin\pgfutil@empty
+	\else
+		\ifpgfplots@autocompute@metamin
+			\pgfplotsmathfloatmin{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
+			\global\let\pgfplots@axiswide@metamin=\pgfmathresult
+		\fi
+		\ifpgfplots@autocompute@metamax
+			\pgfplotsmathfloatmax{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
+			\global\let\pgfplots@axiswide@metamax=\pgfmathresult
+		\fi
+	\fi
+	\ifpgfplots@autocompute@all@limits
+		\global\let\pgfplots@data@xmin=\pgfplots@xmin
+		\global\let\pgfplots@data@xmax=\pgfplots@xmax
+		\global\let\pgfplots@data@ymin=\pgfplots@ymin
+		\global\let\pgfplots@data@ymax=\pgfplots@ymax
+		\global\let\pgfplots@data@zmin=\pgfplots@zmin
+		\global\let\pgfplots@data@zmax=\pgfplots@zmax
+	\fi
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@streamerrorbarend
+	\fi
+	\ifpgfplots@stackedmode
+		\pgfplots@stacked@endplot
+	\fi
+	\ifpgfplots@coord@stream@isfirst
+		\pgfplots@warning{the current plot has no coordinates (left?)}%
+	\fi
+%		\else
+		% Idea: use
+		%   \scope[plot specification]
+		%   <any paths for error bars>
+		%   \endscope
+		%   \draw plot coordinates {...};
+		% to share plot specifications between error bars and plot
+		% coordinates. Unfortunately, it is NOT sufficient to use
+		% \tikzset{#1}
+		\ifpgfplots@curplot@isirrelevant
+			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
+		\else
+			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
+			\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+		\fi
+		% warning: rememberplotspec calls list macros which
+		% overwrite \t@pgfplots@toka
+		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
+		\xdef\pgfplots@last@plot@style{\the\t@pgfplots@toka}% store it for \label commands.
+		% ATTENTION: do NOT call list macros from here on!
+		%
+		\ifpgfplots@datascaletrafo@initialised
+			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
+			\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+		\else
+			\t@pgfplots@tokc={}%
+		\fi
+		% SERIALIZE RESULT:
+		%
+		% everything which has been accumulated so far (including the
+		% preprocessed coordinates) will be serialized into the
+		% structure \pgfplots@stored@plotlist (globally).
+		%
+		% assembe a \pgfplots@addplot@enqueue@coords command ...
+		% BEGIN HERE ...
+		% vvvvvvvvvv
+		\xdef\pgfplots@glob@TMPa{%
+			\noexpand\pgfplots@addplot@enqueue@coords
+			{% precommand(s):
+				\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
+				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
+				\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
+				% \pgfplots@current@point@coordindex will always contain the current index.
+				% Maybe overwritten if not provided using \c@pgfplots@coordindex.
+				\noexpand\def\noexpand\pgfplots@current@point@coordindex{\noexpand\the\noexpand\c@pgfplots@coordindex}%
+				\noexpand\def\noexpand\coordindex{\noexpand\pgfplots@current@point@coordindex}% valid inside of \addplot
+				%
+				% save the possibly prepare/adjusted plot
+				% variables:
+				\noexpand\pgfkeyssetvalue{/pgfplots/samples}{\pgfplots@plot@samples}%
+				\noexpand\pgfkeyssetvalue{/pgfplots/domain}{\pgfplots@plot@domain}%
+				\noexpand\pgfkeyssetvalue{/pgfplots/samples at}{\pgfplots@plot@samples@at}%
+				%
+				% ... especially the rows/cols arguments which
+				% might have been reported by the coord input
+				% sources (from \pgfplots@validate@plot@domain@arguments):
+				\ifpgfplots@curplot@threedim
+					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
+					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
+				\else
+					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfplots@current@point@coordindex}%
+					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
+				\fi
+				%
+				\noexpand\pgfplots@initzerolevelhandler
+				\the\t@pgfplots@tokc% named start/end points (if already available)
+				\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}%
+				% per-point meta data ranges which apply only to
+				% this plot:
+				\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
+				\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
+				\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
+			}%
+			{% draw command:
+				\noexpand\draw%
+			}%
+		}%
+		\pgfplotsapplistXXlet\pgfplots@coord@stream@recorded
+		\pgfplotsapplistXXclear
+		\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
+		\t@pgfplots@tokb={#2;}%
+		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+		\xdef\pgfplots@glob@TMPa{%
+			\the\t@pgfplots@toka
+			{% coordinates which need to be processed in \endaxis.
+			% See
+			% \pgfplots@coord@stream@finalize@storedcoords@START
+				normalized coordinates {\the\t@pgfplots@tokc}\the\t@pgfplots@tokb
+			}%
+		}%
+		%
+		% Ok, now assemble the POST COMMANDS. Error bar
+		% commands will be append here (if any)
+		\ifx\pgfplots@recordederrorbar\pgfutil@empty
+			\pgfplots@glob@TMPa
+				{%
+					% Post commands are empty here.
+				}%
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+			\t@pgfplots@tokb=\expandafter{\pgfplots@recordederrorbar}%
+			\def\pgfplots@loc@TMPb{%
+				\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\t@pgfplots@tokb}%
+			}%
+			\xdef\pgfplots@glob@TMPa{
+				\the\t@pgfplots@toka
+				{
+					% Post commands: append error bar commands.
+					\pgfplots@loc@TMPb
+				}%
+			}%
+			\pgfplots@glob@TMPa
+		\fi
+		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
+%		\fi
+	\pgfplots@end@plot
 }%
 
 % Defines the linear transformation macro \pgfplots@perpointmeta@trafo,
