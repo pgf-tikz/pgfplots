@@ -1722,6 +1722,16 @@
 % \relax if error bars are disabled for #1.
 %
 % #1: either x, y or z.
+%
+% POSTCONDITION:
+%   the macro \pgfplots@PREPARE@errorbar@process@#1 will be defined.
+%   It is supposed to be used inside of the pgfplots streaming methods
+%   and depends on the arguments
+% 		\pgfplots@current@point@[xyz]
+%		\pgfplots@current@point@[xyz]@unfiltered
+%		\pgfplots@current@point@[xyz]@error
+%	The '@unfilterered' arguments are needed for log plots. I do not
+%	want to compute exp(current@point@[xyz]) again.
 \def\pgfplots@PREPARE@errorbar@processing@in@dir#1{%
 	\if0\csname pgfplots@errorbars@#1direction\endcsname
 		% no error bars. Ok. Do nothing here.
@@ -1813,11 +1823,11 @@
 				\let\pgfplots@loc@TMPa=\pgfmathresult
 				%
 				% Prepare '1 + err':
-				\pgfmathfloatadd@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPa}%
+				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
-				\pgfmathfloatsubtract@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPa}%
+				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
 				%
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
@@ -1876,6 +1886,132 @@
 			% Furthermore, we expect the '@unfiltered' keys to be
 			% present (I don't want to apply 'exp' again!).
 			%
+			\ifcase\csname pgfplots@errorbars@#1mode\endcsname
+				% fixed absolute, log( x +- e_x )
+				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
+				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
+				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
+					\pgfmathfloatparsenumber{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
+					\let\pgfplots@loc@TMPa=\pgfmathresult
+					\if +##1%
+						\pgfmathfloatadd@
+							{\pgfplots@loc@TMPa}%
+							{\csname pgfplots@error@coord@#1\endcsname}%
+					\else
+						\pgfmathfloatsubtract@
+							{\pgfplots@loc@TMPa}%
+							{\csname pgfplots@error@coord@#1\endcsname}%
+					\fi
+					\pgfmathlog@float{\pgfmathresult}%
+					\let\pgfplots@error@coord=\pgfmathresult
+					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
+				}%
+			\or% fixed relative, log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
+				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1rel\endcsname}%
+				\let\pgfplots@loc@TMPb=\pgfmathresult
+				%
+				% +1:
+				\pgfmathfloatcreate{1}{1.0}{0}%
+				\let\pgfplots@loc@TMPa=\pgfmathresult
+				%
+				% Prepare '1 + err':
+				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfmathlog@float{\pgfmathresult}%
+				\ifx\pgfmathresult\pgfutil@empty
+					% 1 + err <= 0  and log(1+err) is undefined:
+					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplots@error{Sorry, log(1+\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
+					\let\pgfmathresult=\pgfutil@empty
+				\fi
+				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
+				%
+				% Prepare '1 - err':
+				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfmathlog@float{\pgfmathresult}%
+				\ifx\pgfmathresult\pgfutil@empty
+					% 1 + err <= 0  and log(1+err) is undefined:
+					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplots@error{Sorry, log(1-\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
+					\let\pgfmathresult=\pgfutil@empty
+				\fi
+				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
+				%
+				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
+					\expandafter\ifx\csname pgfplots@current@point@#1@##1\endcsname\pgfutil@empty
+					\else
+						\pgfmath@basic@add@
+							{\csname pgfplots@current@point@#1\endcsname}
+							{\csname pgfplots@error@coord@#1@##1\endcsname}%
+						\let\pgfplots@error@coord=\pgfmathresult
+						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
+					\fi
+				}%
+			\or% explicit absolute
+				% log( x +- e_x )
+				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
+					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
+					\ifx\pgfplots@error@coord\pgfutil@empty
+					\else
+						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\let\pgfplots@error@coord=\pgfmathresult
+						% remember result here - will be used in case
+						% of '+' AND '-' error bars:
+						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
+						\pgfmathfloatparsenumber{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
+						\let\pgfplots@loc@TMPa=\pgfmathresult
+						\if +##1%
+							\pgfmathfloatadd@
+								{\pgfplots@loc@TMPa}%
+								{\pgfplots@error@coord}%
+						\else
+							\pgfmathfloatsubtract@
+								{\pgfplots@loc@TMPa}%
+								{\pgfplots@error@coord}%
+						\fi
+						\pgfmathlog@float{\pgfmathresult}%
+						\let\pgfplots@error@coord=\pgfmathresult
+						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
+					\fi
+				}%
+				%
+			\or% explicit relative:
+				% log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
+				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
+					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
+					\ifx\pgfplots@error@coord\pgfutil@empty
+					\else
+						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\let\pgfplots@error@coord=\pgfmathresult
+						% remember result here - will be used in case
+						% of '+' AND '-' error bars:
+						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
+						%
+						\pgfmathfloatcreate{1}{1.0}{0}%
+						\let\pgfplots@loc@TMPa=\pgfmathresult
+						\if +##1%
+							\pgfmathfloatadd@
+								{\pgfplots@loc@TMPa}%
+								{\pgfplots@error@coord}%
+						\else
+							\pgfmathfloatsubtract@
+								{\pgfplots@loc@TMPa}%
+								{\pgfplots@error@coord}%
+						\fi
+						\pgfmathlog@float{\pgfmathresult}%
+						\let\pgfplots@error@coord=\pgfmathresult
+						\ifx\pgfplots@error@coord\pgfutil@empty
+							% -> log( <= 0 ) -> do nothing.
+						\else
+							\pgfmath@basic@add@
+								{\csname pgfplots@current@point@#1\endcsname}
+								{\pgfplots@error@coord}%
+							\let\pgfplots@error@coord=\pgfmathresult
+							\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
+						\fi
+					\fi
+				}%
+				%
+			\fi
 		}%
 		\ifcase\csname pgfplots@errorbars@#1direction\endcsname
 			% none
@@ -1892,7 +2028,6 @@
 		\or
 			% both
 			\expandafter\edef\csname pgfplots@PREPARE@errorbar@process@#1\endcsname{%
-\message{PROCESSING ERROR BAR!}%
 				\expandafter\noexpand\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname+%
 				\expandafter\noexpand\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname-%
 			}%
@@ -4079,181 +4214,6 @@
 	\endgroup
 }%
 
-% Arguments:
-% \pgfplots@current@point@[xyz]
-% \pgfplots@current@point@[xyz]@unfiltered
-% \pgfplots@current@point@[xyz]@error (if in argument list)
-% Also provides UNFILTERED arguments x and y . These are use
-% in case of logplots, because we may need to compute log( x + e_x )
-% or log( y + e_y ).
-%--------------------------------------------------
-% \def\pgfplots@process@errorbar@for{%
-% %	\begingroup
-% 	\edef\pgfplots@xarg{\pgfplots@current@point@x}%
-% 	\edef\pgfplots@yarg{\pgfplots@current@point@y}%
-% 	\let\pgfplots@xarg@unfiltered\pgfplots@current@point@x@unfiltered%
-% 	\let\pgfplots@yarg@unfiltered\pgfplots@current@point@y@unfiltered%
-% 	\edef\pgfplots@error@xarg{\pgfplots@current@point@x@error}%
-% 	\edef\pgfplots@error@yarg{\pgfplots@current@point@y@error}%
-% 	\def\pgfplots@loc@TMPa{0}%
-% 	\ifx\pgfplots@loc@TMPa\pgfplots@error@xarg
-% 		\let\pgfplots@error@xarg=\pgfutil@empty
-% 	\fi
-% 	\ifx\pgfplots@loc@TMPa\pgfplots@error@yarg
-% 		\let\pgfplots@error@yarg=\pgfutil@empty
-% 	\fi
-% 	%  FIXME : INEFFICIENT! This code here does every computation 
-% 	%  multiple times!
-% 	\ifcase\pgfplots@errorbars@xdirection
-% 	\or
-% 		\pgfplots@process@errorbar@@for{x}{+}1%
-% 	\or
-% 		\pgfplots@process@errorbar@@for{x}{-}2%
-% 	\or
-% 		\pgfplots@process@errorbar@@for{x}{+}1%
-% 		\pgfplots@process@errorbar@@for{x}{-}2%
-% 	\fi
-% 	\ifcase\pgfplots@errorbars@ydirection
-% 	\or
-% 		\pgfplots@process@errorbar@@for{y}{+}1%
-% 	\or
-% 		\pgfplots@process@errorbar@@for{y}{-}2%
-% 	\or
-% 		\pgfplots@process@errorbar@@for{y}{+}1%
-% 		\pgfplots@process@errorbar@@for{y}{-}2%
-% 	\fi
-% 	% Restore macros which may have been overwritten:
-% 	\let\pgfplots@current@point@x=\pgfplots@xarg
-% 	\let\pgfplots@current@point@y=\pgfplots@yarg
-% %	\endgroup
-% }
-%-------------------------------------------------- 
-
-% #1: either 'x' or 'y'
-% #2: either '+' or '-'
-% #3: an integer representing the argument #2. It is '1' if #2='+'
-%     and '2' is #2 = '-'.
-\def\pgfplots@process@errorbar@@for#1#2#3{%
-	\csname ifpgfplots@#1islinear\endcsname
-		\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
-		\ifcase\csname pgfplots@errorbars@#1mode\endcsname
-			% fixed absolute error.
-			\edef\pgfplots@error@coord{\csname pgfplots@errorbars@#1fixed\endcsname}%
-			\pgfmathfloatparsenumber{\pgfplots@error@coord}%
-			\let\pgfplots@error@coord=\pgfmathresult
-			\ifnum#3=1
-				\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
-			\else
-				\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
-			\fi
-			\let\pgfplots@error@coord=\pgfmathresult
-		\or% fixed relative error:
-			\pgfmathparse{(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
-			\let\pgfplots@error@coord=\pgfmathresult
-			\pgfmathfloatmultiply@{\pgfplots@error@src}{\pgfplots@error@coord}%
-			\let\pgfplots@error@coord=\pgfmathresult
-		\or% explicit absolute:
-			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
-			\ifx\pgfplots@error@coord\pgfutil@empty
-			\else
-				\pgfmathfloatparsenumber{\pgfplots@error@coord}%
-				\let\pgfplots@error@coord=\pgfmathresult
-				\ifnum#3=1
-					\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
-				\else
-					\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
-				\fi
-				\let\pgfplots@error@coord=\pgfmathresult
-			\fi
-		\or% explicit relative:
-			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
-			\ifx\pgfplots@error@coord\pgfutil@empty
-			\else
-				\pgfmathparse{(1#2\pgfplots@error@coord)}%
-				\let\pgfplots@error@coord=\pgfmathresult
-				\pgfmathfloatmultiply@{\pgfplots@error@src}{\pgfplots@error@coord}%
-				\let\pgfplots@error@coord=\pgfmathresult
-			\fi
-		\fi
-	\else
-		% LOGARITHMIC scaling. All errors are interpreted as 
-		%   log(x +- e_x)
-		% or
-		%   log( x*(1+-e_x) )
-		\ifcase\csname pgfplots@errorbars@#1mode\endcsname
-			% fixed absolute, log( x +- e_x )
-			\edef\pgfplots@error@src{\csname pgfplots@#1arg@unfiltered\endcsname}%
-			\edef\pgfplots@error@coord{\csname pgfplots@errorbars@#1fixed\endcsname}%
-			\pgfmathfloatparsenumber{\pgfplots@error@coord}%
-			\let\pgfplots@error@coord=\pgfmathresult
-			\pgfmathfloatparsenumber{\pgfplots@error@src}%
-			\let\pgfplots@error@src=\pgfmathresult
-			\ifnum#3=1
-				\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
-			\else
-				\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
-			\fi
-			\pgfmathlog@float{\pgfmathresult}%
-			\let\pgfplots@error@coord=\pgfmathresult
-		\or% fixed relative, log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
-			\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
-			\pgfmathparse{\pgfplots@error@src + ln(1#2\csname pgfplots@errorbars@#1rel\endcsname)}%
-			\pgflibraryfpuifactive
-				{\pgfmathfloattofixed{\pgfmathresult}}%
-				{}%
-			\let\pgfplots@error@coord=\pgfmathresult%
-		\or% explicit absolute
-			\edef\pgfplots@error@src{\csname pgfplots@#1arg@unfiltered\endcsname}%
-			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
-			\ifx\pgfplots@error@coord\pgfutil@empty
-			\else
-				\pgfmathfloatparsenumber{\pgfplots@error@coord}%
-				\let\pgfplots@error@coord=\pgfmathresult
-				\pgfmathfloatparsenumber{\pgfplots@error@src}%
-				\let\pgfplots@error@src=\pgfmathresult
-				\ifnum#3=1
-					\pgfmathfloatadd@{\pgfplots@error@src}{\pgfplots@error@coord}%
-				\else
-					\pgfmathfloatsubtract@{\pgfplots@error@src}{\pgfplots@error@coord}%
-				\fi
-				\pgfmathlog@float{\pgfmathresult}%
-				\let\pgfplots@error@coord=\pgfmathresult
-			\fi
-		\or% explicit relative:
-			\edef\pgfplots@error@src{\csname pgfplots@#1arg\endcsname}%
-			\edef\pgfplots@error@coord{\csname pgfplots@error@#1arg\endcsname}%
-			\ifx\pgfplots@error@coord\pgfutil@empty
-			\else
-				\pgfmathparse{\pgfplots@error@src + ln(1#2 \pgfplots@error@coord)}%
-				\pgflibraryfpuifactive
-					{\pgfmathfloattofixed{\pgfmathresult}}%
-					{}%
-				\let\pgfplots@error@coord=\pgfmathresult%
-			\fi
-		\fi
-	\fi
-	\ifx\pgfplots@error@coord\pgfutil@empty
-	\else
-		\if x#1%
-			\let\pgfplots@current@point@x=\pgfplots@error@coord
-			\let\pgfplots@current@point@y=\pgfplots@yarg
-			\pgfplots@update@limits@for@one@point
-			\edef\pgfplots@loc@TMPa{%
-				{(\pgfplots@xarg,\pgfplots@yarg)}%
-				{(\pgfplots@error@coord,\pgfplots@yarg)}%
-			}%
-		\else
-			\let\pgfplots@current@point@x=\pgfplots@xarg
-			\let\pgfplots@current@point@y=\pgfplots@error@coord
-			\pgfplots@update@limits@for@one@point
-			\edef\pgfplots@loc@TMPa{%
-				{(\pgfplots@xarg,\pgfplots@yarg)}%
-				{(\pgfplots@xarg,\pgfplots@error@coord)}%
-			}%
-		\fi
-		\expandafter\pgfplots@streamerrorbarcoords\pgfplots@loc@TMPa
-	\fi
-}
 % This routine is called at the begin of every plot.
 % It initialises a zero level stream.
 %
