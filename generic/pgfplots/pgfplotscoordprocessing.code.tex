@@ -905,6 +905,81 @@
 	\fi
 }%
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Scanline management. The idea is to allow a simple syntax
+% to provide matrix input - by means of scanlines.
+%
+% An empty line in 'addplot coordinates {}' indicates the end of a
+% scan line. Similarly, an empty line in 'addplot file' or 'table'
+% also indicates the end of a scan line.
+%
+% The following methods allow to update the scanline computation.
+%
+% Usage:
+%
+% \pgfplotsscanlinelengthinitzero
+%
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinecomplete
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinecomplete
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinelengthincrease
+% \pgfplotsscanlinecomplete
+%
+% \pgfplotsscanlinelengthcleanup
+%
+% Now, \pgfplotsscanlinelength expands to either 
+% a) a negative number in which case there is no 
+%  unique scanline length,
+% b) the scanline length.
+\def\pgfplotsscanlinelengthinitzero{%
+	\c@pgfplots@scanlineindex=0
+	\def\pgfplots@scanlinelength{-1}%
+}
+\def\pgfplotsscanlinelengthincrease{%
+	\advance\c@pgfplots@scanlineindex by1
+}
+\def\pgfplotsscanlinecomplete{%
+	\ifnum\pgfplots@scanlinelength>0
+		\ifnum\c@pgfplots@scanlineindex=0
+			% 
+			% \pgfplotsscanlinecomplete
+			% \pgfplotsscanlinecomplete
+			% \pgfplotsscanlinecomplete
+			% should have the same effect as a single statement. Do
+			% nothing here.
+		\else
+			\ifnum\pgfplots@scanlinelength=\c@pgfplots@scanlineindex\relax
+			\else
+				% special marker which means 'inconsistent scan line
+				% length found'
+				\def\pgfplots@scanlinelength{-2}%
+			\fi
+		\fi
+	\else
+		\ifnum\pgfplots@scanlinelength=-2
+		\else
+			\edef\pgfplots@scanlinelength{\the\c@pgfplots@scanlineindex}%
+		\fi
+	\fi
+	\c@pgfplots@scanlineindex=0
+}
+\def\pgfplotsscanlinelengthcleanup{%
+	\ifnum\c@pgfplots@scanlineindex=0
+		% I assume the last scan line is already complete.
+	\else
+		\pgfplotsscanlinecomplete
+	\fi
+	\let\pgfplotsscanlinelength=\pgfplots@scanlinelength
+}
+
 % Initialises 
 % \pgfplots@coord@stream@start
 % \pgfplots@coord@stream@coord
@@ -1608,6 +1683,8 @@
 		% to share plot specifications between error bars and plot
 		% coordinates. Unfortunately, it is NOT sufficient to use
 		% \tikzset{#1}
+		\pgfkeyssetvalue{/pgfplots/mesh/num points}{\pgfplots@current@point@coordindex}%
+		\pgfplotsautocompletemeshkeys0%
 		\ifpgfplots@curplot@isirrelevant
 			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
 		\else
@@ -1651,17 +1728,8 @@
 				\noexpand\pgfkeyssetvalue{/pgfplots/samples}{\pgfplots@plot@samples}%
 				\noexpand\pgfkeyssetvalue{/pgfplots/domain}{\pgfplots@plot@domain}%
 				\noexpand\pgfkeyssetvalue{/pgfplots/samples at}{\pgfplots@plot@samples@at}%
-				%
-				% ... especially the rows/cols arguments which
-				% might have been reported by the coord input
-				% sources (from \pgfplots@validate@plot@domain@arguments):
-				\ifpgfplots@curplot@threedim
-					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
-					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
-				\else
-					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfplots@current@point@coordindex}%
-					\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
-				\fi
+				\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
+				\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
 				%
 				\noexpand\pgfplots@initzerolevelhandler
 				\the\t@pgfplots@tokc% named start/end points (if already available)
@@ -1715,6 +1783,150 @@
 		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 %		\fi
 	\pgfplots@end@plot
+}%
+
+% Takes the current values of
+% - '/pgfplots/mesh/rows' 
+% - '/pgfplots/mesh/cols'
+% - '/pgfplots/mesh/num points'
+% - \pgfplotsscanlinelength
+% - '/pgfplots/mesh/ordering'
+% and attempts to fill any missing values.
+%
+%
+% #1 a integer which allows to configure how to deal with non-unique
+% assignments. Use the following values:
+% 0: leave 'rows' and 'cols' empty.
+% 1: try to get reasonable defaults. If that proves to be impossible,
+% issue an error message. If it is possible, provide a warning. In any
+% case, rows and cols will be set to a number.
+%
+\def\pgfplotsautocompletemeshkeys#1{%
+	\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
+	\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
+	\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
+	\edef\pgfplotsplothandlermesh@numpoints{\pgfplotsplothandlermesh@numpoints}%
+	\edef\pgfplotsplothandlermesh@cols{\pgfplotsplothandlermesh@cols}%
+	\edef\pgfplotsplothandlermesh@rows{\pgfplotsplothandlermesh@rows}%
+	\ifpgfplots@curplot@threedim
+		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
+			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+				\pgfutil@ifundefined{pgfplotsscanlinelength}{\def\pgfplotsscanlinelength{-1}}{}%
+				\ifnum\pgfplotsscanlinelength>0
+					% we have scanlinelength set! Use it:
+					\if\pgfplots@plot@mesh@ordering0%
+						% ordering = rowwise -> scanline is cols!
+						\edef\pgfplotsplothandlermesh@cols{\pgfplotsscanlinelength}%
+					\else
+						% ordering = colwise: scanline is rows!
+						\edef\pgfplotsplothandlermesh@rows{\pgfplotsscanlinelength}%
+					\fi
+				\else
+					\if1#1%
+						% try to get reasonable values:
+						\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+							\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - or at least '[mesh/num points=<N>]'. But it did not find any of them...}%
+							\def\pgfplotsplothandlermesh@cols{5}%
+							\def\pgfplotsplothandlermesh@rows{5}%
+						\else
+							% We don't have rows/cols. Well, try using
+							% sqrt(num points) for both of them!
+							\ifnum\pgfplotsplothandlermesh@numpoints<16380
+								\pgfmath@basic@sqrt@{\pgfplotsplothandlermesh@numpoints}%
+							\else
+								\pgfmathfloatparsenumber{\pgfplotsplothandlermesh@numpoints}%
+								\pgfmathfloatsqrt@{\pgfmathresult}%
+								\pgfmathfloattofixed{\pgfmathresult}%
+							\fi
+							\begingroup
+							% Try whether this rows*rows yields numpoints:
+							\afterassignment\pgfplots@gobble@until@relax
+							\c@pgf@counta=\pgfmathresult\relax
+							\c@pgf@countb=\c@pgf@counta
+							\multiply\c@pgf@counta by\c@pgf@counta
+							\def\pgfplotslocretval{1}%
+							\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
+								% ok, rows*rows = numpoints.
+								\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
+							\else
+								% oh. Did not work. Check for rounding errors:
+								\c@pgf@counta=\c@pgf@countb
+								\advance\c@pgf@counta by1
+								\multiply\c@pgf@counta by\c@pgf@counta
+								\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
+									% ok, (rows+1)*(rows+1) = numpoints.
+									\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
+								\else
+									% no... did not work. num points doesn't
+									% appear to be a squared number.
+									\def\pgfplotslocretval{0}%
+									\xdef\pgfplots@glob@TMPa{5}%
+								\fi
+							\fi
+							\if\pgfplotslocretval1
+								\pgfplots@warning{%
+									'plot mesh' did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
+									Assuming [mesh/rows=\pgfplots@glob@TMPa,mesh/cols=\pgfplots@glob@TMPa] 
+									as sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints).}%
+							\else
+								\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set,
+									but it did not find any of them. 
+									I also tried rows = sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints) = \pgfmathresult\space without success.}%
+							\fi
+							\endgroup
+							\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
+							\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
+						\fi
+					\else
+						% #1=0 -> leave them empty.
+					\fi
+				\fi
+			\fi
+		\fi
+		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
+			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+			\else
+				% Compute 'rows' out of 'num points' and 'cols':
+				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/rows=<N>]' or '[mesh/cols=<N>]' is given.}%
+					\def\pgfplotsplothandlermesh@numpoints{100}%
+				\fi
+				\begingroup
+				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
+				\divide\c@pgf@counta by\pgfplotsplothandlermesh@cols\relax
+				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+				\endgroup
+				\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
+			\fi
+		\else
+			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+				% Compute 'cols' out of 'num points' and 'rows':
+				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/cols=<N>]' or '[mesh/rows=<N>]' is given.}%
+					\def\pgfplotsplothandlermesh@numpoints{100}%
+				\fi
+				\begingroup
+				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
+				\divide\c@pgf@counta by\pgfplotsplothandlermesh@rows\relax
+				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+				\endgroup
+				\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
+			\fi
+		\fi
+		\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
+			\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
+			\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
+		\fi
+	\else
+		% 2d visualization has no mesh:
+		\edef\pgfplotsplothandlermesh@rows{\pgfplotsplothandlermesh@numpoints}%
+		\def\pgfplotsplothandlermesh@cols{1}%
+	\fi
+	\def\pgfplots@loc@TMPa{\pgfkeyssetvalue{/pgfplots/mesh/rows}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplotsplothandlermesh@rows}%
+	\def\pgfplots@loc@TMPa{\pgfkeyssetvalue{/pgfplots/mesh/cols}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplotsplothandlermesh@cols}%
 }%
 
 % Prepares a macro \pgfplots@PREPARE@process@errorbar@for@dir##1
@@ -2141,7 +2353,9 @@
 % The per-point meta is not implemented yet.
 \long\def\pgfplots@coord@stream@foreach#1{%
 	\pgfplots@coord@stream@start
+	\pgfplotsscanlinelengthinitzero
 	\pgfplots@foreach@plot@coord@ITERATE#1\pgfplots@EOI%
+	\pgfplotsscanlinelengthcleanup
 	\pgfplots@coord@stream@end
 }%
 
@@ -2155,9 +2369,11 @@
 		\pgfplots@foreach@plot@coord@FINISH%
 	}{%
 		\pgfutil@ifnextchar\par{%
+			\pgfplotsscanlinecomplete
 			\pgfplots@foreach@plot@coord@ITERATE@gobbleone
 		}{%
 			\pgfutil@ifnextchar({%
+				\pgfplotsscanlinelengthincrease
 				\pgfplots@foreach@plot@coord@NEXT%
 			}{%
 				\pgfplots@foreach@plot@coord@error
@@ -2213,7 +2429,9 @@
 % The same for three dim coords:
 \long\def\pgfplots@coord@stream@foreach@threedim#1{%
 	\pgfplots@coord@stream@start
+	\pgfplotsscanlinelengthinitzero
 	\pgfplots@foreach@plot@coord@threedim@ITERATE#1\pgfplots@EOI%
+	\pgfplotsscanlinelengthcleanup
 	\pgfplots@coord@stream@end
 }%
 \def\pgfplots@foreach@plot@coord@threedim@ITERATE{%
@@ -2221,9 +2439,11 @@
 		\pgfplots@foreach@plot@coord@FINISH%
 	}{%
 		\pgfutil@ifnextchar\par{%
+			\pgfplotsscanlinecomplete
 			\pgfplots@foreach@plot@coord@threedim@ITERATE@gobbleone
 		}{%
 			\pgfutil@ifnextchar({%
+				\pgfplotsscanlinelengthincrease
 				\pgfplots@foreach@plot@coord@threedim@NEXT%
 			}{%
 				\pgfplots@foreach@plot@coord@error
@@ -2850,6 +3070,7 @@
 	\fi
 	\pgfplots@PREPARE@COORD@STREAM{#1}{#4}%
 	\pgfplots@coord@stream@start
+	\pgfplotsscanlinelengthinitzero
 	\pgfplots@logfileopen{#3}%
 	\openin1=#3
 	\ifeof1
@@ -2880,6 +3101,7 @@
 		\fi
 		\pgfplots@addplotimpl@file@readall
 	\fi
+	\pgfplotsscanlinelengthcleanup
 	\pgfplots@coord@stream@end
 	\endgroup
 }%
@@ -2892,6 +3114,7 @@
 			% Silently skip first data row, assuming it is a header.
 			\pgfplots@plot@file@skipfirstfalse
 		\else
+			\pgfplotsscanlinelengthincrease
 			\expandafter\pgfplots@addplotimpl@file@parsesingle\pgfplots@file@LINE\pgfplots@EOI
 		\fi
 	\fi
@@ -4374,101 +4597,11 @@
 \def\pgfplotsplothandlermesh{%
 	\def\pgf@plotstreamstart{%
 %		\scope
+		\pgfplotsautocompletemeshkeys1%
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
-		\edef\pgfplotsplothandlermesh@numpoints{\pgfplotsplothandlermesh@numpoints}%
-		\edef\pgfplotsplothandlermesh@cols{\pgfplotsplothandlermesh@cols}%
-		\edef\pgfplotsplothandlermesh@rows{\pgfplotsplothandlermesh@rows}%
 		%
-		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
-			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
-				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - or at least '[mesh/num points=<N>]'. But it did not find any of them...}%
-					\def\pgfplotsplothandlermesh@cols{5}%
-					\def\pgfplotsplothandlermesh@rows{5}%
-				\else
-					% We don't have rows/cols. Well, try using
-					% sqrt(num points) for both of them!
-					\ifnum\pgfplotsplothandlermesh@numpoints<16380
-						\pgfmath@basic@sqrt@{\pgfplotsplothandlermesh@numpoints}%
-					\else
-						\pgfmathfloatparsenumber{\pgfplotsplothandlermesh@numpoints}%
-						\pgfmathfloatsqrt@{\pgfmathresult}%
-						\pgfmathfloattofixed{\pgfmathresult}%
-					\fi
-					\begingroup
-					% Try whether this rows*rows yields numpoints:
-					\afterassignment\pgfplots@gobble@until@relax
-					\c@pgf@counta=\pgfmathresult\relax
-					\c@pgf@countb=\c@pgf@counta
-					\multiply\c@pgf@counta by\c@pgf@counta
-					\def\pgfplotslocretval{1}%
-					\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
-						% ok, rows*rows = numpoints.
-						\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
-					\else
-						% oh. Did not work. Check for rounding errors:
-						\c@pgf@counta=\c@pgf@countb
-						\advance\c@pgf@counta by1
-						\multiply\c@pgf@counta by\c@pgf@counta
-						\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints
-							% ok, (rows+1)*(rows+1) = numpoints.
-							\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
-						\else
-							% no... did not work. num points doesn't
-							% appear to be a squared number.
-							\def\pgfplotslocretval{0}%
-							\xdef\pgfplots@glob@TMPa{5}%
-						\fi
-					\fi
-					\if\pgfplotslocretval1
-						\pgfplots@warning{%
-							'plot mesh' did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
-							Assuming [mesh/rows=\pgfplots@glob@TMPa,mesh/cols=\pgfplots@glob@TMPa] 
-							as sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints).}%
-					\else
-						\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set,
-							but it did not find any of them. 
-							I also tried rows = sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints) = \pgfmathresult\space without success.}%
-					\fi
-					\endgroup
-					\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
-					\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
-				\fi
-			\else
-				% Compute 'rows' out of 'num points' and 'cols':
-				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/rows=<N>]' or '[mesh/cols=<N>]' is given.}%
-					\def\pgfplotsplothandlermesh@numpoints{100}%
-				\fi
-				\begingroup
-				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
-				\divide\c@pgf@counta by\pgfplotsplothandlermesh@cols\relax
-				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-				\endgroup
-				\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
-			\fi
-		\else
-			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
-				% Compute 'cols' out of 'num points' and 'rows':
-				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/cols=<N>]' or '[mesh/rows=<N>]' is given.}%
-					\def\pgfplotsplothandlermesh@numpoints{100}%
-				\fi
-				\begingroup
-				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
-				\divide\c@pgf@counta by\pgfplotsplothandlermesh@rows\relax
-				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-				\endgroup
-				\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
-			\fi
-		\fi
-		\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
-			\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
-			\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
-		\fi
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\ifnum\pgfplotsplothandlermesh@cols=1
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
