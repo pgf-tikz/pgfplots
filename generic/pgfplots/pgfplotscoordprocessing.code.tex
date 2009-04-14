@@ -1690,7 +1690,7 @@
 		% coordinates. Unfortunately, it is NOT sufficient to use
 		% \tikzset{#1}
 		\pgfkeyssetvalue{/pgfplots/mesh/num points}{\pgfplots@current@point@coordindex}%
-		\pgfplotsautocompletemeshkeys0%
+		\pgfplotspreparemeshkeydefaults%
 		\ifpgfplots@curplot@isirrelevant
 			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
 		\else
@@ -1791,23 +1791,52 @@
 	\pgfplots@end@plot
 }%
 
-% Takes the current values of
+% Assigns default values to 'rows' and 'cols' in case
+% their values are empty.
+%
+% PRECONDITION:
+% 	The values of
 % - '/pgfplots/mesh/rows' 
 % - '/pgfplots/mesh/cols'
 % - '/pgfplots/mesh/num points'
 % - \pgfplotsscanlinelength
 % - '/pgfplots/mesh/ordering'
-% and attempts to fill any missing values.
+%   are assigned properly.
 %
+% POSTCONDITION:
+% 	'rows' and 'cols' now incorporates \pgfplotsscanlinelength if
+% 	their values had been empty. However, there may still be empty
+% 	values.
 %
-% #1 a integer which allows to configure how to deal with non-unique
-% assignments. Use the following values:
-% 0: leave 'rows' and 'cols' empty.
-% 1: try to get reasonable defaults. If that proves to be impossible,
-% issue an error message. If it is possible, provide a warning. In any
-% case, rows and cols will be set to a number.
+% @see \pgfplotsautocompletemeshkeys
+\def\pgfplotspreparemeshkeydefaults{%
+	\pgfplots@autocomplete@meshkeys0%
+}%
+
+% Completes and sanitizes 'mesh/rows' and 'mesh/cols' such that they
+% have useful integer values afterwards.
 %
-\def\pgfplotsautocompletemeshkeys#1{%
+% This method works similarly to \pgfplotspreparemeshkeydefaults.
+% However, it really completes values and issues error messages if
+% that proves to be impossible.
+%
+% PRECONDITION:
+% 	The values of
+% - '/pgfplots/mesh/rows' 
+% - '/pgfplots/mesh/cols'
+% - '/pgfplots/mesh/num points'
+% - '/pgfplots/mesh/ordering'
+%   are assigned properly.
+%   If 
+% - \pgfplotsscanlinelength
+%   exists and is positive, it may also be used.
+%
+% POSTCONDITION:
+% 	'rows' and 'cols' have useful integer values.
+\def\pgfplotsautocompletemeshkeys{%
+	\pgfplots@autocomplete@meshkeys1%
+}%
+\def\pgfplots@autocomplete@meshkeys#1{%
 	\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 	\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 	\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
@@ -1889,47 +1918,49 @@
 				\fi
 			\fi
 		\fi
-		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
-			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+		\if1#1%
+			\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
+				\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+				\else
+					% Compute 'rows' out of 'num points' and 'cols':
+					\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+						\pgfplots@error{Sorry, matrix input needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/rows=<N>]' or '[mesh/cols=<N>]' is given.}%
+						\def\pgfplotsplothandlermesh@numpoints{100}%
+					\fi
+					\begingroup
+					\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
+					\divide\c@pgf@counta by\pgfplotsplothandlermesh@cols\relax
+					\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+					\endgroup
+					\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
+				\fi
 			\else
-				% Compute 'rows' out of 'num points' and 'cols':
-				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/rows=<N>]' or '[mesh/cols=<N>]' is given.}%
-					\def\pgfplotsplothandlermesh@numpoints{100}%
+				\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+					% Compute 'cols' out of 'num points' and 'rows':
+					\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+						\pgfplots@error{Sorry, matrix input needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/cols=<N>]' or '[mesh/rows=<N>]' is given.}%
+						\def\pgfplotsplothandlermesh@numpoints{100}%
+					\fi
+					\begingroup
+					\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
+					\divide\c@pgf@counta by\pgfplotsplothandlermesh@rows\relax
+					\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+					\endgroup
+					\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
 				\fi
-				\begingroup
-				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
-				\divide\c@pgf@counta by\pgfplotsplothandlermesh@cols\relax
-				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-				\endgroup
-				\let\pgfplotsplothandlermesh@rows=\pgfplots@glob@TMPa
 			\fi
-		\else
-			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
-				% Compute 'cols' out of 'num points' and 'rows':
-				\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-					\pgfplots@error{Sorry, 'plot mesh' needs a valid '[mesh/num points=<N>]' variable if only one of '[mesh/cols=<N>]' or '[mesh/rows=<N>]' is given.}%
-					\def\pgfplotsplothandlermesh@numpoints{100}%
-				\fi
-				\begingroup
-				\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
-				\divide\c@pgf@counta by\pgfplotsplothandlermesh@rows\relax
-				\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-				\endgroup
-				\let\pgfplotsplothandlermesh@cols=\pgfplots@glob@TMPa
+			\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
+				\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
+				\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
 			\fi
-		\fi
-		\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
+			%
 			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
-			\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
-			\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
-		\fi
-		%
-		\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
-		\multiply\c@pgfplots@scanlineindex by\pgfplotsplothandlermesh@cols\relax
-		\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@numpoints\relax
-		\else
-			\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@scanlineindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
+			\multiply\c@pgfplots@scanlineindex by\pgfplotsplothandlermesh@cols\relax
+			\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@numpoints\relax
+			\else
+				\pgfplots@error{Error: the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@scanlineindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!?}%
+			\fi
 		\fi
 	\else
 		% 2d visualization has no mesh:
@@ -4619,7 +4650,7 @@
 \def\pgfplotsplothandlermesh{%
 	\def\pgf@plotstreamstart{%
 %		\scope
-		\pgfplotsautocompletemeshkeys1%
+		\pgfplotsautocompletemeshkeys%
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
