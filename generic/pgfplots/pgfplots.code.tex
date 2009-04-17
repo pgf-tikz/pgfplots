@@ -5250,7 +5250,7 @@
 				\advance\pgf@xa by-\pgf@pathminx
 				\pgf@ya=\pgf@pathmaxy
 				\advance\pgf@ya by-\pgf@pathminy
-				\xdef\pgfplots@glob@TMPa{{\the\pgf@pathminx}{\the\pgf@pathminy}{\the\pgf@pathmaxx}{\the\pgf@pathmaxy}{\the\pgf@xa}{\the\pgf@ya}}%
+				\xdef\pgfplots@glob@TMPa{{\the\pgf@pathminx}{\the\pgf@pathminy}{\the\pgf@xa}{\the\pgf@ya}}%
 			\endgroup
 			\global\let\pgfplotspoint@bb@@@=\pgfplots@glob@TMPa
 		\fi
@@ -5508,17 +5508,15 @@
 	\expandafter\pgfplotspointbblowerleft@\pgfplotspoint@bb@@@
 }%
 \def\pgfplotspointbbupperright{%
-	\pgfplotspointbb@assertvaluesexist
-	\expandafter\pgfplotspointbbupperright@\pgfplotspoint@bb@@@
+	\pgfpointadd{\pgfplotspointbblowerleft}{\pgfplotspointbbdiagonal}%
 }%
 \def\pgfplotspointbbdiagonal{%
 	\pgfplotspointbb@assertvaluesexist
 	\expandafter\pgfplotspointbbdiagonal@\pgfplotspoint@bb@@@
 }%
 \let\pgfplotspoint@bb@@@=\relax
-\def\pgfplotspointbblowerleft@#1#2#3#4#5#6{\pgf@x=#1 \pgf@y=#2 }%
-\def\pgfplotspointbbupperright@#1#2#3#4#5#6{\pgf@x=#3 \pgf@y=#4 }%
-\def\pgfplotspointbbdiagonal@#1#2#3#4#5#6{\pgf@x=#5 \pgf@y=#6 }%
+\def\pgfplotspointbblowerleft@#1#2#3#4{\pgf@x=#1 \pgf@y=#2 }%
+\def\pgfplotspointbbdiagonal@#1#2#3#4{\pgf@x=#3 \pgf@y=#4 }%
 
 \def\pgfplots@clippath@install{%
 	\pgfplots@error{Can't install a clippath here - the command has not yet been prepared.}%
@@ -5895,39 +5893,109 @@
 }
 
 \def\pgfplots@create@axis@descriptions{%
-	\ifpgfplots@hide@x
-	\else
-		\pgfkeysgetvalue{/pgfplots/xlabel}{\pgfplots@label@}%
-		\ifx\pgfplots@label@\pgfutil@empty
+	\begingroup
+		% set coordinate system to (0,0) rectangle (1,1) for descriptions:
+		\pgftransformshift{\pgfplotspointbblowerleft}%
+		%
+		% Make sure the API point commands are still correct:
+		% -> undo the shift for all point commands!
+		%  It is enough to do that for some low level commands since
+		%  others are build on top of them.
+		\let\pgfplotspointbblowerleft@orig=\pgfplotspointbblowerleft
+		\let\pgfplotspointbblowerleft=\pgfpointorigin
+		%
+		\let\pgfplotspointaxisorigin@orig=\pgfplotspointaxisorigin
+		\def\pgfplotspointaxisorigin{%
+			\pgfpointdiff
+				{\pgfplotspointbblowerleft@orig}%
+				{\pgfplotspointaxisorigin@orig}%
+		}%
+		%
+		\let\pgfplotspointminminmin@orig=\pgfplotspointminminmin
+		\def\pgfplotspointminminmin{%
+			\pgfpointdiff
+				{\pgfplotspointbblowerleft@orig}%
+				{\pgfplotspointminminmin@orig}%
+		}%
+		%
+		% To allow \pgfplotsqpointxy and \pgfplotsqpointxyz here,
+		% I need to store the unit vectors before I overwrite them,
+		% then I need to re-implement \pgfplotsqpointxy[z].
+		\edef\pgfplots@xx{\the\pgf@xx}%
+		\edef\pgfplots@xy{\the\pgf@xy}%
+		\edef\pgfplots@yx{\the\pgf@yx}%
+		\edef\pgfplots@yy{\the\pgf@yy}%
+		\edef\pgfplots@zx{\the\pgf@zx}%
+		\edef\pgfplots@zy{\the\pgf@zy}%
+		\def\pgfplotsqpointxyz##1##2##3{%
+			\pgfpointdiff
+				{\pgfplotspointbblowerleft@orig}%
+				{%
+					\pgfplots@tmpa=\pgfplots@xx\relax
+					\pgf@x=##1\pgfplots@tmpa
+					\pgfplots@tmpa=\pgfplots@yx\relax
+					\advance\pgf@x by##2\pgfplots@tmpa
+					\pgfplots@tmpa=\pgfplots@zx\relax
+					\advance\pgf@x by##3\pgfplots@tmpa
+					%
+					\pgfplots@tmpa=\pgfplots@xy\relax
+					\pgf@y=##1\pgfplots@tmpa
+					\pgfplots@tmpa=\pgfplots@yy\relax
+					\advance\pgf@y by##2\pgfplots@tmpa
+					\pgfplots@tmpa=\pgfplots@zy\relax
+					\advance\pgf@y by##3\pgfplots@tmpa
+				}%
+		}%
+		\def\pgfplotsqpointxy##1##2{\pgfplotsqpointxyz{##1}{##2}{0}}%
+		%
+		\pgfplotspointbbdiagonal
+		\pgf@xa=\pgf@x
+		\pgf@xb=\pgf@y
+		\pgfsetxvec{\pgf@x=\pgf@xa \pgf@y=0pt }%
+		\pgfsetyvec{\pgf@x=0pt \pgf@y=\pgf@xb}%
+		\pgfsetzvec{\pgfpointorigin}%
+		%
+		%
+		% create a leight-weight 'current axis' node for anchor references. 
+		\pgfmultipartnode{pgfplots@low@level@shape@INNER}{south west}{current axis}{\pgfusepath{discard}}%
+		%
+		\ifpgfplots@hide@x
 		\else
-			\pgfplots@show@label{x}{\pgfplots@label@}%
-		\fi
-	\fi
-	\ifpgfplots@hide@y
-	\else
-		\pgfkeysgetvalue{/pgfplots/ylabel}{\pgfplots@label@}%
-		\ifx\pgfplots@label@\pgfutil@empty
-		\else
-			\pgfplots@show@label{y}{\pgfplots@label@}%
-		\fi
-	\fi
-	\ifpgfplots@threedim
-		\ifpgfplots@hide@z
-		\else
-			\pgfkeysgetvalue{/pgfplots/zlabel}{\pgfplots@label@}%
+			\pgfkeysgetvalue{/pgfplots/xlabel}{\pgfplots@label@}%
 			\ifx\pgfplots@label@\pgfutil@empty
 			\else
-				\pgfplots@show@label{z}{\pgfplots@label@}%
+				\pgfplots@show@label{x}{\pgfplots@label@}%
 			\fi
 		\fi
-	\fi
-	%
-	\pgfkeysgetvalue{/pgfplots/title}\pgfplots@loc@TMPa
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\expandafter\pgfplots@show@title\expandafter{\pgfplots@loc@TMPa}%
-	\fi
-	\pgfplots@createlegend
+		\ifpgfplots@hide@y
+		\else
+			\pgfkeysgetvalue{/pgfplots/ylabel}{\pgfplots@label@}%
+			\ifx\pgfplots@label@\pgfutil@empty
+			\else
+				\pgfplots@show@label{y}{\pgfplots@label@}%
+			\fi
+		\fi
+		\ifpgfplots@threedim
+			\ifpgfplots@hide@z
+			\else
+				\pgfkeysgetvalue{/pgfplots/zlabel}{\pgfplots@label@}%
+				\ifx\pgfplots@label@\pgfutil@empty
+				\else
+					\pgfplots@show@label{z}{\pgfplots@label@}%
+				\fi
+			\fi
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/title}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\pgfplots@show@title\expandafter{\pgfplots@loc@TMPa}%
+		\fi
+		\pgfplots@createlegend
+		%
+		\pgfkeysvalueof{/pgfplots/extra description/.@cmd}\pgfeov%
+		%
+	\endgroup
 }
 
 \def\pgfplots@datascaletrafo@undoshift@x#1{%
@@ -6959,43 +7027,12 @@
 	\pgfplots@nextcommand
 	\pgfplots@END@init@and@draw@axis
 	%
+	\pgfplots@create@axis@descriptions
 	%
-	\begingroup
-		% set coordinate system to (0,0) rectangle (1,1) for descriptions:
-		\pgftransformshift{\pgfplotspointbblowerleft}%
-		% This here is a preparation macro for \pgfplots@low@level@shape@INNER.
-		% It applies the shift to the ORIGIN as well.
-		% It will ONLY be expanded if someone uses origin-anchors
-		% inside of axis descriptions.
-		\let\pgfplotspointaxisorigin@orig=\pgfplotspointaxisorigin
-		\def\pgfplotspointaxisorigin{%
-			\pgfpointdiff
-				{\pgfplotspointbblowerleft}%
-				{\pgfplotspointaxisorigin@orig}%
-		}%
-		\let\pgfplotspointminminmin@orig=\pgfplotspointminminmin
-		\def\pgfplotspointminminmin{%
-			\pgfpointdiff
-				{\pgfplotspointbblowerleft}%
-				{\pgfplotspointminminmin@orig}%
-		}%
-		\pgfplotspointbbdiagonal
-		\pgf@xa=\pgf@x
-		\pgf@xb=\pgf@y
-		\pgfsetxvec{\pgf@x=\pgf@xa \pgf@y=0pt }%
-		\pgfsetyvec{\pgf@x=0pt \pgf@y=\pgf@xb}%
-		\pgfsetzvec{\pgfpointorigin}%
-		%
-		% create a leight-weight 'current axis' node for anchor references. 
-		\pgfmultipartnode{pgfplots@low@level@shape@INNER}{south west}{current axis}{\pgfusepath{discard}}%
-		%
-		\pgfplots@create@axis@descriptions
-		\pgfkeysvalueof{/pgfplots/extra description/.@cmd}\pgfeov%
-	\endgroup
 	\endtikzpicture%
 	\begingroup
 		% Protocol sizes for the axis-shape.
-		% I fear that needs to be done globally, do avoid all those
+		% That needs to be done globally, do avoid all those
 		% \endgroup's in and after \endpgfinterruptpicture ...
 		\ifdim\pgf@picmaxx=-16000pt\relax%
 			\pgf@picmaxx=0pt\relax%
