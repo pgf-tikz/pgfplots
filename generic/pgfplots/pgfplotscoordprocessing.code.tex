@@ -599,6 +599,7 @@
 %
 % @see \pgfplotsqpointoutsideofticklabelaxis
 \def\pgfplotsqpointoutsideofaxis#1#2#3{%
+	\begingroup
 	\def\pgfplotspointoutsideofaxis@plug@trafo##1##2{\csname pgfplotstransformcoordinate##1\endcsname{##2}}%
 	\let\pgfplotspointoutsideofaxis@plug@addtolimit=\pgfplotspointoutsideofaxis@addtolimit@
 	\edef\pgfplots@loc@TMPa{#1}%
@@ -612,6 +613,7 @@
 % and 
 %   '#2 = 1' === upper axis limit.
 \def\pgfplotsqpointoutsideofaxisrel#1#2#3{%
+	\begingroup
 	\def\pgfplotspointoutsideofaxis@plug@trafo##1##2{%
 		\begingroup
 			% compute ##1min + ##2 * (##1max - ##1min) :
@@ -639,6 +641,7 @@
 % values for '#2' (i.e. any data transformations and logs are already
 % applied).
 \def\pgfplotsqpointoutsideofaxistransformed#1#2#3{%
+	\begingroup
 	\def\pgfplotspointoutsideofaxis@plug@trafo##1##2{\def\pgfmathresult{##2}}%
 	\let\pgfplotspointoutsideofaxis@plug@addtolimit=\pgfplotspointoutsideofaxis@addtolimit@
 	\edef\pgfplots@loc@TMPa{#1}%
@@ -652,11 +655,25 @@
 % \pgfplotsqpointoutsideofaxis and its variants (and, in fact, it used
 % the same code).
 \def\pgfplotspointouternormalvectorofaxis#1{%
+	\begingroup
 	\def\pgfplotspointoutsideofaxis@plug@trafo##1##2{\def\pgfmathresult{##2}}%
 	\def\pgfplotspointoutsideofaxis@plug@addtolimit##1##2##3{\def\pgfmathresult{##3}}%
 	\edef\pgfplots@loc@TMPa{#1}%
 	\expandafter\pgfplotspointoutsideofaxis@\pgfplots@loc@TMPa\relax{0}{1pt}%
 }%
+
+% very-low-level internal routine. Never invoke it directly.
+% @PRECONDITION:
+% 	an \begingroup has been opened.
+% @POSTCONDITION
+% 	an \endgroup has been closed and \pgf@x and \pgf@y are assigned.
+%
+% This grouping stuff has the intention to keep the "plug" things
+% local.
+%
+% #1#2#3 are the three characters for the line, delimited by \relax.
+% #4: the argument supplied as coordinate on that axis.
+% #5: the shift along the outer unit normal.
 \def\pgfplotspointoutsideofaxis@#1#2#3\relax#4#5{%
 	\if v#1%
 		\def\pgfplots@loc@point@orthogonal@to@v##1##2{%
@@ -731,6 +748,20 @@
 		\edef\pgfplots@loc@naxisscale{\pgfplots@loc@naxissign\csname pgfplots@\pgfplots@loc@naxis @inverseveclength\endcsname}%
 	}%
 	%
+	% 
+	% Now, compute the outer normal vector:
+	\pgf@x=\pgfplots@loc@baxisscale pt
+	\pgf@y=\pgfplots@loc@naxisscale pt
+	%
+	% read dimen argument #5:
+	\afterassignment\pgfplots@gobble@until@relax
+	\pgf@xa=#5pt\relax
+	\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xa}%
+	%
+	% scale outer normal vector by '#5':
+	\pgf@x=\pgfplots@loc@TMPa\pgf@x
+	\pgf@y=\pgfplots@loc@TMPa\pgf@y
+	%
 	% Ok, we want to compute (b+n)/2 . BUT: if b==0 or n==0, we
 	% don't want to divide by 2. Check that here:
 	\def\pgfplots@loc@TMPc{0}%
@@ -740,29 +771,20 @@
 	\if\pgfplots@loc@naxissign0%
 		\def\pgfplots@loc@TMPc{1}%
 	\fi
-	\begingroup
-	\pgf@process{%
-		\pgf@x=\pgfplots@loc@baxisscale pt%
-		\pgf@y=\pgfplots@loc@naxisscale pt%
-		%
-		% parse dimen argument #5:
-		% FIXME : use math parser for argument!?
-		\afterassignment\pgfplots@gobble@until@relax
-		\pgf@xa=#5pt\relax
-		\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xa}%
-		\pgf@x=\pgfplots@loc@TMPa\pgf@x
-		\pgf@y=\pgfplots@loc@TMPa\pgf@y
-		%
-		\if\pgfplots@loc@TMPc0%
-			% ok, we need to divide by 2.
-			\divide\pgf@x by2
-			\divide\pgf@y by2
-		\fi
-	}%
-	\endgroup
+	\if\pgfplots@loc@TMPc0%
+		% ok, we need to divide by 2.
+		\divide\pgf@x by2
+		\divide\pgf@y by2
+	\fi
+	%
 	\edef\pgfplots@loc@baxisscale{\pgf@sys@tonumber\pgf@x}%
 	\edef\pgfplots@loc@naxisscale{\pgf@sys@tonumber\pgf@y}%
+	%
+	% Ok, apply the unit vector and move along the chosen axis:
 	\pgfplots@loc@point@orthogonal@to@v{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale}%
+	% make 'x' and 'y' global:
+	\pgf@process{}%
+	\endgroup
 }%
 
 % Helper method for \pgfplotsqpointoutsideofaxis and its variants.
