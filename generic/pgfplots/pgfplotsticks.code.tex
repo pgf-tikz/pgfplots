@@ -211,11 +211,12 @@
 }
 
 % x-axis tick labels for #1th tick
-% #1: the axis (x or y)
+% #1: the axis (x,y or z)
 % #2: the value
 % #3,#4: coordinates for \pgfplotspointonorientedsurfaceab
 % #5: ticknumber
-\def\pgfplots@show@ticklabel#1#2(#3,#4)#5{{%
+\def\pgfplots@show@ticklabel#1#2(#3,#4)#5{%
+	\begingroup%
 	\csname ifpgfplots@#1ticklabel@interval\endcsname
 		% Special case for the INTERVAL feature:
 		% we have to do additional work here.
@@ -239,10 +240,7 @@
 			\let\pgfplots@show@ticklabel@coord@y=\pgfmathresult%
 			\let\ticknum=\pgfplots@show@ticklabel@num\relax%
 			\let\tick=\pgfplots@show@ticklabel@tick%
-			\begingroup
-			\pgftransformshift{\pgfplotspointonorientedsurfaceab{\pgfplots@show@ticklabel@coord@x}{\pgfplots@show@ticklabel@coord@y}}%
-			\node at (0pt,0pt) {\csname pgfplots@#1ticklabel\endcsname};%
-			\endgroup
+			\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceab{\pgfplots@show@ticklabel@coord@x}{\pgfplots@show@ticklabel@coord@y}}%
 		\fi
 		\xdef\pgfplots@show@ticklabel@LASTTICK{%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@tick{\nexttick}%
@@ -253,12 +251,112 @@
 	\else
 		\let\ticknum=#5\relax%
 		\pgfplots@show@ticklabel@{#1}{#2}%
-		\begingroup
-		\pgftransformshift{\pgfplotspointonorientedsurfaceab{#3}{#4}}%
-		\node at (0pt,0pt) {\csname pgfplots@#1ticklabel\endcsname};%
-		\endgroup
+		\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceab{#3}{#4}}%
 	\fi
-}}
+	\endgroup
+}
+
+% #1: the axis (x,y or z)
+% #2: the location where to place it.
+\def\pgfplots@show@ticklabel@@#1#2{%
+	\pgfinterruptboundingbox
+		% Typeset the label!
+		\begingroup
+		\pgf@process{#2}%
+		% Remember the position '#2':
+		\edef\pgfplots@ticklabel@at@x{\the\pgf@x}%
+		\edef\pgfplots@ticklabel@at@y{\the\pgf@y}%
+		\pgftransformshift{}%<- simply take pgf@x and pgf@y
+		%
+		%
+		% We collects its bounding box separately.
+		%
+		\node at (0pt,0pt) {\csname pgfplots@#1ticklabel\endcsname};%
+		%
+		\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}{\pgf@x=\pgfplots@ticklabel@at@x\space\pgf@y=\pgfplots@ticklabel@at@y\space}%%
+		\xdef\pgfplots@glob@TMPa{%
+			\pgf@xa=\the\pgf@picminx\space
+			\pgf@xb=\the\pgf@picminy\space
+			\pgf@ya=\the\pgf@picmaxx\space
+			\pgf@yb=\the\pgf@picmaxy\space}%
+		\endgroup
+	\endpgfinterruptboundingbox
+	\begingroup
+		\pgfplots@glob@TMPa
+		\pgf@protocolsizes{\pgf@xa}{\pgf@xb}%
+		\pgf@protocolsizes{\pgf@ya}{\pgf@yb}%
+	\endgroup
+}%
+\def\pgfplots@ticklabel@maxtickdimen@reset#1{%
+	\expandafter\gdef\csname pgfplots@maxtick@wd@#1\endcsname{0pt}%
+	\expandafter\gdef\csname pgfplots@maxtick@ht@#1\endcsname{0pt}%
+}%
+
+% #1: the axis (x,y or z)
+% #2: the point from where dimension shall be computed (the 'at'
+% argument of the tick label)
+\def\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath#1#2{%
+	\begingroup
+\message{checking #1ticklabel pic dimen: MIN=(\the\pgf@picminx,\the\pgf@picminy) MAX = (\the\pgf@picmaxx,\the\pgf@picmaxy). }%
+	\advance\pgf@picmaxx by-\pgf@picminx
+	\advance\pgf@picmaxy by-\pgf@picminy
+	\def\pgfplots@loc@islarger{0}%
+	\ifdim\pgf@picmaxx>\csname pgfplots@maxtick@wd@#1\endcsname\relax
+		\def\pgfplots@loc@islarger{1}%
+	\else
+		\ifdim\pgf@picmaxy>\csname pgfplots@maxtick@ht@#1\endcsname\relax
+			\def\pgfplots@loc@islarger{1}%
+		\fi
+	\fi
+	\if1\pgfplots@loc@islarger
+		\expandafter\xdef\csname pgfplots@maxtick@wd@#1\endcsname{\the\pgf@picmaxx}%
+		\expandafter\xdef\csname pgfplots@maxtick@ht@#1\endcsname{\the\pgf@picmaxy}%
+	\fi
+\pgfplotspointlargesttickdiagonal#1%
+\message{The largest #1tick dimen is (\the\pgf@x,\the\pgf@y)}%
+	\endgroup
+}%
+
+% A point command which yields a vector whose x and y coordinates are
+% the largest width and heights of the largest tick label in direction
+% #1. The term "largest" is measured in the maximum norm of its
+% bounding box.
+%
+% If not all tick labels have been seen so far, only those which have
+% been typeset are included in this coordinate.
+% If no tick labels have been seen, the point (0,0) is returned.
+%
+% #1: either x,y or z. It denotes the axis for which the ticks are
+% requested.
+\def\pgfplotspointlargesttickdiagonal#1{%
+	\pgf@x=\csname pgfplots@maxtick@wd@#1\endcsname\relax
+	\pgf@y=\csname pgfplots@maxtick@ht@#1\endcsname\relax
+}%
+
+% Just like \pgfplotsqpointoutsideofaxis, but this one here uses the
+% axis on which tick labels will be drawn.
+%
+% #1: one of x, y or z.
+% #2: the coordinate on the tick axis designated by '#1'.
+% #3: a scale (a dimen) in which the point is moved in direction of
+% the outward normal vector of the axis.
+%
+% @see \pgfplotsqpointoutsideofaxis
+\def\pgfplotsqpointoutsideofticklabelaxis#1#2#3{%
+	\pgfplotsqpointoutsideofaxis{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+\def\pgfplotsqpointoutsideofticklabelaxisrel#1#2#3{%
+	\pgfplotsqpointoutsideofaxisrel{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+\def\pgfplotsqpointoutsideofticklabelaxistransformed#1#2#3{%
+	\pgfplotsqpointoutsideofaxistransformed{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+
+% The unit outer normal vector for axis #1.
+% #1: one of x, y or z.
+\def\pgfplotspointouternormalvectorofticklabelaxis#1{%
+	\pgfplotspointouternormalvectorofaxis{\csname pgfplots@#1ticklabelaxisspec\endcsname}%
+}
 
 % Defines \tick by applying any necessary math to the (possibly
 % transformed) tick value #2.
@@ -1004,12 +1102,7 @@
 				\pgfplots@show@ticklabel
 					{#1}{\pgfplots@curtickpos}(\pgfplots@curtickpos,\pgfplots@tick@origin)%
 					{\pgfplots@ticknum}%
-				\begingroup
-				\c@pgf@counta=\pgfplots@ticknum\relax
-				\advance\c@pgf@counta by1
-				\edef\pgfplots@ticknum{\the\c@pgf@counta}%
-				\pgfmath@smuggleone\pgfplots@ticknum
-				\endgroup
+				\pgfplotsutil@advancestringcounter\pgfplots@ticknum
 			}%
 			\endgroup
 			\pgfplots@draw@tick@scale@label@for #1%
