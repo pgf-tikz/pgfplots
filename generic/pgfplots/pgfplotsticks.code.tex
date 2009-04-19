@@ -266,14 +266,14 @@
 		% Remember the position '#2':
 		\edef\pgfplots@ticklabel@at@x{\the\pgf@x}%
 		\edef\pgfplots@ticklabel@at@y{\the\pgf@y}%
-		\pgftransformshift{}%<- simply take pgf@x and pgf@y
-		%
 		%
 		% We collects its bounding box separately.
 		%
-		\node at (0pt,0pt) {\csname pgfplots@#1ticklabel\endcsname};%
+		\node at (\pgfplots@ticklabel@at@x,\pgfplots@ticklabel@at@y) {\csname pgfplots@#1ticklabel\endcsname};%
 		%
-		\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}{\pgf@x=\pgfplots@ticklabel@at@x\space\pgf@y=\pgfplots@ticklabel@at@y\space}%%
+		\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath
+			{#1}
+			{\pgf@x=\pgfplots@ticklabel@at@x\space\pgf@y=\pgfplots@ticklabel@at@y\space}%%
 		\xdef\pgfplots@glob@TMPa{%
 			\pgf@xa=\the\pgf@picminx\space
 			\pgf@xb=\the\pgf@picminy\space
@@ -287,50 +287,111 @@
 		\pgf@protocolsizes{\pgf@ya}{\pgf@yb}%
 	\endgroup
 }%
+
+% TICK LABEL DISTANCE CONTROL
+%
+% The following framework is supposed to accumulate the value for
+% \pgfplotsvalueoflargesttickdimen.
+%
+% It works like this:
+%
+% \pgfplots@ticklabel@maxtickdimen@reset{#1}
+% \pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{<normal vector>}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@finish{#1}
+%
+% -> then, \pgfplotsvalueoflargesttickdimen expands to the largest
+%  distance from a tick's coordinate to its tick label bounding box in
+%  direction of the outer normal vector.
 \def\pgfplots@ticklabel@maxtickdimen@reset#1{%
-	\expandafter\gdef\csname pgfplots@maxtick@wd@#1\endcsname{0pt}%
-	\expandafter\gdef\csname pgfplots@maxtick@ht@#1\endcsname{0pt}%
+	\expandafter\gdef\csname pgfplots@maxtickdimen@#1\endcsname{0pt}%
+}%
+
+\def\pgfplots@ticklabel@maxtickdimen@finish#1{%
+	\pgfkeysgetvalue{/pgfplots/#1ticklabel dist}\pgfmathresult
+	\ifx\pgfmathresult\pgfutil@empty
+	\else
+		\begingroup
+		\afterassignment\pgfplots@gobble@until@relax
+		\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel dist}pt\relax
+		\advance\pgf@xa by\csname pgfplots@maxtickdimen@#1\endcsname\relax
+		\expandafter\xdef\csname pgfplots@maxtickdimen@#1\endcsname{\the\pgf@xa}%
+		\endgroup
+	\fi
+\message{The largest #1tick dimen is `\pgfplotsvalueoflargesttickdimen#1'}%
+}%
+% 
+% #1: the axis (x,y or z)
+% #2: the normal vector
+\def\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec#1#2{%
+	\pgf@process{#2}%
+	\edef\pgfplots@loc@vector@to@outside{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	% Identify the corner point of the ticklabel bounding box which
+	% shall be used: 
+	\ifdim\pgf@x>0sp
+		\ifdim\pgf@y>0sp
+			% NORTH EAST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picmaxx\pgf@y=\pgf@picmaxy}%
+		\else
+			% SOUTH EAST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picmaxx\pgf@y=\pgf@picminy}%
+		\fi
+	\else
+		\ifdim\pgf@y>0sp
+			% NORTH WEST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picminx\pgf@y=\pgf@picmaxy}%
+		\else
+			% SOUTH WEST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picminx\pgf@y=\pgf@picminy}%
+		\fi
+	\fi
 }%
 
 % #1: the axis (x,y or z)
 % #2: the point from where dimension shall be computed (the 'at'
 % argument of the tick label)
 \def\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath#1#2{%
-	\begingroup
-\message{checking #1ticklabel pic dimen: MIN=(\the\pgf@picminx,\the\pgf@picminy) MAX = (\the\pgf@picmaxx,\the\pgf@picmaxy). }%
-	\advance\pgf@picmaxx by-\pgf@picminx
-	\advance\pgf@picmaxy by-\pgf@picminy
-	\def\pgfplots@loc@islarger{0}%
-	\ifdim\pgf@picmaxx>\csname pgfplots@maxtick@wd@#1\endcsname\relax
-		\def\pgfplots@loc@islarger{1}%
-	\else
-		\ifdim\pgf@picmaxy>\csname pgfplots@maxtick@ht@#1\endcsname\relax
-			\def\pgfplots@loc@islarger{1}%
-		\fi
+\pgfpathmoveto{#2}
+\pgfpathlineto{\pgfplots@loc@ticklabel@bb@corner}
+\pgfusepath{stroke}
+	\pgfplotsscalarproductofvectors
+		{\pgfpointnormalised\pgfplots@loc@vector@to@outside} %% FIXME the unit vector is NOT normalised!
+		{\pgfpointdiff
+			{#2}%
+			{\pgfplots@loc@ticklabel@bb@corner}}%
+\message{corner{#1} = \meaning\pgfplots@loc@ticklabel@bb@corner.}%
+%\message{checking #1ticklabel pic dimen: MIN=(\the\pgf@picminx,\the\pgf@picminy) MAX = (\the\pgf@picmaxx,\the\pgf@picmaxy).  }%
+\message{(n,(corner - pos) ) = \the\pgf@x. }%
+	\ifdim\pgf@x>\csname pgfplots@maxtickdimen@#1\endcsname\relax
+		\expandafter\xdef\csname pgfplots@maxtickdimen@#1\endcsname{\the\pgf@x}%
 	\fi
-	\if1\pgfplots@loc@islarger
-		\expandafter\xdef\csname pgfplots@maxtick@wd@#1\endcsname{\the\pgf@picmaxx}%
-		\expandafter\xdef\csname pgfplots@maxtick@ht@#1\endcsname{\the\pgf@picmaxy}%
-	\fi
-\pgfplotspointlargesttickdiagonal#1%
-\message{The largest #1tick dimen is (\the\pgf@x,\the\pgf@y)}%
-	\endgroup
+\message{The largest #1tick dimen is `\pgfplotsvalueoflargesttickdimen#1'}%
 }%
 
-% A point command which yields a vector whose x and y coordinates are
-% the largest width and heights of the largest tick label in direction
-% #1. The term "largest" is measured in the maximum norm of its
-% bounding box.
+% Expands to the largest distance of a tick position to its tick label
+% bounding box in direction of the outer unit normal vector.
 %
-% If not all tick labels have been seen so far, only those which have
-% been typeset are included in this coordinate.
-% If no tick labels have been seen, the point (0,0) is returned.
+% It does also include the value of the 'ticklabel dist' key.
+%
+% This function assumes that
+% \pgfplots@ticklabel@maxtickdimen@reset{#1}
+% \pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{<normal vector>}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@finish{#1}
+% has been invoked completely.
 %
 % #1: either x,y or z. It denotes the axis for which the ticks are
 % requested.
-\def\pgfplotspointlargesttickdiagonal#1{%
-	\pgf@x=\csname pgfplots@maxtick@wd@#1\endcsname\relax
-	\pgf@y=\csname pgfplots@maxtick@ht@#1\endcsname\relax
+\def\pgfplotsvalueoflargesttickdimen#1{%
+	\csname pgfplots@maxtickdimen@#1\endcsname
 }%
 
 % Just like \pgfplotsqpointoutsideofaxis, but this one here uses the
@@ -1104,6 +1165,7 @@
 					{\pgfplots@ticknum}%
 				\pgfplotsutil@advancestringcounter\pgfplots@ticknum
 			}%
+			\pgfplots@ticklabel@maxtickdimen@finish{#1}%
 			\endgroup
 			\pgfplots@draw@tick@scale@label@for #1%
 		}%
@@ -1192,7 +1254,9 @@
 		% portable.
 		%
 		% 1. initialise the direction vector for tick label anchors:
-		\pgfpointscale{-1}{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
+		\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+		\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{}%
+		\pgfpointscale{-1}{}%
 		\edef\pgfplots@loc@vector@to@inside{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
 		% 2. init the anchors.
 		\pgfkeysalso{/tikz/every node/.append code={%
@@ -1211,11 +1275,6 @@
 			\else
 				\afterassignment\pgfplots@gobble@until@relax
 				\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel dist}pt\relax
-				% make sure we don't have it twice, see above:
-				\if\pgfplots@loc@TMPc0%
-					% ok, we need to divide by 2.
-					\divide\pgf@xa by2
-				\fi
 				\multiply\pgf@xa by-1 % the direction vector points to the INSIDE. the shift should have opposite sign.
 				\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
 			\fi
@@ -1226,7 +1285,7 @@
 		\ifx\pgfplots@loc@TMPc\pgfutil@empty
 		\else
 			\pgftransformshift{%
-				\pgfpointscale
+				\pgfqpointscale
 					{\pgfplots@loc@TMPc}
 					{\pgfplots@loc@vector@to@inside}%
 			}%
@@ -1255,6 +1314,7 @@
 				\fi
 			\fi
 		\fi
+		\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
 	\fi
 }%
 
