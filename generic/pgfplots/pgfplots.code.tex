@@ -254,6 +254,7 @@
 		\else
 			\def\pgfplots@loc@TMPb{default}%
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+				\expandafter\def\csname pgfplots@#1ticklabel@pos\endcsname{}%
 			\else
 				\def\pgfplots@loc@TMPb{left}%
 				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
@@ -262,10 +263,29 @@
 					\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 						\expandafter\def\csname pgfplots@#1ticklabel@pos\endcsname{u}%
 					\else
-						\pgfplots@error{Sorry, the key '#1ticklabel pos' does not know what to do with '#2'... accepted values are 'lower' or 'upper' and some aliases. Maybe you misspelled it?}%
+						\expandafter\def\csname pgfplots@#1ticklabel@pos\endcsname{}%
+						\pgfplots@error{Sorry, the key '#1ticklabel pos' does not know what to do with '#2'... accepted values are 'default, 'lower', 'upper' and some aliases. Maybe you misspelled it?}%
 					\fi
 				\fi
 			\fi
+		\fi
+	\fi
+}%
+
+% #1: an axis
+% #2: the key's value to apply
+\def\pgfplots@setkey@axisdir@for#1#2{%
+	\def\pgfplots@loc@TMPa{#2}%
+	\def\pgfplots@loc@TMPb{normal}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\pgfkeyssetvalue{/pgfplots/#1 dir/value}{n}%
+	\else
+		\def\pgfplots@loc@TMPb{reverse}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\pgfkeyssetvalue{/pgfplots/#1 dir/value}{r}%
+		\else
+			\pgfkeyssetvalue{/pgfplots/#1 dir/value}{n}%
+			\pgfplots@error{Sorry, the key '#1 dir' does not know what to do with '#2'... accepted values are 'normal' or 'reverse'?}%
 		\fi
 	\fi
 }%
@@ -718,15 +738,16 @@
 % to one of
 % lower (alias left alias bottom)    : l
 % upper (alias right alias top)      : u
+% default: uses one matches 'tick pos'
 	/pgfplots/xticklabel pos/.code={\pgfplots@setkey@ticklabelpos{x}{#1}},
 	/pgfplots/xticklabel pos/.belongs to family=/pgfplots/tick,
-	/pgfplots/xticklabel pos=lower,
+	/pgfplots/xticklabel pos=default,
 	/pgfplots/yticklabel pos/.code={\pgfplots@setkey@ticklabelpos{y}{#1}},
 	/pgfplots/yticklabel pos/.belongs to family=/pgfplots/tick,
-	/pgfplots/yticklabel pos=lower,
+	/pgfplots/yticklabel pos=default,
 	/pgfplots/zticklabel pos/.code={\pgfplots@setkey@ticklabelpos{z}{#1}},
 	/pgfplots/zticklabel pos/.belongs to family=/pgfplots/tick,
-	/pgfplots/zticklabel pos=lower,
+	/pgfplots/zticklabel pos=default,
 	/pgfplots/ticklabelpos/.style={/pgfplots/ticklabel pos={#1}},
 	/pgfplots/ticklabel pos/.style={
 		/pgfplots/xticklabel pos={#1},
@@ -1085,17 +1106,18 @@
 	/pgfplots/y/.belongs to family=/pgfplots,
 	/pgfplots/z/.initial=,
 	/pgfplots/z/.belongs to family=/pgfplots,
-	/pgfplots/view/.code 2 args={%
-		\def\pgfplots@loc@TMPa{#1}%
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-			\let\pgfplots@view@az=\pgfutil@empty
-			\let\pgfplots@view@el=\pgfutil@empty
-		\else
-			\pgfmathparse{#1}\let\pgfplots@view@az=\pgfmathresult
-			\pgfmathparse{#2}\let\pgfplots@view@el=\pgfmathresult
-		\fi
-	},
-	/pgfplots/view={25}{30},
+	/pgfplots/x dir/.code={\pgfplots@setkey@axisdir@for x{#1}},%
+	/pgfplots/y dir/.code={\pgfplots@setkey@axisdir@for y{#1}},%
+	/pgfplots/z dir/.code={\pgfplots@setkey@axisdir@for z{#1}},%
+	/pgfplots/x dir=normal,%
+	/pgfplots/y dir=normal,%
+	/pgfplots/z dir=normal,%
+	/pgfplots/view/az/.initial=25,%
+	/pgfplots/view/el/.initial=30,%
+	/pgfplots/view/.style 2 args={%
+		/pgfplots/view/az={#1},%
+		/pgfplots/view/el={#2}%
+	},%
 	/pgfplots/cycle list/.code={\pgfplots@assign@list\autoplotspeclist{#1}},
 	/pgfplots/cycle list/.belongs to family=/pgfplots,
 	/pgfplots/cycle list name/.code={%
@@ -3833,15 +3855,19 @@
 % '1' if and only if the finally set vector is parallel to the #1 axis
 % of PGF, that means (x,0) for #1=x and (0,y) for #2=y.
 \def\pgfplots@initsizes@setunitvector#1#2#3#4{%
+	\pgfkeysgetvalue{/pgfplots/#1 dir/value}\pgfplots@loc@dirvalue
 	\expandafter\let\expandafter\pgfplots@loc@TMPb\csname pgfplots@#1\endcsname
 	\ifx\pgfplots@loc@TMPb\pgfutil@empty
 		\def#4{1}% we have (#1,0) or (0,#1)
 		%
 %\message{Setting unitvector(#1) to auto-computed multiple of e_#2 ...}%
 		\edef\pgfplots@loc@TMPa{#3}%
+		\if r\pgfplots@loc@dirvalue
+			\edef\pgfplots@loc@TMPa{-#3}%
+		\fi
 		\begingroup
-		\pgf@xa=#3\relax
-		\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+			\pgf@xa=#3\relax
+			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
 		\endgroup
 % FIXME : '\pgfplots@loc@TMPa' contains 'pt' leading to missing
 % character warning!
@@ -3874,6 +3900,11 @@
 		%
 		% That means we also need to apply the scaling trafo!
 		%
+		\if r\pgfplots@loc@dirvalue
+			\def\pgfplots@loc@dirvalue{-}%
+		\else
+			\def\pgfplots@loc@dirvalue{}%
+		\fi
 		%
 		% 1. Check whether we have a complete vector of type (x,y):
 		\expandafter\pgfutil@in@\expandafter(\expandafter{\pgfplots@loc@TMPb}%
@@ -3896,7 +3927,10 @@
 					\expandafter\pgfplots@inverse@datascaletrafo@tofixed@y@noshift\expandafter{\pgfmathresult}%
 				\fi
 				\let\pgfplots@loc@TMPc=\pgfmathresult
-				\csname pgfset#1vec\endcsname{\pgfqpoint{\pgfplots@loc@TMPb pt}{\pgfplots@loc@TMPc pt}}%
+				\csname pgfset#1vec\endcsname{%
+					\pgfqpoint
+						{\pgfplots@loc@dirvalue\pgfplots@loc@TMPb pt}
+						{\pgfplots@loc@dirvalue\pgfplots@loc@TMPc pt}}%
 			}%
 			\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb%
 			%
@@ -3918,8 +3952,11 @@
 				\edef\pgfplots@loc@TMPb{\pgfmathresult pt}%
 			}{\relax}%
 			\begingroup
-			\pgf@xa=\pgfplots@loc@TMPb\relax
-			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+				\pgf@xa=\pgfplots@loc@TMPb\relax
+				\if r\pgfplots@loc@dirvalue
+					\multiply\pgf@xa by-1
+				\fi
+				\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
 			\endgroup
 			\ifcase#2\relax
 				\pgfsetxvec{\pgfqpoint{\pgfplots@loc@TMPb}{0pt}}%
@@ -3944,6 +3981,7 @@
 			}%
 		\fi
 	\fi
+%\message{-> got unitvector(#1) = (\the\csname pgf@#1x\endcsname, \the\csname pgf@#1y\endcsname).}%
 }%
 
 % Applies the 'axis equal' feature.
@@ -4230,6 +4268,8 @@
 	\pgfplotsqpointxy{\pgfplots@tmpXscale}{\pgfplots@tmpYscale}%
 	\edef\pgfplots@tmpXscale{\the\pgf@x}%
 	\edef\pgfplots@tmpYscale{\the\pgf@y}%
+	\pgfkeysgetvalue{/pgfplots/view/az}{\pgfplots@view@az}%
+	\pgfkeysgetvalue{/pgfplots/view/el}{\pgfplots@view@el}%
 	\ifpgfplots@threedim
 		\def\pgfplots@tmpZscale{1pt}%
 	\else
@@ -5076,6 +5116,8 @@
 % POSTCONDITION:
 % 	- pgfplots@#1ticklabelaxisspec is set,
 %	- pgfplots@#1ticklabel@suggested@anchor is set
+%
+% @see also \pgfplots@init@ticklabelaxisspec@twodim@for
 \def\pgfplots@init@ticklabelaxisspecfor#1#2{%
 	\if#1x%
 		\def\pgfplots@loc@to@threedim##1##2{v##1##2}%
@@ -5154,6 +5196,13 @@
 			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 1}%
 		\fi
 	\else
+		\if3\csname pgfplots@#1tickposnum\endcsname % is 'right'
+			\expandafter\def\csname pgfplots@#1tickposnum\endcsname{1}% set to 'left'
+		\else
+			\if1\csname pgfplots@#1tickposnum\endcsname % is 'left'
+				\expandafter\def\csname pgfplots@#1tickposnum\endcsname{3}% set to 'right'
+			\fi
+		\fi
 		\if l\csname pgfplots@#1ticklabel@pos\endcsname
 			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 1}%
 		\fi
