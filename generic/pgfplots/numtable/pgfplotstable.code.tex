@@ -427,6 +427,28 @@
 			\fi
 		}
 	},
+	/pgfplots/table/preproc/expr/.code={%
+		\ifpgfplots@usefpu
+			\pgfkeysalso{/pgf/fpu=true,/pgf/fpu/output format=sci}%
+		\fi
+		\expandafter\def\csname pgfplotstable@preproc@expr@thisrow@\pgfplotstablecolname\endcsname{\pgfkeysvalueof{/pgfplots/table/@cell content}}%
+		\def\thisrow##1{%
+			\pgfutil@ifundefined{pgfplotstable@preproc@expr@thisrow@##1}{%
+				--inaccessable--%
+			}{%
+				\csname pgfplotstable@preproc@expr@thisrow@##1\endcsname
+			}%
+		}%
+		\pgfkeysalso{/pgfplots/table/preproc cell content/.append code={%
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathparse{#1}%
+					\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult%
+				\fi
+			}%
+		}%
+	},
 	/pgfplots/table/multiply -1/.style={%
 		/pgfplots/table/preproc cell content/.append code={%
 			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
@@ -490,6 +512,24 @@
 			\fi
 		}%
 	},
+	/pgfplots/table/fonts by sign/.style 2 args={%
+		/pgfplots/table/postproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfplotslocretval
+			\ifx\pgfplotslocretval\pgfutil@empty
+			\else
+				\t@pgfplots@toka=\expandafter{\pgfplotslocretval}%
+				\t@pgfplots@tokb={#1}%
+				\t@pgfplots@tokc={#2}%
+				\pgfmathfloatparsenumber{\pgfkeysvalueof{/pgfplots/table/@preprocessed cell content}}%
+				\pgfmathfloatifflags{\pgfmathresult}{-}{%
+					\edef\pgfmathresult{{\the\t@pgfplots@tokc{\the\t@pgfplots@toka}}}%
+				}{%
+					\edef\pgfmathresult{{\the\t@pgfplots@tokb{\the\t@pgfplots@toka}}}%
+				}%
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+			\fi
+		}%
+	},%
 	%
 	/pgfplots/table/font/.initial=,
 	/pgfplots/table/.search also={/pgf/number format,/pgfplots/table/create col},
@@ -2246,8 +2286,10 @@
 	\begingroup
 	\def\pgfplotstablepartno{0}%
 	\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
+	\pgfkeyssetvalue{/pgfplots/table/@unprocessed cell content}{#1}%
 	\pgfkeysvalueof{/pgfplots/table/preproc cell content/.@cmd}#1\pgfeov
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfkeyslet{/pgfplots/table/@preprocessed cell content}\pgfmathresult%
 	%
 	\pgfkeysgetvalue{/pgfplots/table/assign cell content/.@cmd}\pgfplotstable@assigncell
 	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
@@ -2256,17 +2298,18 @@
 	\ifx\pgfplotstable@postproccellcontent\pgfplotstable@postproccellcontent@EMPTY
 	\else
 		% apply postprocessing to final cell content.
+		\def\pgfplotstabletypeset@rawinput{#1}%
+		%
 		% This is complicated if there is an '&' in '@cell content',
 		% so handle that specially!
 		%
 		% FIXME also support more than one '&' ?
-		\def\pgfplotstabletypeset@rawinput{#1}%
 		\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 		\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
 		\ifpgfutil@in@
 			\expandafter\pgfplotstabletypeset@postproc@separately\pgfmathresult\pgfplotstable@EOI
 		\else
-			\pgfplotstable@postproccellcontent#1\pgfeov
+			\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
 		\fi
 	\fi
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
