@@ -60,6 +60,8 @@
 	}%
 	\let\pgfpointxy@orig=\pgfpointxy
 	\let\pgfqpointxy@orig=\pgfqpointxy
+	\let\pgfpointxyz@orig=\pgfpointxyz
+	\let\pgfqpointxyz@orig=\pgfqpointxyz
 	%
 	% A point command such that (0,0) is the 'south west' and (1,1)
 	% the 'north east' point of an axis.
@@ -2253,7 +2255,7 @@
 			\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
 				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
 				\multiply\c@pgfplots@scanlineindex by \pgfplotsplothandlermesh@cols\relax
-				\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgf@counta}%
+				\edef\pgfplotsplothandlermesh@numpoints{\the\c@pgfplots@scanlineindex}%
 			\fi
 			%
 			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@rows\relax
@@ -2604,16 +2606,17 @@
 % as input to \pgfplotscolormapaccess. Thus, the 10^k is chosen to be 
 % the same as \pgfplotscolormaprange (which is 1000 per default).
 %
-% If there is now data range (for example because meta information is
+% If there is no data range (for example because meta information is
 % not available or is not of numeric type), the trafo will simply
 % copy the input argument symbolically.
 \def\pgfplots@perpointmeta@preparetrafo{%
+	\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
 	\if m\pgfplots@colormap@access
 		% colormap access=map
 		\ifx\pgfplots@metamax\pgfutil@empty
 			\def\pgfplots@perpointmeta@trafo##1{\def\pgfmathresult{##1}}%
-			\def\pgfplots@perpointmeta@traforange{0:0}%
-			\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
+			\def\pgfplots@perpointmeta@traforange{0:1000}%
+			\edef\pgfplotspointmetarange{0:1000}%
 		\else
 			% The transformation is
 			%
@@ -4940,6 +4943,7 @@
 }%
 
 
+
 % The low-level tikz plot handler for 3D mesh and surface plots.
 %
 % It expects 
@@ -4956,6 +4960,98 @@
 %
 % 	As a consequence, you can't use this handler inside of (all) TikZ
 % 	input streams. Try it out. It will work in pgfplots, however.
+%
+% Furthermore, it relies on a couple of pgfplots macros. This may
+% change in future versions.
+% It relies on:
+% 	- \ifpgfplots@curplot@threedim
+% 	- \pgfplots@current@point@meta
+% 		-> it also invokes \pgfplots@perpointmeta@preparetrafo and its
+% 		@APPLY counterpart which checks for
+% 	- \pgfplots@metamax
+% 		If you use it outside of pgfplots, use
+% 		\global\let\pgfplots@metamax=\pgfutil@empty
+% 		This is can be used without an initialised
+% 		pgfplots axes - as long as \pgfplots@current@point@meta is in
+% 		the range [0,1000].
+% 	- for the case 'shader=interp', a bounding box must be established
+% 	before the plot is finished. This must be done using 
+%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
+%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
+%	or something like that.
+%
+% Besides these internals, it also relies on all public /pgfplots
+% configuration keys related to mesh/surface plots.
+%
+% Please note that the 'z buffer' feature will not work without
+% pgfplots (especially the z buffer=sort feature).
+%
+% Here is an example which compiles without a pgfplots axes:
+% ----------------------------------------------------------
+% \begin{tikzpicture}
+% 	\scope[
+% 		/pgfplots/.cd,
+% 		surf,
+% 		shader=faceted,
+% 		mesh/rows=4,
+% 		mesh/cols=4,
+% 		mesh/num points=,
+% 		/tikz/x={(0.44237cm,-0.07439cm)}, 
+% 		/tikz/y={(0.30942cm,0.23932cm)},
+% 		/tikz/z={(0.0cm,1.5cm)},
+% 	]
+% \makeatletter
+% 
+% 	\global\let\pgfplots@metamax=\pgfutil@empty
+% 	\pgfplots@curplot@threedimtrue
+% 
+% 	\pgfplotsplothandlermesh
+% 	\pgfplotstreamstart
+% 
+% 	\def\rangea{0.21}%
+% 	\def\rangeb{0.9}%
+% 
+% 	\pgfmathparse{1000/(\rangeb-\rangea)}
+% 	\let\factor=\pgfmathresult
+% 
+% 	\def\simplecoordinate(#1,#2,#3){%
+% 		\pgfmathparse{\factor*(#3 - \rangea)}%
+% 		\let\pgfplots@current@point@meta=\pgfmathresult
+% 		\pgfplotstreampoint{\pgfqpointxyz{#1}{#2}{#3}}%
+% 	}%
+% 	% for the case 'shaer=interp':
+%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
+%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
+% 
+% \simplecoordinate(0,3,0.7)
+% \simplecoordinate(1,3,0.5)
+% \simplecoordinate(2,3,0.58)
+% \simplecoordinate(3,3,0.9)
+% 
+% \simplecoordinate(0,2,0.68)
+% \simplecoordinate(1,2,0.22)
+% \simplecoordinate(2,2,0.25)
+% \simplecoordinate(3,2,0.4)
+% 
+% \simplecoordinate(0,1,0.6)
+% \simplecoordinate(1,1,0.3)
+% \simplecoordinate(2,1,0.21)
+% \simplecoordinate(3,1,0.3)
+% 
+% \simplecoordinate(0,0,0.8)
+% \simplecoordinate(1,0,0.56)
+% \simplecoordinate(2,0,0.5)
+% \simplecoordinate(3,0,0.75)
+% 
+% 
+% 	\pgfplotstreamend
+% 	\pgfusepath{stroke}
+% 
+% 	\endscope
+% \end{tikzpicture}
+% ----------------------------------------------------------
+%  END OF EXAMPLE
+%
 \def\pgfplotsplothandlermesh{%
 	\def\pgf@plotstreamstart{%
 %		\scope
@@ -4963,6 +5059,11 @@
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
+		%
+		\pgfutil@ifundefined{pgfplots@drawmodes}{%
+			\let\pgfplots@drawmodes=\tikz@mode
+			\let\pgfplots@drawoptions=\tikz@options
+		}{}%
 		%
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\ifnum\pgfplotsplothandlermesh@cols=1
@@ -5146,6 +5247,63 @@
 		\fi
 		\c@pgfplots@scanlineindex=0
 	}%
+}%
+
+\long\def\pgfplotsplothandlermesh@defaultlegend@img#1{%
+	\scope[%
+		#1,
+		/pgfplots/mesh/rows=3,
+		/pgfplots/mesh/cols=3,
+		/pgfplots/mesh/num points=,
+		/tikz/x={(0.44237cm,-0.07439cm)}, 
+		/tikz/y={(0.30942cm,0.23932cm)},
+		/tikz/z={(0.0cm,1.5cm)},
+		scale=0.6,
+		yshift=-0.5cm,
+	]
+	\let\pgfplots@metamax=\pgfutil@empty
+	\pgfplots@curplot@threedimtrue
+
+	\pgfplotsplothandlermesh
+	\pgfplotstreamstart
+
+	\def\rangea{0.21}%
+	\def\rangeb{0.7}%
+
+	\pgfmathparse{1000/(\rangeb-\rangea)}
+	\let\factor=\pgfmathresult
+
+	\pgfutil@ifundefined{pgfqpointxyz@orig}{%
+		\let\pgfqpointxyz@orig=\pgfqpointxyz
+	}{}%
+	%
+	\def\simplecoordinate(##1,##2,##3){%
+		\pgfmathparse{\factor*(##3 - \rangea)}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		% pgfplots changes \pgfqpointxyz to
+		% \pgfplotspointdescriptionxy inside of legends, so use the
+		% '@orig' point command:
+		\pgfplotstreampoint{\pgfqpointxyz@orig{##1}{##2}{##3}}%
+	}%
+	% for the case 'shader=interp':
+	\def\pgfplotspointbbupperright{\pgfqpointxyz@orig{2}{2}{0.9}}
+	\def\pgfplotspointbblowerleft {\pgfqpointxyz@orig{0}{0}{0.1}}
+
+	\simplecoordinate(0,2,0.7)
+	\simplecoordinate(1,2,0.5)
+	\simplecoordinate(2,2,0.43)
+
+	\simplecoordinate(0,1,0.68)
+	\simplecoordinate(1,1,0.4)
+	\simplecoordinate(2,1,0.25)
+
+	\simplecoordinate(0,0,0.6)
+	\simplecoordinate(1,0,0.35)
+	\simplecoordinate(2,0,0.21)
+
+	\pgfplotstreamend
+	\pgfusepath{stroke}
+	\endscope
 }%
 
 \def\pgfplotsplothandlermesh@finish{%
