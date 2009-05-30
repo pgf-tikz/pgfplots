@@ -2008,16 +2008,11 @@
 		% \tikzset{#1}
 		\pgfkeyssetvalue{/pgfplots/mesh/num points}{\pgfplots@current@point@coordindex}%
 		\pgfplotspreparemeshkeydefaults%
-		\ifpgfplots@curplot@isirrelevant
-			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
-		\else
-			\edef\pgfplots@addplot@preoptionsTMP{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
-			\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
-		\fi
+		\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@survey@@optionlist}%
 		% warning: rememberplotspec calls list macros which
 		% overwrite \t@pgfplots@toka
-		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@preoptionsTMP,#1,/pgfplots/every axis plot post}%
-		\xdef\pgfplots@last@plot@style{\the\t@pgfplots@toka}% store it for \label commands.
+		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@survey@@optionlist}%
+		\global\let\pgfplots@last@plot@style=\pgfplots@addplot@survey@@optionlist% store it for \label commands
 		% ATTENTION: do NOT call list macros from here on!
 		%
 		\ifpgfplots@datascaletrafo@initialised
@@ -3307,15 +3302,7 @@
 % |\addplot gnuplot| is an alias to |\addplot function|
 \def\pgfplots@addplotimpl@gnuplot#1#2nuplot{\pgfplots@addplotimpl@function{#1}{#2}unction}%
 
-% \addplot[<style options>]
-% 	plot[<behavior opts>] 
-% 	function[<further behavior opts>]
-% 	{gnuplot code} 
-% 	#3;
-% #1: args of \addplot[...]
-% #2: optional arguments after function[]
-% #3: gnuplot code to generate coordinates
-% #4: trailing path commands until ';'
+% \addplot[#1] plot[#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function#1#2unction{%
 	\pgfutil@ifnextchar[{%
 		\pgfplots@addplotimpl@function@opt{#1}{#2}%
@@ -3326,7 +3313,7 @@
 \def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#2,#3}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
@@ -3385,16 +3372,16 @@
 			\fi
 			}}%
 	\fi%
-	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#1}{#5}}%
+	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#5}}%
 	\pgfplots@plot@data
 	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
 }%
 
-\def\pgfplots@addplotimpl@gnuplotresult#1#2#3{%
+\def\pgfplots@addplotimpl@gnuplotresult#1#2{%
 	\begingroup
-	\openin1=#3
+	\openin1=#2
 	\ifeof1
-		\pgfplots@error{Sorry, the gnuplot-result file '#3' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> gnuplot <file>.gnuplot' manually on the respective gnuplot file.}%
+		\pgfplots@error{Sorry, the gnuplot-result file '#2' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> gnuplot <file>.gnuplot' manually on the respective gnuplot file.}%
 		\aftergroup\pgfplots@loop@CONTINUEfalse
 	\else
 		\aftergroup\pgfplots@loop@CONTINUEtrue
@@ -3407,7 +3394,7 @@
 		 % I invoke the private '@opt@' method because the semicolon ';' 
 		 % character may cause problems due to catcode mismatches.
 		 % *sigh*.
-		\pgfplots@addplotimpl@file@opt@@{#1}{}{#3}{#2}%
+		\pgfplots@addplotimpl@file@opt@@{}{}{#2}{#1}% this does not invoke the \pgfplots@start@plot@with@behavioroptions method.
 	\else
 		\expandafter\pgfplots@end@plot
 	\fi
@@ -3425,6 +3412,8 @@
 % \addplot[#1] [#2] file[#3] {#4} #5;
 \def\pgfplots@addplotimpl@file@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@file@opt@{#1}{#2}{#3}{#4}{#5}}%
 \def\pgfplots@addplotimpl@file@opt@#1#2#3#4#5{%
+	% invoke this here - allows to share the 'plot file' impl with
+	% 'plot gnuplot'.
 	\pgfplots@start@plot@with@behavioroptions{#1,#2}%
 	\pgfplots@addplotimpl@file@opt@@{#1,#2}{#3}{#4}{#5}%
 }
@@ -4198,9 +4187,27 @@
 	}%
 }%
 
+% A common routine which resets internal data structures for the
+% survey phase, i.e. it is the shared implementation for all \addplot
+% variations.
+% 
+% It takes all options which are provided to \addplot, sets them (at
+% least partially) and remembers them for the command serialization.
+%
 % #1:  arguments to \addplot plot[#1]
 %   -> these are called 'behavior' options in the manual; they are set
 %   immediately.
+%
+% PRECONDITION:
+%	\pgfplots@addplotimpl@plot@withoptions has already been invoked
+%
+% POSTCONDITION:
+% 	- internal datastructures are initialised (coordinate indexing, fpu)
+% 	- all keys which are required for the current plot are determined
+% 	(and set if necessary).
+% 	They are stored into 
+% 	\pgfplots@addplot@survey@@optionlist.
+%    
 \def\pgfplots@start@plot@with@behavioroptions#1{%
 	%\begingroup%<-- has been moved to \pgfplots@addplotimpl@plot@withoptions
 	\c@pgfplots@coordindex=0
@@ -4213,44 +4220,44 @@
 	\else
 		\pgfplots@execute@at@begin@plot
 	\fi
-	\let\pgfplots@addplot@nonlegend@options=\pgfutil@empty
-	\pgfplots@process@behavioroptions{#1}%
 	% these styles may contain behavior options (error bars,
 	% samples,... ) activate them!
-	\ifpgfplots@curplot@isirrelevant
-		\pgfplotsset{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
-	\else
-		\pgfplotsset{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
-	\fi
-}
-\def\pgfplots@process@behavioroptions#1{%
-	\def\pgfplots@loc@TMPa{#1}%
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\expandafter\def\expandafter\pgfplots@addplot@nonlegend@options\expandafter{%
-			\pgfplots@addplot@nonlegend@options,#1}%
-		% As of february 20, 2009,  #1 will contain BOTH, /pgfplots
-		% and /tikz options. The /tikz ones are primarily for drawing
-		% and are UNIMPORTANT at this stage of processing.
-		% In  fact, transparency etc. will only confuse everything.
-		%
-		% So: ignore them and set only /pgfplots keys here:
-		% This may actually redefine styles, for example
-		% \addplot[every mark/.append style={}] will use
-		% /pgfplots/every mark/.append style.
-		% But that doesn't hurt here.
-		%
-		% FIXME : there are some exceptions like /tikz/id etc. These
-		% exceptions need special styles in the /pgfplots root - or I
-		% need to change the .unknown handler. See the available
-		% compatibility styles!
-		\pgfkeysdef{/pgfplots/.unknown}{%
+	%
+	% As of february 20, 2009,  #1 will contain BOTH, /pgfplots
+	% and /tikz options. The /tikz ones are primarily for drawing
+	% and are UNIMPORTANT at this stage of processing.
+	% In  fact, transparency etc. will only confuse everything.
+	%
+	% So: ignore them and set only /pgfplots keys here:
+	% This may actually redefine styles, for example
+	% \addplot[every mark/.append style={}] will use
+	% /pgfplots/every mark/.append style.
+	% But that doesn't hurt here.
+	%
+	% FIXME : there are some exceptions like /tikz/id etc. These
+	% exceptions need special styles in the /pgfplots root - or I
+	% need to change the .unknown handler. See the available
+	% compatibility styles!
+	\pgfkeysdef{/pgfplots/.unknown}{%
 %\message{In \string\addplot[#1]: I am silently ignoring key `\pgfkeyscurrentkeyRAW' during the preparation phase.}%
-		}%
-		\pgfplotsset{#1}%
-		\pgfplots@validate@plot@domain@arguments
+	}%
+	%
+	% it is possible that '#1' contains 'forget plot'. So, we need to
+	% set the options before checking
+	% \ifpgfplots@curplot@isirrelevant:
+	\pgfplotsset{/pgfplots/every axis plot,#1}%
+	%
+	\ifpgfplots@curplot@isirrelevant
+		\def\pgfplots@addplot@survey@@optionlist{/pgfplots/every axis plot,/pgfplots/every forget plot/.try}%
+		\pgfplotsset{/pgfplots/every forget plot/.try,/pgfplots/every axis plot post}%
+	\else
+		\edef\pgfplots@addplot@survey@@optionlist{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
+		\pgfplotsset{/pgfplots/every axis plot no \the\pgfplots@numplots/.try,/pgfplots/every axis plot post}%
 	\fi
-}%
+	\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,%
+		#1,/pgfplots/every axis plot post}%
+	\pgfplots@validate@plot@domain@arguments
+}
 
 \def\pgfplots@end@plot{%
 	\ifpgfplots@curplot@isirrelevant
