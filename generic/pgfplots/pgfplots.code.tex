@@ -2552,13 +2552,7 @@
 % #4: commands which should be executed after '#2 #3'.
 %
 \long\def\pgfplots@path@enqueue@coords#1#2#3#4{%
-	\ifpgfplots@draw@at@end
-		\pgfplotslistpushbackglobal{#1}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
-	\else
-		\begingroup
-		#1#2#3#4%
-		\endgroup
-	\fi
+	\pgfplotslistpushbackglobal{#1}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
 }
 
 % this was formerly slightly different than
@@ -6618,7 +6612,6 @@
 \newif\ifpgfplots@apply@datatrafo@z
 \newif\ifpgfplots@apply@datatrafo
 \newif\ifpgfplots@datascaletrafo@initialised
-\newif\ifpgfplots@draw@at@end
 
 % Extracts single components of an entry of
 % \pgfplots@stored@plotlist
@@ -7035,27 +7028,10 @@
 	%
 	% --------------------
 	% Start axis:
-	% either postponed to \end or directly.
+	% start survey phase!
 	% --------------------
 	%
-	% Since I've introduced a public \numplots macro, I should 
-	% make sure it's filled correctly.
-	% All versions from now on will store plots until \end{axis}:
-	\pgfplots@draw@at@endtrue
-	%
-	\ifpgfplots@collect@firstplot@astick
-		\pgfplots@draw@at@endtrue
-	\fi
-	\ifpgfplots@apply@datatrafo
-		% ALWAYS TRUE. This allows to use inline plots because the data
-		% scale transformation will be applied after I know that it should
-		% be disabled.
-		\pgfplots@draw@at@endtrue
-	\fi
 	\ifpgfplots@stackedmode
-		% Stacked plots require special attention: they are drawn in
-		% REVERSE order.
-		\pgfplots@draw@at@endtrue
 	\else
 		% we have no stacked plots and thus no reversing.
 		\pgfplots@stacked@reversefalse
@@ -7072,11 +7048,6 @@
 	\def\numplots{\the\pgfplots@numplots}%
 	\let\path=\pgfplots@replacement@for@tikz@path
 	\let\closedcycle=\pgfplots@path@closed@cycle
-	\ifpgfplots@draw@at@end
-	\else
-		\expandafter% remove the '\fi'
-		\pgfplots@BEGIN@init@and@draw@axis
-	\fi
 }
 
 % \end{axis} :
@@ -7102,52 +7073,46 @@
 	%  All plotting commands have been read.
 	%  -> apply postponed drawing commands!
 	% --------------------
-	\ifpgfplots@draw@at@end% ALWAYS TRUE - this is obsolete
-		\def\pgfplots@nextcommand{%
-			\pgfplots@BEGIN@init@and@draw@axis
-			\pgfplots@stacked@initialise
-			\global\pgfplotslistnewempty\pgfplots@stored@markerlist
-			\ifpgfplots@stacked@reverse
-				% This here applies any scaling trafos and assembles a
-				% NEW \pgfplots@stored@plotlist!
-				\pgfplots@stacked@finalize@stored@plots
-			\fi
-			\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
-				\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
-%\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
-				% The precmd sets all required variables needed to
-				% finalize a plot.
-				% @see the stream preparation routines.
-				\pgfplots@stored@current@precmd
-				\ifx\pgfplots@stored@current@cmd\pgfutil@empty
-					\pgfplots@stored@current@data%
-				\else
-					% this code here means we REALLY have a plotting
-					% command!
-					\scope[current plot style] % this does set BOTH pgfplots and tikz options.
-					%
-					% de-activate the FPU here! I fear its number
-					% format may cause errors when used in low-level
-					% routines.
-					\pgfkeys{/pgf/fpu=false}%
-					%
-					\ifpgfplots@stacked@reverse
-						% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
-						\pgfplots@stacked@draw@reversed@plot
-					\else
-						% modifies \pgfplots@stored@markerlist if necessary.
-						\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
-					\fi
-					\endscope
-				\fi
-				\pgfplots@stored@current@postcmd
-			}%
-			\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
-		}%
-	\else
-		\let\pgfplots@nextcommand=\relax
+	\pgfplots@BEGIN@init@and@draw@axis
+	\pgfplots@stacked@initialise
+	\global\pgfplotslistnewempty\pgfplots@stored@markerlist
+	\ifpgfplots@stacked@reverse
+		% This here applies any scaling trafos and assembles a
+		% NEW \pgfplots@stored@plotlist!
+		\pgfplots@stacked@finalize@stored@plots
 	\fi
-	\pgfplots@nextcommand
+	\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
+		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
+%\message{Processing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd' postcommand '\meaning\pgfplots@stored@current@postcmd'}%
+		% The precmd sets all required variables needed to
+		% finalize a plot.
+		% @see the stream preparation routines.
+		\pgfplots@stored@current@precmd
+		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+			\pgfplots@stored@current@data%
+		\else
+			% this code here means we REALLY have a plotting
+			% command!
+			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+			%
+			% de-activate the FPU here! I fear its number
+			% format may cause errors when used in low-level
+			% routines.
+			\pgfkeys{/pgf/fpu=false}%
+			%
+			\ifpgfplots@stacked@reverse
+				% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
+				\pgfplots@stacked@draw@reversed@plot
+			\else
+				% modifies \pgfplots@stored@markerlist if necessary.
+				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
+			\fi
+			\endscope
+		\fi
+		\pgfplots@stored@current@postcmd
+	}%
+	\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
+	%
 	\pgfplots@END@init@and@draw@axis
 	%
 	\pgfplots@create@axis@descriptions
