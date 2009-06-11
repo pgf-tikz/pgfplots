@@ -600,6 +600,11 @@
 	/pgfplots/colorbar=false,
 	/pgfplots/colorbar style/.style={/pgfplots/every colorbar/.append style={#1}},
 	/pgfplots/colorbar/width/.initial=0.5cm,
+	/pgfplots/colorbar/draw/.code={%
+		\axis[every colorbar,colorbar shift,colorbar=false]
+		\addplot graphics {};
+		\endaxis
+	},%
 % tick options:
 	/pgfplots/xticklabel/.store in=	\pgfplots@xticklabel,
 	/pgfplots/xticklabel/.belongs to family=/pgfplots/tick,
@@ -2368,11 +2373,6 @@
 	\endgroup
 }
 
-\def\pgfplots@drawcolorbar{%
-	\axis[every colorbar,colorbar shift,colorbar=false]
-	\addplot graphics {};
-	\endaxis
-}%
 
 \def\pgfplots@show@title#1{%
 	\node%
@@ -6397,6 +6397,75 @@
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
+% Defines '#1' to be a macro which, upon execution, draws the color
+% bar for the current axis. It also handles any required style
+% inheritance and option preparation issues.
+%
+% The important thing is: the macro is expected to be invoked after
+% the current TeX group (scope). Thus, the complete state is
+% represented inside of '#1' (and maybe some global variables).
+\def\pgfplots@colorbar@move@outside@scope@with@globalmacro#1{%
+	\pgfplotspointbbdiagonal
+	\edef\pgfplots@loc@TMPa{\the\pgf@x}%
+	\edef\pgfplots@loc@TMPb{\the\pgf@y}%
+	\pgfkeyslet{/pgfplots/parent axis width}{\pgfplots@loc@TMPa}%
+	\pgfkeyslet{/pgfplots/parent axis height}{\pgfplots@loc@TMPb}%
+	%
+	\pgfnodealias{parent axis}{current axis}%
+	% we have to do a lot of work to move *some* of the current
+	% settings out of the current TeX group:
+	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
+	\expandafter\pgfplotscolormapserializetomacro\expandafter{\pgfplots@loc@TMPa}{\pgfplots@serializedcolormap}%
+	\toks0=\expandafter{\pgfplots@serializedcolormap}%
+	%
+	% FIXME : 
+	% I would really prefer to find a different way to move these
+	% variables out of the current scope. But expansion lead to
+	% mistakes with '#' characters ... :-(
+	% I use these no-name globals in the hope they might be used
+	% in another place as well.
+	{\globaldefs=1
+	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@savedstyle@colorbar@draw
+	\pgfkeysgetvalue{/pgfplots/every colorbar/.@cmd}\pgfplots@savedstyle@colorbar
+	\pgfkeysgetvalue{/pgfplots/colorbar shift/.@cmd}\pgfplots@savedstyle@colorbarshift
+	\pgfkeysgetvalue{/pgfplots/every tick/.@cmd}\pgfplots@savedstyle@tick
+	\pgfkeysgetvalue{/pgfplots/every minor tick/.@cmd}\pgfplots@savedstyle@minortick
+	\pgfkeysgetvalue{/pgfplots/every major tick/.@cmd}\pgfplots@savedstyle@majortick
+	\pgfkeysgetvalue{/pgfplots/every axis grid/.@cmd}\pgfplots@savedstyle@grid
+	\pgfkeysgetvalue{/pgfplots/every minor grid/.@cmd}\pgfplots@savedstyle@minorgrid
+	\pgfkeysgetvalue{/pgfplots/every major grid/.@cmd}\pgfplots@savedstyle@majorgrid
+	\pgfkeysgetvalue{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel
+	\pgfkeysgetvalue{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel
+	}%
+	%
+	\xdef#1{%
+		\noexpand\begingroup
+		\the\toks0 % restore colormap definition
+		%  restore relevant styles and variables:
+		\noexpand\pgfkeyslet{/pgfplots/colorbar/draw/.@cmd}		{\noexpand\pgfplots@savedstyle@colorbar@draw}%
+		\noexpand\pgfkeyslet{/pgfplots/colorbar shift/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbarshift}%
+		\noexpand\pgfkeyslet{/pgfplots/every colorbar/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbar}%
+		\noexpand\pgfkeyslet{/pgfplots/every tick/.@cmd}		{\noexpand\pgfplots@savedstyle@tick}%
+		\noexpand\pgfkeyslet{/pgfplots/every minor tick/.@cmd}	{\noexpand\pgfplots@savedstyle@minortick}%
+		\noexpand\pgfkeyslet{/pgfplots/every major tick/.@cmd}	{\noexpand\pgfplots@savedstyle@majortick}%
+		\noexpand\pgfkeyslet{/pgfplots/every axis grid/.@cmd}	{\noexpand\pgfplots@savedstyle@grid}%
+		\noexpand\pgfkeyslet{/pgfplots/every minor grid/.@cmd}	{\noexpand\pgfplots@savedstyle@minorgrid}%
+		\noexpand\pgfkeyslet{/pgfplots/every major grid/.@cmd}	{\noexpand\pgfplots@savedstyle@majorgrid}%
+		\noexpand\pgfkeyslet{/pgfplots/every tick label/.@cmd}	{\noexpand\pgfplots@savedstyle@ticklabel}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/point meta min}{\pgfplots@axiswide@metamin}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/point meta max}{\pgfplots@axiswide@metamax}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/colormap name}{\pgfkeysvalueof{/pgfplots/colormap name}}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis width}{\pgfkeysvalueof{/pgfplots/parent axis width}}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
+		\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
+		\noexpand\pgfkeysvalueof{/pgfplots/colorbar/draw/.@cmd}\noexpand\pgfeov
+		\noexpand\endgroup
+		\noexpand\pgfnodealias{current colorbar axis}{current axis}%
+		\noexpand\pgfnodealias{current axis}{parent axis}%
+	}%
+}%
+
+
 % Parses all options in #1 which are known in the currently active families.
 %
 % The result will be stored back into the TikZ-style named #1 without 
@@ -7267,62 +7336,7 @@
 	\pgfplots@stacked@finalize
 	%
 	\ifpgfplots@colorbar
-		%
-		\pgfplotspointbbdiagonal
-		\edef\pgfplots@loc@TMPa{\the\pgf@x}%
-		\edef\pgfplots@loc@TMPb{\the\pgf@y}%
-		\pgfkeyslet{/pgfplots/parent axis width}{\pgfplots@loc@TMPa}%
-		\pgfkeyslet{/pgfplots/parent axis height}{\pgfplots@loc@TMPb}%
-		%
-		\pgfnodealias{parent axis}{current axis}%
-		% we have to do a lot of work to move *some* of the current
-		% settings out of the current TeX group:
-		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
-		\expandafter\pgfplotscolormapserializetomacro\expandafter{\pgfplots@loc@TMPa}{\pgfplots@serializedcolormap}%
-		\toks0=\expandafter{\pgfplots@serializedcolormap}%
-		%
-		% FIXME : 
-		% I would really prefer to find a different way to move these
-		% variables out of the current scope. But expansion lead to
-		% mistakes with '#' characters ... :-(
-		% I use these no-name globals in the hope they might be used
-		% in another place as well.
-		{\globaldefs=1
-		\pgfkeysgetvalue{/pgfplots/every colorbar/.@cmd}\pgfplots@savedstyle@colorbar
-		\pgfkeysgetvalue{/pgfplots/colorbar shift/.@cmd}\pgfplots@savedstyle@colorbarshift
-		\pgfkeysgetvalue{/pgfplots/every tick/.@cmd}\pgfplots@savedstyle@tick
-		\pgfkeysgetvalue{/pgfplots/every minor tick/.@cmd}\pgfplots@savedstyle@minortick
-		\pgfkeysgetvalue{/pgfplots/every major tick/.@cmd}\pgfplots@savedstyle@majortick
-		\pgfkeysgetvalue{/pgfplots/every axis grid/.@cmd}\pgfplots@savedstyle@grid
-		\pgfkeysgetvalue{/pgfplots/every minor grid/.@cmd}\pgfplots@savedstyle@minorgrid
-		\pgfkeysgetvalue{/pgfplots/every major grid/.@cmd}\pgfplots@savedstyle@majorgrid
-		\pgfkeysgetvalue{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel
-		}%
-		%
-		\xdef\pgfplots@glob@TMPa{%
-			\noexpand\begingroup
-			\the\toks0 % restore colormap definition
-			%  restore relevant styles:
-			\noexpand\pgfkeyslet{/pgfplots/colorbar shift/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbarshift}%
-			\noexpand\pgfkeyslet{/pgfplots/every colorbar/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbar}%
-			\noexpand\pgfkeyslet{/pgfplots/every tick/.@cmd}		{\noexpand\pgfplots@savedstyle@tick}%
-			\noexpand\pgfkeyslet{/pgfplots/every minor tick/.@cmd}	{\noexpand\pgfplots@savedstyle@minortick}%
-			\noexpand\pgfkeyslet{/pgfplots/every major tick/.@cmd}	{\noexpand\pgfplots@savedstyle@majortick}%
-			\noexpand\pgfkeyslet{/pgfplots/every axis grid/.@cmd}	{\noexpand\pgfplots@savedstyle@grid}%
-			\noexpand\pgfkeyslet{/pgfplots/every minor grid/.@cmd}	{\noexpand\pgfplots@savedstyle@minorgrid}%
-			\noexpand\pgfkeyslet{/pgfplots/every major grid/.@cmd}	{\noexpand\pgfplots@savedstyle@majorgrid}%
-			\noexpand\pgfkeyslet{/pgfplots/every tick label/.@cmd}	{\noexpand\pgfplots@savedstyle@ticklabel}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/point meta min}{\pgfplots@axiswide@metamin}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/point meta max}{\pgfplots@axiswide@metamax}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/colormap name}{\pgfkeysvalueof{/pgfplots/colormap name}}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/parent axis width}{\pgfkeysvalueof{/pgfplots/parent axis width}}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
-			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
-			\noexpand\pgfplots@drawcolorbar
-			\noexpand\endgroup
-			\noexpand\pgfnodealias{current colorbar axis}{current axis}%
-			\noexpand\pgfnodealias{current axis}{parent axis}%
-		}%
+		\pgfplots@colorbar@move@outside@scope@with@globalmacro{\pgfplots@glob@TMPa}%
 	\else
 		\global\let\pgfplots@glob@TMPa=\relax
 	\fi
