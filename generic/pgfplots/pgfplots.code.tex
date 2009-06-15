@@ -64,7 +64,6 @@
 \newif\ifpgfplots@enlargelimits@auto
 \newif\ifpgfplots@tickshow
 \newif\ifpgfplots@scatterplotenabled
-\newif\ifpgfplots@meshmode
 \newif\ifpgfplots@xminorticks
 \newif\ifpgfplots@xmajorticks
 \newif\ifpgfplots@yminorticks
@@ -291,6 +290,10 @@
 		\fi
 	\fi
 }%
+
+
+\def\pgfplots@meshmode{n}% none
+\def\pgfplotsplothandlermesh@flatmode{m}% mean
 
 \pgfkeys{%
 	/pgfplots/search path for tikz/.search also={/tikz,/pgfplots},
@@ -1884,11 +1887,18 @@
 		at={(0pt,0pt)},
 		rectangle
 	},
+	% 'mesh' plots.
+	% The macro \pgfplots@meshmode is
+	% n if meshmode == false,
+	% m if meshmode == 'mesh',
+	% s if meshmode == 'surf'.
+	%
+	% The type of surface plot can be configured with 'shader'.
 	/pgfplots/mesh/.is choice,
 	/pgfplots/mesh/true/.code={%
-		\pgfplots@meshmodetrue
+		\def\pgfplots@meshmode{m}%
 		\let\tikz@plot@handler=\pgfplotsplothandlermesh
-		\if\pgfplots@perpointmeta@choice0
+		\if\pgfplots@perpointmeta@choice0%
 			% define default |point meta|:
 			\ifpgfplots@curplot@threedim
 				\pgfkeysalso{/pgfplots/point meta=z}%
@@ -1896,14 +1906,18 @@
 				\pgfkeysalso{/pgfplots/point meta=y}%
 			\fi
 		\fi
-		\pgfkeysalso{/pgfplots/every mesh,/pgfplots/every mesh legend,/tikz/draw=mapped color,/tikz/fill=none}%
+		\pgfkeysalso{/pgfplots/every mesh,/pgfplots/every mesh legend,/tikz/color=mapped color}%
 	},
 	/pgfplots/mesh/false/.code={
-		\pgfplots@meshmodefalse
+		\def\pgfplots@meshmode{n}%
 		\ifx\tikz@plot@handler\pgfplotsplothandlermesh
 			\let\tikz@plot@handler=\pgfplothandlerlineto
 		\fi},
 	/pgfplots/mesh/.default=true,
+	/pgfplots/surf/.code={%
+		\pgfkeysalso{/pgfplots/mesh=#1}%
+		\def\pgfplots@meshmode{s}%
+	},%
 	/pgfplots/mesh/rows/.initial=,
 	/pgfplots/mesh/cols/.initial=,
 	/pgfplots/mesh/ordering/.is choice,
@@ -1931,6 +1945,15 @@
 	%
 	% Set the shader used for surface plots.
 	% RULES:
+	% 	1. meshmode == 'm' (mesh):  
+	% 		This means we use "shader/flat" to determine the colors
+	% 		and ignore fill colors.
+	% 	2. meshmode == 's' (surf):
+	% 		the shader specifies how colors are used.
+	% 	3. Onedimensional mesh/surf plots are treated like 'mesh'
+	% 	plots.
+	%
+	% FIXME : DEPRECATED:
 	%   1. fill=none 
 	%   	=> shader must not be 'interp' because we want ONLY a mesh
 	%   	plot and that's not supported by 'interp'
@@ -1940,16 +1963,12 @@
 	%   3. 'shader!=interp' and fill!=none 
 	%   	=>  'draw=none' is forbidden because that leaves 'holes'.
 	/pgfplots/shader/.is choice,
-	/pgfplots/shader/flat corner/.code={\def\pgfplotsplothandlermesh@shader{0}},
-	/pgfplots/shader/flat mean/.code={\def\pgfplotsplothandlermesh@shader{1}},
-	/pgfplots/shader/interp/.code={\def\pgfplotsplothandlermesh@shader{2}},
+	/pgfplots/shader/flat corner/.code={\def\pgfplotsplothandlermesh@shader{0}\def\pgfplotsplothandlermesh@flatmode{c}},
+	/pgfplots/shader/flat mean/.code={\def\pgfplotsplothandlermesh@shader{0}\def\pgfplotsplothandlermesh@flatmode{m}},
 	/pgfplots/shader/flat/.style={/pgfplots/shader/flat mean},%
-	/pgfplots/shader/faceted/.style={/pgfplots/shader/flat mean,/tikz/draw={#1}},
-	/pgfplots/shader/faceted/.default=black,
+	/pgfplots/shader/faceted/.code={\def\pgfplotsplothandlermesh@shader{1}},
+	/pgfplots/shader/interp/.code={\def\pgfplotsplothandlermesh@shader{2}},
 	/pgfplots/shader/faceted,
-	/pgfplots/surf/.code={%
-		\pgfkeysalso{/pgfplots/mesh=#1,/tikz/draw=none,/tikz/fill=mapped color}%
-	},%
 	/pgfplots/clip marker paths/.is if=pgfplots@clip@marker@paths,
 	/pgfplots/clip marker paths/.default=true,
 	/pgfplots/axis on top/.is if=pgfplots@axis@on@top,

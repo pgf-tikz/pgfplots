@@ -5107,6 +5107,7 @@
 % \end{tikzpicture}
 % ----------------------------------------------------------
 %  END OF EXAMPLE
+%  -> see also the legend image for mesh plots.
 %
 \def\pgfplotsplothandlermesh{%
 	\def\pgf@plotstreamstart{%
@@ -5130,57 +5131,16 @@
 		\fi
 		%
 		%
-		% acuiqre the \iftikz@mode@fill \iftikz@mode@draw flags:
-%\message{executing MODE '\meaning\pgfplots@drawmodes'}%
-		% Prepare path usage commands:
-		\pgfplots@drawmodes
-		% Now, we also need to respect the shader rules - the
-		% 'shader=interp' case is a little bit special here.
-		%
-		\iftikz@mode@fill
-			% Rule 3: fill!=none and draw==none is forbidden. Always
-			% stroke.
-			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
-		\else
-			\if\pgfplotsplothandlermesh@shader2
-				% Rule 1: fill=none => shader=interp is forbidden.
-				% Switch to 'flat mean'.
-				\def\pgfplotsplothandlermesh@shader{1}%
-			\fi
-			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
-		\fi
-		\iftikz@mode@draw
-			% Rule 2: draw != none => shader must not be interp
-			% because 'interp' does not support meshes.
-			\if\pgfplotsplothandlermesh@shader2
-				% Rule 1: fill=none => shader=interp is forbidden.
-				% Switch to 'flat mean'.
-				\def\pgfplotsplothandlermesh@shader{1}%
-			\fi
-		\fi
-		\if\pgfplotsplothandlermesh@ONEDIMMODE1
-			% no filling in onedimensional mesh mode.
-			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
-			\if\pgfplotsplothandlermesh@shader2
-				\def\pgfplotsplothandlermesh@shader{1}%
-			\fi
-		\fi
-		\if\pgfplotsplothandlermesh@zbuffer@choice4%
-			\if\pgfplotsplothandlermesh@shader2%
-				\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat mean' will be used.}%
-				\def\pgfplotsplothandlermesh@shader{1}%
-			\fi
-		\fi
-		%
 		% Prepare color data source:
-		\ifnum\pgfplots@perpointmeta@choice=0
+		\if\pgfplots@perpointmeta@choice0%
 			% oh. There is no color data!? Well... then use a constant
 			% color.
 			% 
 			% This activates tikz colors:
 			%\tikz@options
-			\pgfplots@drawoptions
-			\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
+			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
+				\pgfplots@drawoptions
+			}%
 		\else
 			% Ok, we have color data.
 			%
@@ -5200,47 +5160,92 @@
 				%\tikz@options
 				\pgfplots@drawoptions
 			}%
-			% Now, process the 'mesh/surf mode=corner|mean  key here:
-			\ifcase\pgfplotsplothandlermesh@shader
-				% 'flat corner':
-				%
-				% use colordata of ONE corner point. That's easy, not
-				% much to do.
-				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@corner
-				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
-				\t@pgfplots@tokb={%
-					\pgfplots@perpointmeta@trafo@APPLY
-					\let\pgfplotsplothandlermesh@shader@cellcolor=\pgfplotspointmetatransformed}%
-				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
-					\the\t@pgfplots@tokb
-					\the\t@pgfplots@toka
-				}%
-			\or
-				% 'flat mean':
-				%
-				% use colordata as mean of all corners for shading.
-				\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@mean@accum
-				\global\pgfplots@tmpa=0pt
-				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
-				\if\pgfplotsplothandlermesh@ONEDIMMODE0
-					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by4 }%
-				\else
-					\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
+			%
+			% Acquire the values for \tikz@mode@* [used for faceted]
+			\pgfplots@drawmodes
+			% 
+			% Now, process the 'shader'  key here:
+			\if\pgfplotsplothandlermesh@ONEDIMMODE1
+				\def\pgfplots@meshmode{m}% 'mesh'
+			\fi
+			\if\pgfplots@meshmode m% mesh
+				% this is processed by the 'shader=flat' code below.
+				\def\pgfplotsplothandlermesh@shader{0}% 'flat'
+			\fi
+			\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
+				\if\pgfplotsplothandlermesh@shader2% 'shader=interp'
+					\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat' will be used.}%
+					\def\pgfplotsplothandlermesh@shader{0}% 'flat'
 				\fi
-				\t@pgfplots@tokc={%
-					\edef\pgfplotsplothandlermesh@shader@cellcolor{\pgf@sys@tonumber\pgfplots@tmpa}%
-					\global\pgfplots@tmpa=0pt }%
-				\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
-					\the\t@pgfplots@tokb
-					\the\t@pgfplots@tokc
-					\the\t@pgfplots@toka
-				}%
-			\or
-				% 'surf':
+			\fi
+			\ifnum\pgfplotsplothandlermesh@shader<2
+				% 0 == 'flat'
+				% 1 == 'faceted'
+				\if\pgfplotsplothandlermesh@flatmode c% 'flat corner':
+					%
+					% use colordata of ONE corner point. That's easy, not
+					% much to do.
+					\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@corner
+					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
+					\t@pgfplots@tokb={%
+						\pgfplots@perpointmeta@trafo@APPLY
+						\let\pgfplotsplothandlermesh@shader@cellcolor=\pgfplotspointmetatransformed}%
+					\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
+						\the\t@pgfplots@tokb
+						\the\t@pgfplots@toka
+					}%
+				\else
+					% 'flat mean':
+					%
+					% use colordata as mean of all corners for shading.
+					\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@mean@accum
+					\global\pgfplots@tmpa=0pt
+					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
+					\if\pgfplotsplothandlermesh@ONEDIMMODE0
+						\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by4 }%
+					\else
+						\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
+					\fi
+					\t@pgfplots@tokc={%
+						\edef\pgfplotsplothandlermesh@shader@cellcolor{\pgf@sys@tonumber\pgfplots@tmpa}%
+						\global\pgfplots@tmpa=0pt }%
+					\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
+						\the\t@pgfplots@tokb
+						\the\t@pgfplots@tokc
+						\the\t@pgfplots@toka
+					}%
+				\fi
+				\if\pgfplots@meshmode m%
+					% 'mesh' plot: stroke only and use the 'flat' code
+					% here just to define the color for each mesh
+					% segment.
+					\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
+				\else
+					% 'surf' plot: 
+					% distinguish between 'faceted' and 'flat':
+					\if\pgfplotsplothandlermesh@shader1% faceted
+						\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
+						\iftikz@mode@draw
+						\else
+							% make sure there is an initial color, 
+							% override with 'draw=' in styles
+							\expandafter\def\expandafter\pgfplots@drawoptions\expandafter{%
+								\pgfplots@drawoptions
+								\pgfsetstrokecolor{black}%
+							}%
+						\fi
+					\else
+						% 'flat':
+						\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
+					\fi
+				\fi
+			\else
+				% 'shader=2': 'interp':
 				% very simple: defer work to surf library. Only
 				% provide the mapped colordata.
 				%
-				% This won't be used for 1d mesh plots, see above.
+				% This won't be used for mesh plots, neither in one
+				% nor in two dimensions.
 				\pgfkeyssetvalue{/pgfplots/surf shading/north east corner}{\pgfplotspointbbupperright}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/south west corner}{\pgfplotspointbblowerleft}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/anchor}{\pgfpointorigin}%
@@ -5252,10 +5257,23 @@
 				\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
 				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@draw@lowlevelsurf%
 				\pgfplotslibrarysurfstreamstart
+				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
 			\fi
 		\fi
 		% PREPARE THE STREAM PROCESSING:
-		\if\pgfplotsplothandlermesh@ONEDIMMODE0
+		\if\pgfplotsplothandlermesh@ONEDIMMODE1%
+			% Special case: 1D mesh processing
+			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
+			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
+			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@line
+			\if\pgfplotsplothandlermesh@zbuffer@choice4%
+				% z buffer=sort:
+				% create a z buffer:
+				% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+				\pgfplotsarraynewempty\pgfplots@zbuffer@local
+			\fi
+		\else
 			% ok, normal 2D mesh processing:
 			% Init memory:
 			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@cols\relax
@@ -5264,7 +5282,7 @@
 			%
 			% And now finally: initialise the conversion from 
 			%  LINEARIZED COORD STREAM -> DATA MATRIX:
-			\if\pgfplots@plot@mesh@ordering0
+			\if\pgfplots@plot@mesh@ordering0%
 				% rowwise:
 				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
 			\else
@@ -5288,18 +5306,6 @@
 			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
 			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
-		\else
-			% Special case: 1D mesh processing
-			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
-			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
-			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@line
-			\if\pgfplotsplothandlermesh@zbuffer@choice4%
-				% z buffer=sort:
-				% create a z buffer:
-				% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
-				\pgfplotsarraynewempty\pgfplots@zbuffer@local
-			\fi
 		\fi
 		\c@pgfplots@scanlineindex=0
 	}%
@@ -5556,15 +5562,13 @@
 	\or
 		% reverse x seq: only for 'mesh'
 		% FIXME IMPLEMENT!
-		\ifpgfplots@meshmode
-		\else
+		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse x seq' can only be used for mesh/surf plots.}%
 		\fi
 		\gdef\pgfplotsretval{#1}%
 	\or
 		% reverse y seq: only for 'mesh'
-		\ifpgfplots@meshmode
-		\else
+		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse y seq' can only be used for mesh/surf plots.}%
 		\fi
 		\gdef\pgfplotsretval{#1}%
@@ -5585,10 +5589,7 @@
 		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
 	\or
 		% sort.
-		\ifpgfplots@meshmode
-			% meshmode handles sort separately!
-			\gdef\pgfplotsretval{#1}%
-		\else
+		\if\pgfplots@meshmode n%
 			\begingroup
 			\def\pgfplots@coord@stream@start{%
 				\pgfplotsarraynewempty\pgfplots@zbuffer@local
@@ -5622,6 +5623,9 @@
 			}%
 			\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
 			\endgroup
+		\else
+			% meshmode handles sort separately!
+			\gdef\pgfplotsretval{#1}%
 		\fi
 	\fi
 	\let\pgfplots@coord@stream@start=\pgfplots@apply@zbuffer@start@BACKUP
