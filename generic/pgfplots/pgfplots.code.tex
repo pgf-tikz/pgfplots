@@ -100,6 +100,7 @@
 \newif\ifpgfplots@threedim
 \newif\ifpgfplots@curplot@isirrelevant
 \newif\ifpgfplots@colorbar
+\newif\ifpgfplots@deprecated@anchors
 \let\pgfnodepartimagebox=\pgfnodeparttextbox
 
 \newif\ifpgfplots@collect@firstplot@astick
@@ -331,13 +332,24 @@
 	/pgfplots/every axis label/.style={},
 	/pgfplots/every axis label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis label}},
 	/pgfplots/every axis label/.belongs to family=/pgfplots/style commands,
-	/pgfplots/every axis x label/.style={at={(0.5,0)},below,yshift=-15pt},
+	/pgfplots/xlabel near ticks/.style={%
+		/pgfplots/every axis x label/.style={at={(ticklabel cs:0.5)},anchor=ticklabel}%
+	},%
+	/pgfplots/xlabel absolute/.style={%
+		/pgfplots/every axis x label/.style={at={(0.5,0)},below,yshift=-15pt}%
+	},%
 	/pgfplots/every axis x label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis x label}},
 	/pgfplots/every axis x label/.belongs to family=/pgfplots/style commands,
-	/pgfplots/every axis y label/.style={at={(0,0.5)},xshift=-35pt,rotate=90},
+	%
+	/pgfplots/ylabel near ticks/.style={%
+		/pgfplots/every axis y label/.style={at={(ticklabel cs:0.5)},rotate=90,anchor=south}%
+	},%
+	/pgfplots/ylabel absolute/.style={%
+		/pgfplots/every axis y label/.style={at={(0,0.5)},xshift=-35pt,rotate=90},
+	},%
 	/pgfplots/every axis y label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis y label}},
 	/pgfplots/every axis y label/.belongs to family=/pgfplots/style commands,
-	/pgfplots/every axis z label/.style={at={(0,0.5)},xshift=-35pt,rotate=90},
+	/pgfplots/every axis z label/.style={at={(ticklabel cs:0.5)},rotate=90},
 	/pgfplots/every axis z label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis z label}},
 	/pgfplots/every axis z label/.belongs to family=/pgfplots/style commands,
 	/pgfplots/every axis title/.style={at={(0.5,1)},above,yshift=6pt},
@@ -1084,6 +1096,9 @@
 	/pgfplots/ylabel/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/zlabel/.initial=,
 	/pgfplots/zlabel/.belongs to family=/pgfplots/descriptions,
+	/pgfplots/xlabel shift/.initial=0pt,
+	/pgfplots/ylabel shift/.initial=0pt,
+	/pgfplots/zlabel shift/.initial=0pt,
 	/pgfplots/before end axis/.code=,
 	/pgfplots/after end axis/.code=,
 	/pgfplots/extra description/.code=,
@@ -2254,6 +2269,24 @@
 	/pgfplots/xtick placement tolerance/.initial=0.05pt,
 	/pgfplots/ytick placement tolerance/.initial=0.05pt,
 	/pgfplots/ztick placement tolerance/.initial=0.05pt,
+	/pgfplots/compat/anchors/.is choice,
+	/pgfplots/compat/anchors/pre 1.3/.code={\global\pgfplots@deprecated@anchorstrue},%
+	/pgfplots/compat/anchors/newest/.code= {\global\pgfplots@deprecated@anchorsfalse},%
+	/pgfplots/compat/labels/.is choice,
+	/pgfplots/compat/labels/pre 1.3/.style={%
+		/pgfplots/xlabel absolute,
+		/pgfplots/ylabel absolute,
+	},%
+	/pgfplots/compat/labels/newest/.style={%
+		/pgfplots/xlabel near ticks,
+		/pgfplots/ylabel near ticks,
+	},%
+	/pgfplots/compat/labels/pre 1.3,% maintain backwards compatibility for labels :-(
+	/pgfplots/compat/.style={%
+		/pgfplots/compat/anchors=#1,%
+		/pgfplots/compat/labels=#1,%
+	},%
+	/pgfplots/compat/.default=pre 1.3,%
 }
 
 {
@@ -2358,17 +2391,26 @@
 % #2 the label
 \def\pgfplots@show@label#1#2{%
 	\begingroup
-	% declare the 'ticklabel cs' for the current axis.
+	% Prepare special alignment features here.
+	%
+	% The idea is to:
+	% 1. Declare a local COORDINATE SYSTEM to place labels, 
+	% the 'ticklabel cs' for the current axis.
 	% It takes 1-2 arguments where the first is the coordinate on the
 	% ticklabel axis (between 0 and 1). The second is an optional shift orthogonal to
 	% the axis in direction of the outer normal. The minimum shift is
 	% the largest' ticklabels dimension.
+	%
+	% 2. Declare a local ANCHOR to align labels, the 'ticklabel'
+	% anchor.
+	%
+	% Both things are not necessary - but they *can* be used.
 	\tikzdeclarecoordinatesystem{ticklabel}{%
 		\pgfutil@in@{,}{##1}%
 		\ifpgfutil@in@
 			\edef\pgfplots@loc@TMPa{##1}%
 		\else
-			\edef\pgfplots@loc@TMPa{##1,0pt}%
+			\edef\pgfplots@loc@TMPa{##1,\pgfkeysvalueof{/pgfplots/#1label shift}}%
 		\fi
 		\def\pgfplots@loc@TMPb####1,####2\relax{%
 			% invoke
@@ -4930,6 +4972,255 @@
 	\beforeforegroundpath{}%
 }
 
+\def\pgfplots@restore@deprecated@lowlevel@shape{%
+	\pgfutil@ifundefined{pgfplots@low@level@shape@deprecated@isdefined}{%
+	\gdef\pgfplots@low@level@shape@deprecated@isdefined{1}%
+	%
+	% all these assignments are global, so it is save to call this
+	% macro inside of scopes:
+	\pgfdeclareshape{pgfplots@low@level@shape@deprecated}{%
+		% The '(0,0)' point is the LOWER LEFT OUTER CORNER.
+		\savedanchor\upperrightcorner{
+			\pgf@x=\wd\pgfnodepartimagebox
+			\pgf@y=\ht\pgfnodepartimagebox
+		}%
+		\savedanchor\lowerleftinnercorner{%
+			\pgfqpoint{\pgfplots@savedanchor@inner@lowerleft@x\relax}{\pgfplots@savedanchor@inner@lowerleft@y\relax}%
+		}%
+		\savedanchor\xaxisvec{\pgfplotspointxaxis}%
+		\savedanchor\yaxisvec{\pgfplotspointyaxis}%
+		\savedanchor\origin{%
+			\pgfplotspointaxisorigin
+		}%
+		%
+		\nodeparts{image}%
+		\anchor{image}{%
+			\pgf@x=0pt %
+			\pgf@y=0pt %
+		}%
+		%
+		%
+		\anchor{center}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointscale{0.5}{\pgfpointadd{\xaxisvec}{\yaxisvec}}}%
+		}%
+		\anchor{north}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\yaxisvec}{\pgfpointscale{0.5}{\xaxisvec}}}%
+		}%
+		\anchor{north east}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\yaxisvec}{\xaxisvec}}%
+		}%
+		\anchor{east}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\xaxisvec}{\pgfpointscale{0.5}{\yaxisvec}}}%
+		}%
+		\anchor{south east}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\xaxisvec}%
+		}%
+		\anchor{south}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointscale{0.5}{\xaxisvec}}%
+		}%
+		\anchor{south west}{\lowerleftinnercorner}%
+		\anchor{west}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointscale{0.5}{\yaxisvec}}%
+		}%
+		\anchor{north west}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\yaxisvec}%
+		}%
+		%%
+		\anchor{origin}{%
+			\origin
+		}%
+		\anchor{above origin}{%
+			\pgfpointintersectionoflines
+				{\origin}
+				{\pgfpointadd{\origin}{\yaxisvec}}
+				{\pgfpointadd{\lowerleftinnercorner}{\yaxisvec}}
+				{\pgfpointadd{\pgfpointadd{\lowerleftinnercorner}{\yaxisvec}}{\xaxisvec}}%
+		}%
+		\anchor{left of origin}{%
+			\pgfpointintersectionoflines
+				{\origin}
+				{\pgfpointadd{\origin}{\pgfpointscale{-1}{\xaxisvec}}}
+				{\lowerleftinnercorner}
+				{\pgfpointadd{\lowerleftinnercorner}{\yaxisvec}}%
+		}%
+		\anchor{right of origin}{%
+			\pgfpointintersectionoflines
+				{\origin}
+				{\pgfpointadd{\origin}{\xaxisvec}}
+				{\pgfpointadd{\lowerleftinnercorner}{\xaxisvec}}
+				{\pgfpointadd{\pgfpointadd{\lowerleftinnercorner}{\xaxisvec}}{\yaxisvec}}%
+		}%
+		\anchor{below origin}{%
+			\pgfpointintersectionoflines
+				{\origin}
+				{\pgfpointadd{\origin}{\pgfpointscale{-1}{\yaxisvec}}}
+				{\lowerleftinnercorner}
+				{\pgfpointadd{\lowerleftinnercorner}{\xaxisvec}}%
+		}%
+		%
+		%%
+		%
+		\anchor{outer north}{%
+			\upperrightcorner
+			\pgf@x=.5\pgf@x
+		}%
+		\anchor{outer north east}{\upperrightcorner}%
+		\anchor{outer east}{%
+			\upperrightcorner
+			\pgf@y=.5\pgf@y
+		}%
+		\anchor{outer south east}{%
+			\upperrightcorner
+			\pgf@y=0pt
+		}%
+		\anchor{outer south}{%
+			\upperrightcorner
+			\pgf@x=.5\pgf@x
+			\pgf@y=0pt
+		}%
+		\anchor{outer south west}{%
+			\pgf@x=0pt
+			\pgf@y=0pt
+		}%
+		\anchor{outer west}{%
+			\upperrightcorner
+			\pgf@x=0pt
+			\pgf@y=.5\pgf@y
+		}%
+		\anchor{outer north west}{%
+			\upperrightcorner
+			\pgf@x=0pt
+		}%
+		\anchor{outer center}{%
+			\upperrightcorner
+			\pgf@x=.5\pgf@x
+			\pgf@y=.5\pgf@y
+		}%
+		%
+		%
+		%%
+		%%
+		\anchor{above north}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@y
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\yaxisvec}{\pgfpointscale{0.5}{\xaxisvec}}}%
+			\pgf@y=\pgfutil@tempdima
+		}%
+		\anchor{above north east}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@y
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\yaxisvec}{\xaxisvec}}%
+			\pgf@y=\pgfutil@tempdima
+		}%
+		\anchor{right of north east}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@x
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\yaxisvec}{\xaxisvec}}%
+			\pgf@x=\pgfutil@tempdima
+		}%
+		\anchor{right of east}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@x
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointadd{\xaxisvec}{\pgfpointscale{0.5}{\yaxisvec}}}%
+			\pgf@x=\pgfutil@tempdima
+		}%
+		\anchor{right of south east}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@x
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\xaxisvec}%
+			\pgf@x=\pgfutil@tempdima
+		}%
+		\anchor{below south east}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\xaxisvec}%
+			\pgf@y=0pt
+		}%
+		\anchor{below south}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointscale{0.5}{\xaxisvec}}%
+			\pgf@y=0pt
+		}%
+		\anchor{below south west}{%
+			\lowerleftinnercorner
+			\pgf@y=0pt
+		}%
+		\anchor{left of south west}{%
+			\lowerleftinnercorner
+			\pgf@x=0pt
+		}%
+		\anchor{left of west}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\pgfpointscale{0.5}{\yaxisvec}}%
+			\pgf@x=0pt
+		}%
+		\anchor{left of north west}{%
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\yaxisvec}%
+			\pgf@x=0pt
+		}%
+		\anchor{above north west}{%
+			\upperrightcorner
+			\pgfutil@tempdima=\pgf@y
+			\pgfpointadd
+				{\lowerleftinnercorner}%
+				{\yaxisvec}%
+			\pgf@y=\pgfutil@tempdima
+		}%
+		%%
+		%%
+		\anchorborder{%
+			% Call a function that computes a border point. Since this
+			% function will modify dimensions like \pgf@x, we must move them to
+			% other dimensions.
+			\pgfutil@tempdima=\pgf@x
+			\pgfutil@tempdimb=\pgf@y
+			\pgfpointborderrectangle%
+				{\pgfpoint{\pgfutil@tempdima}{\pgfutil@tempdimb}}%
+				{\upperrightcorner}%
+		}%
+		\backgroundpath{%
+			\pgfkeysvalueof{/pgfplots/@backgroundpath@hook/.@cmd}\pgfeov
+			\pgfpathrectangle{\pgfpointorigin}{\upperrightcorner}%
+		}%
+		\foregroundpath{}%
+		\behindbackgroundpath{}%
+		\beforebackgroundpath{}%
+		\behindforegroundpath{}%
+		\beforeforegroundpath{}%
+	}%
+	}{}%
+}%
+
 \def\pgfplots@draw@axis{%
 	% Preparation for axis lines and discontinuities:
 	\pgfplots@drawaxis@lines@preparediscont@for{x}%
@@ -7326,7 +7617,11 @@
 		\xdef\pgfplots@saveddimen@picminx{\the\pgf@picminx}%
 		\xdef\pgfplots@saveddimen@picminy{\the\pgf@picminy}%
 		%
-		\pgfplotspointbblowerleft
+		\ifpgfplots@deprecated@anchors
+			\pgfplotspointminminmin
+		\else
+			\pgfplotspointbblowerleft
+		\fi
 		\pgf@xa=\pgf@x
 		\advance\pgf@xa by-\pgf@picminx
 		\xdef\pgfplots@savedanchor@inner@lowerleft@x{\the\pgf@xa}%
@@ -7351,7 +7646,12 @@
 	\pgftransformshift{\pgfplots@savedtransformshift}%
 	%
     \pgftransformshift{\pgfplots@at}%
-	\pgfmultipartnode{pgfplots@low@level@shape}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+	\ifpgfplots@deprecated@anchors
+		\pgfplots@restore@deprecated@lowlevel@shape
+		\pgfmultipartnode{pgfplots@low@level@shape@deprecated}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+	\else
+		\pgfmultipartnode{pgfplots@low@level@shape}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+	\fi
 	\pgfplots@fig@alias
 	\pgfnodealias{current axis}{\tikz@fig@name}%
 	%
