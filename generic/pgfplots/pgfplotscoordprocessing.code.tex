@@ -96,8 +96,18 @@
 				{\pgfqpointxy@orig{##1}{##2}}% 
 		}%
 	}%
+	\def\pgfplotspointunitx{\pgf@x=\pgf@xx\pgf@y=\pgf@xy}%
+	\def\pgfplotspointunity{\pgf@x=\pgf@yx\pgf@y=\pgf@yy}%
+	\let\pgfplotsunitxlength=\pgfplots@x@veclength
+	\let\pgfplotsunitylength=\pgfplots@y@veclength
+	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
+	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
+	\ifpgfplots@threedim
+		\def\pgfplotspointunitz{\pgf@x=\pgf@zx\pgf@y=\pgf@zy}%
+		\let\pgfplotsunitzlength=\pgfplots@z@veclength
+		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
+	\fi
 }%
-
 
 
 % Converts a dimen (with unit!) to a corresponding x, y or z
@@ -656,7 +666,7 @@
 
 % Provides a point on an arbitrary axis (identified by a
 % three-character-string) which can take any value on that axis and
-% which is moved in the direction of the outer normal vector. 
+% which is shifted in the direction of the outer normal vector. 
 %
 % #1: a three-character-string denoting the desired axis
 % #2: the coordinate on that axis (the coordinate for the 'v'
@@ -668,6 +678,13 @@
 % axis cube.
 %
 % @see \pgfplotsqpointoutsideofticklabelaxis
+%
+% If, in addition, the boolean \ifpgfslopedattime is true, the same
+% transformations which would have been applied by
+% \pgftransformlineattime will be applied, that means the 'sloped'
+% feature of tikz is applied.
+%
+% @see \pgftransformlineattime -- it is quite similar.
 \def\pgfplotsqpointoutsideofaxis#1#2#3{%
 	\begingroup
 	\def\pgfplotspointoutsideofaxis@plug@trafo##1##2{\csname pgfplotstransformcoordinate##1\endcsname{##2}}%
@@ -692,8 +709,8 @@
 			\pgf@xa=##2pt\relax
 			\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xa}%
 			%
-			\pgf@xa=\csname pgfplots@##1min\endcsname pt
-			\pgf@xb=\csname pgfplots@##1max\endcsname pt
+			\pgf@xa=\csname pgfplots@##1min\endcsname pt %
+			\pgf@xb=\csname pgfplots@##1max\endcsname pt %
 			\pgf@xc=\pgf@xb
 			\advance\pgf@xc by-\pgf@xa
 			\pgf@xc=\pgfplots@loc@TMPa\pgf@xc
@@ -726,6 +743,9 @@
 %
 % The output of this command will be cached and re-used during the
 % lifetime of an axis.
+%
+% The returned normal vector has length 1 (computed with
+% \pgfpointnormalised).
 \def\pgfplotspointouternormalvectorofaxis#1{%
 	\expandafter\ifx\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname\relax
 		\begingroup
@@ -738,6 +758,8 @@
 	\fi
 }%
 
+% FIXME : this doesn't work if one of the three characters is '2' (for
+% center)
 \def\pgfplotspointouternormalvectorofaxis@#1#2#3\relax{%
 	\if v#1%
 		\def\pgfplots@loc@point@orthogonal@to@v##1##2{%
@@ -803,7 +825,7 @@
 		\edef\pgfplots@loc@naxisscale{\pgfplots@loc@naxissign\csname pgfplots@\pgfplots@loc@naxis @inverseveclength\endcsname}%
 	}%
 	%
-	% Ok, compute and normalize normal vector:
+	% Ok, compute and normalize the vector:
 	\pgf@process{%
 		\pgfpointnormalised
 			{\pgfplots@loc@point@orthogonal@to@v{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale}}%
@@ -895,6 +917,41 @@
 		\fi
 	\fi
 }%
+
+% Installs a rotation transformation matrix such that labels or
+% whatever are aligned precisely in direction of one of the two/three
+% coordinate directions.
+%
+% #1: the coordinate direction (one of x,y or z)
+%
+% The code is pretty much the same as \pgftransformlineattime, except
+% that the computation is considerably simpler as axis directions are
+% a well known quantity.
+%
+% This command assumes \ifpgfallowupsidedownattime = false and
+% \ifpgfresetnontranslationattime = true
+\def\pgfplotstransformtoaxisdirection#1{%
+	\pgftransformresetnontranslations
+	%
+	% compute unit length vector pointing into the direction of
+	% '#1#2#3':
+	\pgfqpointscale{\csname pgfplotsunit#1invlength\endcsname}{\csname pgfplotspointunit#1\endcsname}%
+	%
+	% do not allow upside down labels:
+	\ifdim\pgf@x<0pt%   
+		\pgf@x=-\pgf@x%
+		\pgf@y=-\pgf@y%
+	\fi%
+	%
+	\pgf@ya=-\pgf@y%
+	% set up rotation matrix 
+	%  [ cos(alpha) sin(alpha); 
+	%   -sin(alpha) cos(alpha) ]
+	% where cos(alpha) = n_x and sin(alpha) = n_y:
+	\pgftransformcm%
+	{\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
+	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+}
 
 % Takes Pitch '#1' and Yaw '#2' (both in degrees) and computes 
 % x,y and z vectors which define the view in the direction
