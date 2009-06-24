@@ -44,7 +44,11 @@
 %   	\pgfplotslistnewempty\table
 %  3. A "file name" stored in
 %     \csname\string<\namemacro>@@table@name\endcsname
-%  4. foreach column, there is a list of row-values (a row-vector) in
+%  4. A "scan line length" number stored in
+%  		\csname\string<\namemacro>@@table@scanline\endcsname
+%  		It contains the value of \pgfplotsscanlinelength which has
+%  		been identified right after \pgfplotstableread.
+%  5. foreach column, there is a list of row-values (a row-vector) in
 %  the \pgfplotslist format named
 %  		\csname\string<\namemacro>@<column name>\endcsname
 %   
@@ -1118,8 +1122,8 @@
 	}%
 }%
 \def\pgfplotstablenew@impl[#1]#2#3{%
-	\pgfutil@namedef{\string#3@@table@name}{newlycreatedtable}%
 	\begingroup
+	\pgfplotsscanlinelengthinitzero
 	% create a temporary column with the desired number of rows:
 	\pgfutil@in@\pgfplotstablegetrowsof{#2}%
 	\ifpgfutil@in@
@@ -1161,9 +1165,10 @@
 		% unsupported!
 		\pgfplotslistpopfront#3\to\pgfplotstable@loc@TMPa
 	\fi
-	\pgfplotstable@copy@to@globalbuffers#3
+	\pgfplotsscanlinelengthcleanup
+	\pgfplotstable@copy@to@globalbuffers#3{newlycreatedtable}%
 	\endgroup
-	\pgfplotstable@copy@globalbuffers@to#3
+	\pgfplotstable@copy@globalbuffers@to#3%
 }%
 
 % \pgfplotstablevertcat{<table1>}{<table2>}
@@ -1465,6 +1470,7 @@
 	\let#2=#1%
 	\pgfplotstablegetname#1\pgfplotstable@loc@TMPa
 	\expandafter\let\csname\string#2@@table@name\endcsname=\pgfplotstable@loc@TMPa
+	\expandafter\edef\csname\string#2@@table@scanline\endcsname{\pgfplotstablescanlinelengthof{#1}}%
 	\pgfplotslistforeachungrouped#1\as\pgfplotstable@loc@TMPa{%
 		\def\pgfplotstable@loc@TMPb{%
 			\expandafter\let\csname\string#2@\pgfplotstable@loc@TMPa\endcsname}%
@@ -1481,6 +1487,15 @@
 \def\pgfplotstablenameof#1{%
 	\csname\string#1@@table@name\endcsname
 }
+
+% Returns the value of \pgfplotsscanlinelength for table '#1' into
+% macro #2.
+\def\pgfplotstablegetscanlinelength#1#2{%
+	\expandafter\let\expandafter#2\csname\string#1@@table@scanline\endcsname
+}%
+
+% Expands to the scan line length of table '#1'.
+\def\pgfplotstablescanlinelengthof#1{\csname\string#1@@table@scanline\endcsname}%
 
 % Creates a new column named #1 and appends it to table #2.
 %
@@ -1655,22 +1670,22 @@
 		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\else
 		%
-		\pgfplotsscanlinelengthinitzero
 		\pgfplotstableread@loop@over@lines
 		\closein1
 		%
 		\pgfplotstableread@finish
 	\fi
+	\pgfplotsscanlinelengthcleanup
+	\pgfplotstable@copy@to@globalbuffers@simple{#2}%
 	\endgroup
 	\ifpgfplots@tableread@to@listener
 		% there are no data structures in this case.
+		\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
 	\else
 		% Now, we can access the global variables!
 		% copy them to #3.
-		\expandafter\def\csname\string#3@@table@name\endcsname{#2}%
-		\pgfplotstable@copy@globalbuffers@to#3
+		\pgfplotstable@copy@globalbuffers@to#3%
 	\fi
-	\let\pgfplotsscanlinelength=\pgfp@numtable@glob@scanlinelength
 }
 
 % #1: any options to set (respect \ifpgfplots@table@options@areset )
@@ -1690,6 +1705,7 @@
 	\pgfplotstableread@usablelineno=0
 	\pgfplotstableread@numcols=0
 	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+	\pgfplotsscanlinelengthinitzero
 	\ifpgfplots@tableread@to@listener
 		\def\pgfplotstablerow{\the\pgfplotstableread@usablelineno}%
 		\def\pgfplotstablelineno{\the\pgfplotstableread@lineno}%
@@ -1715,7 +1731,10 @@
 % @see \pgfplotstable@copy@globalbuffers@to
 %
 % Use these two methods to avoid scoping problems.
-\def\pgfplotstable@copy@to@globalbuffers#1{%
+%
+% #1: the <\macro> name of the table which is to be copied to global buffers.
+% #2: the table file name.
+\def\pgfplotstable@copy@to@globalbuffers#1#2{%
 	\global\let\pgfplotstable@colnames@glob=#1
 	\c@pgfplotstable@counta=0\relax%
 	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as\pgfplotstable@loc@TMPa{%
@@ -1725,11 +1744,29 @@
 		\expandafter\pgfplotstable@loc@TMPb\csname\string#1@\pgfplotstable@loc@TMPa\endcsname
 		\advance\c@pgfplotstable@counta by1\relax
 	}%
+	\pgfplotstable@copy@to@globalbuffers@simple{#2}%
+}%
+% A variant of \pgfplotstable@copy@to@globalbuffers which copies only
+% the member variables of a loaded table (the name and scanline length) to
+% global buffers.
+%
+% #1: the table's file name.
+%
+% @PRECONDITION: any other variables and cell data of the table are already stored
+% in global buffers.
+\def\pgfplotstable@copy@to@globalbuffers@simple#1{%
+	\gdef\pgfplotstable@glob@buf@name{#1}%
+	\global\let\pgfplotstable@glob@buf@scanline=\pgfplotsscanlinelength
 }%
 
 % copies the global column list and the global column vectors to #1
 % (NOT the table file name).
 % @see \pgfplotstable@copy@to@globalbuffers
+%
+% @PRECONDITION the global buffers contain all members of a table.
+% 
+% @POSTCONDITION The table '#1' is be initialised to these members.
+% 		Furthermore, \pgfplotsscanlinelength is set.
 \def\pgfplotstable@copy@globalbuffers@to#1{%
 	\let#1=\pgfplotstable@colnames@glob
 	\c@pgfplotstable@counta=0\relax%
@@ -1742,6 +1779,9 @@
 		\advance\c@pgfplotstable@counta by1\relax
 	}%
 	\global\let\pgfplotstable@colnames@glob=\pgfutil@empty
+	\expandafter\let\csname\string#1@@table@scanline\endcsname=\pgfplotstable@glob@buf@scanline
+	\expandafter\let\csname\string#1@@table@name\endcsname=\pgfplotstable@glob@buf@name
+	\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
 }%
 
 \def\pgfplotstableread@finish{%
@@ -1758,8 +1798,6 @@
 			\advance\pgfplotstableread@curcol by1
 		\pgfutil@repeat
 	\fi
-	\pgfplotsscanlinelengthcleanup
-	\global\let\pgfp@numtable@glob@scanlinelength=\pgfplotsscanlinelength
 }
 
 \def\pgfplotstableread@loop@over@lines{%
