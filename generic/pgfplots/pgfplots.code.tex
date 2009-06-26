@@ -331,7 +331,7 @@
 	/pgfplots/no markers/.style={/pgfplots/every axis plot post/.append style={mark=none}},
 	/pgfplots/every axis label/.style={},
 	/pgfplots/every axis label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis label}},
-	/pgfplots/every axis label/.belongs to family=/pgfplots/style commands,
+	/pgfplots/every axis label/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/xlabel near ticks/.style={%
 		/pgfplots/every axis x label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel}%
 	},%
@@ -339,7 +339,7 @@
 		/pgfplots/every axis x label/.style={at={(0.5,0)},below,yshift=-15pt}%
 	},%
 	/pgfplots/every axis x label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis x label}},
-	/pgfplots/every axis x label/.belongs to family=/pgfplots/style commands,
+	/pgfplots/every axis x label/.belongs to family=/pgfplots/descriptions,
 	%
 	/pgfplots/ylabel near ticks/.style={%
 		/pgfplots/every axis y label/.style={at={(ticklabel cs:0.5)},rotate=90,anchor=near ticklabel}%
@@ -348,13 +348,17 @@
 		/pgfplots/every axis y label/.style={at={(0,0.5)},xshift=-35pt,rotate=90},
 	},%
 	/pgfplots/every axis y label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis y label}},
-	/pgfplots/every axis y label/.belongs to family=/pgfplots/style commands,
+	/pgfplots/every axis y label/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/every axis z label/.style={at={(ticklabel cs:0.5)},rotate=90, anchor=near ticklabel},
 	/pgfplots/every axis z label/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis z label}},
-	/pgfplots/every axis z label/.belongs to family=/pgfplots/style commands,
+	/pgfplots/every axis z label/.belongs to family=/pgfplots/descriptions,
+	/pgfplots/every 3d description/.style={%
+		/pgfplots/every axis x label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel},%
+		/pgfplots/every axis y label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel},%
+	},%
 	/pgfplots/every axis title/.style={at={(0.5,1)},above,yshift=6pt},
 	/pgfplots/every axis title/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis title}},
-	/pgfplots/every axis title/.belongs to family=/pgfplots/style commands,
+	/pgfplots/every axis title/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/every tick/.style={very thin,gray},
 	/pgfplots/every tick/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every tick}},
 	/pgfplots/every tick/.belongs to family=/pgfplots/style commands,
@@ -1089,20 +1093,15 @@
 	/pgfplots/reverse legend/.default=true,
 % axis description options:
 	/pgfplots/title/.initial=,
-	/pgfplots/title/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/xlabel/.initial=,
-	/pgfplots/xlabel/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/ylabel/.initial=,
-	/pgfplots/ylabel/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/zlabel/.initial=,
-	/pgfplots/zlabel/.belongs to family=/pgfplots/descriptions,
 	/pgfplots/xlabel shift/.initial=0pt,
 	/pgfplots/ylabel shift/.initial=0pt,
 	/pgfplots/zlabel shift/.initial=0pt,
 	/pgfplots/before end axis/.code=,
 	/pgfplots/after end axis/.code=,
 	/pgfplots/extra description/.code=,
-	/pgfplots/extra description/.belongs to family=/pgfplots/descriptions,
 % axis options:
 	/pgfplots/at/.code={%
 		\pgfplots@assert@tikzinternal@exists{tikz@scan@one@point}%
@@ -3407,8 +3406,6 @@
 		\gdef\pgfplots@xmin{0}%
 		\gdef\pgfplots@xmax{1}%
 	\fi
-	% unnecessary? they will be reset anyway because empty plots are
-	% recognised before any other axis limit routine
 	\ifpgfplots@yislinear
 		\pgfmathfloatcreate{0}{0.0}{0}%
 		\global\let\pgfplots@ymin=\pgfmathresult
@@ -3855,7 +3852,7 @@
 		\fi
 	\fi
 	\ifpgfplots@avoid@emptyrange@@range@is@approx@equal
-		\pgfplots@warning{Axis range for axis #1 is approximately equal; enlargeing it.}%
+		\pgfplots@warning{Axis range for axis #1 is approximately empty; enlargeing it.}%
 		% the case \pgfplots@@min ~= \pgfplots@@max
 		%
 		% enlarge \pgfplots@@max and shrink \min:
@@ -5759,10 +5756,46 @@
 	}%
 }%
 
+% Handles the 'every 3d description' style.
+%
+% This requires a different type of attention than any other key --
+% because all other keys are set in a context where the dimension of
+% the axis is unknown (it might be 2 or 3 dimensional).
+%
+% The idea is:
+% Call \pgfplots@BEGIN@prepare@description@styles as soon as the
+% dimension is fixed, but before any style changes of the user
+% interface are applied.
+%
+% Example:
+% \begin{axis}[xlabel style={}]
+% will be processed here. The reason: 'every 3d description' will
+% certainly use a different style for axis labels than the default 2d
+% style.
+%
+% Thus, all style changes which are relevant for 'every 3d description' 
+% have NOT YET been processed (they have been appended to 'every axis').
+\def\pgfplots@BEGIN@prepare@description@styles{%
+	\ifpgfplots@threedim
+		\pgfplotsset{every 3d description}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/.unknown/.@cmd}\pgfplots@BEGIN@prepare@description@styles@oldhandler
+	\pgfkeysdef{/pgfplots/.unknown}{}% ignore unknown keys here.
+	\pgfkeysactivatefamily{/pgfplots/style commands}%
+	\pgfkeysactivatefamily{/pgfplots/descriptions}%
+	\pgfplots@set@keys@from@tikz@style{every axis}%
+%\pgfkeysgetvalue{/pgfplots/every axis/.@cmd}\pgfplots@loc@TMPa
+%\message{AFTER '@prepare@description@styles': every axis is now '\meaning\pgfplots@loc@TMPa'}%
+	\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
+	\pgfkeysdeactivatefamily{/pgfplots/style commands}%
+	\pgfkeyslet{/pgfplots/.unknown/.@cmd}\pgfplots@BEGIN@prepare@description@styles@oldhandler
+}%
+
 \def\pgfplots@BEGIN@init@and@draw@axis{%
 	\pgfplots@determinedefaultvalues
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
 		\pgfinterruptpicture
+		\pgfplots@BEGIN@prepare@description@styles
 		\tikzpicture[/pgfplots/every axis]%
 		% set baseline for sub-picture to default value.
 		% the baseline option will be applied to the OUTER picture.
@@ -6838,20 +6871,27 @@
 % #1: macro
 % #2: style name
 \long\def\pgfplots@append@keymacro@to@style#1#2{%
-	\t@pgfplots@toka={#2/.append style=}%
-	\t@pgfplots@tokb=\expandafter{#1}%
-	\edef\pgfplots@setkeys@TMP{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
-	\expandafter\pgfplotsset\expandafter{\pgfplots@setkeys@TMP}%
+	\ifx#1\pgfutil@empty
+	\else
+		\t@pgfplots@toka={#2/.append style=}%
+		\t@pgfplots@tokb=\expandafter{#1}%
+		\edef\pgfplots@setkeys@TMP{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+		\expandafter\pgfplotsset\expandafter{\pgfplots@setkeys@TMP}%
+	\fi
 %\pgfplots@message{tikzstyle{#2}+=[#1]}%
 }
 
 % #1: macro
 % #2: style name
 \long\def\pgfplots@set@keymacro@to@style#1#2{%
-	\t@pgfplots@toka={#2/.style=}%
-	\t@pgfplots@tokb=\expandafter{#1}%
-	\edef\pgfplots@setkeys@TMP{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
-	\expandafter\pgfplotsset\expandafter{\pgfplots@setkeys@TMP}%
+	\ifx#1\pgfutil@empty
+		\pgfplotsset{#2/.code={{}}}%
+	\else
+		\t@pgfplots@toka={#2/.style=}%
+		\t@pgfplots@tokb=\expandafter{#1}%
+		\edef\pgfplots@setkeys@TMP{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+		\expandafter\pgfplotsset\expandafter{\pgfplots@setkeys@TMP}%
+	\fi
 %\pgfplots@message{tikzstyle{#2}=[#1]}%
 }
 
@@ -6875,6 +6915,7 @@
 	% 'every axis'!
 	\pgfkeyssetfamily{/tikz/name}{/pgfplots/naming commands}%
 	\pgfkeyssetfamily{/tikz/alias}{/pgfplots/naming commands}%
+	\pgfkeyssetfamily{/tikz/variable}{/pgfplots}%
 	\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@rmopts}%
 	%
 	\let\tikz@alias=\pgfutil@empty
@@ -6895,7 +6936,7 @@
 	\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
 	%
 	\pgfkeysactivatefamilies
-		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions,/pgfplots/scale}
+		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/scale}%/pgfplots/descriptions,}
 		{\pgfplots@deactivefamiliescmd}%
 		\pgfplots@set@keys@from@tikz@style{every axis}%
 		\pgfkeysdeactivatefamily{/pgfplots/scale}%
@@ -6964,15 +7005,15 @@
 		\pgfplots@set@keys@from@tikz@style{every axis legend}%
 	\pgfkeysdeactivatefamily{/pgfplots/legend}%
 	%
-	% FIXME : the 'descriptions' family can be eliminated. It is only
-	% useful to provide 'title' inside of 'every axis title' -- which
-	% is not intuitive anyway.
-	\pgfkeysactivatefamily{/pgfplots/descriptions}%
-		\pgfplots@set@keys@from@tikz@style{every axis label}%
-		\pgfplots@set@keys@from@tikz@style{every axis x label}%
-		\pgfplots@set@keys@from@tikz@style{every axis y label}%
-		\pgfplots@set@keys@from@tikz@style{every axis title}%
-	\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
+	% FIXME : VERIFY!
+	% If I am not mistaken, these statements are only useful to allow
+	% 'xlabel style={xlabel=$x$}'  --- which is not intuitive anyway.
+	%\pgfkeysactivatefamily{/pgfplots/descriptions}%
+	%	\pgfplots@set@keys@from@tikz@style{every axis label}%
+	%	\pgfplots@set@keys@from@tikz@style{every axis x label}%
+	%	\pgfplots@set@keys@from@tikz@style{every axis y label}%
+	%	\pgfplots@set@keys@from@tikz@style{every axis title}%
+	%\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
 	%
 	\pgfkeysactivatefamily{/pgfplots/tick}%
 		\pgfplots@set@keys@from@tikz@style{every tick}%
@@ -6989,18 +7030,18 @@
 	% \pgfkeysdeactivatefamily{/pgfplots}%
 	%-------------------------------------------------- 
 	%
-	\pgfkeysactivatefamily{/pgfplots/descriptions}%
+	%\pgfkeysactivatefamily{/pgfplots/descriptions}%
 	\pgfkeysactivatefamily{/pgfplots/tick}%
 		\pgfplots@set@keys@from@tikz@style{every x tick label}%
 		\pgfplots@set@keys@from@tikz@style{every y tick label}%
 		\pgfplots@set@keys@from@tikz@style{every tick label}%
 	\pgfkeysdeactivatefamily{/pgfplots/tick}%
-	\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
+	%\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
 	%
 	% Step 3: Set all remaining options of '#1'. They should have
 	% highest precedence.
 	\pgfkeysactivatefamilies
-		{/pgfplots,/pgfplots/tick,/pgfplots/legend,/pgfplots/descriptions}%
+		{/pgfplots,/pgfplots/tick,/pgfplots/legend}%,/pgfplots/descriptions}%
 		{\pgfplots@deactivefamiliescmd}%
 		\expandafter
 			\pgfplots@set@keys@and@append@remaining@to@style
@@ -7008,7 +7049,7 @@
 			{\pgfplots@remaining@input}%
 			{every axis}%
 	\pgfplots@deactivefamiliescmd
-%\pgfkeysgetvalue{/tikz/every axis/.@cmd}\pgfplots@loc@TMPa
+%\pgfkeysgetvalue{/pgfplots/every axis/.@cmd}\pgfplots@loc@TMPa
 %\message{every axis is now '\meaning\pgfplots@loc@TMPa'}%
 	%
 	\pgfkeysdeactivatefamily{/pgfplots/style commands}%
