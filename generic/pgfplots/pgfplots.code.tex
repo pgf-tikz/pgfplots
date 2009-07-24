@@ -803,6 +803,9 @@
 	/pgfplots/try min ticks log/.estore in=			\pgfplots@default@try@minticks@log,
 	/pgfplots/try min ticks log/.belongs to family=/pgfplots/tick,
 	/pgfplots/try min ticks log=3,
+	/pgfplots/log basis x/.initial=e,
+	/pgfplots/log basis y/.initial=e,
+	/pgfplots/log basis z/.initial=e,
 	/pgfplots/log plot exponent style/.style={/pgf/number format/fixed,/pgf/number format/precision=2},
 	/pgfplots/log plot exponent style/.belongs to family=/pgfplots/tick,
 	/pgfplots/log identify minor tick positions/.is if=pgfplots@identify@log@minor@tick@pos,
@@ -2993,14 +2996,14 @@
 
 % DEPRECATED.
 \def\logtologtentomacro#1#2{%
-	\pgfmathmultiply@{#1}\reciproclogten%
+	\pgfmathlogtologten@{#1}%
 	\expandafter\skipsuffixzero\pgfmathresult|%
 	\let#2=\pgfmathresult
 }
 
 % DEPRECATED.
 \def\logtologten#1{%
-	\pgfmathmultiply@{#1}\reciproclogten%
+	\pgfmathlogtologten@{#1}%
 	\expandafter\skipsuffixzero\pgfmathresult|%
 	\pgfmathresult
 }
@@ -6124,10 +6127,12 @@
 }
 
 % Writes output to \pgfmathresult
-\def\pgfplots@filter@input@ticks@with@log#1{%
+% #1: the tick list (not a macro!)
+% #2: the axis
+\def\pgfplots@filter@input@ticks@with@log#1#2{%
 	\let\pgfplots@glob@TMPa=\pgfutil@empty
 	\foreach \pgfplots@loc@TMPb in {#1} {%
-		\expandafter\pgfmathlog@\expandafter{\pgfplots@loc@TMPb}%
+		\csname pgfplotsmathlog@#2@\endcsname{\pgfplots@loc@TMPb}%
 		\ifx\pgfplots@glob@TMPa\pgfutil@empty
 			\xdef\pgfplots@glob@TMPa{\pgfmathresult}%
 		\else
@@ -6274,6 +6279,7 @@
 % See also:
 %     \pgfplots@check@and@apply@datatrafo@for
 \def\pgfplots@prepare@coord@filtering@for#1{%
+	\expandafter\let\csname pgfplotsmathlogtologten@#1@\endcsname=\pgfmathlogtologten@
 	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
 	\expandafter\let\csname pgfplots@highlevel@trafo@#1\endcsname=\pgfplots@loc@TMPc
 	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
@@ -6384,17 +6390,51 @@
 		% well! However, I don't want to risk accidentally overwritten
 		% keys, so I replicate it here.
 		\pgfplots@if{pgfplots@disablelogfilter@#1}{\relax}{%
+			% Prepare the log to use for axis '#1'.
+			\expandafter\let\csname pgfplotsmathlog@#1@\endcsname=\pgfmathlog@
+			\expandafter\let\csname pgfplotsmathlog@#1@float\endcsname=\pgfmathlog@float
+			\pgfkeysgetvalue{/pgfplots/log basis #1}\pgfplots@loc@TMPa%
+			\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				% log basis x={} (initial setting:)
+			\else
+				\def\pgfplots@loc@TMPb{e}%
+				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+					% log basis x=e
+				\else
+					\pgfmathlog@{\pgfplots@loc@TMPa}%
+					\let\pgfplots@loc@TMPa=\pgfmathresult
+					\pgfmathparse{1/\pgfplots@loc@TMPa}%
+					\expandafter\edef\csname pgfplotsmathlog@#1@\endcsname##1{%
+						\noexpand\pgfmathlog@{##1}%
+						\noexpand\expandafter\noexpand\pgfmath@basic@multiply@\noexpand\expandafter
+							{\noexpand\pgfmathresult}%
+							{\pgfmathresult}%
+					}%
+					\expandafter\edef\csname pgfplotsmathlog@#1@float\endcsname##1{%
+						\noexpand\pgfmathlog@float{##1}%
+						\noexpand\expandafter\noexpand\pgfmath@basic@multiply@\noexpand\expandafter
+							{\noexpand\pgfmathresult}%
+							{\pgfmathresult}%
+					}%
+					\pgfmath@basic@multiply@{\reciproclogten}{\pgfplots@loc@TMPa}%
+					\expandafter\edef\csname pgfplotsmathlogtologten@#1@\endcsname##1{%
+						\noexpand\pgfmath@basic@multiply@{##1}{\pgfmathresult}%
+					}%
+				\fi
+			\fi
+			%
 			% any user-specified axis limits:
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1min\endcsname
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\expandafter\pgfmathlog@\expandafter{\pgfplots@loc@TMPa}%
+				\csname pgfplotsmathlog@#1@\endcsname{\pgfplots@loc@TMPa}%
 				\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
 			\fi
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1max\endcsname
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\expandafter\pgfmathlog@\expandafter{\pgfplots@loc@TMPa}%
+				\csname pgfplotsmathlog@#1@\endcsname{\pgfplots@loc@TMPa}%
 				\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
 			\fi
 			%
@@ -6402,13 +6442,13 @@
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tickmin\endcsname
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\expandafter\pgfmathlog@\expandafter{\pgfplots@loc@TMPa}%
+				\csname pgfplotsmathlog@#1@\endcsname{\pgfplots@loc@TMPa}%
 				\expandafter\global\expandafter\let\csname pgfplots@#1tickmin\endcsname=\pgfmathresult
 			\fi
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tickmax\endcsname
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\expandafter\pgfmathlog@\expandafter{\pgfplots@loc@TMPa}%
+				\csname pgfplotsmathlog@#1@\endcsname{\pgfplots@loc@TMPa}%
 				\expandafter\global\expandafter\let\csname pgfplots@#1tickmax\endcsname=\pgfmathresult
 			\fi
 			%
@@ -6420,14 +6460,14 @@
 				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 					% #1tick=data is handled elsewhere...
 				\else
-					\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@loc@TMPa}%
+					\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@loc@TMPa}{#1}%
 					\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfmathresult}%
 				\fi
 			\fi
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@extra@#1tick\endcsname
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@loc@TMPa}%
+				\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@loc@TMPa}{#1}%
 				\expandafter\edef\csname pgfplots@extra@#1tick\endcsname{\pgfmathresult}%
 			\fi
 			%
@@ -6443,7 +6483,7 @@
 							\pgfmathfloatparsenumber{##1}%
 							\pgfmathfloattofixed{\pgfmathresult}%
 						}{%
-							\pgfmathlog@{##1}%
+							\csname pgfplotsmathlog@#1@\endcsname{##1}%
 						}%
 					\fi
 				}%
@@ -6458,7 +6498,7 @@
 							\pgfmathfloatparsenumber{##1}%
 							\pgfmathfloattofixed{\pgfmathresult}%
 						}{%
-							\expandafter\pgfmathlog@\expandafter{\pgfmathresult}%
+							\csname pgfplotsmathlog@#1@\endcsname{\pgfmathresult}%
 						}%
 					\fi
 				}%
