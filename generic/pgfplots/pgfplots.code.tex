@@ -825,8 +825,18 @@
 		\fi
 	}},
 	/pgfplots/log number format code/.belongs to family=/pgfplots/tick,
-	/pgfplots/log base 10 number format code/.code={$10^{\pgfmathprintnumber{#1}}$},
+	/pgfplots/log base 10 number format code/.code={{\pgfplots@invoke@pgfkeyscode{/pgfplots/log number format basis/.@cmd}{{10}{#1}}}},
 	/pgfplots/log base 10 number format code/.belongs to family=/pgfplots/tick,
+	% #1 = basis
+	% #2 = exponent
+	/pgfplots/log number format basis/.code 2 args={$#1^{\pgfmathprintnumber{#2}}$},
+	% takes #1 = [xyz]:
+	/pgfplots/log basis ticks/.style={%
+		/pgfplots/log number format code/.code={{%
+			\pgfkeysalso{/pgfplots/log plot exponent style}%
+			\pgfplots@invoke@pgfkeyscode{/pgfplots/log number format basis/.@cmd}{{\pgfkeysvalueof{/pgfplots/log basis #1}}{##1}}%
+		}}%
+	},
 % sets \pgfplots@[xy]tickposnum to
 	/pgfplots/xtick pos/.is choice,
 	/pgfplots/xtick pos/.belongs to family=/pgfplots/tick,
@@ -6389,8 +6399,8 @@
 		\expandafter\let\csname pgfplotsmathlog@#1@\endcsname=\pgfmathlog@
 		\expandafter\let\csname pgfplotsmathlogi@#1\endcsname=\logi
 		\expandafter\let\csname pgfplotsmathlog@#1@float\endcsname=\pgfmathlog@float
-		\expandafter\let\csname pgfplotsmathlog#1@logten\endcsname=\logten
-		\expandafter\let\csname pgfplotsmathlog#1@logten@inv\endcsname=\reciproclogten
+		\expandafter\let\csname pgfplots@log@scale@todisplaylog@#1\endcsname=\logten
+		\expandafter\let\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname=\reciproclogten
 		\expandafter\def\csname pgfplotsmathlogscale@#1\endcsname{1}%
 		\expandafter\def\csname pgfplotsmathlogscale@#1@inv\endcsname{1}%
 		%
@@ -6434,14 +6444,28 @@
 							{\noexpand\pgfmathresult}%
 							{\pgfmathresult}%
 					}%
-					\expandafter\pgfmath@basic@multiply@\expandafter{\pgfmathresult}{\logten}%
-					\expandafter\let\csname pgfplotsmathlog#1@logten\endcsname=\pgfmathresult
-					\pgfmath@basic@multiply@{\reciproclogten}{\pgfplots@loc@TMPa}%
-					\expandafter\let\csname pgfplotsmathlog#1@logten@inv\endcsname=\pgfmathresult
-					\expandafter\edef\csname pgfplotsmathlogtologten@#1@\endcsname##1{%
-						\noexpand\pgfmath@basic@multiply@{##1}{\csname pgfplotsmathlog#1@logten@inv\endcsname}%
-					}%
 					%
+					% generate default ticks in the 'log basis', not base 10:
+					\expandafter\def\csname pgfplots@log@scale@todisplaylog@#1\endcsname{1}%
+					\expandafter\def\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname{1}%
+					\pgfplotsset{/pgfplots/log basis ticks=#1}%
+					%
+					% 
+					\ifdim\pgfkeysvalueof{/pgfplots/log basis #1}pt=10pt
+					\else
+						\pgfplots@identify@log@minor@tick@posfalse
+						\csname pgfplots@#1minorticksfalse\endcsname
+						\csname pgfplots@#1minorgridsfalse\endcsname
+						\expandafter\def\csname pgfplots@#1minortickstrue\endcsname{\pgfplots@error{Sorry, minor ticks are not supported for this log basis.}}%
+						\expandafter\def\csname pgfplots@#1minorgridstrue\endcsname{\pgfplots@error{Sorry, minor grid lines are not supported for this log basis.}}%
+					\fi
+					\pgfkeysdef{/pgfplots/log basis #1}{\pgfplots@error{Sorry, you can't change 'log basis #1' in this context.}}%
+					%
+					% recompute logtologten for this axis: 
+					\pgfmath@basic@multiply@{\reciproclogten}{\pgfplots@loc@TMPa}%
+					\expandafter\edef\csname pgfplotsmathlogtologten@#1@\endcsname##1{%
+						\noexpand\pgfmath@basic@multiply@{##1}{\pgfmathresult}%
+					}%
 					\begingroup
 						% recompute \logi for the new basis.
 						\dimen1=\logi1pt \dimen1=\csname pgfplotsmathlogscale@#1@inv\endcsname\dimen1
