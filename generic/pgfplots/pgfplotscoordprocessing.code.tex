@@ -3183,8 +3183,13 @@
 							\pgfutil@ifnextchar g{%
 								\pgfplots@addplotimpl@g{#1}{#2}%
 							}{%
-								\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
-								\pgfplots@gobble@until@semicolon
+								\pgfutil@ifnextchar s{%
+									\pgfplots@addplotimpl@shell{#1}{#2}%
+								}{%
+
+									\pgfplots@error{Sorry, the supplied plot command is unknown or unsupported by pgfplots! Ignoring it.}%
+									\pgfplots@gobble@until@semicolon
+								}%
 							}%
 						}%
 					}%
@@ -3593,6 +3598,51 @@
 	\fi
 }
 
+% \addplot[#1] plot[#2] shell[#3] {#4} #5;
+\def\pgfplots@addplotimpl@shell#1#2shell{%
+	\pgfutil@ifnextchar[{%
+		\pgfplots@addplotimpl@shell@opt{#1}{#2}%
+	}{%
+		\pgfplots@addplotimpl@shell@opt{#1}{#2}[]%
+	}%
+}%
+\def\pgfplots@addplotimpl@shell@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@shell@opt@{#1}{#2}{#3}{#4}{#5}}%
+% \addplot[#1] [#2] shell[#3] {#4} #5;
+\def\pgfplots@addplotimpl@shell@opt@#1#2#3#4#5{%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3}%
+	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
+	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-shell}%
+	%
+	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\def\pgfplots@plot@data{\pgfshell[\pgfplots@plot@filename]{#4}\pgfplotxyfile{\pgfplots@plot@filename.out}}%
+	\def\pgfplotxyfile{\pgfplots@addplotimpl@shellresult{#5}}%
+	\pgfplots@plot@data
+	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
+}%
+
+\def\pgfplots@addplotimpl@shellresult#1#2{%
+	\begingroup
+	\openin1=#2
+	\ifeof1
+		\pgfplots@error{Sorry, the shell-result file '#2' could not be found. Maybe you need to enable the shell-escape feature? For pdflatex, this is '>> pdflatex -shell-escape'. You can also invoke '>> sh <file>.sh > <file>.out' manually on the respective shell file.}%
+		\aftergroup\pgfplots@loop@CONTINUEfalse
+	\else
+		\aftergroup\pgfplots@loop@CONTINUEtrue
+	\fi
+	\closein1
+	\endgroup
+	\ifpgfplots@loop@CONTINUE
+		 % Now, invoke 'plot file'.
+		 %
+		 % I invoke the private '@opt@' method because the semicolon ';' 
+		 % character may cause problems due to catcode mismatches.
+		 % *sigh*.
+		\pgfplots@addplotimpl@file@opt@@{}{}{#2}{#1}%
+	\else
+		\expandafter\pgfplots@end@plot
+	\fi
+}
+
 % \addplot[#1] [#2] file{#3} #4;
 \def\pgfplots@addplotimpl@file#1#2ile{%
 	\pgfutil@ifnextchar[{%
@@ -3806,10 +3856,14 @@
 }%
 
 \def\pgfplots@addplotimpl@table@getopts#1[#2]{%
-	\pgfutil@ifnextchar f{%
-		\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
+	\pgfutil@ifnextchar s{%
+		\pgfplots@addplotimpl@table@fromshell{#1}{#2}%
 	}{%
-		\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+		\pgfutil@ifnextchar f{%
+			\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
+		}{%
+			\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+		}%
 	}%
 }
 
@@ -4379,6 +4433,20 @@
 		\let\pgfplots@table@curkeyname=\pgfkeyscurrentname
 		\pgfqkeys{/pgfplots}{\pgfplots@table@curkeyname=##1}%
 	}%
+}%
+
+% \addplot[#1] table[#2] shell{#3} #4;
+%
+% #1: arguments to \addplot[...]
+% #2: arguments to table[...]
+% #3: the argument of plot table shell{...}
+% #4: trailing path arguments after plot table shell{...}#4;
+\long\def\pgfplots@addplotimpl@table@fromshell#1#2shell#3#4;{%
+	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
+	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-shell}%
+	%
+	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
+	\pgfshell[\pgfplots@plot@filename]{#3}\pgfplots@addplotimpl@table@fromfile{#1}{#2}{\pgfplots@plot@filename.out}#4;%
 }%
 
 % A common routine which resets internal data structures for the
