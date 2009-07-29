@@ -5497,20 +5497,36 @@
 				\pgfkeyssetvalue{/pgfplots/surf shading/north east corner}{\pgfplotspointbbupperright}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/south west corner}{\pgfplotspointbblowerleft}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/anchor}{\pgfpointorigin}%
-				\if\pgfplots@plot@mesh@ordering0%
-					% rowwise:
-					\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
-				\else
-					% colwise:
-					\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@rows
-					\pgfplots@error{Sorry, the 'shader=interp' does not yet support 'mesh/ordering=colwise'... You continue now, but the plot will be transposed.}%
-				\fi
 				\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
 				\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
 				\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
 				\let\pgfplotsplothandlermesh@unpack=\relax % unused.
 				\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
-				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@draw@lowlevelsurf%
+				\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
+				\if\pgfplots@plot@mesh@ordering0%
+					% rowwise:
+					\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp%
+				\else
+					% colwise:
+					%
+					% The low level shader NEEDS rowwise ordering. So, we need to transpose the data matrix.
+					% As usual in TeX, we should save macros as much as possible. I guess we NEED at least one macro for each matrix row.
+					% Idea:
+					% while we iterate colwise through the input data, accumulate row vectors.
+					% Then, process the row vectors.
+					% Since vectors are expensive (in terms of number of macros), we use fast "append" lists instead of vectors.
+					\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
+					%
+					% init all required row vectors:
+					\c@pgfplots@scanlineindex=0
+					\pgfutil@loop
+					\ifnum\c@pgfplots@scanlineindex<\pgfplotsplothandlermesh@rows\relax
+						\expandafter\pgfplotsapplistXnewempty\csname pgfp@transprow@\the\c@pgfplots@scanlineindex\endcsname%
+						\advance\c@pgfplots@scanlineindex by1
+					\pgfutil@repeat
+					%\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@rows
+					%\pgfplots@error{Sorry, the 'shader=interp' does not yet support 'mesh/ordering=colwise'... You can continue now, but the plot will be transposed.}%
+				\fi
 				\pgfplotslibrarysurfstreamstart
 				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
 			\fi
@@ -5626,6 +5642,10 @@
 
 \def\pgfplotsplothandlermesh@finish{%
 	\ifnum\pgfplotsplothandlermesh@shader=2
+		\ifx\pgf@plotstreampoint\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
+			% This is the case for 'mesh/ordering=colwise'. We need to finish the transpose procedure:
+			\pgfplotsplothandlermesh@shader@interp@transpose@finish
+		\fi
 		\pgfplotslibrarysurfstreamend
 		\pgfplotslibrarysurfdrawinpicture
 	\else
@@ -5716,9 +5736,37 @@
 		\c@pgfplots@scanlineindex=0
 	\fi
 }%
-\def\pgfplotsplothandlermesh@draw@lowlevelsurf#1{%
+\def\pgfplotsplothandlermesh@shader@interp#1{%
 	\pgfplots@perpointmeta@trafo@APPLY
 	\pgfplotslibrarysurfstreamcoord{#1}{\pgfplotspointmetatransformed}%
+}%
+\def\pgfplotsplothandlermesh@shader@interp@incremental@transpose#1{%
+	\pgfplots@perpointmeta@trafo@APPLY
+	\pgf@process{#1}%
+	\edef\pgfplotsplothandlermesh@i{\noexpand\pgfplotsplothandlermesh@shader@interp@next{\the\pgf@x}{\the\pgf@y}{\pgfplotspointmetatransformed}}%
+	%
+	% Store the postprocessed point into the appropriate row vector:
+	\def\pgfplots@loc@TMPa{\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplotsplothandlermesh@i}\to}
+	\expandafter\pgfplots@loc@TMPa\csname pgfp@transprow@\the\c@pgfplots@scanlineindex\endcsname%
+	%
+	\advance\c@pgfplots@scanlineindex by1
+	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+		\c@pgfplots@scanlineindex=0
+	\fi
+}%
+\def\pgfplotsplothandlermesh@shader@interp@transpose@finish{%
+	% Now, "execute" each row vector:
+	\def\pgfplotsplothandlermesh@shader@interp@next##1##2##3{%
+		\pgfplotslibrarysurfstreamcoord{\pgf@x=##1 \pgf@y=##2 }{##3}%
+	}%
+	\c@pgfplots@scanlineindex=0
+	\pgfutil@loop
+	\ifnum\c@pgfplots@scanlineindex<\pgfplotsplothandlermesh@rows\relax
+		\expandafter\pgfplotsapplistXlet\expandafter\pgfplots@loc@TMPa\expandafter=\csname pgfp@transprow@\the\c@pgfplots@scanlineindex\endcsname%
+		% execute the row:
+		\pgfplots@loc@TMPa
+		\advance\c@pgfplots@scanlineindex by1
+	\pgfutil@repeat
 }%
 
 \def\pgfplotsplothandlermesh@draw@zbufferelement#1#2{%
