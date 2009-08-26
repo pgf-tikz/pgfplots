@@ -37,7 +37,52 @@
 % \end{tikzpicture}
 %-------------------------------------------------- 
 
-\def\pgfplots@truncate@to@julian#1.#2\pgfplots@EOI#3{#3=#1\relax}%
+\def\pgfplotslibdateplot@number@to@julian@and@time#1.#2\julianto#3\hourto#4\minuteto#5{%
+	#3=#1
+	\pgf@xa=0.#2pt
+	\multiply\pgf@xa by24
+	\afterassignment\pgfplots@gobble@until@relax
+	\c@pgf@countb=\the\pgf@xa\relax
+	\edef#4{\the\c@pgf@countb}%
+	\advance\pgf@xa by-#4pt
+	\multiply\pgf@xa by60
+	\afterassignment\pgfplots@gobble@until@relax
+	\c@pgf@countb=\the\pgf@xa\relax
+	% round minutes (we may loose precision here)
+	\advance\pgf@xa by-\the\c@pgf@countb pt
+	\ifdim\pgf@xa>0.5pt	
+		\advance\c@pgf@countb by1
+	\fi
+	\edef#5{\the\c@pgf@countb}%
+}
+
+% #1 the date
+% #2 the hours
+% #3 the minutes
+% #4 is either empty or is the seconds. 
+% #5 a macro which will be filled with the date part.
+% #6 the macro which will contain a number in the range [0,1]
+% representing hours and minutes.
+%
+% If you don't have seconds, you have to provide the second ':' sign
+% as dummy! In that case #4 will be empty.
+\def\pgfplotslibdateplot@map@time#1 #2:#3:#4\dateto#5\timeto#6{%
+	\pgf@xa=#2pt
+	\divide\pgf@xa by24
+	\pgf@xb=#3pt
+	\divide\pgf@xb by1440
+	\advance\pgf@xa by\pgf@xb
+	\ifdim\pgf@xa<0pt
+		\pgf@xa=0pt
+	\else
+		\ifdim\pgf@xa>1pt
+			\pgf@xa=1pt
+		\fi
+	\fi
+	\def#5{#1}%
+	\edef#6{\pgf@sys@tonumber\pgf@xa}%
+}%
+\def\pgfplotslibdateplot@discard@zero@dot 0.#1\to#2{\def#2{#1}}%
 
 \pgfplotsset{
 	/pgfplots/date ZERO/.code={%
@@ -52,19 +97,61 @@
 	/pgfplots/date coordinates in/.style={
 		/pgfplots/#1 coord trafo/.code={%
 			\begingroup
-			\pgfcalendardatetojulian{##1}\c@pgf@counta
+			\edef\pgfplotstempjuliandate{##1}%
+			% check if we also have a TIME like '2006-01-01 11:21'
+			\expandafter\pgfutil@in@\expandafter:\expandafter{\pgfplotstempjuliandate}%
+			\ifpgfutil@in@
+				% we have a TIME!
+				\expandafter\pgfplotslibdateplot@map@time\pgfplotstempjuliandate:\dateto\pgfplotstempjuliandate\timeto\pgfplotstemptime
+			\else
+				\let\pgfplotstemptime=\pgfutil@empty
+			\fi
+			\expandafter\pgfcalendardatetojulian\expandafter{\pgfplotstempjuliandate}\c@pgf@counta
 			\advance\c@pgf@counta by-\pgfplots@calender@ZEROSHIFT\relax
-			\edef\pgfmathresult{\the\c@pgf@counta}%
+			\ifx\pgfplotstemptime\pgfutil@empty
+				% no time:
+				\edef\pgfmathresult{\the\c@pgf@counta}%
+			\else
+				% add time fraction (which should be in the range
+				% [0,1]).
+				\ifdim\pgfplotstemptime pt<1pt
+					% discard prefix '0.':
+					\expandafter\pgfplotslibdateplot@discard@zero@dot\pgfplotstemptime\to\pgfplotstemptime
+					\edef\pgfmathresult{\the\c@pgf@counta.\pgfplotstemptime}%
+				\else
+					% assume \pgfplotstemptime=1pt :
+					\advance\c@pgf@counta by1
+					\edef\pgfmathresult{\the\c@pgf@counta}%
+				\fi
+			\fi
 			\pgfmath@smuggleone\pgfmathresult
 			\endgroup
 		},
 		/pgfplots/#1 coord inv trafo/.code={%
 			\begingroup
-			\pgfplots@truncate@to@julian##1\pgfplots@EOI{\c@pgf@counta}%
-			\advance\c@pgf@counta by\pgfplots@calender@ZEROSHIFT\relax
-			\expandafter
+				\pgfplotslibdateplot@number@to@julian@and@time##1\julianto{\c@pgf@counta}\hourto\Hour\minuteto\Minute%
+				\advance\c@pgf@counta by\pgfplots@calender@ZEROSHIFT\relax
+				\expandafter\pgfcalendarjuliantodate\expandafter{\the\c@pgf@counta}\year\month\day
+				\xdef\pgfplotslibdateplot@TMP{%
+					\noexpand\def\noexpand\year{\year}%
+					\noexpand\def\noexpand\month{\month}%
+					\noexpand\def\noexpand\day{\day}%
+					\noexpand\def\noexpand\Hour{\Hour}%
+					\noexpand\def\noexpand\Minute{\Minute}%
+				}%
 			\endgroup
-			\expandafter\pgfcalendarjuliantodate\expandafter{\the\c@pgf@counta}\year\month\day
+			\pgfplotslibdateplot@TMP
+			\let\hour=\Hour
+			\let\minute=\Minute
+			\ifnum\hour<10
+				\edef\hour{0\hour}%
+			\fi
+			\ifnum\minute<10
+				\edef\minute{0\minute}%
+			\fi
+			\def\Second{0}%
+			\def\second{00}%
+			\edef\lowlevel{##1}%
 			\edef\pgfmathresult{\year-\month-\day}%
 		},
 		/pgfplots/#1ticklabel={\tick},%
