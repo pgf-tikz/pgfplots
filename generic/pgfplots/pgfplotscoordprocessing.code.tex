@@ -2795,10 +2795,27 @@
 % copy the input argument symbolically.
 \def\pgfplots@perpointmeta@preparetrafo{%
 	\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
+	\ifpgfplots@warn@for@filter@discards
+		\def\pgfplots@perpointmeta@unboundedwarning##1{%
+			\begingroup
+				\pgfmathfloattofixed{##1}%
+				\pgfplots@warning{The per point meta data `\pgfmathresult' is unbounded - using the minimum value instead.}%
+			\endgroup
+		}%
+	\else
+		\def\pgfplots@perpointmeta@unboundedwarning##1{}%
+	\fi
 	\if m\pgfplots@colormap@access
 		% colormap access=map
 		\ifx\pgfplots@metamax\pgfutil@empty
-			\def\pgfplots@perpointmeta@trafo##1{\def\pgfmathresult{##1}}%
+			\def\pgfplots@perpointmeta@trafo##1{%
+				\pgfmathfloatiffinite{##1}{%
+					\pgfmathfloattofixed@{##1}%
+				}{%
+					\def\pgfmathresult{0}%
+					\pgfplots@perpointmeta@unboundedwarning{##1}%
+				}%
+			}%
 			\def\pgfplots@perpointmeta@traforange{0:1000}%
 			\edef\pgfplotspointmetarange{0:1000}%
 		\else
@@ -2818,9 +2835,14 @@
 				% Now, prepare the trafo as such.
 				% It assigns \pgfmathresult (in fixed point).
 				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
-					\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-					\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+					\pgfmathfloatiffinite{##1}{%
+						\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
+						\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+						\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+					}{%
+						\def\pgfmathresult{0}%
+						\pgfplots@perpointmeta@unboundedwarning{##1}%
+					}%
 				}%
 				\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
 			\else
@@ -2829,9 +2851,14 @@
 				% Now, prepare the trafo as such.
 				% It assigns \pgfmathresult (in fixed point).
 				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
-					\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-					\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+					\pgfmathfloatiffinite{##1}{%
+						\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
+						\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+						\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+					}{%
+						\def\pgfmathresult{0}%
+						\pgfplots@perpointmeta@unboundedwarning{##1}%
+					}%
 				}%
 				\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
 			\fi
@@ -2845,7 +2872,14 @@
 		\fi
 	\else
 		% colormap access=direct
-		\def\pgfplots@perpointmeta@trafo##1{\pgfmathfloattofixed@{##1}}%
+		\def\pgfplots@perpointmeta@trafo##1{
+			\pgfmathfloatiffinite{##1}{%
+				\pgfmathfloattofixed@{##1}%
+			}{%
+				\def\pgfmathresult{0}%
+				\pgfplots@perpointmeta@unboundedwarning{##1}%
+			}%
+		}%
 		\def\pgfplots@perpointmeta@traforange{0:0}%
 		\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 	\fi
@@ -2853,7 +2887,7 @@
 }%
 \def\pgfplots@perpointmeta@trafo@APPLY{%
 	\ifx\pgfplots@current@point@meta\pgfutil@empty%
-		\pgfplots@error{'scatter' could not access its data source. Maybe you need to add '\string\addplot\space plot[scatter src=y]' or something like that?}%
+		\pgfplots@error{could not access the data source for color maps. Maybe you need to add '\string\addplot\space plot[point meta=y]' or something like that?}%
 		\pgfmathfloatcreate{1}{1.0}{0}%
 		\def\pgfplotspointmetatransformed{1.0}%
 	\else
