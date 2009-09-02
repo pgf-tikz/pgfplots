@@ -2182,6 +2182,8 @@
 		% \tikzset
 		\pgfkeyssetvalue{/pgfplots/mesh/num points}{\pgfplots@current@point@coordindex}%
 		\pgfplotspreparemeshkeydefaults%
+		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting x%
+		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting y%
 		\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@survey@@optionlist}%
 		% warning: rememberplotspec calls list macros which
 		% overwrite \t@pgfplots@toka
@@ -2222,6 +2224,9 @@
 				\noexpand\pgfkeyssetvalue{/pgfplots/samples at}{\pgfplots@plot@samples@at}%
 				\noexpand\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/mesh/rows}}%
 				\noexpand\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/mesh/cols}}%
+				% either '+' or '-' :
+				\noexpand\pgfkeyssetvalue{/pgfplots/x coord sorting}{\pgfkeysvalueof{/pgfplots/x coord sorting}}%
+				\noexpand\pgfkeyssetvalue{/pgfplots/y coord sorting}{\pgfkeysvalueof{/pgfplots/y coord sorting}}%
 				%
 				\noexpand\pgfplots@initzerolevelhandler
 				\the\t@pgfplots@tokc% named start/end points (if already available)
@@ -2275,6 +2280,28 @@
 		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 %		\fi
 	\pgfplots@end@plot
+}%
+
+% PRECONDITION: must be called inside of
+% \pgfplots@PREPARE@COORD@STREAM@end@.
+%
+% POSTCONDITION:
+% 	assigns '/pgfplots/#1 coord sorting=[+-]' 
+% 	i.e. whether #1 (x or y or z) coordinates are in ascending (+) ordering or in
+% 	descending order (-).
+\def\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting#1{%
+	\pgfplots@if{pgfplots@#1islinear}{%
+		\pgfmathfloatlessthan@
+			{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@lastcoord@x}%
+	}{%
+		\pgfplotsmathlessthan
+			{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@lastcoord@x}%
+	}%
+	\ifpgfmathfloatcomparison
+		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}%
+	\else
+		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{-}%
+	\fi
 }%
 
 % Assigns default values to 'rows' and 'cols' in case
@@ -5888,14 +5915,6 @@
 %
 % Output: a normalized coordinate stream in \pgfplotsretval.
 \def\pgfplots@apply@zbuffer#1{%
-	\let\pgfplots@apply@zbuffer@start@BACKUP=\pgfplots@coord@stream@start
-	\let\pgfplots@apply@zbuffer@end@BACKUP=\pgfplots@coord@stream@end
-	\let\pgfplots@apply@zbuffer@coord@BACKUP=\pgfplots@coord@stream@coord
-	\let\pgfplots@current@point@x=\pgfutil@empty
-	\let\pgfplots@current@point@y=\pgfutil@empty
-	\let\pgfplots@current@point@z=\pgfutil@empty
-	\let\pgfplots@current@point@meta=\pgfutil@empty
-	%
 	\ifcase\pgfplotsplothandlermesh@zbuffer@choice\relax
 		% none.
 		\gdef\pgfplotsretval{#1}%
@@ -5933,6 +5952,7 @@
 		\fi
 	\or
 		% reverse xy seq:
+		\begingroup
 		\def\pgfplots@coord@stream@start{%
 			\pgfplotsprependlistXnewempty{reversed}%
 		}%
@@ -5946,6 +5966,7 @@
 			\global\let\pgfplotsretval=\pgfplots@loc@TMPa
 		}%
 		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+		\endgroup
 	\or
 		% sort.
 		\if\pgfplots@meshmode n%
@@ -5986,10 +6007,66 @@
 			% meshmode handles sort separately!
 			\gdef\pgfplotsretval{#1}%
 		\fi
+	\or
+		% z buffer=auto
+		%
+		% I can decide for each axis if coordinate reversal is
+		% necessary.
+		% Idea: check if axis side planes are on foreground or not (a
+		% very simple task)! I
+		% only need to know whether [xy] coordinates are sorted
+		% ascending or descending. This information is already ready.
+		%
+		\begingroup
+		\if+\pgfkeysvalueof{/pgfplots/x coord sorting}%
+			\def\pgfplots@minmaxvalue@x{0}%
+		\else
+			\def\pgfplots@minmaxvalue@x{0}%
+		\fi
+		\if+\pgfkeysvalueof{/pgfplots/y coord sorting}%
+			\def\pgfplots@minmaxvalue@y{0}%
+		\else
+			\def\pgfplots@minmaxvalue@y{1}%
+		\fi
+		\pgfplotsifaxissurfaceisforeground{\pgfplots@minmaxvalue@x vv}{%
+			\def\pgfplots@reverse@x{1}%
+		}{%
+			\def\pgfplots@reverse@x{0}%
+		}%
+		\pgfplotsifaxissurfaceisforeground{v\pgfplots@minmaxvalue@y v}{%
+			\def\pgfplots@reverse@y{1}%
+		}{%
+			\def\pgfplots@reverse@y{0}%
+		}%
+		\if1\pgfplots@reverse@x
+			\if1\pgfplots@reverse@y
+				\pgfkeys{/pgfplots/z buffer=reverse xy seq}%
+			\else
+				\pgfkeys{/pgfplots/z buffer=reverse x seq}%
+			\fi
+		\else
+			\if1\pgfplots@reverse@y
+				\pgfkeys{/pgfplots/z buffer=reverse y seq}%
+			\else
+				\pgfkeys{/pgfplots/z buffer=none}%
+			\fi
+		\fi
+\message{z buffer=auto mode chose  z buffer=%
+	\ifcase\pgfplotsplothandlermesh@zbuffer@choice 
+		NONE
+	\or
+		reverse x seq
+	\or
+		reverse y seq
+	\or 
+		reverse xy seq
+	\or
+		sort
+	\fi}%
+		% 'z buffer' is no longer 'auto' now:
+		\pgfplots@apply@zbuffer{#1}%
+		\endgroup
 	\fi
-	\let\pgfplots@coord@stream@start=\pgfplots@apply@zbuffer@start@BACKUP
-	\let\pgfplots@coord@stream@end=\pgfplots@apply@zbuffer@end@BACKUP
-	\let\pgfplots@coord@stream@coord=\pgfplots@apply@zbuffer@coord@BACKUP
 }%
 
 % Defines \pgfplotsretval (globally) to be a partial reversion of the
