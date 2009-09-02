@@ -5901,17 +5901,36 @@
 		\gdef\pgfplotsretval{#1}%
 	\or
 		% reverse x seq: only for 'mesh'
-		% FIXME IMPLEMENT!
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse x seq' can only be used for mesh/surf plots.}%
+			\gdef\pgfplotsretval{#1}%
+		\else
+			\if\pgfplots@plot@mesh@ordering0%
+				% ordering = rowwise -> scanline is cols!
+				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversescanline{#1}%
+			\else
+				% ordering = colwise: scanline is rows!
+				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversetransposed{#1}%
+			\fi
 		\fi
-		\gdef\pgfplotsretval{#1}%
 	\or
 		% reverse y seq: only for 'mesh'
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse y seq' can only be used for mesh/surf plots.}%
+			\gdef\pgfplotsretval{#1}%
+		\else
+			\if\pgfplots@plot@mesh@ordering0%
+				% ordering = rowwise -> scanline is cols!
+				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversetransposed{#1}%
+			\else
+				% ordering = colwise: scanline is rows!
+				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversescanline{#1}%
+			\fi
 		\fi
-		\gdef\pgfplotsretval{#1}%
 	\or
 		% reverse xy seq:
 		\def\pgfplots@coord@stream@start{%
@@ -5971,6 +5990,89 @@
 	\let\pgfplots@coord@stream@start=\pgfplots@apply@zbuffer@start@BACKUP
 	\let\pgfplots@coord@stream@end=\pgfplots@apply@zbuffer@end@BACKUP
 	\let\pgfplots@coord@stream@coord=\pgfplots@apply@zbuffer@coord@BACKUP
+}%
+
+% Defines \pgfplotsretval (globally) to be a partial reversion of the
+% (normalized) 2d coordinate sequence '#1'.
+%
+% In other words, the normalized coordinate sequence '#1' is visited
+% linearly and while we go, each scanline is reversed. The result is
+% collected into \pgfplotsretval.
+%
+% This implements the 'z buffer=reverse x seq' feature for
+% ordering=rowwise and, likewise, the same for reverse y seq and
+% ordering=colwise.
+%
+% PRECONDITION:
+% 	\pgfplotsscanlinelength contains the scanline length
+% POSTCONDITION:
+% 	\pgfplotsretval contains the partial reversion.
+\def\pgfplots@apply@zbuffer@reversescanline#1{%
+	\begingroup
+	\def\pgfplots@coord@stream@start{%
+		\pgfplotsprependlistXnewempty{reversedscanline}%
+		\c@pgfplots@scanlineindex=0
+		\pgfplotsapplistXnewempty{\resultlist}%
+	}%
+	\def\pgfplots@coord@stream@coord{%
+		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
+		\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@loc@TMPa}\to{reversedscanline}%
+		\advance\c@pgfplots@scanlineindex by1
+		\ifnum\c@pgfplots@scanlineindex=\pgfplotsscanlinelength\relax
+			\pgfplotsprependlistXlet\pgfplots@loc@TMPa={reversedscanline}%
+			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to\resultlist
+			\pgfplotsprependlistXnewempty{reversedscanline}%
+			\c@pgfplots@scanlineindex=0
+		\fi
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\pgfplotsprependlistXlet\pgfplots@loc@TMPa={reversedscanline}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplots@error{An internal error occured during z buffer reorderings: the rows/cols where not balanced!}%
+		\fi
+		\pgfplotsapplistXlet\pgfplots@loc@TMPa={\resultlist}%
+		\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+	}%
+	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+%\message{I have performed partial reversion of '#1' and got     '\pgfplotsretval'!}%
+	\endgroup
+}%
+
+% A very similar method of \pgfplots@apply@zbuffer@reversescanline,
+% but this one keeps everything inside of each scanline in the
+% original ordering, and reverses the ordering in which whole
+% scanlines occur.
+\def\pgfplots@apply@zbuffer@reversetransposed#1{%
+	\begingroup
+	\def\pgfplots@coord@stream@start{%
+		\pgfplotsapplistXnewempty{\scanline}%
+		\c@pgfplots@scanlineindex=0
+		\pgfplotsprependlistXnewempty{resultlist}%
+	}%
+	\def\pgfplots@coord@stream@coord{%
+		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to{\scanline}%
+		\advance\c@pgfplots@scanlineindex by1
+		\ifnum\c@pgfplots@scanlineindex=\pgfplotsscanlinelength\relax
+			\pgfplotsapplistXlet\pgfplots@loc@TMPa={\scanline}%
+			\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@loc@TMPa}\to{resultlist}
+			\pgfplotsapplistXnewempty{\scanline}%
+			\c@pgfplots@scanlineindex=0
+		\fi
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\pgfplotsapplistXlet\pgfplots@loc@TMPa={\scanline}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplots@error{An internal error occured during z buffer reorderings: the rows/cols where not balanced!}%
+		\fi
+		\pgfplotsprependlistXlet\pgfplots@loc@TMPa={resultlist}%
+		\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+	}%
+	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+%\message{I have performed partial reversion of '#1' and got     '\pgfplotsretval'!}%
+	\endgroup
 }%
 
 % A special '<' operation which returns true if the point coordinate
