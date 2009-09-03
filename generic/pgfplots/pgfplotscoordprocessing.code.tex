@@ -1468,6 +1468,8 @@
 % - handle stacked plots and error bars,
 % - store the complete state of the plot's preprocessing in an
 %   internal datastructure for later completion.
+%   This involves a serialization of all processed points (i.e. the
+%   generation of a long coordinate list)
 %
 % Any \addplot command should issue \pgfplots@PREPARE@COORD@STREAM
 % eventually.
@@ -1755,7 +1757,7 @@
 	% This here is the MAIN code of \pgfplots@process@one@point .
 	% It is inserted below into the right, into one of two prepared
 	% places.
-	\def\pgfplots@loc@TMPa{%
+	\def\pgfplots@loc@surveypoint{%
 		\ifpgfplots@apply@datatrafo
 			\ifpgfplots@datascaletrafo@initialised
 				% apply data transformation directly.
@@ -1806,15 +1808,6 @@
 			\E\pgfplots@PREPARE@errorbar@process@z%
 		\fi
 		%
-		% Store normalized point for list:
-		% We need
-		% xi,yi,zi,mi;
-		% where zi and mi may be empty. mi is the per-point meta
-		% information. It is used for per-coordinate marker
-		% modifications (like colormaps for scatter plots).
-		\E\edef\E\pgfplots@loc@TMPa{\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z,\E\pgfplots@current@point@meta;}%
-		\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfplots@loc@TMPa}%
-		%
 		\ifpgfplots@collect@firstplot@astick
 			\ifnum\pgfplots@numplots=0
 				\E\ifx\E\pgfplots@firstplot@coords@x\E\pgfutil@empty
@@ -1840,6 +1833,17 @@
 				\fi
 			\fi
 		\fi
+		%
+	}%
+	\def\pgfplots@loc@performserizalization{%
+		% Store normalized point for list:
+		% We need
+		% xi,yi,zi,mi;
+		% where zi and mi may be empty. mi is the per-point meta
+		% information. It is used for per-coordinate marker
+		% modifications (like colormaps for scatter plots).
+		\E\edef\E\pgfplots@loc@TMPa{\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z,\E\pgfplots@current@point@meta;}%
+		\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfplots@loc@TMPa}%
 	}%
 	% The following code assembles the command which is executed for
 	% each coordinate.
@@ -1911,30 +1915,43 @@
 			\fi
 		\fi
 		%
+		% check if coordinates are bounded:
+		\E\pgfplots@loc@tmptrue
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
-			\ifpgfplots@warn@for@filter@discards
-				\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the x-coordinate filter.}%
-			\fi
+			\E\pgfplots@loc@tmpfalse
+			\E\def\E\pgfplots@unbounded@dir{x}%
 		\E\else
 			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
-				\ifpgfplots@warn@for@filter@discards
-					\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the y-coordinate filter.}%
-				\fi
+				\E\pgfplots@loc@tmpfalse
+				\E\def\E\pgfplots@unbounded@dir{y}%
 			\E\else
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
-						\ifpgfplots@warn@for@filter@discards
-							\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered,\E\pgfplots@current@point@z@unfiltered) has been dropped because of the z-coordinate filter.}%
-						\fi
+						\E\pgfplots@loc@tmpfalse
+						\E\def\E\pgfplots@unbounded@dir{z}%
 					\E\else
-						% insert the main 3d code here:
-						\pgfplots@loc@TMPa
 					\E\fi
-				\else
-					% insert the main 2d code here:
-					\pgfplots@loc@TMPa
 				\fi
 			\E\fi
+		\E\fi
+		%
+		\E\ifpgfplots@loc@tmp
+			% coordinate is bounded, ok.
+			% insert the main 2d/3d code here:
+			\pgfplots@loc@surveypoint
+			\pgfplots@loc@performserizalization
+		\E\else
+			\if\pgfplots@unbounded@handler d% unbounded coords=discard
+				\ifpgfplots@warn@for@filter@discards
+					\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the \E\pgfplots@unbounded@dir-coordinate filter.}%
+				\fi
+			\else
+				% unbounded coords=jump
+				\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
+				\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
+				\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
+				\pgfplots@loc@performserizalization
+			\fi
 		\E\fi
 		%
 		% increase \pgfplots@current@point@coordindex:
@@ -3571,11 +3588,13 @@
 \def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3,/pgfplots/mesh/ordering/rowwise}%
+	%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
+	%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 	\ifx\pgfplots@plot@domain\pgfutil@empty
@@ -4834,8 +4853,9 @@
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\pgfplots@coord@stream@INIT@finalize@storedcoords@prepare@scaletrafomacro
 	%
-	% Will be inserted in one of two possible places below:
-	\def\pgfplots@loc@TMPa{%
+	% Will be inserted in one of two possible places below (to collect
+	% marker positions)
+	\def\pgfplots@visualize@performserizalization{%
 		\ifnum\pgfplots@perpointmeta@choice=0
 			% we don't have per-point meta data. Nothing special to
 			% do:
@@ -4882,11 +4902,11 @@
 								\E\else
 									\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
 									\E\else
-										\pgfplots@loc@TMPa
+										\pgfplots@visualize@performserizalization
 									\E\fi
 								\E\fi
 							\else
-								\pgfplots@loc@TMPa
+								\pgfplots@visualize@performserizalization
 							\fi
 						\E\fi
 					\E\fi
@@ -4911,8 +4931,23 @@
 			\pgfplots@coord@stream@finalize@currentpt
 		}%
 	\fi
+	\if\pgfplots@unbounded@handler j% unbounded coords=jump
+		\t@pgfplots@tokb=\expandafter{\pgfplots@coord@stream@coord@}%
+		\edef\pgfplots@coord@stream@coord@{%
+			\noexpand\ifx\noexpand\pgfplots@current@point@x\noexpand\pgfutil@empty
+				\noexpand\pgfplots@plot@handler@visualize@jump
+			\noexpand\else
+				\the\t@pgfplots@tokb
+			\noexpand\fi
+		}%
+	\fi
 	%
 }
+
+\def\pgfplots@plot@handler@visualize@jump{%
+	\pgfplotstreamend
+	\pgfplotstreamstart
+}%
 
 % Defines an optimized and matching \pgfplots@apply@data@scaletrafo@to@one@point 
 % during the coordinate finalization step in \end{axis}.
