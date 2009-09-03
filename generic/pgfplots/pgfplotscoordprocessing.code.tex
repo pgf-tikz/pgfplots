@@ -2848,9 +2848,9 @@
 			\ifx\pgfplots@perpointmeta@unboundedwarning@stop\relax
 				\begingroup
 					\pgfmathfloattofixed{##1}%
-					\pgfplots@warning{The per point meta data `\pgfmathresult' (and probably others as well) is unbounded - using the minimum value instead.}%
+					\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
 				\endgroup
-				\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
+				%\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
 			\fi
 		}%
 	\else
@@ -5684,17 +5684,61 @@
 			\fi
 		\fi
 		% PREPARE THE STREAM PROCESSING:
+		\def\pgfplots@plot@handler@visualize@jump{%
+			\pgfplotstreampoint{\pgf@x=-16000.0pt \pgf@y=-16000.0pt }%
+		}%
+		\def\pgfplotsplothandlermesh@check@unbounded####1####2\relax{%
+			\ifdim####1=-16000pt
+				\pgfplots@loc@tmpfalse
+			\fi
+		}%
 		\if\pgfplotsplothandlermesh@ONEDIMMODE1%
 			% Special case: 1D mesh processing
 			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
 			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@line
+			\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@line
+			\def\pgfplotsplothandlermesh@process@element{%
+				\pgfplotsplothandlermesh@draw@element
+					\pgfplotsplothandlermesh@i
+					\pgfplotsplothandlermesh@im
+			}%
+			\if\pgfplots@unbounded@handler j%
+				% unbounded coords=jump:
+				% append checks for unbounded coords to
+				% \pgfplotsplothandlermesh@process@element
+				\t@pgfplots@tokb={%
+					\pgfplots@loc@tmptrue
+					\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i\relax
+					\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im\relax
+				}%
+				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@process@element}%
+				\edef\pgfplotsplothandlermesh@process@element{%
+					\the\t@pgfplots@tokb
+					\noexpand\ifpgfplots@loc@tmp
+						\the\t@pgfplots@toka
+					\noexpand\fi
+				}%
+			\fi
 			\if\pgfplotsplothandlermesh@zbuffer@choice4%
 				% z buffer=sort:
 				% create a z buffer:
 				% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
 				\pgfplotsarraynewempty\pgfplots@zbuffer@local
+				%
+				% and collect each point into the z buffer:
+				\def\pgfplotsplothandlermesh@process@element{%
+					\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+					% assemble array element:
+					\edef\pgfplots@loc@TMPa{%
+						{\pgfmathresult}%
+						{%
+							{\pgfplotsplothandlermesh@i}%
+							{\pgfplotsplothandlermesh@im}%
+						}%
+					}%
+					\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+				}%
 			\fi
 		\else
 			% ok, normal 2D mesh processing:
@@ -5708,15 +5752,25 @@
 				% colwise:
 				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
 			\fi
+			\def\pgfplotsplothandlermesh@process@element{%
+				\pgfplotsplothandlermesh@draw@element
+					\pgfplotsplothandlermesh@im@jm
+					\pgfplotsplothandlermesh@im@j
+					\pgfplotsplothandlermesh@i@j
+					\pgfplotsplothandlermesh@i@jm
+			}%
 			% Init memory:
 			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
 			\advance\c@pgfplots@scanlineindex by1
 			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
 			%
 			\if2\pgfplotsplothandlermesh@shader
-				% shader=interp  does not support z buffering.
+				% shader=interp  does not support z buffer=sort.
 				% It also has its own \pgf@plotstreampoint method, see
 				% above.
+				\def\pgfplots@plot@handler@visualize@jump{%
+					\pgfplots@error{Sorry, shader=interp does not support 'unbounded coords=jump'. Please use 'shader=flat' for this case.}%
+				}%
 			\else
 				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
 				\if\pgfplotsplothandlermesh@zbuffer@choice4%
@@ -5724,12 +5778,48 @@
 					% create a z buffer:
 					% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
 					\pgfplotsarraynewempty\pgfplots@zbuffer@local
+					%
+					% and collect each point into the z buffer
+					% (instead of drawing it):
+					\def\pgfplotsplothandlermesh@process@element{%
+						\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+						% assemble array element:
+						\edef\pgfplots@loc@TMPa{%
+							{\pgfmathresult}%
+							{%
+								{\pgfplotsplothandlermesh@im@jm}%
+								{\pgfplotsplothandlermesh@im@j}%
+								{\pgfplotsplothandlermesh@i@j}%
+								{\pgfplotsplothandlermesh@i@jm}%
+							}%
+						}%
+						\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+					}%
+				\fi
+				\if\pgfplots@unbounded@handler j%
+					% unbounded coords=jump:
+					% append checks for unbounded coords to
+					% \pgfplotsplothandlermesh@process@element
+					\t@pgfplots@tokb={%
+						\pgfplots@loc@tmptrue
+						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@j\relax
+						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@jm\relax
+						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@j\relax
+						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@jm\relax
+					}%
+					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@process@element}%
+					\edef\pgfplotsplothandlermesh@process@element{%
+						\the\t@pgfplots@tokb
+						\noexpand\ifpgfplots@loc@tmp
+							\the\t@pgfplots@toka
+						\noexpand\fi
+					}%
 				\fi
 			\fi
 			%
 			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-			\global\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
+			\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
 		\fi
 		\c@pgfplots@scanlineindex=0
 	}%
@@ -5860,27 +5950,7 @@
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\ifnum\c@pgfplots@scanlineindex>0
-		\if\pgfplotsplothandlermesh@zbuffer@choice4%
-			% z buffer=sort:
-			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-			% assemble array element:
-			\edef\pgfplots@loc@TMPa{%
-				{\pgfmathresult}%
-				{%
-					{\pgfplotsplothandlermesh@im@jm}%
-					{\pgfplotsplothandlermesh@im@j}%
-					{\pgfplotsplothandlermesh@i@j}%
-					{\pgfplotsplothandlermesh@i@jm}%
-				}%
-			}%
-			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
-		\else
-			\pgfplotsplothandlermesh@draw@element
-				\pgfplotsplothandlermesh@im@jm
-				\pgfplotsplothandlermesh@im@j
-				\pgfplotsplothandlermesh@i@j
-				\pgfplotsplothandlermesh@i@jm
-		\fi
+		\pgfplotsplothandlermesh@process@element
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
@@ -5979,23 +6049,7 @@
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
 	\ifnum\c@pgfplots@scanlineindex>0
-		\if\pgfplotsplothandlermesh@zbuffer@choice4%
-			% z buffer=sort:
-			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-			% assemble array element:
-			\edef\pgfplots@loc@TMPa{%
-				{\pgfmathresult}%
-				{%
-					{\pgfplotsplothandlermesh@i}%
-					{\pgfplotsplothandlermesh@im}%
-				}%
-			}%
-			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
-		\else
-			\pgfplotsplothandlermesh@draw@element
-				\pgfplotsplothandlermesh@i
-				\pgfplotsplothandlermesh@im
-		\fi
+		\pgfplotsplothandlermesh@process@element
 	\fi
 	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
 	\advance\c@pgfplots@scanlineindex by1
