@@ -1861,6 +1861,7 @@
 		\ifpgfplots@curplot@threedim
 		\E\let\E\pgfplots@current@point@z@unfiltered=\E\pgfplots@current@point@z
 		\fi
+		\E\def\E\pgfplots@unbounded@dir{}%
 		%
 		\E\pgfplots@prepare@xcoord{\E\pgfplots@current@point@x}%
 		\E\expandafter\E\pgfplots@invoke@filter\E\expandafter{\E\pgfmathresult}{x}%
@@ -1871,12 +1872,16 @@
 		\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
 		%
 		\ifpgfplots@xislinear
+			% NOTE: this handline of unbounded coords in the case of
+			% LOG coords is performed directly by
+			% \pgfplots@prepare@ycoord!
 			\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
 			\E\else
 				\E\pgfmathfloatparsenumber{\E\pgfplots@current@point@x}%
 				\E\expandafter\E\pgfmathfloat@decompose@F\E\pgfmathresult\E\relax\E\c@pgf@counta
 				\E\ifnum\E\c@pgf@counta>2 % this clears nan, inf and -inf points.
 					\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
+					\E\def\E\pgfplots@unbounded@dir{x}%
 				\E\else
 					\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
 				\E\fi
@@ -1890,6 +1895,7 @@
 				\E\expandafter\E\pgfmathfloat@decompose@F\E\pgfmathresult\E\relax\E\c@pgf@counta
 				\E\ifnum\E\c@pgf@counta>2
 					\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
+					\E\def\E\pgfplots@unbounded@dir{y}%
 				\E\else
 					\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
 				\E\fi
@@ -1908,6 +1914,7 @@
 					\E\expandafter\E\pgfmathfloat@decompose@F\E\pgfmathresult\E\relax\E\c@pgf@counta
 					\E\ifnum\E\c@pgf@counta>2
 						\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
+						\E\def\E\pgfplots@unbounded@dir{z}%
 					\E\else
 						\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
 					\E\fi
@@ -1919,38 +1926,54 @@
 		\E\pgfplots@loc@tmptrue
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
 			\E\pgfplots@loc@tmpfalse
-			\E\def\E\pgfplots@unbounded@dir{x}%
 		\E\else
 			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
 				\E\pgfplots@loc@tmpfalse
-				\E\def\E\pgfplots@unbounded@dir{y}%
 			\E\else
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
 						\E\pgfplots@loc@tmpfalse
-						\E\def\E\pgfplots@unbounded@dir{z}%
-					\E\else
 					\E\fi
 				\fi
 			\E\fi
 		\E\fi
 		%
 		\E\ifpgfplots@loc@tmp
-			% coordinate is bounded, ok.
+			% coordinate is bounded AND non-empty, ok.
 			% insert the main 2d/3d code here:
 			\pgfplots@loc@surveypoint
 			\pgfplots@loc@performserizalization
 		\E\else
+			% check whether we have UNBOUNDED or just unfiltered
+			% coords:
 			\if\pgfplots@unbounded@handler d% unbounded coords=discard
 				\ifpgfplots@warn@for@filter@discards
-					\E\pgfplots@message{NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi) has been dropped because of the \E\pgfplots@unbounded@dir-coordinate filter.}%
+					\E\pgfplots@message{%
+						NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi)
+						has been dropped because 
+						\E\ifx\E\pgfplots@unbounded@dir\E\pgfutil@empty
+							of the \E\pgfplots@unbounded@dir-coordinate filter.
+						\E\else
+							it is unbounded.
+						\E\fi
+					}%
 				\fi
 			\else
 				% unbounded coords=jump
-				\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
-				\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
-				\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
-				\pgfplots@loc@performserizalization
+				\E\ifx\E\pgfplots@unbounded@dir\E\pgfutil@empty
+					\ifpgfplots@warn@for@filter@discards
+						\E\pgfplots@message{%
+							NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi)
+							has been dropped because of a coordinate filter.
+						}%
+					\fi
+				\E\else
+					% make ALL empty to simplify special case checking:
+					\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
+					\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
+					\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
+					\pgfplots@loc@performserizalization
+				\E\fi
 			\fi
 		\E\fi
 		%
@@ -2312,10 +2335,12 @@
 \def\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting#1{%
 	\pgfplots@if{pgfplots@#1islinear}{%
 		\pgfmathfloatlessthan@
-			{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@lastcoord@x}%
+			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
+			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
 	}{%
 		\pgfplotsmathlessthan
-			{\pgfplots@currentplot@firstcoord@x}{\pgfplots@currentplot@lastcoord@x}%
+			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
+			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
 	}%
 	\ifpgfmathfloatcomparison
 		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}%
@@ -2850,7 +2875,7 @@
 					\pgfmathfloattofixed{##1}%
 					\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
 				\endgroup
-				%\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
+				\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
 			\fi
 		}%
 	\else
