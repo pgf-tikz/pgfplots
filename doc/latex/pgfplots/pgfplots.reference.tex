@@ -1921,41 +1921,62 @@ Please note that |\ifdim| compares \TeX\ lengths, so the example employs the suf
 
 \subsubsection{Interrupted Plots}
 \index{Interrupted Plots}%
-Sometimes it is desireable to draw parts of a single plot separately, without connection between the parts (discontinuities). There is limited support for such an application.
-\label{pgfplots:interrupt}
-\begin{pgfplotskey}{/pgfplots/forget plot=\marg{true,false} (initially false)}
-	This key tells \PGFPlots\ to add a plot without changing cycle list position and legends. This key is described in all detail on page~\pageref{pgfplots:forgetplot}.
+Sometimes it is desireable to draw parts of a single plot separately, without connection between the parts (discontinuities). This can be achieved using the \declaretext{unbounded coords} key combined with coordinate values |nan|, |inf| or |-inf|.
 
-	However, it can be used to get the interesting effect of ``interrupted plot'', so it is also discussed here:
-\begin{codeexample}[width=4cm]
+\begin{pgfplotskey}{unbounded coords=\mchoice{discard,jump} (initially discard)}
+	This key configures what to do if one or more coordinates of a single point are unbounded. Here, unbounded means it is either $\pm \infty$ or it has the special ``not--a--number'' value |nan|.
+
+	The initial setting |discard| discards the complete point and a warning is issued in the log file\footnote{The warning can be disabled with \texttt{filter discard warning=false}.}. This setting has the same effect as if the unbounded point did not occur: lines will be drawn between the neighboring points.
+
+	The alternative setting |jump| allows interrupted plots: it provides extra checking for these coordinates and does not interpolate over them; only those line segments which are adjacent to unbounded coordinates will be skipped. This does also work for mesh-- and surface plots: in this case, adjacent faces won't be drawn.
+\begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[
-	width=10cm, height=210pt,
-	xmin=-4.7124, xmax=4.7124,
-	ymin=-10, ymax=10,
-	xtick={-4.7124,-1.5708,...,10},
-	xticklabels={$-\frac32 \pi$,$-\pi/2$,$\pi/2$,$\frac32 \pi$},
-	axis x line=center,axis y line=center,
-	no markers,
-	samples=100]
+	title=Discarding unbounded coords,
+	unbounded coords=jump]
 
-% Use gnuplot as calculator here. The first two plots won't be counted:
-\addplot gnuplot[id=tan0,forget plot,domain=-1.5*pi+0.003:-0.5*pi-0.003] {tan(x)};
-\addplot gnuplot[id=tan1,forget plot,domain=-0.5*pi+0.003: 0.5*pi-0.003] {tan(x)};
-\addplot gnuplot[id=tan2,            domain= 0.5*pi+0.003: 1.5*pi-0.003] {tan(x)};
-\legend{$\tan(x)$}
+	\addplot coordinates {
+		(0,0) (10,50) (20,100) (30,200) 
+		(40,inf) (50,600) (60,800) (80,1000)
+	};
+\end{axis}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{axis}[
+	title=Jumps at unbounded coords,
+	unbounded coords=jump]
+	\addplot coordinates {
+		(0,0) (10,50) (20,100) (30,200) 
+		(40,inf) (50,600) (60,800) (80,1000)
+	};
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	
-	The interesting part is in the |\addplot| commands. The |id| is specific to the gnuplot interface (and can be omitted). The |domain| option defines separate domains for every plot part. Due to the |forget plot| key, the |cycle list| position is not updated so all three plots use the same line specification. Furthermore, only the last command affects the legend (and advances the cycle list).
 
-	\paragraph{Remark:} The |forget plot| feature is \emph{not very sophisticated}. In particular, it has the following \textbf{restrictions}:
-	\begin{enumerate}
-		\item Besides the |cycle list| side--effect, no styles are communicated between successive plots.
-		\item It won't work together with |stack plots|.
-	\end{enumerate}
+	For plot expression and its friends, it is more likely to get very large floating point numbers instead of |inf|. In this case, consider using the \declaretext{restrict x to domain} key described on page~\pageref{key:restrict:x:to:domain}.
+
+	The |unbounded coords=jump| method does also work for mesh/surface plots: every face adjacent to an unbounded coordinate will be discarded in this case. The following example sets up a (cryptic) coordinate filter which cuts out a quarter of the domain and replaces its values with |nan|:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	unbounded coords=jump,
+	% A technical filter to cut out the x<0 and y<0  edge.
+	filter point/.code={%
+		\pgfmathparse{\pgfkeysvalueof{/data point/x}<0}%
+		\ifpgfmathfloatcomparison
+			\pgfmathparse{\pgfkeysvalueof{/data point/y}<0}%
+			\ifpgfmathfloatcomparison
+				\pgfkeyssetvalue{/data point/x}{nan}%
+			\fi
+		\fi
+	},
+	]
+	\addplot3[surf] {exp(-sqrt(x^2 + y^2))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 \end{pgfplotskey}
+
 
 \subsection{Three Dimensional Plot Types}
 \PGFPlots\ comes provides three dimensional visualizations like scatter, line, mesh or surface plots. This section explains the methods to provide input coordinates and how to use the different plot types.
@@ -7546,6 +7567,36 @@ There is also a style key which simplifies selection by index, see below.
 \end{tikzpicture}
 \end{codeexample}
 \end{stylekey}
+
+\begin{pgfplotskey}{each nth point=\marg{integer}\marg{value for discards}}
+	A style which appends an |x filter| which discards all but each $n$th input coordinate.
+\index{Downsampling}
+\end{pgfplotskey}
+
+\begin{pgfplotsxykey}{restrict \x\space to domain=\meta{min}|:|\meta{max}}
+\label{key:restrict:x:to:domain}
+	Appends $x$ (or $y$ or $z$) coordinate filters which set the respective coordinate to |-inf| if it is below \meta{min} and to |+inf| if it is above \meta{max}.
+
+	Furthermore, it sets the |unbounded coords=jump| key which leads to interrupted plots.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	restrict y to domain=-10:10,
+	samples=1000,
+	% some fine tuning for the display:
+	width=10cm, height=210pt,
+	xmin=-4.7124, xmax=4.7124,
+	xtick={-4.7124,-1.5708,...,10},
+	xticklabels={$-\frac32 \pi$,$-\pi/2$,$\pi/2$,$\frac32 \pi$},
+	axis x line=center,
+	axis y line=center]
+
+\addplot[blue] gnuplot[id=tangens,domain=-1.5*pi:1.5*pi] {tan(x)};
+\legend{$\tan(x)$}
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{pgfplotsxykey}
 
 \begin{pgfplotskey}{filter discard warning=\mchoice{true,false} (initially true)}
 	Issues a notification in your logfile whenever coordinate filters discard coordinates.
