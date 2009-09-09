@@ -47,19 +47,17 @@
 % Example: 
 % \pgfplotscreatecolormap{my map}{rgb(0cm)=(1,0,0); rgb(1cm)=(0,1,0); rgb255(1.5cm)=(128,5,255); rgb(2cm)=(0,0,1); gray(3cm)=(3);  color(4cm)=(green); }
 % \pgfplotscreatecolormap{my map}{color=(green); color=(red); color=(blue); color=(yellow)}
-\def\pgfplotscreatecolormap#{%
-	\pgfplots@createcolormap
-}
+\def\pgfplotscreatecolormap#{\pgfplots@createcolormap}%
 \def\pgfplots@createcolormap#1#2{%
 	\edef\pgfplots@createcolormap@name{pgfpl@cm@#1}%
 	\expandafter\pgfplotsarraynewempty\expandafter{\pgfplots@createcolormap@name}%
 	\def\pgfplots@createcolormap@MIN{0}% NORMALIZATION: assume that lower-end is 0pt.
-	\let\pgfplots@createcolormap@H=\pgfutil@empty
 	\def\pgfplots@createcolormap@MAX{0}% To be computed.
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MIN
 	% PARSE IT:
 	\edef\pgfplots@loc@TMPa{#2}%
-	\expandafter\pgfplots@createcolormap@\pgfplots@loc@TMPa\pgfplots@EOI
+	% this does also init @H:
+	\expandafter\pgfplots@createcolormap@startloop\pgfplots@loc@TMPa\pgfplots@EOI
 	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 	% sanity checking:
 	\expandafter\pgfplotsarraysizetomacro\expandafter{\pgfplots@createcolormap@name}\to\pgfplots@loc@TMPa
@@ -76,8 +74,22 @@
 	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
 	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
-%\pgfplots@colormap@showdebuginfofor{#1}%
+\pgfplots@colormap@showdebuginfofor{#1}%
 }
+\def\pgfplots@createcolormap@seth[#1]{%
+	\pgfmathparse{#1}%
+	\let\pgfplots@createcolormap@H=\pgfmathresult
+	\pgfplots@createcolormap@
+}%
+
+\def\pgfplots@createcolormap@startloop{%
+	\pgfutil@ifnextchar[%
+		{\pgfplots@createcolormap@seth}%
+		{%
+			\let\pgfplots@createcolormap@H=\pgfutil@empty
+		 	\pgfplots@createcolormap@
+		}%
+}%
 \def\pgfplots@createcolormap@{%
 	\pgfutil@ifnextchar\pgfplots@EOI{\pgfutil@gobble}%done!
 	{%
@@ -108,6 +120,7 @@
 	\pgfutil@ifnextchar({%
 		\pgfplots@createcolormap@next@
 	}{%
+		% determine next step size automatically:
 		\ifx\pgfplots@createcolormap@H\pgfutil@empty
 			\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 			\ifpgfplotsarrayempty
@@ -197,7 +210,7 @@
 	\ifdim#4pt>1pt
 		\pgfplots@createcolormap@rgbrangeexception{#2}{#3}{#4}%
 	\fi
-	% Process 'h':
+	% compute 'h':
 	\pgfmathparse{#1}%
 	\let\pgfplots@createcolormap@MAX=\pgfmathresult
 	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
@@ -220,13 +233,58 @@
 		\pgfmathapproxequalto@{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
 		\ifpgfmathcomparison
 		\else
-			\pgfplots@error{Sorry, non-uniform colormaps are not yet implemented. Please maintain a uniform distance before offset #1 (in this case, I expected h = \pgfplots@createcolormap@H pt).}%
+			\pgfmathdivide@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
+			% after this group, \pgfmathresult is
+			% - empty if no reinterpolation is possible,
+			% - non-empty if reinterpolation IS possible. In this
+			%   case, it contains the integer multiple of H.
+			\begingroup
+				\afterassignment\pgfplots@createcolormap@nextRGB@consider@reinterpolation
+				\c@pgf@counta=\pgfmathresult\relax
+				\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\if\pgfmathresult\pgfutil@empty
+				% I can't do that yet.
+				\pgfplots@error{Sorry, non-uniform colormaps are only partially implemented, yet: the provided points must be multiples of the mesh width h=\pgfplots@createcolormap@H pt. Perhaps it helps to provide the mesh widths as argument as in {<name>}{[1cm] <color arguments>}?}%
+			\else
+				\let\pgfplots@loc@TMPb=\pgfmathresult
+				% interpolate missing values using the already fixed H.
+				% This interpolation procedure is stupid because it works
+				% only in forward direction - but it works at least.
+				% For the backwards direction, you can provide the
+				% meshwidth explicitly at
+				% \pgfplotscreatecolormap[h]{}{}
+				\pgfplotsforeachungrouped \c@pgfplots@createcolormap in {1,2,...,\pgfplots@loc@TMPb} {%
+					\ifdim\c@pgfplots@createcolormap pt=\pgfplots@loc@TMPb pt
+						% omit the last.
+					\else
+						\pgfmathparse{\pgfplots@createcolormap@lastR + \c@pgfplots@createcolormap/\pgfplots@loc@TMPb * ( #2 - \pgfplots@createcolormap@lastR )}%
+						\let\pgfplots@createcolormap@nextR=\pgfmathresult
+						\pgfmathparse{\pgfplots@createcolormap@lastG + \c@pgfplots@createcolormap/\pgfplots@loc@TMPb * ( #3 - \pgfplots@createcolormap@lastG )}%
+						\let\pgfplots@createcolormap@nextG=\pgfmathresult
+						\pgfmathparse{\pgfplots@createcolormap@lastB + \c@pgfplots@createcolormap/\pgfplots@loc@TMPb * ( #4 - \pgfplots@createcolormap@lastB )}%
+						%
+						\edef\pgfplots@loc@TMPa{%
+							\noexpand\pgfplotsarraypushback{\pgfplots@createcolormap@nextR,\pgfplots@createcolormap@nextG,\pgfmathresult}%
+							\noexpand\to}%
+						\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
+					\fi
+				}%
+			\fi
 		\fi
 	\fi
-	%
-	% Append values:
 	\def\pgfplots@loc@TMPa{\pgfplotsarraypushback{#2,#3,#4}\to}%
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
+	\edef\pgfplots@createcolormap@lastR{#2}%
+	\edef\pgfplots@createcolormap@lastG{#3}%
+	\edef\pgfplots@createcolormap@lastB{#4}%
+}%
+\def\pgfplots@createcolormap@nextRGB@consider@reinterpolation#1\relax{%
+	\ifdim#1pt<0.0005pt
+		\edef\pgfmathresult{\the\c@pgf@counta}%
+	\else
+		\let\pgfmathresult=\pgfutil@empty
+	\fi
 }%
 
 % Shows debug info about colormap #1 into the console.
