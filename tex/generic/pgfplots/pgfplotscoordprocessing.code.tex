@@ -1035,11 +1035,12 @@
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
 }
 
-% Takes Pitch '#1' and Yaw '#2' (both in degrees) and computes 
+% Takes azimuth (horizontal angle) '#1' and elongation (vertical
+% angle) '#2' (both in degrees) and computes 
 % x,y and z vectors which define the view in the direction
 % defined by '#1' and '#2'.
 %
-% 'Pitch' means a rotation around the viewport's x axis. 'Yaw' means
+% 'azimuth' means a rotation around the viewport's x axis. 'elongation' means
 % a rotation around the original coordinate system's z axis.
 %
 % The method works by computing 
@@ -1122,11 +1123,34 @@
 	\fi
 	\if r\pgfplots@loc@dirvalue@y
 		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPb}%
-		\xdef\pgfplots@glob@TMPa{\noexpand\pgfqpointscale{-1}{\the\t@pgfplots@toka}}%
+		\xdef\pgfplots@glob@TMPb{\noexpand\pgfqpointscale{-1}{\the\t@pgfplots@toka}}%
 	\fi
 	\if r\pgfplots@loc@dirvalue@z
 		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPc}%
-		\xdef\pgfplots@glob@TMPa{\noexpand\pgfqpointscale{-1}{\the\t@pgfplots@toka}}%
+		\xdef\pgfplots@glob@TMPc{\noexpand\pgfqpointscale{-1}{\the\t@pgfplots@toka}}%
+	\fi
+	%
+	\def\pgfplots@extract@plot@box@ratio##1##2##3##4\pgfplots@EOI{%
+		\pgfmathparse{##1}\let\pgfplots@plotboxratio@x=\pgfmathresult
+		\pgfmathparse{##2}\let\pgfplots@plotboxratio@y=\pgfmathresult
+		\pgfmathparse{##3}\let\pgfplots@plotboxratio@z=\pgfmathresult
+	}%
+	\pgfkeysgetvalue{/pgfplots/plot box ratio}\pgfplots@loc@TMPa
+	\expandafter\pgfplots@extract@plot@box@ratio\pgfplots@loc@TMPa{1}{1}{1}\pgfplots@EOI
+	\ifdim\pgfplots@plotboxratio@x pt=1pt
+	\else
+		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+		\xdef\pgfplots@glob@TMPa{\noexpand\pgfqpointscale{\pgfplots@plotboxratio@x}{\the\t@pgfplots@toka}}%
+	\fi
+	\ifdim\pgfplots@plotboxratio@y pt=1pt
+	\else
+		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPb}%
+		\xdef\pgfplots@glob@TMPb{\noexpand\pgfqpointscale{\pgfplots@plotboxratio@y}{\the\t@pgfplots@toka}}%
+	\fi
+	\ifdim\pgfplots@plotboxratio@z pt=1pt
+	\else
+		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPc}%
+		\xdef\pgfplots@glob@TMPc{\noexpand\pgfqpointscale{\pgfplots@plotboxratio@z}{\the\t@pgfplots@toka}}%
 	\fi
 	%
 	% n (3D!)
@@ -2863,13 +2887,15 @@
 % The trafo will be skipped if there is no such data.
 %
 % The trafo is expected to prepare meta information before it is used
-% as input to \pgfplotscolormapaccess. Thus, the 10^k is chosen to be 
+% as input to \pgfplotscolormapaccess (or
+% \pgfplotscolormapdefinemappedcolor). Thus, the 10^k is chosen to be 
 % the same as \pgfplotscolormaprange (which is 1000 per default).
 %
 % If there is no data range (for example because meta information is
 % not available or is not of numeric type), the trafo will simply
 % copy the input argument symbolically.
 \def\pgfplots@perpointmeta@preparetrafo{%
+	\let\pgfplots@current@point@meta=\pgfutil@empty
 	\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
 	\ifpgfplots@warn@for@filter@discards
 		\global\let\pgfplots@perpointmeta@unboundedwarning@stop=\relax
@@ -2967,8 +2993,9 @@
 }%
 \def\pgfplots@perpointmeta@trafo@APPLY{%
 	\ifx\pgfplots@current@point@meta\pgfutil@empty%
-		\pgfplots@error{could not access the data source for color maps. Maybe you need to add '\string\addplot\space plot[point meta=y]' or something like that?}%
+		\pgfplots@error{could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\string\addplot[point meta=y]' or something like that?}%
 		\pgfmathfloatcreate{1}{1.0}{0}%
+		\let\pgfplotspointmeta=\pgfmathresult
 		\def\pgfplotspointmetatransformed{1.0}%
 	\else
 		% prepare arguments:
@@ -3342,6 +3369,7 @@
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
 	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
+	\pgfkeysgetvalue{/pgfplots/variable y}\pgfplots@plot@var@y
 	% 
 	% \tikz@plot@var is '\x' be default:
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
@@ -3349,10 +3377,12 @@
 	{%
 		\escapechar=-1
 		\xdef\pgfplots@glob@TMPa{\expandafter\string\tikz@plot@var}%
+		\xdef\pgfplots@glob@TMPb{\expandafter\string\pgfplots@plot@var@y}%
 	}%
 	% \pgfplots@plot@var@nonmacro is the value '\tikz@plot@var'
 	% without the '\', i.e. 'x' by default:
 	\let\pgfplots@plot@var@nonmacro=\pgfplots@glob@TMPa
+	\let\pgfplots@plot@var@y@nonmacro=\pgfplots@glob@TMPb
 	%
 	% Check if we have to sample a line.
 	\def\pgfplots@addplotimpl@expression@samplesLINE{0}%
@@ -3441,12 +3471,12 @@
 			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
 			%  macro:
 			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachungrouped\noexpand\y in {\pgfplots@expression@ydomain} 
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain} 
 					{\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}}%
 		\else
 			% sample a line:
 			\def\pgfplots@plot@ydomain{0:0}%
-			\def\y{y}% this provides an error message, see above.
+			\expandafter\edef\pgfplots@plot@var@y{\pgfplots@plot@var@y@nonmacro}% this provides an error message, see above.
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}%
 		\fi
@@ -3508,7 +3538,7 @@
 			\edef\pgfplots@plot@data##1{
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa} {##1}}%
 		\fi
-		\def\y{0}%
+		\expandafter\def\pgfplots@plot@var@y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
 		\def\pgfplots@current@point@z{}%
 	\fi
@@ -3532,9 +3562,9 @@
 	\pgfplotsmathdeclarepseudoconstant{\pgfplots@plot@var@nonmacro}{\edef\pgfmathresult{\tikz@plot@var}}%
 	\if0\pgfplots@addplotimpl@expression@samplesLINE
 		% surface:
-		\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\y}%
+		\pgfplotsmathdeclarepseudoconstant{\pgfplots@plot@var@y@nonmacro}{\edef\pgfmathresult{\pgfplots@plot@var@y}}%
 	\else
-		\pgfplotsmathdeclarepseudoconstant{y}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
+		\pgfplotsmathdeclarepseudoconstant{\pgfplots@plot@var@y@nonmacro}{\pgfplots@noy@error\def\pgfmathresult{0.0}}%
 	\fi
 	% remember them here:
 	\let\pgfplots@addplotimpl@expression@pseudoconst@x=\pgfmathx@
@@ -3566,8 +3596,13 @@
 \long\def\pgfplots@addplotimpl@expression@curly@#1#2#3#4{%
 	\pgfplots@gettikzinternal@keyval{variable}{tikz@plot@var}{\x}%
 	\ifpgfplots@curplot@threedim
+		\t@pgfplots@toka={,#3}%
 		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
-		\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{\y,#3}{#4}%
+		\edef\pgfplots@loc@TMPb{%
+			{\expandafter\noexpand\tikz@plot@var}%
+			{\noexpand\pgfplots@plot@var@y\the\t@pgfplots@toka}%
+		}%
+		\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb{#4}%
 	\else
 		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
 		\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#3}{#4}%
@@ -4831,17 +4866,21 @@
 	% Init the plot handlers:
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	\def\pgfplots@loc@TMPa{0}% <-- if (collectmark positions)
 	\ifpgfplots@scatterplotenabled
-		\ifx\tikz@plot@mark\pgfutil@empty
-			\pgfplots@warning{I am confused: A scatter plot with 'mark=none'? This may need attention...?}%
-		\fi
+		\def\pgfplots@loc@TMPa{1}% collect mark positions even if 'mark=none'! scatter might not even use markers.
+	\fi
+	\ifx\tikz@plot@mark\pgfutil@empty
+	\else
+		\def\pgfplots@loc@TMPa{1}%
 	\fi
 	%
-	\ifx\tikz@plot@mark\pgfutil@empty
+	\if\pgfplots@loc@TMPa0%
 		% mark=none : no need to waste time collecting marker
 		% positions.
 		\pgfplots@record@marker@streamfalse
 	\else
+		% we need markers.
 		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
 			\ifpgfplots@clip@marker@paths
 				% only marks: draw markers directly; no need for the
@@ -5592,13 +5631,7 @@
 			% Prepare:
 			\pgfplots@perpointmeta@preparetrafo
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
-				\expandafter\pgfplotscolormapaccess\expandafter[\pgfplotspointmetatransformedrange]
-					[1.0]
-					{\pgfplotsplothandlermesh@shader@cellcolor}%
-					{\pgfkeysvalueof{/pgfplots/colormap name}}
-%\message{Color for current point is RGB '\pgfmathresult' (determined using meta 'phi(\pgfplotspointmeta) = \pgfplotspointmetatransformed'). metarange = [\pgfplots@metamin:\pgfplots@metamax] }%
-				\def\pgfplots@loc@TMPb{\pgfutil@definecolor{mapped color}{rgb}}%
-				\expandafter\pgfplots@loc@TMPb\expandafter{\pgfmathresult}%
+				\pgfplotscolormapdefinemappedcolor{\pgfplotsplothandlermesh@shader@cellcolor}%
 %				\pgfplotsplothandlermesh@setcolor{mapped color}%
 				% This activates tikz colors:
 %\message{executing \meaning\pgfplots@drawoptions'}%
