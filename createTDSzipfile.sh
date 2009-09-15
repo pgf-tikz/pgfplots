@@ -19,6 +19,7 @@ tar czf pgfplots.tgz \
 		 --exclude='*.ind' \
 		 --exclude='*.dvi' \
 		 --exclude='*.blg' \
+		 --exclude='potentialauthors.txt' \
 		 --exclude='pgfplots/doc/latex/pgfplots/gnuplot/*' \
 		 --exclude='pgfplots/doc/latex/pgfplots/gallery' \
 		 --exclude='pgfplots/generic/pgfplots/oldpgfcompatib/generatesymlinks.sh' \
