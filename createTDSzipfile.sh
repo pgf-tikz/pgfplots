@@ -6,6 +6,10 @@
 # assuming that pgfplots is in  '../pgfplots'
 #
 # This script is NOT part of the final pgfplots release.
+#
+
+echo 'FIXME. THIS IS NO LONGER UP-TO-DATE : THE REPOS IS ALREADY TDS'
+exit 1
 
 cd `dirname $0`/..
 rm -f pgfplots.tgz
