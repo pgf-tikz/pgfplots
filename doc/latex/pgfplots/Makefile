@@ -9,6 +9,7 @@ pgfplots: pgfplots.pdf
 pgfplotstable: pgfplotstable.pdf
 
 %.pdf: FORCE
+	if test -nd gnuplot; then mkdir gnuplot; fi
 	@$(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
