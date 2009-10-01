@@ -940,7 +940,7 @@
           \fi}%
         \obeylines
         \everypar \expandafter{\the\everypar \unpenalty}%
-\tracingmacros=2 \tracingcommands=2
+%\tracingmacros=2 \tracingcommands=2
 %\showzeug#1\endshowzeug
         \pgfmanualprettyprintcode{#1}%
 	}
@@ -995,7 +995,7 @@
 	\endgroup
 }%
 % DISABLE:
-%\long\def\pgfmanualprettyprintcode#1{#1}%
+\long\def\pgfmanualprettyprintcode#1{#1}%
 
 \def\pgfmanualprettyprintstyles{%
 	\def\{{\pgfmanual@pretty@lbrace}%
@@ -1021,10 +1021,12 @@
 	\catcode`\[=12
 	\catcode`\]=12
 	\catcode`\,=12
+	\catcode`\ =10\relax\gdef\pgfmanual@pretty@space{ }%
 	\gdef\pgfmanual@pretty@lbracket{[}%
 	\gdef\pgfmanual@pretty@rbracket{]}%
 	\gdef\pgfmanual@pretty@comma{,}%
-	\catcode`\ =10\relax\gdef\pgfmanual@pretty@space{ }%
+	\catcode`\==12
+	\gdef\pgfmanual@pretty@eq{=}%
 \endgroup
 
 % loops through all tokens.
@@ -1133,33 +1135,41 @@
 % #1 is a single token.
 \def\pgfmanual@pretty@collectargs@loop#1{%
 	\let\pgfmanual@pretty@collectargs@loop@NEXT=\pgfmanual@pretty@collectargs@loop
-	\if#1\pgfmanual@pretty@lbrace
-		\advance\c@pgfmanual@pretty@openbracecount by1
-		\ifnum\c@pgfmanual@pretty@openbracecount>1
-			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
-		\fi
+	\def\pgfmanual@loc@TMPc{#1}%
+	\ifx\pgfmanual@loc@TMPc\pgfmanual@EOI
+		\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
+			\noexpand\endgroup
+			\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs\the\t@pgfmanual@currentarg FIXME}%
+		}%
 	\else
-		\if#1\pgfmanual@pretty@rbrace
-			\advance\c@pgfmanual@pretty@openbracecount by-1
-			\ifnum\c@pgfmanual@pretty@openbracecount=0
-				% we have one complete argument ready!
-				% append it -- with REAL braces:
-				\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
-				\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
-				%
-				% check it we need more arguments:
-				\advance\c@pgfmanual@pretty@curargcount by1
-				\ifnum\c@pgfmanual@pretty@curargcount=\pgfmanual@loc@csargcount\relax
-					\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
-						\noexpand\endgroup
-						\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs}%
-					}%
+		\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@lbrace
+			\advance\c@pgfmanual@pretty@openbracecount by1
+			\ifnum\c@pgfmanual@pretty@openbracecount>1
+				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+			\fi
+		\else
+			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@rbrace
+				\advance\c@pgfmanual@pretty@openbracecount by-1
+				\ifnum\c@pgfmanual@pretty@openbracecount=0
+					% we have one complete argument ready!
+					% append it -- with REAL braces:
+					\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
+					\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
+					%
+					% check it we need more arguments:
+					\advance\c@pgfmanual@pretty@curargcount by1
+					\ifnum\c@pgfmanual@pretty@curargcount=\pgfmanual@loc@csargcount\relax
+						\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
+							\noexpand\endgroup
+							\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs}%
+						}%
+					\fi
+				\else
+					\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
 				\fi
 			\else
 				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
 			\fi
-		\else
-			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
 		\fi
 	\fi
 	\pgfmanual@pretty@collectargs@loop@NEXT
@@ -1185,12 +1195,12 @@
 \long\def\pgfmanualprettyprintpgfkeys#1{%
 	\begingroup
 	\pgfmanualprettyprintstyles
-	\pgfmanual@pretty@pgfkeys@loop#1,\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
+	\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
 	\endgroup
 }
 \long\def\pgfmanual@pretty@pgfkeys#1]{%
 	[%
-	\pgfmanual@pretty@pgfkeys@loop#1,\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
+	\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
 	]%
 	\pgfmanual@pretty@mainloop
 }%
@@ -1203,66 +1213,134 @@
 	\else
 		\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@loop
 		\ifnum13=\catcode`#1
-			% we found a white space (space, TAB or NL)
+			% we found a white space (space, TAB or NL) or comment
 			#1%
 		\else
 			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@comma%
-				\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@checkforEOI
+				%\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@checkforEOI
+				,%
 			\else
 				\ifnum10=\catcode`#1
 					% another white space... I thought they'd have
 					% catcode 13. doesn't matter.
 					#1%
 				\else
-					% found the beginning of a key! Handle it:
+					% found the beginning of a key! 
+					% We will collect the key name into
+					% \toks0.
+					\toks0={#1}%
+					%
+					% Handle it:
 					% FIXME what if we found an opening brace!?
-					\def\pgfmanual@pretty@pgfkeys@loop@NEXT{\pgfmanual@pretty@pgfkeys@foundone#1}%
+					\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@collectkey%
 				\fi
 			\fi
 		\fi
 	\fi
 	\pgfmanual@pretty@pgfkeys@loop@NEXT
 }%
-\def\pgfmanual@pretty@pgfkeys@checkforEOI{%
-	\pgfutil@ifnextchar\pgfmanual@EOI{%
-		% drop the last comma!
-		\pgfmanual@pretty@pgfkeys@loop
-	}{%
-		% include the comma.
-		,%
-		\pgfmanual@pretty@pgfkeys@loop
-	}%
+\def\pgfmanual@pretty@pgfkeys@collectkey#1{%
+	\def\pgfmanual@loc@TMPb{#1}%
+	\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@collectkey
+	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
+		% finish key name.
+		\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+		\let\pgfmanual@pretty@pgfkeys@collectkey@next=\relax
+	\else
+		\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@eq
+			% finish key name.
+			\edef\pgfmanual@pretty@pgfkeys@collectkey@keyname{\the\toks0 }%
+			\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+			#1%
+			% now, we do the same with the value - we collect it into
+			% \toks0.
+			\toks0={}%
+			\def\pgfmanual@pretty@pgfkeys@collectvalue@hasconsumedspaces{0}%
+			\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@collectvalue
+		\else
+			\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@comma
+				% finish key name.
+				\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+				#1%
+				\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@loop
+			\else
+				\toks0=\expandafter{\the\toks0 #1}%
+			\fi
+		\fi
+	\fi
+	\pgfmanual@pretty@pgfkeys@collectkey@next
 }%
-% #1 is a complete key.
-\def\pgfmanual@pretty@pgfkeys@foundone#1,{%
-	\pgfmanual@pretty@pgfkeys@unpack#1=\pgfkeysnovalue=\pgfkeys@stop
-	\pgfutil@ifnextchar\pgfmanual@EOI{%
-		% drop the comma!
-		\pgfmanual@pretty@pgfkeys@loop
-	}{%
-		,%
-		\pgfmanual@pretty@pgfkeys@loop
-	}%
+\def\pgfmanual@pretty@pgfkeys@collectvalue#1{%
+	\def\pgfmanual@loc@TMPb{#1}%
+	\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\pgfmanual@pretty@pgfkeys@collectvalue
+	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
+		% finish key value.
+		\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
+		\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\relax
+	\else
+		\def\pgfmanual@pretty@isconsumed{0}%
+		\if\pgfmanual@pretty@pgfkeys@collectvalue@hasconsumedspaces0%
+			\ifnum13=\catcode`#1
+				% we found a white space (space, TAB or NL)
+				#1%
+				\def\pgfmanual@pretty@isconsumed{1}%
+			\else
+				\ifnum10=\catcode`#1
+					% another white space... I thought they'd have
+					% catcode 13. doesn't matter.
+					\def\pgfmanual@pretty@isconsumed{1}%
+					#1%
+				\fi
+			\fi
+		\fi
+		\if\pgfmanual@pretty@isconsumed0%
+			\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@lbrace
+				\let\pgfmanual@pretty@collectargs@finish=\pgfmanual@pretty@collectargs@finish@value
+				\def\pgfmanual@pretty@pgfkeys@collectvalue@next{%
+					\pgfmanual@pretty@collectargs{1}#1%
+				}%
+			\else
+				\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@comma
+					% finish key value.
+					\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
+					#1%
+					\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\pgfmanual@pretty@pgfkeys@loop
+				\else
+					\def\pgfmanual@pretty@pgfkeys@collectvalue@hasconsumedspaces{1}%
+					\toks0=\expandafter{\the\toks0 #1}%
+				\fi
+			\fi
+		\fi
+	\fi
+	\pgfmanual@pretty@pgfkeys@collectvalue@next
 }%
+\def\pgfmanual@pretty@collectargs@finish@value#1{%
+	\pgfmanual@pretty@pgfkeys@processvalue{\{#1\}}%
+	% FIXME : this doesn't handle keys with more than one argument!
+	% -> check for comma or EOI!
+	\pgfmanual@pretty@pgfkeys@loop
+}%
+
 {\catcode`\^^M=13 \catcode`\ =13\relax\gdef\pgfmanual@pretty@restorespaces{\def^^M{\pgfmanual@pretty@space}\def {\pgfmanual@pretty@space}}}
 
-\def\pgfmanual@pretty@pgfkeys@unpack#1=#2=#3\pgfkeys@stop{%
+% #1: the keys name
+\def\pgfmanual@pretty@pgfkeys@processkey#1{%
 	\begingroup
 		\pgfmanual@pretty@restorespaces
 		\xdef\pgfmanual@glob@TMPa{#1}%
-		\xdef\pgfmanual@glob@TMPb{#2}%
 	\endgroup
 	% report key name ...
 	\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key name/.@cmd}}%
 	\expandafter\pgfmanual@loc@TMPa\pgfmanual@glob@TMPa\pgfeov
-	\ifx\pgfmanual@glob@TMPb\pgfkeysnovalue
-		% ... and we are ready; there is no value.
-	\else
-		% ... and the key's value!
-		=%
-		\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key value/.@cmd}}%
-		\expandafter\pgfmanual@loc@TMPa\pgfmanual@glob@TMPb\pgfeov
-	\fi
+}
+\def\pgfmanual@pretty@pgfkeys@processvalue#1{%
+%	\begingroup
+		%\pgfmanual@pretty@restorespaces
+%		\xdef\pgfmanual@glob@TMPa{#1}%
+%	\endgroup
+%\message{PROCESSING VALUE \meaning\pgfmanual@glob@TMPa!}%
+	\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key value/.@cmd}}%
+	\pgfmanual@loc@TMPa#1\pgfeov
 }
 
 \makeatother
