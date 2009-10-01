@@ -940,7 +940,9 @@
           \fi}%
         \obeylines
         \everypar \expandafter{\the\everypar \unpenalty}%
-        \pgfmanual@prettyprint@code{#1}%
+\tracingmacros=2 \tracingcommands=2
+%\showzeug#1\endshowzeug
+        \pgfmanualprettyprintcode{#1}%
 	}
     \end{minipage}}%
   \code@end%
@@ -948,9 +950,22 @@
   \medskip
   \end{codeexample}
 }
-\long\def\pgfmanual@prettyprint@code#1{#1}%
+\long\def\pgfmanualprettyprintcode#1{#1}%
 
 \def\endcodeexample{\endgroup}
+
+% \showzeug argument pattern\endshowzeug
+\def\showzeug#1{%
+	\def\temp{#1}%
+	\def\tempb{\endshowzeug}%
+	\ifx\temp\tempb
+		\let\showzeug@next=\relax
+	\else
+		#1\_{\the\catcode`#1 }%
+		\let\showzeug@next=\showzeug
+	\fi
+	\showzeug@next
+}%
 
 
 % Special code for syntax highlighting:
@@ -958,14 +973,34 @@
 \pgfkeys{%
 	/codeexample/prettyprint/key name/.code={\textcolor{red!75!black}{#1}},
 	/codeexample/prettyprint/key value/.code={\textcolor{yellow}{#1}},
+	/codeexample/prettyprint/cs/.code={\textcolor{green}{#1}},
+	/codeexample/prettyprint/cs with args/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
+	/codeexample/prettyprint/cs arguments/pgfkeys/.initial=1,
+	/codeexample/prettyprint/cs/pgfkeys/.code 2 args={\textcolor{green}{#1}\{\pgfmanualprettyprintpgfkeys{#2}\}},
+	/codeexample/prettyprint/cs arguments/begin/.initial=1,
+	/codeexample/prettyprint/cs/begin/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
+	/codeexample/prettyprint/cs arguments/end/.initial=1,
+	/codeexample/prettyprint/cs/end/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
 }%
 
-\long\def\pgfmanual@prettyprint@code#1{%
-\tracingmacros=2 \tracingcommands=2
-	\pgfmanual@pretty@loop#1[\pgfmanual@EOI
+% Typesets '#1', possibly using some sort of pretty printer.
+%
+% The argument '#1' is expected to be a long token list in which
+% 1. all characters have catcode 11 or 12 (normal letters),
+% 2. white spaces, tabs and newlines have catcode 13 (are active).
+\long\def\pgfmanualprettyprintcode#1{%
+	\begingroup
+	\pgfmanualprettyprintstyles
+	\pgfmanual@pretty@mainloop#1\pgfmanual@EOI
+	\endgroup
 }%
 % DISABLE:
-\long\def\pgfmanual@prettyprint@code#1{#1}%
+%\long\def\pgfmanualprettyprintcode#1{#1}%
+
+\def\pgfmanualprettyprintstyles{%
+	\def\{{\pgfmanual@pretty@lbrace}%
+	\def\}{\pgfmanual@pretty@rbrace}%
+}%
 
 \def\pgfmanual@EOI{\pgfmanual@EOI}%
 
@@ -974,58 +1009,256 @@
 	\catcode`\\=12
 	[gdef[pgfmanual@pretty@backslash{\}%
 }
+\begingroup
+	\catcode`\[=1
+	\catcode`\]=2
+	\catcode`\{=12
+	\catcode`\}=12
+	\gdef\pgfmanual@pretty@lbrace[{]%
+	\gdef\pgfmanual@pretty@rbrace[}]%
+	\catcode`\{=1
+	\catcode`\}=2
+	\catcode`\[=12
+	\catcode`\]=12
+	\catcode`\,=12
+	\gdef\pgfmanual@pretty@lbracket{[}%
+	\gdef\pgfmanual@pretty@rbracket{]}%
+	\gdef\pgfmanual@pretty@comma{,}%
+	\catcode`\ =10\relax\gdef\pgfmanual@pretty@space{ }%
+\endgroup
 
-\long\def\pgfmanual@pretty@loop#1[#2{%
-	#1%
-	\def\pgfmanual@loc@TMPa{#2}%
-	\ifx\pgfmanual@loc@TMPa\pgfmanual@EOI
-	\else
-		\expandafter\pgfmanual@pretty@loop@collectoarg\expandafter#2%
-	\fi
-}%
-\long\def\pgfmanual@pretty@loop@collectoarg#1]{%
-	[\pgfmanual@pretty@syntax@keys{#1}]%
-	\pgfmanual@pretty@loop
-}%
-\long\def\pgfmanual@pretty@syntax@keys#1{%
-	\pgfmanual@pretty@syntax@keys@loop#1,\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@syntax@akey!
-}%
-\long\def\pgfmanual@pretty@syntax@keys@loop#1{%
+% loops through all tokens.
+% #1 is a single token.
+\long\def\pgfmanual@pretty@mainloop#1{%
 	\def\pgfmanual@loc@TMPa{#1}%
 	\ifx\pgfmanual@loc@TMPa\pgfmanual@EOI
-		\let\pgfmanual@pretty@syntax@keys@loop@next=\relax
+		% stop iteration.
+		\let\pgfmanual@pretty@mainloop@NEXT=\relax
 	\else
-		\let\pgfmanual@pretty@syntax@keys@loop@next=\pgfmanual@pretty@syntax@keys@loop
-		\ifnum13=\catcode`#1
-			#1%
+		\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@lbracket%
+			% we found the start of OPTIONS '[ ... ]'.
+			% Attempt syntax highlighting for pgfkeys:
+			\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@pgfkeys
 		\else
-			\def\pgfmanual@pretty@syntax@keys@loop@next{\pgfmanual@pretty@syntax@akey#1}%
+			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@backslash
+				% we found the start of a control sequence '\command':
+				%
+				% collect the control sequence name into
+				% \pgfmanual@loc@TMPa, but without the backslash:
+				\let\pgfmanual@loc@TMPa=\pgfutil@empty
+				\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@collectcs@loop
+			\else
+				% normal processing. Just typeset the token.
+				\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@mainloop
+				#1%
+			\fi
 		\fi
 	\fi
-	\pgfmanual@pretty@syntax@keys@loop@next
+	\pgfmanual@pretty@mainloop@NEXT
 }%
-\def\pgfmanual@pretty@syntax@akey#1,{%
-	\pgfmanual@pretty@syntax@akey@unpack#1=\pgfkeysnovalue=\pgfkeys@stop
-	\pgfutil@ifnextchar\pgfmanual@EOI{%
-		% drop the comma!
-		\pgfmanual@pretty@syntax@keys@loop
+
+
+% loops through all tokens, assembling the cs name as it goes.
+% #1 is a single token.
+\def\pgfmanual@pretty@collectcs@loop#1{%
+	\ifnum\lccode`#1=0
+		% a csname may only use letters. And: only letters have a
+		% positive lcccode!
+		% This here is the first non-letter.
+		\expandafter\pgfmanual@pretty@collectcs@loop@END\expandafter#1%
+	\else
+		% continue iterating and assemble the csname...
+		\edef\pgfmanual@loc@TMPa{\pgfmanual@loc@TMPa #1}%
+		\expandafter\pgfmanual@pretty@collectcs@loop
+	\fi
+}%
+\def\pgfmanual@pretty@collectcs@loop@END{%
+	\pgfkeysifdefined{/codeexample/prettyprint/cs arguments/\pgfmanual@loc@TMPa}{%
+		% oh. The collected control sequence expects arguments. That
+		% means a lot of work since there are no nestable braces in
+		% the token list! All of them have catcode 12... we need to do
+		% that manually.
+		\let\pgfmanual@pretty@collectargs@finish=\pgfmanual@pretty@collectargs@finish@cs
+		\def\pgfmanual@pretty@collectcs@loop@END@next{%
+			\pgfmanual@pretty@collectargs{\pgfkeysvalueof{/codeexample/prettyprint/cs arguments/\pgfmanual@loc@TMPa}}%
+		}%
 	}{%
+		% re-insert the backslash:
+		\edef\pgfmanual@loc@TMPa{\pgfmanual@pretty@backslash \pgfmanual@loc@TMPa}%
+		% ok, report the macro and continue with the main loop.
+		\def\pgfmanual@loc@TMPb{\pgfkeysvalueof{/codeexample/prettyprint/cs/.@cmd}}%
+		\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa\pgfeov
+		\let\pgfmanual@pretty@collectcs@loop@END@next=\pgfmanual@pretty@mainloop
+	}%
+	\pgfmanual@pretty@collectcs@loop@END@next
+}%
+
+% Collects arguments inside of a token list, dealing with nested
+% catcode-12-braces.
+%
+% #1: is the NUMBER of arguments to collect.
+%
+% PRECONDITION:
+% 	there is a large token list following
+% 	\pgfmanual@pretty@collectargs with balanced braces. The braces
+% 	have \catcode 12.
+% POSTCONDITION:
+% 	the arguments will be collected as 
+% 		'<result> := {<first arg>}{<second arg>}'
+% 	and then, \pgfmanual@pretty@collectargs@finish{<result>} will be
+% 	invoked. Just defined \pgfmanual@pretty@collectargs@finish
+% 	properly.
+% 	
+\def\pgfmanual@pretty@collectargs#1{%
+	\begingroup
+	\edef\pgfmanual@loc@csargcount{#1}%
+	\let\c@pgfmanual@pretty@openbracecount=\c@pgf@counta
+	\let\c@pgfmanual@pretty@curargcount=\c@pgf@countb
+	% I will track open braces and the number of completely
+	% collected arguments here:
+	\c@pgfmanual@pretty@openbracecount=0
+	\c@pgfmanual@pretty@curargcount=0
+	%
+	% and I will accumulate the argument token lists as such here:
+	\toksdef\t@pgfmanual@currentarg=0
+	\toksdef\t@pgfmanual@allargs=1
+	\t@pgfmanual@currentarg={}%
+	\t@pgfmanual@allargs={}%
+	%
+	\pgfmanual@pretty@collectargs@loop
+}%
+
+% loops through all tokens, collecting the required number of
+% arguments. This involves to track nested braces manually.
+% #1 is a single token.
+\def\pgfmanual@pretty@collectargs@loop#1{%
+	\let\pgfmanual@pretty@collectargs@loop@NEXT=\pgfmanual@pretty@collectargs@loop
+	\if#1\pgfmanual@pretty@lbrace
+		\advance\c@pgfmanual@pretty@openbracecount by1
+		\ifnum\c@pgfmanual@pretty@openbracecount>1
+			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+		\fi
+	\else
+		\if#1\pgfmanual@pretty@rbrace
+			\advance\c@pgfmanual@pretty@openbracecount by-1
+			\ifnum\c@pgfmanual@pretty@openbracecount=0
+				% we have one complete argument ready!
+				% append it -- with REAL braces:
+				\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
+				\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
+				%
+				% check it we need more arguments:
+				\advance\c@pgfmanual@pretty@curargcount by1
+				\ifnum\c@pgfmanual@pretty@curargcount=\pgfmanual@loc@csargcount\relax
+					\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
+						\noexpand\endgroup
+						\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs}%
+					}%
+				\fi
+			\else
+				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+			\fi
+		\else
+			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+		\fi
+	\fi
+	\pgfmanual@pretty@collectargs@loop@NEXT
+}%
+\def\pgfmanual@pretty@collectargs@finish@cs#1{%
+\message{collected the arguments '#1' for \pgfmanual@loc@TMPa!}%
+	% report the macro and its arguments:
+	\pgfkeysifdefined{/codeexample/prettyprint/cs/\pgfmanual@loc@TMPa/.@cmd}{%
+		% oh, we have a separate routine for this macro! Ok, use it:
+		\edef\pgfmanual@loc@TMPb{\noexpand\pgfkeysvalueof{/codeexample/prettyprint/cs/\pgfmanual@loc@TMPa/.@cmd}}%
+	}{%
+		% use the generic routine:
+		% re-insert the backslash:
+		\edef\pgfmanual@loc@TMPb{\noexpand\pgfkeysvalueof{/codeexample/prettyprint/cs with args/.@cmd}}%
+	}%
+	\edef\pgfmanual@loc@TMPa{{\pgfmanual@pretty@backslash\pgfmanual@loc@TMPa}{#1}}%
+	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa\pgfeov
+	% and continue with the main loop.
+	\pgfmanual@pretty@mainloop
+}%
+
+% A user macro which pretty prints a set of keys.
+\long\def\pgfmanualprettyprintpgfkeys#1{%
+	\begingroup
+	\pgfmanualprettyprintstyles
+	\pgfmanual@pretty@pgfkeys@loop#1,\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
+	\endgroup
+}
+\long\def\pgfmanual@pretty@pgfkeys#1]{%
+	[%
+	\pgfmanual@pretty@pgfkeys@loop#1,\pgfmanual@EOI% the extra comma is handled in \pgfmanual@pretty@pgfkeys@foundone!
+	]%
+	\pgfmanual@pretty@mainloop
+}%
+% iterates through single tokens, detecting key names and values while
+% it goes.
+\long\def\pgfmanual@pretty@pgfkeys@loop#1{%
+	\def\pgfmanual@loc@TMPa{#1}%
+	\ifx\pgfmanual@loc@TMPa\pgfmanual@EOI
+		\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\relax
+	\else
+		\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@loop
+		\ifnum13=\catcode`#1
+			% we found a white space (space, TAB or NL)
+			#1%
+		\else
+			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@comma%
+				\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@checkforEOI
+			\else
+				\ifnum10=\catcode`#1
+					% another white space... I thought they'd have
+					% catcode 13. doesn't matter.
+					#1%
+				\else
+					% found the beginning of a key! Handle it:
+					% FIXME what if we found an opening brace!?
+					\def\pgfmanual@pretty@pgfkeys@loop@NEXT{\pgfmanual@pretty@pgfkeys@foundone#1}%
+				\fi
+			\fi
+		\fi
+	\fi
+	\pgfmanual@pretty@pgfkeys@loop@NEXT
+}%
+\def\pgfmanual@pretty@pgfkeys@checkforEOI{%
+	\pgfutil@ifnextchar\pgfmanual@EOI{%
+		% drop the last comma!
+		\pgfmanual@pretty@pgfkeys@loop
+	}{%
+		% include the comma.
 		,%
-		\pgfmanual@pretty@syntax@keys@loop
+		\pgfmanual@pretty@pgfkeys@loop
 	}%
 }%
-{\catcode`\^^M=13 \gdef\pgfmanual@pretty@restorespaces{\def^^M{\space}}}
+% #1 is a complete key.
+\def\pgfmanual@pretty@pgfkeys@foundone#1,{%
+	\pgfmanual@pretty@pgfkeys@unpack#1=\pgfkeysnovalue=\pgfkeys@stop
+	\pgfutil@ifnextchar\pgfmanual@EOI{%
+		% drop the comma!
+		\pgfmanual@pretty@pgfkeys@loop
+	}{%
+		,%
+		\pgfmanual@pretty@pgfkeys@loop
+	}%
+}%
+{\catcode`\^^M=13 \catcode`\ =13\relax\gdef\pgfmanual@pretty@restorespaces{\def^^M{\pgfmanual@pretty@space}\def {\pgfmanual@pretty@space}}}
 
-\def\pgfmanual@pretty@syntax@akey@unpack#1=#2=#3\pgfkeys@stop{%
+\def\pgfmanual@pretty@pgfkeys@unpack#1=#2=#3\pgfkeys@stop{%
 	\begingroup
 		\pgfmanual@pretty@restorespaces
 		\xdef\pgfmanual@glob@TMPa{#1}%
 		\xdef\pgfmanual@glob@TMPb{#2}%
 	\endgroup
+	% report key name ...
 	\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key name/.@cmd}}%
 	\expandafter\pgfmanual@loc@TMPa\pgfmanual@glob@TMPa\pgfeov
 	\ifx\pgfmanual@glob@TMPb\pgfkeysnovalue
+		% ... and we are ready; there is no value.
 	\else
+		% ... and the key's value!
 		=%
 		\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key value/.@cmd}}%
 		\expandafter\pgfmanual@loc@TMPa\pgfmanual@glob@TMPb\pgfeov
