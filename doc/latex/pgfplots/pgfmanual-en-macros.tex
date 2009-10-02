@@ -940,7 +940,7 @@
           \fi}%
         \obeylines
         \everypar \expandafter{\the\everypar \unpenalty}%
-%\tracingmacros=2 \tracingcommands=2
+\tracingmacros=2 \tracingcommands=2
 %\showzeug#1\endshowzeug
         \pgfmanualprettyprintcode{#1}%
 	}
@@ -956,6 +956,7 @@
 
 % \showzeug argument pattern\endshowzeug
 \def\showzeug#1{%
+\expandafter\def\pgfmanual@pretty@activepercent{\%}%
 	\def\temp{#1}%
 	\def\tempb{\endshowzeug}%
 	\ifx\temp\tempb
@@ -971,16 +972,29 @@
 % Special code for syntax highlighting:
 %
 \pgfkeys{%
-	/codeexample/prettyprint/key name/.code={\textcolor{red!75!black}{#1}},
-	/codeexample/prettyprint/key value/.code={\textcolor{yellow}{#1}},
-	/codeexample/prettyprint/cs/.code={\textcolor{green}{#1}},
-	/codeexample/prettyprint/cs with args/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
+	/codeexample/prettyprint/key name/.code={#1},
+	/codeexample/prettyprint/key value/.code={#1},
+	/codeexample/prettyprint/cs/.code={#1},
+	/codeexample/prettyprint/cs with args/.code 2 args={#1\{#2\}},
 	/codeexample/prettyprint/cs arguments/pgfkeys/.initial=1,
-	/codeexample/prettyprint/cs/pgfkeys/.code 2 args={\textcolor{green}{#1}\{\pgfmanualprettyprintpgfkeys{#2}\}},
+	/codeexample/prettyprint/cs/pgfkeys/.code 2 args={#1\{\pgfmanualprettyprintpgfkeys{#2}\}},
 	/codeexample/prettyprint/cs arguments/begin/.initial=1,
-	/codeexample/prettyprint/cs/begin/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
+	/codeexample/prettyprint/cs/begin/.code 2 args={#1\{#2\}},
 	/codeexample/prettyprint/cs arguments/end/.initial=1,
-	/codeexample/prettyprint/cs/end/.code 2 args={\textcolor{green}{#1}\{\textcolor{orange}{#2}\}},
+	/codeexample/prettyprint/cs/end/.code 2 args={#1\{#2\}},
+	%
+	/codeexample/prettyprint/colored/.style={%
+		/codeexample/prettyprint/key name/.code={\textcolor{red!75!black}{##1}},
+		/codeexample/prettyprint/key value/.code={\textcolor{yellow}{##1}},
+		/codeexample/prettyprint/cs/.code={\textcolor{green}{##1}},
+		/codeexample/prettyprint/cs with args/.code 2 args={\textcolor{green}{##1}\{\textcolor{orange}{##2}\}},
+		/codeexample/prettyprint/cs arguments/pgfkeys/.initial=1,
+		/codeexample/prettyprint/cs/pgfkeys/.code 2 args={\textcolor{green}{##1}\{\pgfmanualprettyprintpgfkeys{##2}\}},
+		/codeexample/prettyprint/cs arguments/begin/.initial=1,
+		/codeexample/prettyprint/cs/begin/.code 2 args={\textcolor{green}{##1}\{\textcolor{orange}{##2}\}},
+		/codeexample/prettyprint/cs arguments/end/.initial=1,
+		/codeexample/prettyprint/cs/end/.code 2 args={\textcolor{green}{##1}\{\textcolor{orange}{##2}\}},
+	},%
 }%
 
 % Typesets '#1', possibly using some sort of pretty printer.
@@ -995,11 +1009,33 @@
 	\endgroup
 }%
 % DISABLE:
-\long\def\pgfmanualprettyprintcode#1{#1}%
+%\long\def\pgfmanualprettyprintcode#1{#1}%
 
 \def\pgfmanualprettyprintstyles{%
 	\def\{{\pgfmanual@pretty@lbrace}%
 	\def\}{\pgfmanual@pretty@rbrace}%
+	\pgfmanual@pretty@installcommenthandler
+}%
+% we can't use the \@typeset@till@return method for comments because
+% the pretty printer needs full control over the token list.
+%
+% We try a replacement here.
+%
+% FIXME
+% THIS INTRODUCES A NEW GROUP! Does that hurt the pretty printer??
+% 
+\def\pgfmanual@pretty@installcommenthandler{%
+	\expandafter\def\pgfmanual@pretty@activepercent{%
+\message{FOUND ACTIVE PERCENT!}%
+		\begingroup
+		\expandafter\let\pgfmanual@pretty@activenl=\pgfmanual@pretty@recoveraftercomment
+		\sl \% %
+	}%
+}%
+\def\pgfmanual@pretty@recoveraftercomment{%
+	\endgroup
+\message{ENDED ACTIVE PERCENT!}%
+	\pgfmanual@pretty@activenl
 }%
 
 \def\pgfmanual@EOI{\pgfmanual@EOI}%
@@ -1028,6 +1064,13 @@
 	\catcode`\==12
 	\gdef\pgfmanual@pretty@eq{=}%
 \endgroup
+\begingroup
+	\catcode`\%=12
+	\gdef\pgfmanual@pretty@percent{%}
+	\catcode`\%=13
+	\gdef\pgfmanual@pretty@activepercent{%}
+	\catcode`\^^M=13
+	\gdef\pgfmanual@pretty@activenl{^^M}\endgroup
 
 % loops through all tokens.
 % #1 is a single token.
@@ -1264,7 +1307,18 @@
 				#1%
 				\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@loop
 			\else
-				\toks0=\expandafter{\the\toks0 #1}%
+				\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@activenl
+					% finish key name before newline. This is not
+					% necessarily as in TeX, but its simpler here
+					% because we don't need special cases for comments
+					% and we don't need to gobble following white
+					% spaces.
+					\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+					#1%
+					\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@loop
+				\else
+					\toks0=\expandafter{\the\toks0 #1}%
+				\fi
 			\fi
 		\fi
 	\fi
