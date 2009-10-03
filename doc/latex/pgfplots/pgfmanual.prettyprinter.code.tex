@@ -168,6 +168,8 @@
 %\long\def\pgfmanualprettyprintcode#1{#1}%
 
 \def\pgfmanualprettyprintstyles{%
+\tracingmacros=2 \tracingcommands=2
+\message{STARTING PRETTY PRINTING}%
 	\def\{{\pgfmanual@pretty@lbrace}%
 	\def\}{\pgfmanual@pretty@rbrace}%
 	\pgfmanual@pretty@installcommenthandler
@@ -357,43 +359,139 @@
 			\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs\the\t@pgfmanual@currentarg FIXME}%
 		}%
 	\else
-		\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@lbrace
-			\advance\c@pgfmanual@pretty@openbracecount by1
-			\ifnum\c@pgfmanual@pretty@openbracecount>1
-				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+		\ifpgfmanualprettycommentactive
+			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@activenl
+				\pgfmanualprettycommentactivefalse
 			\fi
 		\else
-			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@rbrace
-				\advance\c@pgfmanual@pretty@openbracecount by-1
-				\ifnum\c@pgfmanual@pretty@openbracecount=0
-					% we have one complete argument ready!
-					% append it -- with REAL braces if needed:
-					\ifnum\pgfmanual@loc@csargcount=1
-						% no extra braces.
-						\t@pgfmanual@allargs=\t@pgfmanual@currentarg
-					\else
-						\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
-						\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
-					\fi
-					%
-					% check it we need more arguments:
-					\advance\c@pgfmanual@pretty@curargcount by1
-					\ifnum\c@pgfmanual@pretty@curargcount=\pgfmanual@loc@csargcount\relax
-						\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
-							\noexpand\endgroup
-							\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs}%
-						}%
+			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@activepercent
+				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+				\pgfmanualprettycommentactivetrue
+			\else
+				\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@lbrace
+					\advance\c@pgfmanual@pretty@openbracecount by1
+					\ifnum\c@pgfmanual@pretty@openbracecount>1
+						\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
 					\fi
 				\else
-					\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+					\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@rbrace
+						\advance\c@pgfmanual@pretty@openbracecount by-1
+						\ifnum\c@pgfmanual@pretty@openbracecount=0
+							% we have one complete argument ready!
+							% append it -- with REAL braces if needed:
+							\ifnum\pgfmanual@loc@csargcount=1
+								% no extra braces.
+								\t@pgfmanual@allargs=\t@pgfmanual@currentarg
+							\else
+								\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
+								\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
+							\fi
+							%
+							% check it we need more arguments:
+							\advance\c@pgfmanual@pretty@curargcount by1
+							\ifnum\c@pgfmanual@pretty@curargcount=\pgfmanual@loc@csargcount\relax
+								\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
+									\noexpand\endgroup
+									\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs}%
+								}%
+							\fi
+						\else
+							\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+						\fi
+					\else
+						\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+					\fi
 				\fi
-			\else
-				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
 			\fi
 		\fi
 	\fi
 	\pgfmanual@pretty@collectargs@loop@NEXT
 }%
+
+
+% Collects tokens inside of a token list up to a single delimiting token, dealing with nested
+% catcode-12-braces. 
+%
+% #1: is the NUMBER of arguments to collect.
+%
+% PRECONDITION:
+% 	there is a large token list following
+% 	\pgfmanual@pretty@collectargs with balanced braces. The braces
+% 	have \catcode 12.
+% POSTCONDITION:
+% 	the arguments will be collected as 
+% 		'<result> := <token list>'
+% 	and then, \pgfmanual@pretty@collectargs@finish{<result>} will be
+% 	invoked. Just define \pgfmanual@pretty@collectargs@finish
+% 	properly.
+%
+% @see \pgfmanual@pretty@collectargs
+\def\pgfmanual@pretty@collectupto#1{%
+	\begingroup
+	\def\pgfmanual@loc@delimittoken{#1}%
+	\let\c@pgfmanual@pretty@openbracecount=\c@pgf@counta
+	% I will track open braces here:
+	\c@pgfmanual@pretty@openbracecount=0
+	%
+	% and I will accumulate the argument token lists as such here:
+	\toksdef\t@pgfmanual@currentarg=0
+	\t@pgfmanual@currentarg={}%
+	%
+	\pgfmanual@pretty@collectupto@loop
+}%
+
+% loops through all tokens, collecting the required number of
+% arguments. This involves to track nested braces manually.
+% #1 is a single token.
+\def\pgfmanual@pretty@collectupto@loop#1{%
+	\let\pgfmanual@pretty@collectup@loop@NEXT=\pgfmanual@pretty@collectupto@loop
+	\def\pgfmanual@loc@TMPc{#1}%
+	\ifx\pgfmanual@loc@TMPc\pgfmanual@EOI
+		\edef\pgfmanual@pretty@collectup@loop@NEXT{%
+			\noexpand\endgroup
+			\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@currentarg}%
+		}%
+	\else
+		\ifpgfmanualprettycommentactive
+			\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@activenl
+				\pgfmanualprettycommentactivefalse
+			\fi
+		\else
+			\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@activepercent
+				\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+				\pgfmanualprettycommentactivetrue
+			\else
+				\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@lbrace
+					\advance\c@pgfmanual@pretty@openbracecount by1
+					\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+				\else
+					\ifx\pgfmanual@loc@TMPc\pgfmanual@pretty@rbrace
+						\advance\c@pgfmanual@pretty@openbracecount by-1
+						\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+					\else
+						\ifx\pgfmanual@loc@TMPc\pgfmanual@loc@delimittoken
+							\ifnum\c@pgfmanual@pretty@openbracecount=0
+								% do NOT include the delimit token.
+								\edef\pgfmanual@pretty@collectup@loop@NEXT{%
+									\noexpand\endgroup
+									\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@currentarg}%
+								}%
+							\else
+								\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+							\fi
+						\else
+							\t@pgfmanual@currentarg=\expandafter{\the\t@pgfmanual@currentarg#1}%
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	\pgfmanual@pretty@collectup@loop@NEXT
+}%
+
 \def\pgfmanual@pretty@collectargs@finish@cs#1{%
 \message{collected the arguments '#1' for \pgfmanual@loc@TMPa!}%
 	% report the macro and its arguments:
@@ -424,7 +522,11 @@
 }
 
 % FIXME: DAS HIER IST FALSCH, WEIL KEINE NESTED BRACES GESUCHT WERDEN!
-\long\def\pgfmanual@pretty@pgfkeys#1]{%
+\def\pgfmanual@pretty@pgfkeys{%
+	\let\pgfmanual@pretty@collectargs@finish=\pgfmanual@pretty@pgfkeys@start
+	\pgfmanual@pretty@collectupto]%
+}%
+\long\def\pgfmanual@pretty@pgfkeys@start#1{%
 	[%
 	\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI
 	]%
