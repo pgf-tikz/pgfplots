@@ -61,13 +61,13 @@
 	% whether '#2' had braces in the original input. These braces must
 	% be inserted manually.
 	/codeexample/prettyprint/key value/.code 2 args={%
-		\ifpgfmanualkeyvalueneedsbraces
-			\{%
+%		\ifpgfmanualkeyvalueneedsbraces
+%			\{%
+%			\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
+%			\}%
+%		\else
 			\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
-			\}%
-		\else
-			\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
-		\fi
+%		\fi
 	},
 	% A helper macro for the default 'key value' implementation.
 	/codeexample/prettyprint/key value with style detection/.code 2 args={%
@@ -168,8 +168,8 @@
 %\long\def\pgfmanualprettyprintcode#1{#1}%
 
 \def\pgfmanualprettyprintstyles{%
-\tracingmacros=2 \tracingcommands=2
-\message{STARTING PRETTY PRINTING}%
+%\tracingmacros=2 \tracingcommands=2
+%\message{STARTING PRETTY PRINTING}%
 	\def\{{\pgfmanual@pretty@lbrace}%
 	\def\}{\pgfmanual@pretty@rbrace}%
 	\pgfmanual@pretty@installcommenthandler
@@ -357,6 +357,7 @@
 		\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
 			\noexpand\endgroup
 			\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@allargs\the\t@pgfmanual@currentarg FIXME}%
+			\noexpand\pgfmanual@EOI% <- put this token back into token list!
 		}%
 	\else
 		\ifpgfmanualprettycommentactive
@@ -382,6 +383,8 @@
 							% append it -- with REAL braces if needed:
 							\ifnum\pgfmanual@loc@csargcount=1
 								% no extra braces.
+								% FIXME THAT'S NO LONGER CORRECT!
+								% RE-INSERT BRACES!!!
 								\t@pgfmanual@allargs=\t@pgfmanual@currentarg
 							\else
 								\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
@@ -445,12 +448,13 @@
 % arguments. This involves to track nested braces manually.
 % #1 is a single token.
 \def\pgfmanual@pretty@collectupto@loop#1{%
-	\let\pgfmanual@pretty@collectup@loop@NEXT=\pgfmanual@pretty@collectupto@loop
+	\let\pgfmanual@pretty@collectupto@loop@NEXT=\pgfmanual@pretty@collectupto@loop
 	\def\pgfmanual@loc@TMPc{#1}%
 	\ifx\pgfmanual@loc@TMPc\pgfmanual@EOI
-		\edef\pgfmanual@pretty@collectup@loop@NEXT{%
+		\edef\pgfmanual@pretty@collectupto@loop@NEXT{%
 			\noexpand\endgroup
 			\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@currentarg}%
+			\noexpand\pgfmanual@EOI% <- put this token back into token list!
 		}%
 	\else
 		\ifpgfmanualprettycommentactive
@@ -474,7 +478,7 @@
 						\ifx\pgfmanual@loc@TMPc\pgfmanual@loc@delimittoken
 							\ifnum\c@pgfmanual@pretty@openbracecount=0
 								% do NOT include the delimit token.
-								\edef\pgfmanual@pretty@collectup@loop@NEXT{%
+								\edef\pgfmanual@pretty@collectupto@loop@NEXT{%
 									\noexpand\endgroup
 									\noexpand\pgfmanual@pretty@collectargs@finish{\the\t@pgfmanual@currentarg}%
 								}%
@@ -489,11 +493,10 @@
 			\fi
 		\fi
 	\fi
-	\pgfmanual@pretty@collectup@loop@NEXT
+	\pgfmanual@pretty@collectupto@loop@NEXT
 }%
 
 \def\pgfmanual@pretty@collectargs@finish@cs#1{%
-\message{collected the arguments '#1' for \pgfmanual@loc@TMPa!}%
 	% report the macro and its arguments:
 	\pgfkeysifdefined{/codeexample/prettyprint/cs/\pgfmanual@loc@TMPa/.@cmd}{%
 		% oh, we have a separate routine for this macro! Ok, use it:
@@ -503,8 +506,8 @@
 		% re-insert the backslash:
 		\edef\pgfmanual@loc@TMPb{\noexpand\pgfkeysvalueof{/codeexample/prettyprint/cs with args/.@cmd}}%
 	}%
-	\edef\pgfmanual@loc@TMPa{{\pgfmanual@pretty@backslash\pgfmanual@loc@TMPa}{#1}}%
-	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa\pgfeov
+	\edef\pgfmanual@loc@TMPa{{\pgfmanual@pretty@backslash\pgfmanual@loc@TMPa}}%
+	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa{#1}\pgfeov
 	% and continue with the main loop.
 	\pgfmanual@pretty@mainloop
 }%
@@ -627,9 +630,9 @@
 	\def\pgfmanual@loc@TMPb{#1}%
 	\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\pgfmanual@pretty@pgfkeys@collectvalue
 	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
-		% finish key value.
-		\pgfmanualkeyvalueneedsbracesfalse
-		\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
+		% the key value is empty.
+		%\pgfmanualkeyvalueneedsbracesfalse
+		%\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
 		\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\relax
 	\else
 		\def\pgfmanual@pretty@isconsumed{0}%
@@ -648,29 +651,17 @@
 			\fi
 		\fi
 		\if\pgfmanual@pretty@isconsumed0%
-			\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@lbrace
-				\let\pgfmanual@pretty@collectargs@finish=\pgfmanual@pretty@collectargs@finish@value
-				\def\pgfmanual@pretty@pgfkeys@collectvalue@next{%
-					\pgfmanual@pretty@collectargs{1}#1%
-				}%
-			\else
-				\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@comma
-					% finish key value.
-					\pgfmanualkeyvalueneedsbracesfalse
-					\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
-					#1%
-					\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\pgfmanual@pretty@pgfkeys@loop
-				\else
-					\def\pgfmanual@pretty@pgfkeys@collectvalue@hasconsumedspaces{1}%
-					\toks0=\expandafter{\the\toks0 #1}%
-				\fi
-			\fi
+			\let\pgfmanual@pretty@collectargs@finish=\pgfmanual@pretty@collectargs@finish@value
+			\def\pgfmanual@pretty@pgfkeys@collectvalue@next{%
+				\pgfmanual@pretty@collectupto,#1%
+			}%
 		\fi
 	\fi
 	\pgfmanual@pretty@pgfkeys@collectvalue@next
 }%
 \def\pgfmanual@pretty@collectargs@finish@value#1{%
-	\pgfmanualkeyvalueneedsbracestrue
+	%\pgfmanualkeyvalueneedsbracestrue
+	\pgfmanualkeyvalueneedsbracesfalse
 	\pgfmanual@pretty@pgfkeys@processvalue{#1}% the braces will be handled separately.
 	% FIXME : this doesn't handle keys with more than one argument!
 	% -> check for comma or EOI!
