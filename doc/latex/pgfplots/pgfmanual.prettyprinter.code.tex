@@ -37,18 +37,23 @@
 
 
 
-% this 'if' should only be queried inside of
-% '/codeexample/prettyprint/key value' -- nowwhere else!
-\newif\ifpgfmanualkeyvalueneedsbraces
-
 % Special code for syntax highlighting:
 %
 %
 % USER INTERFACE
 \pgfkeys{%
 	% this key will be invoked whenever a key in key-value context has been identified.
+	%
+	% It won't be invoked for handled keys like |my style/.style=....|, see below.
+	%
 	% #1 will be the keys name.
 	/codeexample/prettyprint/key name/.code={#1},
+	%
+	% A variant which will be used instead of |key name| if the key
+	% has a key handler. For example, when the pretty printer finds
+	% |my style/.style|, it will call
+	% |key name with handler={my style}{.style}.
+	/codeexample/prettyprint/key name with handler/.code 2 args={#1/#2},
 	%
 	% Will be invoked whenever the value of a key has been found.
 	% It will be invoked AFTER 'key name' and not at all if there was
@@ -57,17 +62,8 @@
 	% #1: the key's name
 	% #2: the key's value.
 	%
-	% The if \ifpgfmanualkeyvalueneedsbraces has to queried to check
-	% whether '#2' had braces in the original input. These braces must
-	% be inserted manually.
 	/codeexample/prettyprint/key value/.code 2 args={%
-%		\ifpgfmanualkeyvalueneedsbraces
-%			\{%
-%			\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
-%			\}%
-%		\else
-			\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
-%		\fi
+		\pgfkeysalso{/codeexample/prettyprint/key value with style detection={#1}{#2}}%
 	},
 	% A helper macro for the default 'key value' implementation.
 	/codeexample/prettyprint/key value with style detection/.code 2 args={%
@@ -143,6 +139,7 @@
 	% purpose is only debugging.
 	/codeexample/prettyprint/colored/.style={%
 		/codeexample/prettyprint/key name/.code={\textcolor{red!75!black}{##1}},
+		/codeexample/prettyprint/key name with handler/.code 2 args={\textcolor{red!75!black}{##1}/\textcolor{red!90!black}{##2}},
 		/codeexample/prettyprint/key value display only/.code={\textcolor{yellow}{##1}},
 		/codeexample/prettyprint/cs/.code={\textcolor{green}{##1}},
 		/codeexample/prettyprint/cs with args/.code 2 args={\textcolor{green}{##1}\{\textcolor{orange}{##2}\}},
@@ -157,6 +154,7 @@
 	/codeexample/prettyprint/colored and verbose/.style={%
 		/codeexample/prettyprint/colored,
 		/codeexample/prettyprint/key name/.code={\message{[key name=##1]}\textcolor{red!75!black}{##1}},
+		/codeexample/prettyprint/key name with handler/.code 2 args={\message{[key name with handler=##1/##2]}\textcolor{red!75!black}{##1}/\textcolor{red!90!black}{##2}},
 		/codeexample/prettyprint/key value display only/.code={\def\temp{##1}\message{[key value=\meaning\temp]}\textcolor{yellow}{##1}},
 		/codeexample/prettyprint/cs/.code={\message{[cs=##1]}\textcolor{green}{##1}},
 		/codeexample/prettyprint/cs with args/.code 2 args={\def\temp{##2}\message{[cs with args={##1}{\meaning\temp}]}\textcolor{green}{##1}\{\textcolor{orange}{##2}\}},
@@ -654,7 +652,6 @@
 	\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\pgfmanual@pretty@pgfkeys@collectvalue
 	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
 		% the key value is empty.
-		%\pgfmanualkeyvalueneedsbracesfalse
 		%\expandafter\pgfmanual@pretty@pgfkeys@processvalue\expandafter{\the\toks0 }%
 		\let\pgfmanual@pretty@pgfkeys@collectvalue@next=\relax
 	\else
@@ -683,8 +680,6 @@
 	\pgfmanual@pretty@pgfkeys@collectvalue@next
 }%
 \def\pgfmanual@pretty@collectargs@finish@value#1{%
-	%\pgfmanualkeyvalueneedsbracestrue
-	\pgfmanualkeyvalueneedsbracesfalse
 	\pgfmanual@pretty@pgfkeys@processvalue{#1}% the braces will be handled separately.
 	\pgfutil@ifnextchar\pgfmanual@EOI{%
 		\pgfmanual@pretty@pgfkeys@loop
@@ -695,7 +690,7 @@
 
 {\catcode`\^^M=13 \catcode`\ =13\relax\gdef\pgfmanual@pretty@restorespaces{\def^^M{\pgfmanual@pretty@space}\def {\pgfmanual@pretty@space}}}
 
-% #1: the keys name
+% #1: the key's name
 \def\pgfmanual@pretty@pgfkeys@processkey#1{%
 	\begingroup
 		\pgfmanual@pretty@restorespaces
@@ -703,9 +698,27 @@
 		% its value later... (if it has a value)
 		\xdef\pgfmanual@pretty@pgfkeys@collectkey@keyname{#1}%
 	\endgroup
-	% report key name ...
-	\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key name/.@cmd}}%
-	\expandafter\pgfmanual@loc@TMPa\pgfmanual@pretty@pgfkeys@collectkey@keyname\pgfeov
+	%
+	% check if it is a handled key. FIXME: this could be done in a
+	% rigorous way! This here assumes that all key handlers start with
+	% '.' and the '.' occurs never right after a '/' otherwise:
+	\def\pgfmanual@loc@TMPa{\pgfutil@in@{/.}}%
+	\expandafter\pgfmanual@loc@TMPa\expandafter{\pgfmanual@pretty@pgfkeys@collectkey@keyname}%
+	\ifpgfutil@in@
+		% split into key name and handler name...
+		\def\pgfmanual@pretty@splitit##1/.##2\relax{%
+			\def\pgfmanual@loc@TMPb{{##1}{.##2}}%
+		}%
+		\expandafter\pgfmanual@pretty@splitit\pgfmanual@pretty@pgfkeys@collectkey@keyname\relax
+		%
+		% report key name AND handler:
+		\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key name with handler/.@cmd}}%
+		\expandafter\pgfmanual@loc@TMPa\pgfmanual@loc@TMPb\pgfeov
+	\else
+		% report key name ...
+		\def\pgfmanual@loc@TMPa{\pgfkeysvalueof{/codeexample/prettyprint/key name/.@cmd}}%
+		\expandafter\pgfmanual@loc@TMPa\pgfmanual@pretty@pgfkeys@collectkey@keyname\pgfeov
+	\fi
 }
 \def\pgfmanual@pretty@pgfkeys@processvalue#1{%
 	% report or process the value, depending on the keyname.
