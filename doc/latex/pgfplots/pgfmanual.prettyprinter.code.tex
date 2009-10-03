@@ -88,10 +88,29 @@
 	% tokens.
 	/codeexample/prettyprint/cs/.code={#1},
 	%
-	% Used to typeset a single control sequence together with an
-	% argument.
-	% #1 is the control sequence's name and
-	% #2 is the value. Braces need to be typeset manually.
+	% Used to typeset a single control sequence together with one or
+	% more arguments.
+	%
+	% #1 is the control sequence's name (including the backslash as
+	% literal string) and
+	% #2,#3,...,#9 are the arguments. The number of arguments depends
+	% on the 'cs arguments/<CS NAME>' key; it contains the integer
+	% number.
+	%
+	% For example, if 
+	% |cs arguments/pgfkeys/.initial=1|,
+	% the pretty printer invokes
+	% |cs with args={\pgfkeys}{<argument>}.
+	%
+	% If
+	% |cs arguments/mycommand/.initial=2|,
+	% the pretty printer invokes
+	% |cs with args={\pgfkeys}{<argument1>}{<argument2>}.
+	% In this case, 'cs with args' needs to be defined in a way which
+	% allows to deal with 3 arguments.
+	%
+	% Please note that the value do not contain braces! The braces
+	% need to be inserted manually.
 	/codeexample/prettyprint/cs with args/.code 2 args={#1\{#2\}},
 	%
 	% For every identified control sequence, the key
@@ -111,6 +130,8 @@
 	% This allows special treatment for special
 	% commands like \pgfkeys:
 	/codeexample/prettyprint/cs/pgfkeys/.code 2 args={#1\{\pgfmanualprettyprintpgfkeys{#2}\}},
+	%
+	% recognise environments:
 	/codeexample/prettyprint/cs arguments/begin/.initial=1,
 	/codeexample/prettyprint/cs/begin/.code 2 args={#1\{#2\}},
 	/codeexample/prettyprint/cs arguments/end/.initial=1,
@@ -155,6 +176,7 @@
 %
 % @see \pgfmanualprettyprintpgfkeys
 \long\def\pgfmanualprettyprintcode#1{%
+%\def\temp{#1}\message{STARTING PRETTY PRINTING for \meaning\temp}%
 	\begingroup
 	\ifpgfmanualprettyenabled
 		\pgfmanualprettyprintstyles
@@ -169,7 +191,6 @@
 
 \def\pgfmanualprettyprintstyles{%
 %\tracingmacros=2 \tracingcommands=2
-%\message{STARTING PRETTY PRINTING}%
 	\def\{{\pgfmanual@pretty@lbrace}%
 	\def\}{\pgfmanual@pretty@rbrace}%
 	\pgfmanual@pretty@installcommenthandler
@@ -322,12 +343,15 @@
 %
 % ATTENTION:
 % 	\pgfmanual@pretty@collectargs@finish will be invoked with a SINGLE
-% 	argument. However, if #1 > 1, this will contain further braces:
+% 	argument. The argument as such will contain extra braces, one pair
+% 	of braces for each of the #1 arguments. These braces will have
+% 	catcode 1 and 2, i.e. they can *really* be used in TeX. Thus, the
+% 	finish routine will be invoked with
+% 		\pgfmanual@pretty@collectargs@finish{{<arg>}}
+%	for one argument and with
 % 		\pgfmanual@pretty@collectargs@finish{{<first arg>}{<second arg>}}
-% 	if #1=1, it will be
-% 		\pgfmanual@pretty@collectargs@finish{<first arg>}
-% 	i.e. without the extra set of braces.
-% 	
+%   for two and more arguments. Note the extra set of braces for one
+%   arg.
 \def\pgfmanual@pretty@collectargs#1{%
 	\begingroup
 	\edef\pgfmanual@loc@csargcount{#1}%
@@ -381,15 +405,8 @@
 						\ifnum\c@pgfmanual@pretty@openbracecount=0
 							% we have one complete argument ready!
 							% append it -- with REAL braces if needed:
-							\ifnum\pgfmanual@loc@csargcount=1
-								% no extra braces.
-								% FIXME THAT'S NO LONGER CORRECT!
-								% RE-INSERT BRACES!!!
-								\t@pgfmanual@allargs=\t@pgfmanual@currentarg
-							\else
-								\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
-								\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
-							\fi
+							\edef\pgfmanual@loc@TMPc{\the\t@pgfmanual@allargs{\the\t@pgfmanual@currentarg}}%
+							\t@pgfmanual@allargs=\expandafter{\pgfmanual@loc@TMPc}%
 							%
 							% check it we need more arguments:
 							\advance\c@pgfmanual@pretty@curargcount by1
@@ -430,6 +447,12 @@
 % 	properly.
 %
 % @see \pgfmanual@pretty@collectargs
+% 	
+% @remark This macro checks for \pgfmanual@EOI. In case it encounters
+% \pgfmanual@EOI, it stops collecting, leaves the \pgfmanual@EOI as
+% next token to be read and invokes the finish routine.
+% If you need to check for this case, use
+% \pgfutil@ifnextchar\pgfmanual@EOI{}{}
 \def\pgfmanual@pretty@collectupto#1{%
 	\begingroup
 	\def\pgfmanual@loc@delimittoken{#1}%
@@ -507,7 +530,7 @@
 		\edef\pgfmanual@loc@TMPb{\noexpand\pgfkeysvalueof{/codeexample/prettyprint/cs with args/.@cmd}}%
 	}%
 	\edef\pgfmanual@loc@TMPa{{\pgfmanual@pretty@backslash\pgfmanual@loc@TMPa}}%
-	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa{#1}\pgfeov
+	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa #1\pgfeov
 	% and continue with the main loop.
 	\pgfmanual@pretty@mainloop
 }%
@@ -663,9 +686,11 @@
 	%\pgfmanualkeyvalueneedsbracestrue
 	\pgfmanualkeyvalueneedsbracesfalse
 	\pgfmanual@pretty@pgfkeys@processvalue{#1}% the braces will be handled separately.
-	% FIXME : this doesn't handle keys with more than one argument!
-	% -> check for comma or EOI!
-	\pgfmanual@pretty@pgfkeys@loop
+	\pgfutil@ifnextchar\pgfmanual@EOI{%
+		\pgfmanual@pretty@pgfkeys@loop
+	}{%
+		\pgfmanual@pretty@pgfkeys@loop,% re-insert the gobbled comma here!
+	}%
 }%
 
 {\catcode`\^^M=13 \catcode`\ =13\relax\gdef\pgfmanual@pretty@restorespaces{\def^^M{\pgfmanual@pretty@space}\def {\pgfmanual@pretty@space}}}
