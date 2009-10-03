@@ -144,15 +144,24 @@
 	/codeexample/prettyprint/colored and verbose,
 }%
 
+\newif\ifpgfmanualprettyenabled
+\pgfmanualprettyenabledtrue
+
 % Typesets '#1', possibly using some sort of pretty printer.
 %
 % The argument '#1' is expected to be a long token list in which
 % 1. all characters have catcode 11 or 12 (normal letters),
 % 2. white spaces, tabs and newlines have catcode 13 (are active).
+%
+% @see \pgfmanualprettyprintpgfkeys
 \long\def\pgfmanualprettyprintcode#1{%
 	\begingroup
-	\pgfmanualprettyprintstyles
-	\pgfmanual@pretty@mainloop#1\pgfmanual@EOI
+	\ifpgfmanualprettyenabled
+		\pgfmanualprettyprintstyles
+		\pgfmanual@pretty@mainloop#1\pgfmanual@EOI
+	\else
+		#1%
+	\fi
 	\endgroup
 }%
 % DISABLE:
@@ -163,6 +172,10 @@
 	\def\}{\pgfmanual@pretty@rbrace}%
 	\pgfmanual@pretty@installcommenthandler
 }%
+
+
+\newif\ifpgfmanualprettycommentactive
+
 % we can't use the \@typeset@till@return method for comments because
 % the pretty printer needs full control over the token list.
 %
@@ -174,6 +187,7 @@
 \def\pgfmanual@pretty@installcommenthandler{%
 	\expandafter\def\pgfmanual@pretty@activepercent{%
 		\begingroup
+		\pgfmanualprettycommentactivetrue
 		\expandafter\let\pgfmanual@pretty@activenl=\pgfmanual@pretty@recoveraftercomment
 		\sl \% %
 	}%
@@ -225,22 +239,27 @@
 		% stop iteration.
 		\let\pgfmanual@pretty@mainloop@NEXT=\relax
 	\else
-		\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@lbracket%
-			% we found the start of OPTIONS '[ ... ]'.
-			% Attempt syntax highlighting for pgfkeys:
-			\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@pgfkeys
+		\ifpgfmanualprettycommentactive
+			\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@mainloop
+			#1%
 		\else
-			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@backslash
-				% we found the start of a control sequence '\command':
-				%
-				% collect the control sequence name into
-				% \pgfmanual@loc@TMPa, but without the backslash:
-				\let\pgfmanual@loc@TMPa=\pgfutil@empty
-				\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@collectcs@loop
+			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@lbracket%
+				% we found the start of OPTIONS '[ ... ]'.
+				% Attempt syntax highlighting for pgfkeys:
+				\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@pgfkeys
 			\else
-				% normal processing. Just typeset the token.
-				\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@mainloop
-				#1%
+				\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@backslash
+					% we found the start of a control sequence '\command':
+					%
+					% collect the control sequence name into
+					% \pgfmanual@loc@TMPa, but without the backslash:
+					\let\pgfmanual@loc@TMPa=\pgfutil@empty
+					\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@collectcs@loop
+				\else
+					% normal processing. Just typeset the token.
+					\let\pgfmanual@pretty@mainloop@NEXT=\pgfmanual@pretty@mainloop
+					#1%
+				\fi
 			\fi
 		\fi
 	\fi
@@ -394,11 +413,17 @@
 
 % A user macro which pretty prints a set of keys.
 \long\def\pgfmanualprettyprintpgfkeys#1{%
-	\begingroup
-	\pgfmanualprettyprintstyles
-	\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI
-	\endgroup
+	\ifpgfmanualprettyenabled
+		\begingroup
+		\pgfmanualprettyprintstyles
+		\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI
+		\endgroup
+	\else
+		#1%
+	\fi
 }
+
+% FIXME: DAS HIER IST FALSCH, WEIL KEINE NESTED BRACES GESUCHT WERDEN!
 \long\def\pgfmanual@pretty@pgfkeys#1]{%
 	[%
 	\pgfmanual@pretty@pgfkeys@loop#1\pgfmanual@EOI
@@ -413,36 +438,40 @@
 		\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\relax
 	\else
 		\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@loop
-		\ifnum13=\catcode`#1
-			% we found a white space (space, TAB or NL) or comment
+		\ifpgfmanualprettycommentactive
 			#1%
 		\else
-			\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@comma%
-				%\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@checkforEOI
-				,%
+			\ifnum13=\catcode`#1
+				% we found a white space (space, TAB or NL) or comment
+				#1%
 			\else
-				\ifnum10=\catcode`#1
-					% another white space... I thought they'd have
-					% catcode 13. doesn't matter.
-					#1%
+				\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@comma%
+					%\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@checkforEOI
+					,%
 				\else
-					\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@lbrace
-						% braces may not occur in the first place -
-						% but there are circumstances where it is
-						% convenient to deal with them here. Do it.
+					\ifnum10=\catcode`#1
+						% another white space... I thought they'd have
+						% catcode 13. doesn't matter.
 						#1%
 					\else
-						\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@rbrace
+						\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@lbrace
+							% braces may not occur in the first place -
+							% but there are circumstances where it is
+							% convenient to deal with them here. Do it.
 							#1%
 						\else
-							% found the beginning of a key! 
-							% We will collect the key name into
-							% \toks0.
-							\toks0={#1}%
-							%
-							% Handle it:
-							% FIXME what if we found an opening brace!?
-							\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@collectkey%
+							\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@rbrace
+								#1%
+							\else
+								% found the beginning of a key! 
+								% We will collect the key name into
+								% \toks0.
+								\toks0={#1}%
+								%
+								% Handle it:
+								% FIXME what if we found an opening brace!?
+								\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@collectkey%
+							\fi
 						\fi
 					\fi
 				\fi
