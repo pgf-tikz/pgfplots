@@ -251,6 +251,9 @@
 	\gdef\pgfmanual@pretty@activepercent{%}
 	\catcode`\^^M=13
 	\gdef\pgfmanual@pretty@activenl{^^M}\endgroup
+\begingroup
+	\catcode`\^^I=13\relax\gdef\pgfmanual@pretty@activetab{^^I}%
+	\catcode`\ =13\relax\gdef\pgfmanual@pretty@activespace{ }\endgroup
 
 % loops through all tokens.
 % #1 is a single token.
@@ -291,17 +294,25 @@
 % loops through all tokens, assembling the cs name as it goes.
 % #1 is a single token.
 \def\pgfmanual@pretty@collectcs@loop#1{%
-	\ifnum\lccode`#1=0
-		% a csname may only use letters. And: only letters have a
-		% positive lcccode!
-		% This here is the first non-letter.
-		\expandafter\pgfmanual@pretty@collectcs@loop@END\expandafter#1%
+	\let\pgfmanual@pretty@collectcs@loop@NEXT=\pgfmanual@pretty@collectcs@loop
+	\def\pgfmanual@loc@TMPb{#1}%
+	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
+		\def\pgfmanual@pretty@collectcs@loop@NEXT{\pgfmanual@pretty@collectcs@loop@END #1}%
 	\else
-		% continue iterating and assemble the csname...
-		\edef\pgfmanual@loc@TMPa{\pgfmanual@loc@TMPa #1}%
-		\expandafter\pgfmanual@pretty@collectcs@loop
+		\ifnum\lccode`#1=0
+			% a csname may only use letters. And: only letters have a
+			% positive lcccode!
+			% This here is the first non-letter.
+			\def\pgfmanual@pretty@collectcs@loop@NEXT{\pgfmanual@pretty@collectcs@loop@END #1}%
+		\else
+			% continue iterating and assemble the csname...
+			\edef\pgfmanual@loc@TMPa{\pgfmanual@loc@TMPa #1}%
+		\fi
 	\fi
+	\pgfmanual@pretty@collectcs@loop@NEXT
 }%
+\def\pgfmanual@pretty@after@cs{\pgfmanual@pretty@mainloop}%
+
 \def\pgfmanual@pretty@collectcs@loop@END{%
 	\pgfkeysifdefined{/codeexample/prettyprint/cs arguments/\pgfmanual@loc@TMPa}{%
 		% oh. The collected control sequence expects arguments. That
@@ -318,7 +329,7 @@
 		% ok, report the macro and continue with the main loop.
 		\def\pgfmanual@loc@TMPb{\pgfkeysvalueof{/codeexample/prettyprint/cs/.@cmd}}%
 		\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa\pgfeov
-		\let\pgfmanual@pretty@collectcs@loop@END@next=\pgfmanual@pretty@mainloop
+		\let\pgfmanual@pretty@collectcs@loop@END@next=\pgfmanual@pretty@after@cs
 	}%
 	\pgfmanual@pretty@collectcs@loop@END@next
 }%
@@ -376,9 +387,14 @@
 	\let\pgfmanual@pretty@collectargs@loop@NEXT=\pgfmanual@pretty@collectargs@loop
 	\def\pgfmanual@loc@TMPc{#1}%
 	\ifx\pgfmanual@loc@TMPc\pgfmanual@EOI
+		\ifnum\c@pgfmanual@pretty@openbracecount>0
+			\ifpgfmanualpdfwarnings
+				\pgfplots@warning{The pretty printer did not found the closing curly brace!? This will potentially lead to display errors}%
+			\fi
+		\fi
 		\edef\pgfmanual@pretty@collectargs@loop@NEXT{%
 			\noexpand\endgroup
-			\noexpand\pgfmanualprettyprinterhandlecollectedargs{\the\t@pgfmanual@allargs\the\t@pgfmanual@currentarg FIXME}%
+			\noexpand\pgfmanualprettyprinterhandlecollectedargs{\the\t@pgfmanual@allargs\the\t@pgfmanual@currentarg}%
 			\noexpand\pgfmanual@EOI% <- put this token back into token list!
 		}%
 	\else
@@ -530,10 +546,19 @@
 	\edef\pgfmanual@loc@TMPa{{\pgfmanual@pretty@backslash\pgfmanual@loc@TMPa}}%
 	\expandafter\pgfmanual@loc@TMPb\pgfmanual@loc@TMPa #1\pgfeov
 	% and continue with the main loop.
-	\pgfmanual@pretty@mainloop
+	\pgfmanual@pretty@after@cs
 }%
 
 % A user macro which pretty prints a set of keys.
+%
+% If '#1' is NOT an argument for \pgfkeys,
+% \pgfmanualprettyprintpgfkeys will try to recognise at least control
+% sequences (in the same way as usual). Thus, you can even use this
+% method if there *could* be pgfkeys arguments in an automated pretty
+% printing environment.
+%
+% However, '#1' should only have catcode 12 characters with the
+% exception of catcode 13 for newlines, spaces and comments.
 \long\def\pgfmanualprettyprintpgfkeys#1{%
 	\ifpgfmanualprettyenabled
 		\begingroup
@@ -545,7 +570,6 @@
 	\fi
 }
 
-% FIXME: DAS HIER IST FALSCH, WEIL KEINE NESTED BRACES GESUCHT WERDEN!
 \def\pgfmanual@pretty@pgfkeys{%
 	\let\pgfmanualprettyprinterhandlecollectedargs=\pgfmanual@pretty@pgfkeys@start
 	\pgfmanualprettyprintercollectupto]%
@@ -592,11 +616,11 @@
 								% found the beginning of a key! 
 								% We will collect the key name into
 								% \toks0.
-								\toks0={#1}%
+								\toks0={}%
 								%
 								% Handle it:
 								% FIXME what if we found an opening brace!?
-								\let\pgfmanual@pretty@pgfkeys@loop@NEXT=\pgfmanual@pretty@pgfkeys@collectkey%
+								\def\pgfmanual@pretty@pgfkeys@loop@NEXT{\pgfmanual@pretty@pgfkeys@collectkey #1}%
 							\fi
 						\fi
 					\fi
@@ -611,7 +635,11 @@
 	\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@collectkey
 	\ifx\pgfmanual@loc@TMPb\pgfmanual@EOI
 		% finish key name.
-		\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+		\edef\pgfmanual@loc@TMPb{\the\toks0 }%
+		\ifx\pgfmanual@loc@TMPb\pgfutil@empty
+		\else
+			\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+		\fi
 		\let\pgfmanual@pretty@pgfkeys@collectkey@next=\relax
 	\else
 		\ifx\pgfmanual@loc@TMPb\pgfmanual@pretty@eq
@@ -640,7 +668,31 @@
 					#1%
 					\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@pgfkeys@loop
 				\else
-					\toks0=\expandafter{\the\toks0 #1}%
+					\ifx\pgfmanual@loc@TMPa\pgfmanual@pretty@backslash
+						% This is confusing. I simply try to invoke
+						% the control sequence code and recover as
+						% good as possible. Let's see if that's
+						% useful.
+						\edef\pgfmanual@loc@TMPb{\the\toks0 }%
+						\ifx\pgfmanual@loc@TMPb\pgfutil@empty
+						\else
+							\expandafter\pgfmanual@pretty@pgfkeys@processkey\expandafter{\the\toks0 }%
+						\fi
+						%
+						% we found the start of a control sequence '\command':
+						%
+						% collect the control sequence name into
+						% \pgfmanual@loc@TMPa, but without the backslash:
+						\begingroup
+						\let\pgfmanual@loc@TMPa=\pgfutil@empty
+						\def\pgfmanual@pretty@after@cs{%
+							\endgroup
+							\pgfmanual@pretty@pgfkeys@loop
+						}%
+						\let\pgfmanual@pretty@pgfkeys@collectkey@next=\pgfmanual@pretty@collectcs@loop
+					\else
+						\toks0=\expandafter{\the\toks0 #1}%
+					\fi
 				\fi
 			\fi
 		\fi
