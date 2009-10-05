@@ -1,0 +1,249 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008/2009 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+% This file provides an interface to the
+% pgfmanual.prettyprint.code.tex thing -- it allows to 
+%  *generate pdf crossrefs inside of codeexamples automatically*
+% without any user input.
+%
+% Thus, you write
+% \begin{codeexample}[]
+% \begin{tikzpicture}
+% 	\begin{axis}[xlabel=x]
+% 		\addplot {x};
+% 	\end{axis}
+% \end{tikzpicture}
+% \end{codeexample}
+% and pdf cross references to the definitions of 'tikzpicture',
+% 'axis', 'xlabel', '\addplot' will be added automatically to the
+% resulting code listing.
+%
+%
+%
+% The only necessary thing is that \pgfmanualpdflabel has been called
+% for every (fully qualified) key, control sequence, environment or
+% whatever.
+
+\newif\ifpgfmanualpdfwarnings
+\pgfmanualpdfwarningstrue
+
+\pgfkeys{%
+	/codeexample/prettyprint/cs arguments/pgfkeys/.initial=1,
+	/codeexample/prettyprint/cs/pgfkeys/.code 2 args={\pgfmanualpdfref{#1}{#1}\{\pgfmanualprettyprintpgfkeys{#2}\}},
+	%
+	/codeexample/prettyprint/autolinks/.style={%
+		/codeexample/prettyprint/key name/.code={\pgfmanualpdfref{##1}{##1}},
+		/codeexample/prettyprint/key name with handler/.code 2 args={\pgfmanualpdfref{##1}{##1}/\pgfmanualpdfref{/handlers/##2}{##2}},
+		/codeexample/prettyprint/key value display only/.code={##1},
+		/codeexample/prettyprint/cs/.code={\pgfmanualpdfref{##1}{##1}},
+		/codeexample/prettyprint/cs with args/.code 2 args={\pgfmanualpdfref{##1}{##1}\{##2\}},
+		/codeexample/prettyprint/cs arguments/pgfkeys/.initial=1,
+		/codeexample/prettyprint/cs/pgfkeys/.code 2 args={\pgfmanualpdfref{##1}{##1}\{\pgfmanualprettyprintpgfkeys{##2}\}},
+		/codeexample/prettyprint/cs arguments/begin/.initial=1,
+		/codeexample/prettyprint/cs/begin/.code 2 args={##1\{\pgfmanualpdfref{##2}{##2}\}},
+		/codeexample/prettyprint/cs arguments/end/.initial=1,
+		/codeexample/prettyprint/cs/end/.code 2 args={##1\{\pgfmanualpdfref{##2}{##2}\}},
+		/codeexample/prettyprint/cs/usetikzlibrary/.code 2 args={##1\{\pgfmanualpdfref{##2}{##2}\}},
+		/codeexample/prettyprint/cs/usepgflibrary/.code 2 args={##1\{\pgfmanualpdfref{##2}{##2}\}},
+	},%
+	/codeexample/prettyprint/autolinks,
+}%
+
+\pgfkeys{
+	% whenever an unqualified key is found, the following key prefix
+	% list is tried to find a match.
+	/pdflinks/search key prefixes in/.initial={/tikz/,/pgf/},
+	%
+	% Enables or disables warnings for failed auto links:
+	/pdflinks/warnings/.is if=pgfmanualpdfwarnings,
+	/pdflinks/warnings/.default=true,
+	%
+	% Enables or disables the parsing of codeexamples.
+	/pdflinks/codeexample links/.is if=pgfmanualprettyenabled,
+	/pdflinks/codeexample links/.default=true,
+	%
+	% the link prefix written to the pdf file:
+	/pdflinks/internal link prefix/.initial=pgf,
+}
+
+% this is pgfplots-specific: pgfplots supports generic styles which
+% contain '\x' where '\x' iterates through 'x,y,z'.
+\newif\ifpgfmanualpdf@hasxyzoption
+
+\def\pgfmanualpdf@installreplacements{%
+	\def\marg##1{{##1}}%
+	\def\oarg##1{[##1]}%
+	\def\meta##1{<##1>}%
+	\def\x{x}%
+	\def\textbackslash{<CS>}%
+	\def\\{\textbackslash}%
+	\edef\ {\space}%
+	\edef\#{}%
+}%
+
+% Defines a new pdf cross ref label for use with \pgfmanualpdfref.
+%
+% #1: the label.
+% The text #2 will be shown in the resulting pdf.
+\def\pgfmanualpdflabel#1#2{%
+	\begingroup
+	\pgfmanualpdf@installreplacements%
+	%
+	\pgfutil@in@\x{#1}%
+	\ifpgfutil@in@
+		\pgfmanualpdf@hasxyzoptiontrue
+	\fi
+	\edef\pgfmanualpdflabel@@{#1}%
+	\pgfutil@ifundefined{pgfmanual@wrotehyperlabel@\pgfmanualpdflabel@@}{%
+		\pgfmanualpdflabel@generate{#1}{#2}%
+		\ifpgfmanualpdf@hasxyzoption
+			\def\x{y}%
+			\pgfmanualpdflabel@generate{#1}{#2}%
+			\def\x{z}%
+			\pgfmanualpdflabel@generate{#1}{#2}%
+		\fi
+	}{%
+		#2%
+	}%
+	\endgroup
+}%
+\def\pgfmanualpdflabel@generate#1#2{%
+	\pgfmanual@handletextbackslash@in{#1}%
+	%
+	\immediate\write\@auxout{%
+		\noexpand\expandafter\noexpand\gdef
+		\noexpand\csname pgfmanual@hashyperlabel@\pgfmanualpdflabel@@\noexpand\endcsname{1}%
+	}%
+	\expandafter\gdef\csname pgfmanual@hashyperlabel@\pgfmanualpdflabel@@\endcsname{1}%
+	\expandafter\gdef\csname pgfmanual@wrotehyperlabel@\pgfmanualpdflabel@@\endcsname{1}%
+	\edef\pgfmanualpdflabel@@{\pgfkeysvalueof{/pdflinks/internal link prefix}.\pgfmanualpdflabel@@}%
+	\expandafter\hypertarget\expandafter{\pgfmanualpdflabel@@}{#2}%
+}%
+
+\def\pgfmanualpdfref#1#2{%
+	\begingroup
+	\pgfmanualpdf@installreplacements
+	\pgfmanual@handletextbackslash@in{#1}%
+	%
+	\pgfutil@ifundefined{pgfmanual@hashyperlabel@\pgfmanualpdflabel@@}{%
+		\global\let\pgfmanual@glob=\pgfmanualpdflabel@@
+		\def\pgfmanual@tempa{\foreach \prefix in }%
+		\pgfkeysgetvalue{/pdflinks/search key prefixes in}\pgfmanual@tempb
+		\expandafter\pgfmanual@tempa\expandafter{\pgfmanual@tempb}{%
+			\pgfutil@ifundefined{pgfmanual@hashyperlabel@\prefix\pgfmanualpdflabel@@}{%
+			}{%
+				\xdef\pgfmanual@glob{\prefix\pgfmanualpdflabel@@}%
+				\breakforeach
+			}%
+		}%
+		\let\pgfmanualpdflabel@@=\pgfmanual@glob
+		\pgfutil@ifundefined{pgfmanual@hashyperlabel@\pgfmanualpdflabel@@}{%
+			\ifpgfmanualpdfwarnings
+				\begingroup
+					\toks0={#1}%
+					\pgfplots@warning{pgfmanualpdfref{\the\toks0 }: target label does not exist.}%
+				\endgroup
+			\fi
+			#2%
+			\let\pgfmanualpdflabel@@=\pgfutil@empty
+		}{}%
+	}{}%
+	\ifx\pgfmanualpdflabel@@\pgfutil@empty
+	\else
+		\expandafter\pgfmanualpdfref@\expandafter{\pgfmanualpdflabel@@}{#2}%
+	\fi
+	\endgroup
+}%
+\def\pgfmanualpdfref@#1#2{%
+	\pgfkeysgetvalue{/pdflinks/internal link prefix}\pgfmanual@temp
+	\expandafter\hyperlink\expandafter{\pgfmanual@temp.#1}{#2}%
+}%
+
+% backslashes might produce problems. 
+% This occurs quite frequently with automatically generated hyperrefs 
+% inside of codeexamples where \pgfmanualpdfref will be invoked - 
+% there, we get the catcode 12 backslashes. 
+% Check for them!
+%
+% #1: a token list which shall be used either as cross ref or as
+% label.
+%
+% On output, the macro \pgfmanualpdflabel@@ will be '\edef'ed to the
+% new, possibly modified value.
+\def\pgfmanual@handletextbackslash@in#1{%
+	\expandafter\pgfutil@in@\pgfmanual@pretty@backslash{#1}%
+	\ifpgfutil@in@
+		% assume the backslash is the first char and substitute it:
+		\def\pgfmanualpdfref@substitute@backslash##1##2\relax{%
+			\edef\pgfmanualpdflabel@@{\textbackslash ##2}%
+		}%
+		\pgfmanualpdfref@substitute@backslash#1\relax
+	\else
+		\edef\pgfmanualpdflabel@@{#1}%
+	\fi
+}%
+
+% Typesets '#1' in red,\texttt like every declaration. It will also
+% generate a pdf cross ref anchor for #1.
+\def\declareandlabel{%
+	\pgfmanual@verb@preparecatcodes@
+	\def\pgfmanualprettyprinterhandlecollectedargs##1{%
+		\pgfmanualpdflabel{##1}{\texttt{\declare{##1}}}%
+		\endgroup
+	}%
+	\pgfmanualprettyprintercollectargcount1%
+}
+
+% Typesets '#1' as \texttt cross ref to #1.
+% Example: 
+%  |\pgfplotsset| -> will generate a hyperref!
+% If the contents has no anchor, it will be ignored.
+% FIXME : needs 
+%   \let|=\pgfmanual@verb
+% AFTER \begin{document}!
+{
+	\catcode`\|=12
+	\gdef\pgfmanual@verb@bar{|}%
+}
+\def\pgfmanual@verb{%
+	\pgfmanual@verb@preparecatcodes@
+	\def\pgfmanualprettyprinterhandlecollectedargs##1{%
+		\pgfmanualpdfref{##1}{\texttt{##1}}%
+		\endgroup
+	}%
+	\expandafter\pgfmanualprettyprintercollectupto\pgfmanual@verb@bar%
+}
+
+\def\pgfmanual@verb@preparecatcodes@{%
+	\begingroup
+	\let\do\@makeother%
+	\dospecials%
+	\catcode`\%=12 % THATS IMPORTANT! Do *not* handle comments!
+	\catcode`\^^M=13
+	\catcode`\ =13
+	\catcode`\^^I=13
+}%
+\endinput
