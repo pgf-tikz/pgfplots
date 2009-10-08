@@ -2354,21 +2354,31 @@
 		% Step 1: remember the per class-styles as
 		% \csname pgfp@scatter@class@<class name>\endcsname
 		% -> this is done locally!
-		\global\let\pgfplots@glob@TMPa=\pgfutil@empty
-		\def\pgfplots@loc@TMPa##1=##2\relax{%
-			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-			\t@pgfplots@tokb={\expandafter\def\csname pgfp@scatter@class@##1\endcsname{##2}}%
-			\xdef\pgfplots@glob@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-		}%
+		%========================
+		%\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+		%\def\pgfplots@loc@TMPa##1=##2\relax{%
+		%	\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+		%	\t@pgfplots@tokb={\expandafter\def\csname pgfp@scatter@class@##1\endcsname{##2}}%
+		%	\xdef\pgfplots@glob@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		%}%
 		% accumulate the \def-macros in a global macro because
 		% \foreach is scoped:
-		\foreach \entry in {#1} {%
-			\edef\eentry{\entry}%
-			\expandafter\pgfplots@loc@TMPa\eentry\relax
-		}%
+		%\foreach \entry in {#1} {%
+		%	\edef\eentry{\entry}%
+		%	\expandafter\pgfplots@loc@TMPa\eentry\relax
+		%}%
 		% do the assignments:
-		\pgfplots@glob@TMPa
-		\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+		%\pgfplots@glob@TMPa
+		%\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+		%========================
+		\def\pgfplots@loc@TMPa##1=##2\pgfplots@EEOI{%
+			\expandafter\def\csname pgfp@scatter@class@##1\endcsname{##2}%
+		}%
+		\pgfplotsforeachentryinCSV{\pgfplots@loc@TMPb}{#1}{%
+			\edef\pgfplots@loc@TMPb{\pgfplots@loc@TMPb}%
+			\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb\pgfplots@EEOI
+		}%
+		%
 		\pgfkeysdef{/pgfplots/scatter/@pre marker code}{%
 			\pgfutil@ifundefined{pgfp@scatter@class@\pgfplotspointmeta}{%
 				\let\pgfplots@loc@TMPa=\pgfplotspointmeta
@@ -2415,6 +2425,9 @@
 			\expandafter\scope\expandafter[\pgfplots@loc@TMPa]%
 		}%
 		\pgfkeysdef{/pgfplots/scatter/@post marker code}{\endscope}%
+		% last step: remember the classes. Might be useful to typeset
+		% a legend.
+		\pgfkeyssetvalue{/pgfplots/scatter/classes/values}{#1}% 
 	},
 	/pgfplots/refstyle/.code={%
 		\pgfutil@ifundefined{pgfplots@labelstyle@#1}{%
@@ -2975,18 +2988,17 @@
 	\globaldefs=1
 	\pgfplotslistcheckempty\pgfplots@plotspeclist
 	\ifpgfplotslistempty
-		\let\pgfplots@curplotlist=\pgfutil@empty
+		\let\pgfplots@curplotlist=\relax
 	\else
 		\pgfplotslistpopfront\pgfplots@plotspeclist\to\pgfplots@curplotlist
+		\pgfplotslistcheckempty\pgfplots@legend
+		\ifpgfplotslistempty
+			\let\pgfplots@curlegend=\pgfutil@empty
+		\else
+			\pgfplotslistpopfront\pgfplots@legend\to\pgfplots@curlegend
+		\fi
 	\fi
 	%
-	\pgfplotslistcheckempty\pgfplots@legend
-	\ifpgfplotslistempty
-		\let\pgfplots@curlegend=\pgfutil@empty
-	\else
-		\pgfplotslistpopfront\pgfplots@legend\to\pgfplots@curlegend
-	\fi
-	\advance\pgfplots@numplots by-1
 }}
 
 \def\pgfplots@try@mirror@plot@handler{%
@@ -3079,9 +3091,14 @@
 			\curcolumnNum=0
 			\maxcolumnCount=\pgfplots@legend@columns\relax
 			%
-			\pgfutil@loop
-			\ifnum0<\pgfplots@numplots\relax
+			\pgfplotsloop{%
 				\pgfplots@pop@next@legend
+				\ifpgfplotslistempty
+					\pgfplotsloopcontinuefalse
+				\else
+					\pgfplotsloopcontinuetrue
+				\fi
+			}{%
 				\ifx\pgfplots@curlegend\pgfutil@empty
 				\else
 					\advance\curcolumnNum by1
@@ -3114,12 +3131,13 @@
 						\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\\}%
 					\else
 						\pgfplotslistcheckempty\pgfplots@legend
-						\ifnum\pgfplots@numplots=0
-							\pgfplotslistemptytrue
+						\ifpgfplotslistempty
+						\else
+							\pgfplotslistcheckempty\pgfplots@plotspeclist
 						\fi
 						\ifpgfplotslistempty
 							% Ok, either the legend list is empty or
-							% there are no more plots.
+							% there are no more plot specifications.
 							%
 							% Finalize matrix:
 							\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\\}%
@@ -3137,7 +3155,7 @@
 					\fi
 					\expandafter\t@pgfplots@toka\expandafter{\pgfplots@glob@TMPa}%
 				\fi
-			\pgfutil@repeat
+			}%
 			\t@pgfplots@tokb={\matrix[/pgfplots/every axis legend]}%
 			\xdef\pgfplots@glob@TMPa{%
 				\noexpand\def\noexpand\plotnum{0}%
