@@ -44,6 +44,7 @@
 
 \newif\ifpgfplots@bb@isactive
 \newif\ifpgfplots@xislinear
+\newif\ifpgfplots@has@label@information
 \newif\ifpgfplots@yislinear
 \newif\ifpgfplots@zislinear
 \newif\ifpgfplots@axis@equal
@@ -2380,6 +2381,7 @@
 						\def\pgfplots@rememberplotspec##1{%
 							\def\pgfplots@scatter@loc@TMPa####1=####2\pgfplots@EEOI{%
 								\pgfplots@rememberplotspec@orig{##1,####2}%
+								\pgfplots@rememberplotspec@for@label[####1]{##1,####2}%
 							}%
 							\pgfplotsforeachentryinCSV{\pgfplots@scatter@loc@TMPb}{#1}{%
 								\edef\pgfplots@scatter@loc@TMPb{\pgfplots@scatter@loc@TMPb}%
@@ -2770,7 +2772,13 @@
 	\fi
 }%
 
+\def\pgfplots@rememberplotspec@for@label{\pgfutil@ifnextchar[{\pgfplots@rememberplotspec@for@label@}{\pgfplots@rememberplotspec@for@label@[]}}%
+\def\pgfplots@rememberplotspec@for@label@[#1]#2{%
+	\expandafter\gdef\csname pgfplots@last@plot@style@#1\endcsname{#2}%
+	\global\pgfplots@has@label@informationtrue
+}%
 \def\pgfplots@rememberplotspec#1{%
+	\pgfplots@rememberplotspec@for@label{#1}%
 	\pgfplotslistpushbackglobal{#1}\to\pgfplots@plotspeclist
 }
 
@@ -7458,14 +7466,18 @@
 % The implementation for \label{foo} after \addplot. It allows to
 % \ref{foo} (it inserts the 'legend image code').
 %
+% With 
+% \addplot[scatter/classes={a={}}] ... ;
+% \label[a]{my label}  
+% you can reference scatter/classes labels.
+%
 % I only need to overwrite '\label'; the rest is done by LaTeX.
 %
 % THIS IS INCOMPATIBLE WITH plain TeX and ConTeXt! Don't use it, it
 % doesn't hurt.
-\def\pgfplots@plot@label#1{%
-	\ifx\pgfplots@last@plot@style\pgfutil@empty
-		\pgfplots@error{Can't create \string\label{#1}: it needs to be called after \string\addplot.}%
-	\else
+\def\pgfplots@plot@label{\pgfutil@ifnextchar[{\pgfplots@plot@label@}{\pgfplots@plot@label@[]}}%
+\def\pgfplots@plot@label@[#1]#2{%
+	\ifpgfplots@has@label@information
 		\begingroup
 		% I'd like to get all options which are INDEPENDENT of
 		% pgfplots. Idea: expand all /pgfplots-keys and collect
@@ -7483,19 +7495,20 @@
 		\def\pgfplots@label@tikzopts{}%
 		\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@label@tikzopts}%
 		\def\pgfplots@loc@TMPa{\pgfqkeysfiltered{/tikz}}%
-		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@last@plot@style}%
+		\expandafter\let\expandafter\pgfplots@loc@TMPb\csname pgfplots@last@plot@style@#1\endcsname
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPb}%
 		%
 		\pgfkeysgetvalue{/pgfplots/every crossref picture/.@cmd}{\pgfplots@crossref@pic}%
 		\pgfkeysgetvalue{/pgfplots/legend image code/.@cmd}{\pgfplots@curlegendcode}%
 		\t@pgfplots@toka=\expandafter{\pgfplots@curlegendcode current plot style\pgfeov}%
 		\t@pgfplots@tokb=\expandafter{\pgfplots@label@tikzopts}%
 		\t@pgfplots@tokc=\expandafter{\pgfplots@crossref@pic\pgfeov}%
-		% 1. prepare /pgfplots/refstyle={#1}:
+		% 1. prepare /pgfplots/refstyle={#2}:
 		\immediate\write\@auxout{%
 			\noexpand\expandafter\noexpand\gdef
-			\noexpand\csname pgfplots@labelstyle@#1\noexpand\endcsname{\the\t@pgfplots@tokb}%
+			\noexpand\csname pgfplots@labelstyle@#2\noexpand\endcsname{\the\t@pgfplots@tokb}%
 		}%
-		% 2. prepare \ref{#1} and \pageref{#1}:
+		% 2. prepare \ref{#2} and \pageref{#2}:
 		%
 		% There are several nasty things to consider:
 		% a) macro expansion. I did not really understand what happens
@@ -7508,11 +7521,11 @@
 		% a "moving argument" like \caption or so, we need to use
 		% proper '\protect'ion. 
 		%
-		% this here is the low-level implementation of \ref{#1}. Write it into
+		% this here is the low-level implementation of \ref{#2}. Write it into
 		% the .aux file:
 		\immediate\write\@auxout{%
 			\noexpand\expandafter\noexpand\gdef
-			\noexpand\csname pgfplots@show@ref@#1\noexpand\endcsname{%
+			\noexpand\csname pgfplots@show@ref@#2\noexpand\endcsname{%
 				\noexpand\begingroup
 				\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@tokb}%
 				\noexpand\pgfkeysdef{/pgfplots/every crossref picture}{\the\t@pgfplots@tokc}%
@@ -7520,18 +7533,20 @@
 				\noexpand\endgroup%
 			}%
 		}%
-		% This here is the high-level implementation \ref{#1}.
+		% This here is the high-level implementation \ref{#2}.
 		% The \protect handles the cases of "moving arguments":
 		\edef\pgfplots@loc@TMPa{%
 			\noexpand\expandafter
 			\noexpand\protect
-			\noexpand\csname pgfplots@show@ref@#1\noexpand\endcsname
+			\noexpand\csname pgfplots@show@ref@#2\noexpand\endcsname
 		}%
 		\pgfplots@command@to@string{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPa}%
 		\global\let\pgfplots@glob@TMPb=\pgfplots@loc@TMPa
 		\endgroup
 		\let\@currentlabel=\pgfplots@glob@TMPb
-		\pgfplots@original@LaTeX@label{#1}%
+		\pgfplots@original@LaTeX@label{#2}%
+	\else
+		\pgfplots@error{Can't create \string\label{#2}: it needs to be called after \string\addplot.}%
 	\fi
 }%
 
@@ -7862,7 +7877,8 @@
 		\let\pgfplots@original@LaTeX@label=\label
 		\let\label=\pgfplots@plot@label
 	}%
-	\global\let\pgfplots@last@plot@style=\pgfutil@empty
+	%
+	\global\pgfplots@has@label@informationfalse
 	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
