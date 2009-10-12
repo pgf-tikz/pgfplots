@@ -122,7 +122,10 @@
 \def\axisdefaultheight{207pt}
 
 
-
+% Invokes '#2' if a cycle list named '#1' exists and '#3' if not.
+\long\def\pgfplotsifcyclelistexists#1#2#3{%
+	\pgfutil@ifundefined{pgfp@cyclist@\string#1@}{#3}{#2}%
+}%
 
 % Creates a named plot cycle list.
 %
@@ -305,6 +308,41 @@
 
 \def\pgfplots@meshmode{n}% none
 \def\pgfplotsplothandlermesh@flatmode{m}% mean
+
+\def\pgfplots@cycle@multi@list@EOI{\pgfplots@cycle@multi@list@EOI}%
+\def\pgfplots@cycle@multi@list#1{%
+\message{cycle multi list initialiasing!}%
+	\def\pgfplots@loc@TMPb{0}%
+	\pgfplots@cycle@multi@list@#1\nextlist\pgfplots@cycle@multi@list@EOI
+}%
+\def\pgfplots@cycle@multi@list@#1\nextlist{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% ignore it if someone provided too many \nextlist commands.
+	\else
+		% parse and store list:
+		\pgfplotscreateplotcyclelist{/pgfplots/cycle multi list/@list\pgfplots@loc@TMPb}{#1}%
+		\begingroup
+			\expandafter\pgfplotslistsize\csname pgfp@cyclist@/pgfplots/cycle multi list/@list\pgfplots@loc@TMPb @\endcsname\to\c@pgf@counta
+			\edef\pgfmathresult{\the\c@pgf@counta}%
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+		\pgfkeyslet{/pgfplots/cycle multi list/@N\pgfplots@loc@TMPb}\pgfmathresult
+	\def\temp{#1}\message{cycle multi list/@list={\meaning\temp};   /@N\pgfplots@loc@TMPb = \pgfkeysvalueof{/pgfplots/cycle multi list/@N\pgfplots@loc@TMPb}.}%
+		\pgfplotsutil@advancestringcounter\pgfplots@loc@TMPb
+	\fi
+	%
+	\pgfutil@ifnextchar{\pgfplots@cycle@multi@list@EOI}{%
+		\pgfplots@cycle@multi@list@finalize
+	}{%
+		\pgfplots@cycle@multi@list@
+	}%
+}%
+
+\def\pgfplots@cycle@multi@list@finalize\pgfplots@cycle@multi@list@EOI{%
+\message{cycle multi list/@dim=\pgfplots@loc@TMPb.}%
+	\pgfkeyslet{/pgfplots/cycle multi list/@dim}\pgfplots@loc@TMPb
+}%
 
 \pgfkeys{%
 	/pgfplots/search path for tikz/.search also={/tikz,/pgfplots},
@@ -1354,14 +1392,22 @@
 	/pgfplots/cycle list/.code={\pgfplots@assign@list\autoplotspeclist{#1}},
 	/pgfplots/cycle list/.belongs to family=/pgfplots,
 	/pgfplots/cycle list name/.code={%
-		\pgfutil@ifundefined{pgfp@cyclist@\string#1@}{%
-			\pgfplots@error{Sorry, there is no such cycle list named \string#1. Maybe you misspelled it?}%
-		}{%
+		\pgfplotsifcyclelistexists{#1}{%
 			\expandafter\let\expandafter\autoplotspeclist\csname pgfp@cyclist@\string#1@\endcsname
+		}{%
+			\pgfplots@error{Sorry, there is no such cycle list named \string#1. Maybe you misspelled it?}%
 		}%
 	},
 	/pgfplots/cycle list name/.belongs to family=/pgfplots,
 	/pgfplots/cycle list name=color,
+	% accepts arguments of the form
+	% <first list spec>\nextlist <second list spec>\nextlist ....
+	% where each list spec is EITHER a cycle list name OR a cycle list
+	% argument.
+	/pgfplots/cycle multi list/.code={\pgfplots@cycle@multi@list{#1}},
+	/pgfplots/cycle multi list/@dim/.initial=0,
+	%/pgfplots/cycle multi list/@list0/.style={},
+	%/pgfplots/cycle multi list/@N0/.initial=0,%
 	/pgfplots/legend style/.belongs to family=/pgfplots/style commands,
 	/pgfplots/legend style/.code={%
 		\pgfkeysalso{/pgfplots/every axis legend/.append style={#1}}%
@@ -2799,23 +2845,67 @@
 }
 
 \def\pgfplots@getautoplotspec into#1{%
-	\pgfplotslistsize\autoplotspeclist\to\c@pgf@counta
-	\ifnum\c@pgf@counta=0
-		\let#1=\pgfutil@empty
+	\begingroup
+	\let#1=\pgfutil@empty
+	\pgfkeysgetvalue{/pgfplots/cycle multi list/@dim}\pgfplots@cycle@dim
+	\ifnum\pgfplots@cycle@dim>0
+		% use the 'cycle multi list' feature.
+		%
+		% it employs a scalar -> multiindex map like
+		% void fromScalar( size_t d, size_t scalar, size_t* Iout, const size_t* N )
+		% {
+		% 	size_t ret=scalar;
+		% 	for( int i = d-1; i>=0; --i ) {
+		% 		Iout[i] = ret % N[i];
+		% 		ret /= N[i];
+		% 	}
+		% }
+		% to get the different indices into the cycle lists.
+		%-------------------------------------------------- 
+		\c@pgf@counta=\pgfplots@cycle@dim
+		\c@pgf@countb=\pgfplots@numplots\relax
+		\advance\c@pgf@counta by-1
+		\pgfplotsloop{%
+			\ifnum\c@pgf@counta<0
+				\pgfplotsloopcontinuefalse
+			\else
+				\pgfplotsloopcontinuetrue
+			\fi
+		}{%
+			\pgfkeysgetvalue{/pgfplots/cycle multi list/@N\the\c@pgf@counta}\pgfplots@cycle@N
+			% compute list index:
+			\pgfplotsmathmodint{\c@pgf@countb}{\pgfplots@cycle@N}%
+			\divide\c@pgf@countb by \pgfplots@cycle@N\relax
+			%
+			\expandafter\pgfplots@getautoplotspec@
+				\csname pgfp@cyclist@/pgfplots/cycle multi list/@list\the\c@pgf@counta @\endcsname
+				{\pgfplots@cycle@N}%
+				{\pgfmathresult}%
+			\t@pgfplots@toka=\expandafter{#1,}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+			\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\advance\c@pgf@counta by-1
+		}%
 	\else
-		\c@pgf@countb=\pgfplots@numplots
-		% offset modulo size:
-		\pgfutil@loop
-		\ifnum\c@pgf@countb<\c@pgf@counta
-			\pgfplots@loop@CONTINUEfalse
-		\else
-			\pgfplots@loop@CONTINUEtrue
-		\fi
-		\ifpgfplots@loop@CONTINUE
-			\advance\c@pgf@countb by-\c@pgf@counta
-		\pgfutil@repeat
-		\pgfplotslistselect\c@pgf@countb\of\autoplotspeclist\to#1
-%\pgfplots@message{pgfplots.sty: using \string\autoplotspeclist\ specification no\#\the\c@pgf@countb (of \the\c@pgf@counta): #1}%
+		% normal cycle list:
+		\pgfplotslistsize\autoplotspeclist\to\c@pgf@countd
+		\pgfplots@getautoplotspec@{\autoplotspeclist}{\c@pgf@countd}{\pgfplots@numplots}%
+		\let#1=\pgfplotsretval
+	\fi
+	\pgfmath@smuggleone#1%
+	\endgroup
+}
+% #1: list name (macro!)
+% #2: list size (integer register or value)
+% #3: list element index
+%
+% defines \pgfplotsretval
+\def\pgfplots@getautoplotspec@#1#2#3{%
+	\ifnum#2=0
+		\let\pgfplotsretval=\pgfutil@empty
+	\else
+		\pgfplotsmathmodint{#3}{#2}%
+		\pgfplotslistselect\pgfmathresult\of#1\to\pgfplotsretval
 	\fi
 }
 
