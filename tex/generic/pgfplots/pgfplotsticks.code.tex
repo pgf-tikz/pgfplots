@@ -1963,18 +1963,25 @@
 	%
 	\pgfdeclaregenericanchor{#2}{%
 		\begingroup
-		\pgftransformreset
-		\tikz@transform
-		% FIXME : what with shifts!?
-		% I only need to apply it to direction vectors! There should
-		% be no shift!
+		\pgfutil@ifundefined{nodename}{%
+		}{%
+			\ifx\nodename\pgfutil@empty
+				% just use the given transformation matrix - we are
+				% typesetting an unlabeled node.
+			\else
+				\pgfsettransform{\csname pgf@sh@nt@\nodename\endcsname}%
+			\fi
+		}%
+		% I only need to apply the trafo matrix to direction vectors. Eliminate
+		% shifts.
 		\pgf@pt@x=0pt
 		\pgf@pt@y=0pt
 		%
-		% FIXME : is that correct!?
-		% -> it appears it is needed for 'sloped'!
-		%  why not for other rotations!?
-		%\pgftransforminvert
+		% I'll apply the inverse transformation matrix to direction
+		% vectors. To ensure the relative position of these vectors
+		% and the anchors of the node, I have to invert the matrix:
+		\pgftransforminvert
+		%
 		%
 		% This here is the normal direction (points to the axis)
 		\pgfqpointscale{-1}{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
@@ -2032,7 +2039,6 @@
 				\fi
 			\fi
 			\pgfplots@xcomp}%
-		%\pgf@sh@reanchor{##1}{\pgfplots@anchor}%
 		%
 		%
 		% Now, I'd like the 'center' of the node on one line with the
@@ -2062,15 +2068,11 @@
 			{\csname pgfplotspointunit#1\endcsname}%
 		\pgf@pos@transform\pgf@x\pgf@y
 		%
-		% setup linear system (matrix)
-		% I use \pgfsettransform to employ the matrix inversion code.
-		\pgfsettransform{%
+		\edef\pgfplots@LEQ{%
+		% solve linear system
 			{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@x}%
 			{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@y}%
-			{0pt}{0pt}%
 		}%
-		% invert the matrix.
-		\pgftransforminvert%
 		% 
 		% apply inverse matrix to right-hand-side (and compute RHS):
 		\pgf@sh@reanchor{##1}{center}%
@@ -2078,14 +2080,20 @@
 		\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
 			{\pgfplots@loc@center}%
 			{\pgf@sh@reanchor{##1}{\pgfplots@anchor}}%
-		\pgf@pos@transform\pgf@x\pgf@y
+		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+		%
+		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
+		\def\pgfplots@extract####1####2{%
+			\def\pgfplots@r{####1}%
+		}%
+		\expandafter\pgfplots@extract\pgfmathresult
 		% GOT IT!
-		\edef\pgfplots@r{\pgf@sys@tonumber\pgf@x}%
 		%
 		% compute x_c + r*n:
 		\pgfpointadd
 			{\pgfplots@loc@center}%
 			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
+%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
 		\pgf@process{}% <- transport outside of group
 		\endgroup
 	}%
@@ -2109,7 +2117,9 @@
 				% FIXME : which transformation matrix needs to be
 				% applied in this context?
 				%\tikz@node@transformations 
-				\tikz@transform
+				\pgfutil@ifundefined{nodename}{}{%
+					\csname pgf@sh@nt@\nodename\endcsname
+				}%
 				\pgftransforminvert
 				%
 				% This here is the anchor as such.
