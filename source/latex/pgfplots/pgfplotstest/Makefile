@@ -4,7 +4,7 @@ PDFLATEX=pdflatex -shell-escape
 all: pgfplotstest.pdf
 	@echo "$^ have been compiled successfully. I did NOT check for references, so you may need to rerun make several times."
 
-%.pdf:
+%.pdf: FORCE
 	mkdir -p gnuplot
 	@$(PDFLATEX) $(@:.pdf=.tex)
 	@echo ""
