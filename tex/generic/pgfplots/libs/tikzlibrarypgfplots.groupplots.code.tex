@@ -32,6 +32,8 @@
 \def\pgfplots@group@columns{1}
 \def\pgfplots@group@rows{1}
 \def\pgfplots@group@name{group}
+\def\pgfplots@group@style{}
+\gdef\pgfplots@group@rmopts{}
 \newcount\pgfplots@group@current@plot
 \newcount\pgfplots@group@current@row
 \newcount\pgfplots@group@current@column
@@ -39,17 +41,14 @@
 \usetikzlibrary{calc}
 
 \pgfkeys{
-    /pgfplots/group/size/.is family,
-    /pgfplots/group style/.style={/pgfplots/group/.cd,#1},
+    /pgfplots/group/.is family,
+    /pgfplots/group style/.store in=\pgfplots@group@style,
     /pgfplots/group/horizontal sep/.initial=1cm,
     /pgfplots/group/vertical sep/.initial=1cm,
     /pgfplots/group/group size/.style args={#1 by #2}{/pgfplots/group/columns=#1,/pgfplots/group/rows=#2},
     /pgfplots/group/group size/.default={1 by 1},
-%    /pgfplots/group/group size/.belongs to family=/pgfplots/group/size,
     /pgfplots/group/columns/.store in=\pgfplots@group@columns,
-%    /pgfplots/group/columns/.belongs to family=/pgfplots/group/size,
     /pgfplots/group/rows/.store in=\pgfplots@group@rows,
-%    /pgfplots/group/rows/.belongs to family=/pgfplots/group/size,
     /pgfplots/group/every plot/.style=,
     /pgfplots/group/shared labels/.is if=pgfplots@group@sharedlabels,
     /pgfplots/group/shared labels=false,
@@ -77,19 +76,21 @@
 \def\pgfplots@group@nextplot[#1]{%
     % Check if it legal to produce another plot
     \ifnum\pgfplots@group@current@plot=\pgfplots@group@totalplots\relax
-      \pgfplots@warning{You are adding more plots than you specified, current plots=\the\pgfplots@group@current@plot\space vs. total plots=\pgfplots@group@totalplots.}
+      \pgfplots@warning{You are adding more plots than you specified, current plots=\the\pgfplots@group@current@plot\space vs. total allowed
+          plots=\pgfplots@group@totalplots.}
+    \else
+      % 
+      % If there has been other plots before then end the plot
+      % 
+      \ifnum0<\pgfplots@group@current@plot\relax
+        \endpgfplots@environment@opt
+      \fi
+      % Prepare for next plot, increment plot, row and column
+      \pgfplots@group@increment@numbers
+      % DEBUG: \message{DEBUG: Cur. Plot: \the\pgfplots@group@current@plot. Current Row: \the\pgfplots@group@current@row. Current Column: \the\pgfplots@group@current@column.}    
+      % Creation of the new axis environment
+      \pgfplots@group@environment@create{#1}
     \fi
-    % 
-    % If there has been other plots before then end the plot
-    % 
-    \ifnum0<\pgfplots@group@current@plot\relax
-      \endpgfplots@environment@opt
-    \fi
-    % Prepare for next plot, increment plot, row and column
-    \pgfplots@group@increment@numbers
-    % DEBUG: \message{DEBUG: Cur. Plot: \the\pgfplots@group@current@plot. Current Row: \the\pgfplots@group@current@row. Current Column: \the\pgfplots@group@current@column.}    
-    % Creation of the new axis environment
-    \pgfplots@group@environment@create{#1}
 }
 %
 % This creates an environment according to which plots that have been typeset.
@@ -128,22 +129,22 @@
           /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
           #1]
       \else
-        %\pgfmathparse{int(\the\pgfplots@group@current@column -1)}
-	  	\pgfplotsgroupplotsmath@decrease\pgfplots@group@current@column
+        \pgfplotsgroupplotsmath@decrease\pgfplots@group@current@column
         \xdef\pgfplots@glob@TMPb{\pgfplots@group@name\space c\pgfmathresult r\the\pgfplots@group@current@row}
         \pgfplots@environment@opt[name={\pgfplots@group@name\space c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row},%
           /pgfplots/group/every plot,%
           /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
-          at={($(\pgfplots@glob@TMPb.east)+(\pgfkeysvalueof{/pgfplots/group/horizontal sep},0)$)},anchor=west,#1]
+          at={($(\pgfplots@glob@TMPb.east)+(\pgfkeysvalueof{/pgfplots/group/horizontal sep},0)$)},anchor=west,%
+          #1]
       \fi
     \else
-      %\pgfmathparse{int(\the\pgfplots@group@current@row-1)}
-	  \pgfplotsgroupplotsmath@decrease\pgfplots@group@current@row
+      \pgfplotsgroupplotsmath@decrease\pgfplots@group@current@row
       \xdef\pgfplots@glob@TMPb{\pgfplots@group@name\space c\the\pgfplots@group@current@column r\pgfmathresult}
       \pgfplots@environment@opt[name={\pgfplots@group@name\space c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row},%
         /pgfplots/group/every plot,%
         /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
-        at={($(\pgfplots@glob@TMPb.south)-(0,\pgfkeysvalueof{/pgfplots/group/vertical sep})$)},anchor=north,#1]%
+        at={($(\pgfplots@glob@TMPb.south)-(0,\pgfkeysvalueof{/pgfplots/group/vertical sep})$)},anchor=north,%
+        #1]%
     \fi%
 }
 
@@ -172,7 +173,6 @@
           \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
               \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@group@rows/.append style={xticklabel pos=lower}}%
           \ifnum1<\pgfplots@group@rows\relax
-            %\pgfmathparse{int(\pgfplots@group@rows -1)}
             \pgfplotsgroupplotsmath@decrease\pgfplots@group@rows
             \foreach \pgfplots@row in {1,...,\pgfmathresult} {%
                 \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
@@ -206,7 +206,6 @@
           \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
               \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@group@columns r\pgfplots@row/.append style={yticklabel pos=right}}%
           \ifnum1<\pgfplots@group@columns\relax
-            %\pgfmathparse{int(\pgfplots@group@columns -1)}
             \pgfplotsgroupplotsmath@decrease\pgfplots@group@columns
             \foreach \pgfplots@column in {1,...,\pgfmathresult} {%
                 \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
@@ -280,7 +279,7 @@
 %
 % Implementation of the environment {groupplots}
 \def\pgfplots@environment@groupplot{%
-	\pgfutil@ifnextchar[{\pgfplots@@environment@groupplot}{\pgfplots@@environment@groupplot[]}%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@groupplot}{\pgfplots@@environment@groupplot[\pgfutil@empty]}%
 }
 
 \def\endpgfplots@environment@groupplot{\endpgfplots@environment@opt\endgroup}
@@ -288,29 +287,27 @@
 \def\pgfplots@@environment@groupplot[#1]{%
     \begingroup%
     % Only find the keys column and row
-%     \pgfkeyssetfamily{/tikz/variable}{/pgfplots}%<-- unnecessary;  applies only to /tikz/variable
-%
-%     % the following things appear to be complete... ?
-%     \pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@rmopts}%
-%     \let\pgfplots@rmopts=\pgfutil@empty
-%     \pgfkeysinstallkeyfilter{/pgf/key filters/active families and known}{}%
-%     \pgfqkeysactivatesinglefamilyandfilteroptions{/pgfplots/group/size}%
-%     {/pgfplots}%
-%     {#1}%
-%     \let\pgfplots@rmopts=\relax
-    \pgfplots@set@options{#1}
+    % the following things appear to be complete... ?
+    \pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@group@rmopts}%
+    \let\pgfplots@group@rmopts=\pgfutil@empty
+    \pgfkeysinstallkeyfilter{/pgf/key filters/equals}{/pgfplots/group style}
+    \pgfkeysinstallkeyfilter{/pgf/key filters/is descendant of}{/pgfplots/group}
+    \pgfqkeysfiltered{/pgfplots}{#1}
+    \edef\pgfplots@loc@TMPa{%
+        \noexpand\pgfkeys{/pgfplots/group/.cd,\pgfplots@group@style}
+    }\pgfplots@loc@TMPa
+    \expandafter\pgfplots@set@options\expandafter{\pgfplots@group@rmopts}
     \pgfplots@group@individual@setup
     \pgfplots@group@determine@ticklabels
     \pgfplots@group@current@plot=0%
     \pgfplots@group@current@row=1%
     \pgfplots@group@current@column=0%
-	\begingroup
-		\c@pgf@counta=\pgfplots@group@rows\relax
-		\multiply \c@pgf@counta by\pgfplots@group@columns\relax
-		\edef\pgfmathresult{\the\c@pgf@counta}%
-		\pgfmath@smuggleone\pgfmathresult
-	\endgroup
-    %\pgfmathparse{int((\pgfplots@group@rows)*\pgfplots@group@columns)}%
+    \begingroup
+      \c@pgf@counta=\pgfplots@group@rows\relax
+      \multiply \c@pgf@counta by\pgfplots@group@columns\relax
+      \edef\pgfmathresult{\the\c@pgf@counta}%
+      \pgfmath@smuggleone\pgfmathresult
+    \endgroup
     \edef\pgfplots@group@totalplots{\pgfmathresult}%
     %DEBUG: \message{TEST: \pgfplots@group@totalplots, rows=\pgfplots@group@rows, columns=\pgfplots@group@columns}%
 }
@@ -319,12 +316,12 @@
 %
 % #1 an integer (a register or something which expands to an integer).
 \def\pgfplotsgroupplotsmath@decrease#1{%
-	\begingroup
-		\c@pgf@counta=#1\relax
-		\advance\c@pgf@counta by-1
-		\edef\pgfmathresult{\the\c@pgf@counta}%
-		\pgfmath@smuggleone\pgfmathresult
-	\endgroup
+    \begingroup
+      \c@pgf@counta=#1\relax
+      \advance\c@pgf@counta by-1
+      \edef\pgfmathresult{\the\c@pgf@counta}%
+      \pgfmath@smuggleone\pgfmathresult
+    \endgroup
 }
 
 \tikzaddtikzonlycommandshortcutlet\groupplot\pgfplots@environment@groupplot
