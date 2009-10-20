@@ -10,7 +10,7 @@ pgfplotstable: pgfplotstable.pdf
 
 %.pdf: FORCE
 	mkdir -p gnuplot
-	@$(PDFLATEX) $(@:.pdf=.tex)
+	@export TEXMFCNF=.: && $(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
 	@echo ""
