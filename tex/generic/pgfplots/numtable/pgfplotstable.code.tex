@@ -69,6 +69,7 @@
 % should always be false; use only in grouped internal macros
 \newif\ifpgfplots@table@options@areset
 \newif\ifpgfplots@tableread@to@listener
+\newif\ifpgfplots@tableread@use@begingroup
 
 \input pgfplotstable.coltype.code.tex
 
@@ -992,6 +993,15 @@
 %
 % Note: this command also updates \pgfplotsscanlinelength.
 \def\pgfplotstableread{%
+	\pgfutil@ifnextchar*{%
+		\pgfplots@tableread@use@begingroupfalse
+		\pgfplotstableread@impl@star
+	}{%
+		\pgfplots@tableread@use@begingrouptrue
+		\pgfplotstableread@impl@star*%
+	}%
+}%
+\def\pgfplotstableread@impl@star*{%
 	\pgfutil@ifnextchar[{%
 		\pgfplotstableread@impl
 	}{%
@@ -1650,7 +1660,9 @@
 }%
 
 \def\pgfplotstableread@impl@#1#2#3{%
+	\ifpgfplots@tableread@use@begingroup
 	\begingroup
+	\fi
 %\pgfplots@message{ATTEMPTING TO READ #2}%
 	\openin1=#2.tex
 	\ifeof1
@@ -1678,7 +1690,9 @@
 	\fi
 	\pgfplotsscanlinelengthcleanup
 	\pgfplotstable@copy@to@globalbuffers@simple{#2}%
+	\ifpgfplots@tableread@use@begingroup
 	\endgroup
+	\fi
 	\ifpgfplots@tableread@to@listener
 		% there are no data structures in this case.
 		\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
@@ -1700,20 +1714,32 @@
 	\def\pgfplotstableread@filename{#2}%
 	%
 	% local counter definitions:
-	\let\pgfplotstableread@lineno=\c@pgf@counta
-	\let\pgfplotstableread@numcols=\c@pgf@countb
-	\let\pgfplotstableread@curcol=\c@pgf@countc
-	\let\pgfplotstableread@usablelineno=\c@pgf@countd
-	\def\thepgfplotstableread@lineno{\the\pgfplotstableread@lineno}%
-	\def\thepgfplotstableread@usablelineno{\the\pgfplotstableread@usablelineno}%
-	\def\thepgfplotstableread@curcol{\the\pgfplotstableread@curcol}%
-	\def\thepgfplotstableread@numcols{\the\pgfplotstableread@numcols}%
-	\def\pgfplotstableread@countreset##1{##1=0 }%
-	\def\pgfplotstableread@countset##1##2{##1=##2 }%
-	\def\pgfplotstableread@countadvance##1{\advance##1 by1 }%
+	\ifpgfplots@tableread@use@begingroup
+		\let\pgfplotstableread@lineno=\c@pgf@counta
+		\let\pgfplotstableread@numcols=\c@pgf@countb
+		\let\pgfplotstableread@curcol=\c@pgf@countc
+		\let\pgfplotstableread@usablelineno=\c@pgf@countd
+		\def\thepgfplotstableread@lineno{\the\pgfplotstableread@lineno}%
+		\def\thepgfplotstableread@usablelineno{\the\pgfplotstableread@usablelineno}%
+		\def\thepgfplotstableread@curcol{\the\pgfplotstableread@curcol}%
+		\def\thepgfplotstableread@numcols{\the\pgfplotstableread@numcols}%
+		\def\pgfplotstableread@countreset##1{##1=0 }%
+		\def\pgfplotstableread@countset##1##2{##1=##2 }%
+		\def\pgfplotstableread@countadvance##1{\advance##1 by1 }%
+	\else
+		% don't re-use integers! We have no protecting scopes!
+		\def\thepgfplotstableread@lineno{\pgfplotstableread@lineno}%
+		\def\thepgfplotstableread@usablelineno{\pgfplotstableread@usablelineno}%
+		\def\thepgfplotstableread@curcol{\pgfplotstableread@curcol}%
+		\def\thepgfplotstableread@numcols{\pgfplotstableread@numcols}%
+		\def\pgfplotstableread@countreset##1{\def##1{0}}%
+		\def\pgfplotstableread@countset##1##2{\def##1{##2}}%
+		\def\pgfplotstableread@countadvance##1{\pgfplotsutil@advancestringcounter{##1}}%
+	\fi
 	\pgfplotstableread@countreset\pgfplotstableread@lineno
 	\pgfplotstableread@countreset\pgfplotstableread@usablelineno
 	\pgfplotstableread@countreset\pgfplotstableread@numcols
+	\pgfplotstableread@countreset\pgfplotstableread@curcol
 	%
 	\def\pgfplotstableread@isgnuplotformat{0}%
 	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
@@ -1955,7 +1981,8 @@
 	\pgfplotstableread@countreset\pgfplotstableread@curcol
 	\pgfutil@loop
 	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols\relax
-		\expandafter\pgfplotslistpushbackglobal\thepgfplotstableread@curcol\to\pgfplotstable@colnames@glob
+		\edef\pgfplotstable@loc@TMPb{\thepgfplotstableread@curcol}%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@loc@TMPb\to\pgfplotstable@colnames@glob
 		\pgfplotstableread@countadvance\pgfplotstableread@curcol
 	\pgfutil@repeat
 }
@@ -2223,9 +2250,7 @@
 	\ifpgfplots@tableread@to@listener
 		% create an associative container colindex -> colname
 		% for use in a listener.
-		\def\pgfplots@loc@TMPb{%
-			\expandafter\def\csname pgfplotstblread@colindex@for@name#1\endcsname}%
-		\expandafter\pgfplots@loc@TMPb\expandafter{\thepgfplotstableread@curcol}%
+		\expandafter\edef\csname pgfplotstblread@colindex@for@name#1\endcsname{\thepgfplotstableread@curcol}%
 	\fi
 	\pgfplotstableread@countadvance\pgfplotstableread@curcol
 }
