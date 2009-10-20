@@ -9,3 +9,10 @@ echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/utilities/pgfkeys.code.tex | sed '
 echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex > pgfplotsoldpgfsupp_pgflibraryfpu.code.tex || exit 1
 echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex > pgfplotsoldpgfsupp_pgflibraryplothandlers.code.tex ||exit 1
 echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/math/pgfmathfloat.code.tex > pgfplotsoldpgfsupp_pgfmathfloat.code.tex || exit 1
+
+
+# the manual styles:
+FILES=(`find $PGFDIR/latex/pgf/doc -name '*.tex'`)
+for A in "${FILES[@]}"; do
+	echo -e "$HEADER" | cat - "$A" | sed 's/\input pgfmanual/\input pgfplotsoldpgfsupp_pgfmanual/' > pgfplotsoldpgfsupp_`basename $A` || exit 1
+done
