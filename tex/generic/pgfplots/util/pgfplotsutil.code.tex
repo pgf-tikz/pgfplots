@@ -333,29 +333,6 @@
 	\pgfplotslistcopy\pgfplots@glob@TMPa\to#2\relax
 }
 
-% Invokes '#3' for every element in the comma separated list '#1'.
-% during '#3', the macro '#2' will be set to the current list element.
-%
-% In contrast to \foreach of tikz, this processing is NOT scoped by
-% TeX groups.
-\long\def\pgfplotsutilforeachcommasep#1\as#2#3{%
-	\long\def\pgfplotsutilforeachcommasep@do{#3}%
-	\def\pgfplotsutilforeachcommasep@name{#2}%
-	\pgfplotsutilforeachcommasep@parse#1,\pgfplots@EOI
-}%
-\def\pgfplotsutilforeachcommasep@parse{\futurelet\pgfplotsutilforeachcommasep@nexttok\pgfplotsutilforeachcommasep@checkend}%
-\def\pgfplotsutilforeachcommasep@checkend{%
-	\ifx\pgfplotsutilforeachcommasep@nexttok\pgfplots@EOI
-		\expandafter\pgfutil@gobble
-	\else
-		\expandafter\pgfplotsutilforeachcommasep@next
-	\fi
-}%
-\def\pgfplotsutilforeachcommasep@next#1,{%
-	\expandafter\def\pgfplotsutilforeachcommasep@name{#1}%
-	\pgfplotsutilforeachcommasep@do
-	\pgfplotsutilforeachcommasep@parse
-}%
 
 % Removes duplicates in a comma separated list and creates a new list
 % into the macro \pgfplotsretval. The list doesn't need to be sorted,
@@ -460,15 +437,33 @@
 	}%
 }%
 
+% Invokes '#3' for every element in the comma separated list '#1'.
+% during '#3', the macro '#2' will be set to the current list element.
+%
+% In contrast to \foreach of tikz, this processing is NOT scoped by
+% TeX groups. However, it can be nested.
+%
+% Please note that no trimming of white spaces is performed.
+%
+% This is the (accidentally) the same as \pgfplotsforeachentryinCSV.
+\long\def\pgfplotsutilforeachcommasep#1\as#2#3{%
+	\pgfplotsforeachentryinCSVisterminated@loop{#2}{#3}#1,\pgfplots@EOI
+}%
 
 % Usage:
 % \pgfplotsforeachentryinCSV{\value}{1,2,3,4.5,6.7,10}{The value is \value\par}
 %
 % The loop is ungrouped.
+%
+% This is the same as \pgfplotsutilforeachcommasep, I must have been
+% sleeping somehow.
+%
+% @see \pgfplotsutilforeachcommasep
+% @see \pgfplotsforeachentryinCSVisterminated
+% @see \pgfplotsforeachungrouped
+% This loop can be nested.
 \long\def\pgfplotsforeachentryinCSV#1#2#3{%
-	\def\pgfplotsforeachentryinCSV@{#1}%
-	\long\def\pgfplotsforeachentryinCSV@@{#3}%
-	\pgfplotsforeachentryinCSV@loop#2,\pgfplots@EOI
+	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2,\pgfplots@EOI
 }%
 % A variant of \pgfplotsforeachentryinCSV where a trailing comma
 % indicates the end of input.
@@ -478,22 +473,26 @@
 %                                                    ^
 %
 % It is permissable to provide an empty list (without trailing comma)
+%
+% This loop can be nested.
 \long\def\pgfplotsforeachentryinCSVisterminated#1#2#3{%
-	\def\pgfplotsforeachentryinCSV@{#1}%
-	\long\def\pgfplotsforeachentryinCSV@@{#3}%
-	\pgfplotsforeachentryinCSV@loop#2\pgfplots@EOI
+	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2\pgfplots@EOI
 }%
-\def\pgfplotsforeachentryinCSV@loop{%
+% #1 : the loop macro
+% #2 : the loop BODY
+% #3 : the loop LIST
+% (note the different sequence)
+\long\def\pgfplotsforeachentryinCSVisterminated@loop#1#2{%
 	\pgfutil@ifnextchar\pgfplots@EOI{%
 		\pgfutil@gobble
 	}{%
-		\pgfplotsforeachentryinCSV@next
+		\pgfplotsforeachentryinCSV@next{#1}{#2}%
 	}%
 }%
-\def\pgfplotsforeachentryinCSV@next#1,{%
-	\expandafter\def\pgfplotsforeachentryinCSV@{#1}%
-	\pgfplotsforeachentryinCSV@@
-	\pgfplotsforeachentryinCSV@loop
+\long\def\pgfplotsforeachentryinCSV@next#1#2#3,{%
+	\def#1{#3}%
+	#2\relax
+	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}%
 }%
 
 
@@ -509,108 +508,74 @@
 % \pgfplotsforeachungrouped \x in {1,2,3,4,5} {<code>}
 % 
 % Some details:
-% - If #2 is a UNIFORM SAMPLING RANGE, the algorithm is supposed to be
-%   most effective. This is considered to be the case for 
-%   \pgfplotsforeachungrouped \x in {1,2,...,8} or something like
-%   that.
-% - If \pgfmathadd@ is the standard PGF math version of \pgfmathadd@,
-%   we use fast TeX dimensions for any loops. Otherwise, \pgfmathadd@
-%   is used (assuming it has been replaced and should be used.
+% 1. If #2 is a UNIFORM SAMPLING RANGE, the algorithm is supposed to be
+%   most effective. This is considered to be the case for the syntax
+%   \pgfplotsforeachungrouped \x in {1,2,...,8}.
+% 2. If case (1.) is not used, \foreach \x in {#2} {} is invoked to
+% generate a temporary list. Afterwards, this list is invoked without
+% scopes.
 %
+% This loop *can* be nested.
 \def\pgfplotsforeachungrouped#1{\pgfplotsforeachungrouped@{#1}}%
 \long\def\pgfplotsforeachungrouped@#1in #2#3{%
 	\pgfplotsforeachungrouped@isuniform{#2}%
 	\ifpgfplots@loc@tmp
-		\pgfplotsforeachungroupeduniform@#1{#2}{#3}%
+		\pgfplotsforeachungroupeduniform@{#1}#2\relax{#3}%
 	\else
 		\pgfplotsforeachungroupednonuniform@#1{#2}{#3}%
 	\fi
 }
 \let\pgfplots@original@pgfmathadd@=\pgfmathadd@
 
-\long\def\pgfplotsforeachungroupeduniform@#1#2#3{%
-	\pgfplotsforeachungroupeduniform@@{#1}#2\relax{#3}%
-}
-\long\def\pgfplotsforeachungroupeduniform@@#1#2,#3,...,#4\relax#5{%
+\long\def\pgfplotsforeachungroupeduniform@#1#2,#3,...,#4\relax#5{%
 	% Compute mesh width!
 	\pgfmathparse{#2}%
 	\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
 	\pgfmathparse{#3}%
 	\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
 	\pgfmathsubtract@{\pgfplots@foreach@loc@TMPb}{\pgfplots@foreach@loc@TMPa}%
-	\ifx\pgfmathadd@\pgfplots@original@pgfmathadd@
-		% perform manual restoration of local variables:
-		\edef\pgfplots@foreach@loc@TMPd{%
-			\noexpand\pgf@xa=\the\pgf@xa\noexpand\relax
-			\noexpand\pgf@xb=\the\pgf@xb\noexpand\relax
-			\noexpand\pgf@ya=\the\pgf@ya\noexpand\relax
-		}%
-		% mesh width:
-		\let\pgfplots@foreach@loc@meshwidth=\pgfmathresult
-		\pgf@ya=\pgfmathresult pt
-		% the loop will run while ( NOT <cur> \pgfplots@foreach@loc@cmp  <last> )
-		\ifdim\pgf@ya<0pt
-			\def\pgfplots@foreach@loc@cmp{<}%
-		\else
-			\def\pgfplots@foreach@loc@cmp{>}%
-		\fi
-		%
-		\pgfmathparse{#4 + 0.5*\pgfplots@foreach@loc@meshwidth}%%
-		\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
-		\pgf@xa=\pgfplots@foreach@loc@TMPa pt
-		\pgf@xb=\pgfplots@foreach@loc@TMPb pt
-		\long\def\pgfplots@foreach@loc@TMPc{#5}%
-		%
-		\pgfutil@loop
-		\ifdim\pgf@xa \pgfplots@foreach@loc@cmp \pgf@xb\relax
-			\pgfplots@loc@tmpfalse
-		\else
-			\pgfplots@loc@tmptrue
-		\fi
-		\ifpgfplots@loc@tmp
-			\edef#1{\pgf@sys@tonumber{\pgf@xa}}%
-			% FIXME : that's NOT nestable and maybe even wrong!
-			\pgfplots@foreach@loc@TMPc\relax
-			\advance\pgf@xa by\pgf@ya\relax
-		\pgfutil@repeat
-		% ok, restore them:
-		\pgfplots@foreach@loc@TMPd
+	% Use \pgfmath engine for the loop:
+	% mesh width:
+	\let\pgfplots@foreach@loc@meshwidth=\pgfmathresult
+	\pgfmathparse{0}% invoke the parser - in case the fpu is active.
+	\pgfmathlessthan@{\pgfplots@foreach@loc@meshwidth}{\pgfmathresult}%
+	% the loop will run while ( NOT \pgfplots@foreach@loc@cmp{<cur>}{<last>} )
+	\ifdim\pgfmathresult pt=1pt
+		\def\pgfplots@foreach@loc@cmp{\pgfmathlessthan@}%
 	\else
-		% Use \pgfmath engine for the loop:
-		% mesh width:
-		\let\pgfplots@foreach@loc@meshwidth=\pgfmathresult
-		\pgfmathparse{0}% invoke the parser - in case the fpu is active.
-		\pgfmathlessthan@{\pgfplots@foreach@loc@meshwidth}{\pgfmathresult}%
-		% the loop will run while ( NOT \pgfplots@foreach@loc@cmp{<cur>}{<last>} )
-		\ifdim\pgfmathresult pt=1pt
-			\def\pgfplots@foreach@loc@cmp{\pgfmathlessthan@}%
-		\else
-			\def\pgfplots@foreach@loc@cmp{\pgfmathgreaterthan@}%
-		\fi
-		%
-		\pgfmathparse{#4 + 0.5*\pgfplots@foreach@loc@meshwidth}%
-		\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
-		%
-		\t@pgfplots@toka={#5}%
-		% to allow nesting without additional TeX groups of
-		% \pgfplotsforeachungroupeduniform, I introduce this loop
-		% structure here which does not need ANY state macro:
-		\edef\pgfplots@foreach@loc@TMPc{%
-			\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
-				{\expandafter\noexpand\pgfplots@foreach@loc@cmp}% #1= comparison fct
-				{\pgfplots@foreach@loc@TMPa}% #2 =lower limit (ITERATES)
-				{\pgfplots@foreach@loc@TMPb}% #3 = upper limit
-				{\noexpand#1}% #4 = the loop macro name
-				{\pgfplots@foreach@loc@meshwidth}% #5 =  h
-				{\the\t@pgfplots@toka}% #6 = the code to invoke
-		}%
-		\pgfplots@foreach@loc@TMPc
+		\def\pgfplots@foreach@loc@cmp{\pgfmathgreaterthan@}%
 	\fi
+	%
+	\pgfmathparse{#4 + 0.5*\pgfplots@foreach@loc@meshwidth}%
+	\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
+	%
+	\t@pgfplots@toka={#5}%
+	% to allow nesting without additional TeX groups of
+	% \pgfplotsforeachungroupeduniform, I introduce this loop
+	% structure here which does not need ANY state macro:
+	\edef\pgfplots@foreach@loc@TMPc{%
+		\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
+			{\expandafter\noexpand\pgfplots@foreach@loc@cmp}% #1= comparison fct
+			{\pgfplots@foreach@loc@TMPa}% #2 =lower limit (ITERATES)
+			{\pgfplots@foreach@loc@TMPb}% #3 = upper limit
+			{\noexpand#1}% #4 = the loop macro name
+			{\pgfplots@foreach@loc@meshwidth}% #5 =  h
+			{\the\t@pgfplots@toka}% #6 = the code to invoke
+	}%
+	\pgfplots@foreach@loc@TMPc
 }%
 \long\def\pgfplotsforeachungroupeduniform@loop@mathengine#1#2#3#4#5#6{%
 	#1{#2}{#3}%
 	\ifdim\pgfmathresult pt=0pt
-		\def#4{#2}%
+		\pgfutil@in@{.0\relax}{#2\relax}%
+		\ifpgfutil@in@
+			\def\pgfplotsforeach@loc@TMP##1.0\relax{%
+				\def#4{##1}%
+			}%
+			\pgfplotsforeach@loc@TMP#2\relax
+		\else
+			\def#4{#2}%
+		\fi
 		#6\relax
 		\pgfmathadd@{#2}{#5}%
 		\t@pgfplots@toka={{#1}}%
@@ -638,7 +603,7 @@
 	}%
 }
 
-% Sets \ifpgfplots@loc@tmp to something true if and only if '#1' is of the form
+% Sets \ifpgfplots@loc@tmp to true if and only if '#1' is of the form
 % #1 = <number1>,<number2>,...,<number3>.
 \def\pgfplotsforeachungrouped@isuniform#1{%
 	\edef\pgfplots@foreach@loc@TMPa{#1}%
