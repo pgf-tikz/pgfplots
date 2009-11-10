@@ -3385,16 +3385,32 @@
 
 \def\pgfplots@gobble@until@semicolon#1;{}
 
-% Plot expression. It invokes the pgf math parser and a customized
-% pgfplots point sampling routine. Combined with the 'fixed point
-% library' of pgf, it results in highly accurate plots.
-%
-%
-\long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
-% \addplot[#1] [#2] (#3,#4) #5;
-\long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/mesh/ordering/rowwise}%
-	%
+% PRECONDITION:
+% 	the key-value sets have all been set in the current scope.
+% 
+% POSTCONDITION:
+% 	1. the following macros are initialised and sanitized:
+% 	\pgfplots@plot@domain
+% 	\pgfplots@plot@ydomain (will be set to \pgfplots@plot@domain if empty)
+% 	\pgfplots@plot@samples@at
+% 	\pgfplots@plot@samples@y (will be set to the x variant if empty)
+% 	\tikz@plot@var
+% 	\pgfplots@plot@var@nonmacro
+% 	\pgfplots@plot@var@y
+% 	\pgfplots@plot@var@y@nonmacro
+% 	2. the following key-value things are set:
+% 		/pgfplots/mesh/rows
+% 		/pgfplots/mesh/cols
+% 		/pgfplots/samples y (will contain a value )
+% 	3. the macro 
+% 		\b@pgfplots@should@sample@LINE 
+% 		will be 
+% 		\def\b@pgfplots@should@sample@LINE{1}
+% 		if the expression plotter should sample a line
+% 		and
+% 		\def\b@pgfplots@should@sample@LINE{0}
+% 		if it should samples a mesh.
+\def\pgfplots@plot@expression@preparekeys{%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
 	\pgfkeysgetvalue{/pgfplots/samples at}\pgfplots@plot@samples@at
@@ -3414,29 +3430,50 @@
 	\let\pgfplots@plot@var@y@nonmacro=\pgfplots@glob@TMPb
 	%
 	% Check if we have to sample a line.
-	\def\pgfplots@addplotimpl@expression@samplesLINE{0}%
+	\def\b@pgfplots@should@sample@LINE{0}%
 	\ifpgfplots@curplot@threedim
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\edef\pgfplots@plot@ydomain{\pgfplots@plot@ydomain}%
 		\def\pgfplots@loc@TMPa{0:0}%
 		\ifx\pgfplots@plot@ydomain\pgfplots@loc@TMPa
-			\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+			\def\b@pgfplots@should@sample@LINE{1}%
+		\fi
+		\ifx\pgfplots@plot@ydomain\pgfutil@empty
+			\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
+			\pgfkeyssetvalue{/pgfplots/y domain}{\pgfkeysvalueof{/pgfplots/domain}}%
 		\fi
 		\ifx\pgfplots@plot@samples@y\pgfutil@empty
 		\else
 			\ifnum\pgfplots@plot@samples@y<2
-				\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+				\def\b@pgfplots@should@sample@LINE{1}%
 			\fi
 		\fi
 	\else
-		\def\pgfplots@addplotimpl@expression@samplesLINE{1}%
+		\def\b@pgfplots@should@sample@LINE{1}%
+	\fi
+	\ifx\pgfplots@plot@samples@y\pgfutil@empty
+		\pgfkeyssetvalue{/pgfplots/samples y}{\pgfkeysvalueof{/pgfplots/samples}}%
+		\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
 	\fi
 	%
 	\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/samples}}%
-	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples}}% FIXME: use samples y
-	\if1\pgfplots@addplotimpl@expression@samplesLINE
+	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples y}}%
+	\if1\b@pgfplots@should@sample@LINE
 		\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
 	\fi
+	%
+}%
+
+% Plot expression. It invokes the pgf math parser and a customized
+% pgfplots point sampling routine. Combined with the 'fixed point
+% library' of pgf, it results in highly accurate plots.
+%
+%
+\long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
+% \addplot[#1] [#2] (#3,#4) #5;
+\long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/mesh/ordering/rowwise}%
+	\pgfplots@plot@expression@preparekeys
 	%
 	\pgfplots@PREPARE@COORD@STREAM{#5}%
 	%
@@ -3483,15 +3520,12 @@
 		\pgfplots@addplotimpl@expression@split@yz#4\pgfplots@EOI%
 		%
 		% we don't have 'samples at' for 3D plots -> use domain!
-		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
+		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
 		\let\pgfplots@expression@xdomain=\pgfplotslocretval
 		%
-		\if0\pgfplots@addplotimpl@expression@samplesLINE
+		\if0\b@pgfplots@should@sample@LINE
 			% Samples twodimensionally (a lattice):
-			\ifx\pgfplots@plot@ydomain\pgfutil@empty
-				\let\pgfplots@plot@ydomain=\pgfplots@plot@domain
-			\fi
-			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax
+			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax{\pgfplots@plot@samples@y}%
 			\let\pgfplots@expression@ydomain=\pgfplotslocretval
 			%
 			% Assemble a 
@@ -3532,7 +3566,7 @@
 		\if\pgfplots@samples@logarithmically1%
 			% sample logarithmically:
 			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachlogarithmicungrouped
+				\noexpand\pgfplotsforeachlogarithmicungrouped[\pgfplots@plot@samples]
 				\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log 
 					in {\pgfplots@plot@domain} {##1}}%
 			%  we have a logarithmic sampling sequence,
@@ -3558,7 +3592,7 @@
 		\else
 			\ifx\pgfplots@plot@samples@at\pgfutil@empty
 				% we don't have 'samples at' -> use domain!
-				\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax
+				\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
 				\let\pgfplots@loc@TMPa=\pgfplotslocretval
 			\else
 				% use 'samples at':
@@ -3589,7 +3623,7 @@
 	}%
 	% Define a "function" x which sets \pgfmathresult := \x :
 	\pgfplotsmathdeclarepseudoconstant{\pgfplots@plot@var@nonmacro}{\edef\pgfmathresult{\tikz@plot@var}}%
-	\if0\pgfplots@addplotimpl@expression@samplesLINE
+	\if0\b@pgfplots@should@sample@LINE
 		% surface:
 		\pgfplotsmathdeclarepseudoconstant{\pgfplots@plot@var@y@nonmacro}{\edef\pgfmathresult{\pgfplots@plot@var@y}}%
 	\else
@@ -3687,23 +3721,16 @@
 \def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3,/pgfplots/mesh/ordering/rowwise}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3,/pgfplots/mesh/ordering/colwise}%
 	%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
 	%
-	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
-	\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
-	\ifx\pgfplots@plot@domain\pgfutil@empty
-		% this is a potential problem: 'plot gnuplot' doesn't support
-		% the 'samples at' framework which should be in effect now.
-		% -> acquire the /tikz/domain value!
-		\pgfplots@gettikzinternal@keyval{domain}{tikz@plot@domain}{-5:5}%
-		\let\pgfplots@plot@domain=\tikz@plot@domain
-	\fi
+	\pgfplots@plot@expression@preparekeys
 	%
+	% FIXME: what with 'samples at'!?
 	\edef\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%
 	%
 	\def\pgfplots@addplotimpl@gnuplotresult@isthreedim@withtwocoords{0}%
@@ -3719,6 +3746,7 @@
 	\iftikz@plot@raw@gnuplot%
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{\pgfplots@gnuplotcode}}%
 	\else%
+		% collect logs:
 		\def\pgfplots@gnuplot@logdirs{}%
 		\ifpgfplots@xislinear
 		\else
@@ -3737,22 +3765,29 @@
 		\fi
 		\pgfplots@disablelogfilter@xtrue
 		\pgfplots@disablelogfilter@ytrue
-		\ifpgfplots@curplot@threedim 
-			\ifx\pgfplots@plot@ydomain\pgfutil@empty
-				\pgfplots@error{Sorry, '\string\addplot3 gnuplot{}' can't be processed correctly because 'y domain' is empty.}%
-				\def\pgfplots@plot@ydomain{0:1}%
+		\ifpgfplots@curplot@threedim
+			\if1\b@pgfplots@should@sample@LINE
+				\pgfplots@error{Sorry, I do not know how to sample 3D LINE plots with gnuplot... I only know 2D line and 3D mesh. You may want to help the author of pgfplots to improve this feature.}%
 			\fi
 		\fi
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 			\pgfplots@gnuplot@format;
-			set samples \pgfkeysvalueof{/pgfplots/samples};
+			set samples \pgfkeysvalueof{/pgfplots/samples}\if0\b@pgfplots@should@sample@LINE, \pgfkeysvalueof{/pgfplots/samples y}\fi;
 			\ifx\pgfplots@gnuplot@logdirs\pgfutil@empty
 			\else
 				set logscale \pgfplots@gnuplot@logdirs\space 2.71828182845905; 
 			\fi
 			\iftikz@plot@parametric	set parametric;\fi
 			\ifpgfplots@curplot@threedim 
-				splot [x=\pgfplots@plot@domain] [y=\pgfplots@plot@ydomain] \pgfplots@gnuplotcode;%
+				\if0\b@pgfplots@should@sample@LINE
+					% Samples twodimensionally (a lattice):
+					% and the isosamples thing confuses me.
+					set isosamples \pgfkeysvalueof{/pgfplots/samples}\if0\b@pgfplots@should@sample@LINE, \pgfkeysvalueof{/pgfplots/samples y}\fi;
+					splot [x=\pgfplots@plot@domain] [y=\pgfplots@plot@ydomain] \pgfplots@gnuplotcode;%
+				\else
+					% *should* sample a line, but I don't know how.
+					splot [x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
+				\fi
 			\else
 				plot [x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
 			\fi
