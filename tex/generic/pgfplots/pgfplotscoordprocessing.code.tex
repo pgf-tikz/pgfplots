@@ -1424,7 +1424,10 @@
 %
 % Now, \pgfplotsscanlinelength expands to either 
 % a) a negative number in which case there is no 
-%  unique scanline length,
+%  unique scanline length.
+%  	More precisely, -1 means "there was no end-of-scanline marker"
+%  	-2 means "there where end-of-scanline markers, but the scanlines
+%  	had different lengths.
 % b) the scanline length.
 \def\pgfplotsscanlinelengthinitzero{%
 	\c@pgfplots@scanlineindex=0
@@ -2430,13 +2433,25 @@
 		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
 			\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
 				\pgfutil@ifundefined{pgfplotsscanlinelength}{\def\pgfplotsscanlinelength{-1}}{}%
+				\ifpgfplots@scanline@verbose
+					\ifnum\pgfplotsscanlinelength>0
+						% we have scanlinelength set! Use it:
+						\message{PGFPlots: Scanline length is \pgfplotsscanlinelength.}%
+					\else
+						\ifnum\pgfplotsscanlinelength=-2
+							\message{PGFPlots: Scanline length could not be determined as multiple, different scan line lengths have been found.}%
+						\else
+							\message{PGFPlots: No end-of-scanline marker found in input stream.}%
+						\fi
+					\fi
+				\fi
 				\ifnum\pgfplotsscanlinelength>0
 					% we have scanlinelength set! Use it:
 					\if\pgfplots@plot@mesh@ordering0%
-						% ordering = rowwise -> scanline is cols!
+						% ordering = x varies= rowwise -> scanline is cols!
 						\edef\pgfplotsplothandlermesh@cols{\pgfplotsscanlinelength}%
 					\else
-						% ordering = colwise: scanline is rows!
+						% ordering = y varies = colwise: scanline is rows!
 						\edef\pgfplotsplothandlermesh@rows{\pgfplotsscanlinelength}%
 					\fi
 				\else
@@ -3456,8 +3471,8 @@
 		\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
 	\fi
 	%
-	\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/samples}}%
-	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples y}}%
+	\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/samples y}}%
+	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples}}%
 	\if1\b@pgfplots@should@sample@LINE
 		\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
 	\fi
@@ -3472,7 +3487,7 @@
 \long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] (#3,#4) #5;
 \long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/mesh/ordering/rowwise}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,/pgfplots/mesh/ordering/x varies}%
 	\pgfplots@plot@expression@preparekeys
 	%
 	\pgfplots@PREPARE@COORD@STREAM{#5}%
@@ -3530,8 +3545,8 @@
 			%
 			% Assemble a 
 			% \pgfplots@plot@data##1 -> 
-			% 	\foreach \x in {-5,-4.6,...,5} 
-			% 		\foreach \y in {-5,-4.6,...,5} {##1}; 
+			% 	\foreach \y in {-5,-4.6,...,5} {##1}; 
+			% 		\foreach \x in {-5,-4.6,...,5} 
 			%  macro:
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain} 
@@ -3721,7 +3736,7 @@
 \def\pgfplots@addplotimpl@function@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@function@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3,/pgfplots/mesh/ordering/colwise}%
+	\pgfplots@start@plot@with@behavioroptions{#1,#2,#3,/pgfplots/mesh/ordering/x varies}%
 	%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-plot}%
@@ -5822,7 +5837,7 @@
 				\let\pgfplotsplothandlermesh@preparedrawforcurrent=\relax
 				\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
 				\if\pgfplots@plot@mesh@ordering0%
-					% rowwise:
+					% ordering=x varies:
 					\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp%
 				\else
 					% colwise:
@@ -5912,10 +5927,10 @@
 			% And now finally: initialise the conversion from 
 			%  LINEARIZED COORD STREAM -> DATA MATRIX:
 			\if\pgfplots@plot@mesh@ordering0%
-				% rowwise:
+				% x varies (=rowwise):
 				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
 			\else
-				% colwise:
+				% y varies (=colwise):
 				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
 			\fi
 			\def\pgfplotsplothandlermesh@process@element{%
@@ -6240,12 +6255,12 @@
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering = rowwise -> scanline is cols!
 				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversescanline{#1}%
 			\else
 				% ordering = colwise: scanline is rows!
 				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
-			%	\pgfplots@apply@zbuffer@reversetransposed{#1}%
+				\pgfplots@apply@zbuffer@reversetransposed{#1}%
 			\fi
-			\pgfplots@apply@zbuffer@reversescanline{#1}%
 		\fi
 	\or
 		% reverse y seq: only for 'mesh'
@@ -6257,11 +6272,12 @@
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering = rowwise -> scanline is cols!
 				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversetransposed{#1}%
 			\else
 				% ordering = colwise: scanline is rows!
 				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
+				\pgfplots@apply@zbuffer@reversescanline{#1}%
 			\fi
-			\pgfplots@apply@zbuffer@reversetransposed{#1}%
 		\fi
 	\or
 		% reverse xy seq:
@@ -6364,7 +6380,7 @@
 				\pgfkeys{/pgfplots/z buffer=none}%
 			\fi
 		\fi
-%\message{z buffer=auto mode chose  z buffer= \ifcase\pgfplotsplothandlermesh@zbuffer@choice NONE \or reverse x seq \or reverse y seq \or reverse xy seq \or sort\or default \fi. mesh ordering = \ifcase\pgfplots@plot@mesh@ordering rowwise\or colwise\fi}%
+%\message{z buffer=auto mode chose  z buffer= \ifcase\pgfplotsplothandlermesh@zbuffer@choice NONE \or reverse x seq \or reverse y seq \or reverse xy seq \or sort\or default \fi. mesh ordering = \ifcase\pgfplots@plot@mesh@ordering x varies/rowwise\or y varies/colwise\fi}%
 		% 'z buffer' is no longer 'auto' now:
 		\pgfplots@apply@zbuffer{#1}%
 		\endgroup
@@ -6391,7 +6407,7 @@
 % collected into \pgfplotsretval.
 %
 % This implements the 'z buffer=reverse x seq' feature for
-% ordering=rowwise.
+% ordering=y varies.
 %
 % PRECONDITION:
 % 	\pgfplotsscanlinelength contains the scanline length
