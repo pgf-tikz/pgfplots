@@ -7,7 +7,7 @@ There is an axis environment for linear scaling, two for semi-logarithmic scalin
 
 	Instead of using the environment version, there is also a shortcut command 
 
-	|\tikz|\marg{picture content}
+	\declareandlabel{\tikz}\marg{picture content}
 
 	which can be used alternatively.
 \end{environment}
@@ -141,9 +141,9 @@ This is the main plotting command, available within each axis environment. It ca
 
 It reads point coordinates from one of the available input sources specified by \meta{input data}, updates limits, remembers \meta{options} for use in a legend (if any) and applies any necessary coordinate transformations (or logarithms).
 
-The \meta{options} can be omitted in which case the next entry from the |cycle list| will be inserted as \meta{options}. These keys characterize the plot's type like linear interpolation, smooth plot, constant interpolation or bar plot and define colors, markers and line specifications\footnote{In version 1.2.2 and earlier, there was an explicit distiction between ``behaviour'' options like error bars, domain, number of samples etc.\ and ``style options'' like color, line width, markers etc. This distiction is obsolete now, simply collect everything into \meta{options}.}\index{Behavior Options}\index{Options!Distinction Behavior, Style Options}. Plot variants like error bars, the number of samples or a sample domain can also be configured in \meta{options}.
+The \meta{options} can be omitted in which case the next entry from the |cycle list| will be inserted as \meta{options}. These keys characterize the plot's type like linear interpolation, smooth plot, constant interpolation, bar plot, mesh plots, surface plots or whatever and define colors, markers and line specifications\footnote{In version 1.2.2 and earlier, there was an explicit distiction between ``behaviour'' options like error bars, domain, number of samples etc.\ and ``style options'' like color, line width, markers etc. This distiction is obsolete now, simply collect everything into \meta{options}.}\index{Behavior Options}\index{Options!Distinction Behavior, Style Options}. Plot variants like error bars, the number of samples or a sample domain can also be configured in \meta{options}.
 
-The \meta{input data} is one of several coordinate input tools which are described in more detail below. Finally, if |\addplot| successfully processed all coordinates from \meta{input data}, it generates \Tikz-drawing commands (for example |plot coordinate {...}|). If \meta{trailing path commands} is not empty, these arguments are appended to the final drawing command.
+The \meta{input data} is one of several coordinate input tools which are described in more detail below. Finally, if |\addplot| successfully processed all coordinates from \meta{input data}, it generates \Tikz\ paths to realize the drawing operations. Any \meta{trailing path commands} are appended to the final drawing command, allowing to continue the \Tikz\ path (from the last plot coordinate).
 
 \noindent
 Some more details:
@@ -156,10 +156,10 @@ Some more details:
 \begin{codeexample}[code only]
 \pgfplotsset{every axis plot no 3/.append style={...}}
 \end{codeexample}
-	to modify options for the plot with number~$3$ only. The first plot has number~$0$.
+	to modify options for the plot with number~$3$ only. The first plot in an axis has number~$0$.
 	\item The \meta{options} are remembered for the legend. They are available as `\declareandlabel{current plot style}' as long as the path is not yet finished or in associated error bars.
 	\item See subsection~\ref{sec:markers} for a list of available markers and line styles.
-	\item For log plots, \PGFPlots\ will compute the natural logarithm $\log(\cdot)$ numerically. This works with normal fixed point numbers or in scientific notation. For example, the following numbers are valid input to |\addplot|.
+	\item For log plots, \PGFPlots\ will compute the natural logarithm $\log(\cdot)$ numerically using a floating point unit developed for this purpose\footnote{This floating point unit is available as \Tikz\ library as part of \Tikz.}. For example, the following numbers are valid input to |\addplot|.
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{loglogaxis}
@@ -175,16 +175,21 @@ Some more details:
 \end{loglogaxis}
 \end{tikzpicture}
 \end{codeexample}
-	You can represent arbitrarily small or very large numbers as long as its logarithm can be represented as a \TeX-length (up to about~$16384$). Of course, any coordinate~$x\le 0$ is not possible since the logarithm of a non-positive number is not defined. Such coordinates will be skipped automatically.
+	You can represent arbitrarily small or very large numbers as long as its logarithm can be represented as a \TeX-length (up to about~$16384$). Of course, any coordinate~$x\le 0$ is not possible since the logarithm of a non-positive number is not defined. Such coordinates will be skipped automatically (using the initial configuration |unbounded coords=discard|).
 
-	\item For normal plots, \PGFPlots\ applies floating point arithmetics to support large or small numbers like 0.00000001234 or $1.234\cdot 10^{24}$. Its number range is much larger than \TeX's native support for numbers. The relative precision is at least~$5$ significant decimal digits for the mantisse. As soon as the axes limits are completely known, \PGFPlots\ applies a transformation which maps these floating point numbers into \TeX-precision using transformations
-		\[ T_x(x) = 10^{s_x} \cdot x - a_x \text{ and } T_y(y) = 10^{s_y} \cdot y - a_y \]
-	with properly chosen integers $s_x, s_y \in \Z$ and shifts $a_x,a_y\in \R$. Section~\ref{sec:disabledatascaling} contains a description of |disabledatascaling| and provides more details about the transformation.
+	\item For normal (non--logarithmic) axes, \PGFPlots\ applies floating point arithmetics to support large or small numbers like 0.00000001234 or $1.234\cdot 10^{24}$. Its number range is much larger than \TeX's native support for numbers. The relative precision is between $4$ and $7$ significant decimal digits for the mantisse.
+	
+	As soon as the axes limits are completely known, \PGFPlots\ applies a transformation which maps these floating point numbers into \TeX-precision using transformations
+		\[ T_x(x) = 10^{s_x} \cdot x - a_x
+		\text{ and } T_y(y) = 10^{s_y} \cdot y - a_y 
+		\text{ and (for 3D plots) } T_z(y) = 10^{s_z} \cdot z - a_z 
+		\]
+	with properly chosen integers $s_x, s_y, s_z \in \Z$ and shifts $a_x,a_y, a_z\in \R$. Section~\ref{sec:disabledatascaling} contains a description of |disabledatascaling| and provides more details about the transformation.
 	\index{Accuracy!Floating Point in \PGFPlots}%
 
-	\item As a consequence of the coordinate parsing routines, you can't use the mathematical expression parsing method of \PGF\ as coordinates (that means: you will need to provide coordinates without suffixes like ``cm'' or ``pt'' and you can't invoke mathematical functions).
+	\item Some of the coordinate input routines use the powerful |\pgfmathparse| feature of \pgfname\ to read their coordinates, among them |plot coordinates|, |plot expression| and |plot table|. This allows to use mathematical expressions as coordinates which will be evaluated using the floating point routines (this applies to logarithmic and linear scales).
 	
-	\item If you did not specify axis limits for $x$ and $y$ manually, |\addplot| will compute them automatically. 
+	\item If you did not specify axis limits manually, |\addplot| will compute them automatically. 
 	The automatic computation of axis limits works as follows:
 		\begin{enumerate}
 			\item Every coordinate will be checked. Care has been taken to avoid \TeX's limited numerical capabilities.
@@ -195,6 +200,8 @@ Some more details:
 
 \begin{addplot+}
 Does the same like |\addplot[|\meta{options}|] ...;| except that \meta{options} are \emph{appended} to the arguments which would have been taken for |\addplot ...| (the element of the default list).
+
+Thus, you can combine |cycle list| and \meta{options}.
 
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -230,7 +237,7 @@ The `|plot coordinates|' command is like that provided by \Tikz\ and reads its i
 \end{codeexample}
 \noindent The coordinates can be numbers, but they can also contain mathematical expressions like |sin(0.5)| or |\h*8| (assuming you defined |\h| somewhere). However, expressions which involve round braces need to be encapsulated in a further set of curly braces, for example |({sin(0.5)},{cos(0.1)})|.
 
-You can also supply error coordinates (reliability bounds) if you are interested in error bars. Simply append the error coordinates with `\declareandlabel{+-} \parg{ex,ey}' to the associated coordinate:
+You can also supply error coordinates (reliability bounds) if you are interested in error bars. Simply append the error coordinates with `\declareandlabel{+-} \parg{ex,ey}' (or |+- |\parg{ex,ey,ez}) to the associated coordinate:
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}
@@ -268,18 +275,20 @@ Furthermore, |coordinates| allows to define ``meta data'' for each coordinate. T
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-Please refer to the documentation of |scatter src| on page~\pageref{pgfplots:scatter:src} for more information about per point meta data.
+Please refer to the documentation of |point meta| on page~\pageref{pgfplots:point:meta} for more information about per point meta data.
 \end{addplotoperation}
 
 \begin{pgfplotskey}{plot coordinates/math parser=\mchoice{true,false} (initially true)}
-	An optimization which mathematical expressions in every coordinate inside of |plot coordinates|. It might improve speed to disable the math parser here.
+	An optimization which allows mathematical expressions in every coordinate inside of |plot coordinates|. It might improve speed to disable the math parser here.
+
+	It is necessary to disable |plot coordinates/math parser| if you use some sort of symbolic transformations (i.e. text coordinates).
 \end{pgfplotskey}
 
 \subsubsection{Reading Coordinates From Files}
 
 \begin{addplotoperation}[]{file}{\marg{name}}
 \label{pgfplots:addplot:file}
-\PGFPlots\ supports two ways to read plot coordinates of external files, and one of them is the \Tikz-command `|plot file|'. It is to be used like
+\PGFPlots\ supports two ways to read plot coordinates of external files, and one of them is similar to the \Tikz-command `|plot file|'. It is to be used like
 \begin{codeexample}[code only]
 \addplot file {datafile.dat};
 \end{codeexample}
@@ -306,7 +315,7 @@ Plot file accepts one optional argument,
 \noindent
 which allows to skip over a non-comment header line. This allows to read the same input files as |plot table| by skipping over column names. Please note that comment lines do not count as lines here.
 
-The input method |plot file| can also read meta data for every coordinate. As already explained for |plot coordinates| (see above), meta data can be used to change colors or other style parameters for every marker separately. Now, if |scatter src| is set to |explicit| or to |explicit symbolic| and the input method is |plot file|, one further element will be read from disk - for every line. Meta data is always the last element which is read. See page~\pageref{pgfplots:scatter:src} for information and examples about per point meta data and page~\pageref{pgfplots:scatterclasses} for an application example using |scatter/classes|.
+The input method |plot file| can also read meta data for every coordinate. As already explained for |plot coordinates| (see above), meta data can be used to change colors or other style parameters for every marker separately. Now, if |point meta| is set to |explicit| or to |explicit symbolic| and the input method is |plot file|, one further element will be read from disk -- for every line. Meta data is always the last element which is read. See page~\pageref{pgfplots:scatter:src} for information and examples about per point meta data and page~\pageref{pgfplots:scatterclasses} for an application example using |scatter/classes|.
 
 
 Plot file is very similar to |plot table|: you can achieve the same effect with
@@ -460,12 +469,13 @@ Summary and remarks:
 
 	This key has just one purpose, namely to create postprocessing columns on-the-fly and to plot those columns afterwards. This ``lazy evaluation'' which creates missing columns on-the-fly is documented in the \PGFPlotstable\ manual (in section ``Postprocessing Data in New Columns'').
 
-	\paragraph{Attention:} Usually, |\addplot table| only picks required entries, requiring linear runtime complexity. As soon as |read completely| is activated, tables are loaded completely into memory. Due to datastructures issues (``macro append runtime''), the runtime complexity for |read completely| is $O(N^2)$ where $N$ is the number of rows. Thus: use this feature only for ``small'' tables.
+	\paragraph{Attention:} Usually, |\addplot table| only picks required entries, requiring linear runtime complexity. As soon as |read completely| is activated, tables are loaded completely into memory. Due to datastructures issues (``macro append runtime''), the runtime complexity for |read completely| is $O(N^2)$ where $N$ is the number of rows. Thus: use this feature only for ``small'' tables\footnote{This remark might be deprecated; many of the slow routines have been optimized in the meantime to have at least pseudo-linear runtime.}.
 \end{key}
 
 \subsubsection{Computing Coordinates with Mathematical Expressions}
 
 \begin{addplotoperation}[]{\marg{math expression}}{}
+\pgfmanualpdflabel{plot expression}{}
 	This input method allows to provide mathematical expressions which will be sampled. But unlike |plot gnuplot|, the expressions are evaluated using the math parser of \PGF, no external program is required.
 
 	Plot expression samples |x| from the interval $[a,b]$ where $a$ and $b$ are specified with the |domain| key. The number of samples can be configured with |samples=|\meta{N} as for plot gnuplot.
@@ -615,7 +625,7 @@ Please note that \PGF's math parser uses degrees for trigonometric functions:
 \label{pgfplots:addplot:table:expr}
 	Besides the already discussed possibility to provide a column selection by means of column names (|x||=|\meta{name} or |x index||=|\meta{index}, see section~\ref{pgfplots:addplot:table}), it is also possible to provide mathematical expressions as arguments.
 
-	Mathematical expressions are specified with |x expr||=|\meta{expression} inside of \meta{column selection and expressions}. They can depend on zero, one or more columns of the input file. A column is referenced using the special command `|\thisrow|\marg{column name}' within \meta{expression}.
+	Mathematical expressions are specified with |x expr||=|\meta{expression} inside of \meta{column selection and expressions}. They can depend on zero, one or more columns of the input file. A column is referenced using the special command `|\thisrow|\marg{column name}' within \meta{expression} (or |\thisrowno|\meta{column index}).
 \begin{codeexample}[vbox]
 \pgfplotstabletypeset[columns={maxlevel,L2}]{plotdata/newexperiment1.dat}
 
@@ -665,7 +675,7 @@ Please note that \PGF's math parser uses degrees for trigonometric functions:
 \subsubsection{Computing Coordinates with Mathematical Expressions (gnuplot)}
 
 \begin{addplotoperation}[]{gnuplot}{\oarg{further options}\marg{gnuplot code}}
-In contrast to |plot expression|, the |plot gnuplot| command employs the external program |gnuplot| to compute coordinates. The resulting coordinates are written to a text file which will be plotted with |plot file|. \PGF\ checks whether coordinates need to be re-generated and calls |gnuplot| whenever necessary (this is usually the case if you change the number of samples, the argument to |plot gnuplot| or the plotted domain\footnote{Please note that \PGFPlots\ produces slightly different files than \Tikz\ when used with \texttt{plot gnuplot} (it configures high precision output). You should use different \texttt{id} for \PGFPlots\ and \Tikz\ to avoid conflicts in such a case.}).
+In contrast to |plot expression|, the |plot gnuplot| command\footnote{Note that |plot gnuplot| is actually a re-implementation of the |plot function| method known from \PGF. It also invokes \PGF\ basic layer commands.} employs the external program |gnuplot| to compute coordinates. The resulting coordinates are written to a text file which will be plotted with |plot file|. \PGF\ checks whether coordinates need to be re-generated and calls |gnuplot| whenever necessary (this is usually the case if you change the number of samples, the argument to |plot gnuplot| or the plotted domain\footnote{Please note that \PGFPlots\ produces slightly different files than \Tikz\ when used with \texttt{plot gnuplot} (it configures high precision output). You should use different \texttt{id} for \PGFPlots\ and \Tikz\ to avoid conflicts in such a case.}).
 
 The differences between |plot expression| and |plot gnuplot| are:
 \begin{itemize}
@@ -920,6 +930,8 @@ Using |gv|, I determined that the bounding box needs to be shifted |12| units to
 
 	\hspace{10pt}\marg{value of ``{\normalfont\texttt{plot graphics/src}}''}.
 
-	Thus, you can tweak |plot graphics| to place any \TeX\ box of the desired dimensions into an axis between the provided minimum and maximum coordinates. It is not necessary to make use of the graphics file name or the options in the `|includegraphics|' key if you overwrite this lowlevel interface.
+	Thus, you can tweak |plot graphics| to place any \TeX\ box of the desired dimensions into an axis between the provided minimum and maximum coordinates. It is not necessary to make use of the graphics file name or the options in the `|includegraphics|' key if you overwrite this lowlevel interface with
+
+	|plot graphics/lowlevel draw/.code 2 args=|\marg{code which depends on \texttt{\#1} and \texttt{\#2}}.
 \end{pgfplotskey}
 	
