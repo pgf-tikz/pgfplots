@@ -1362,8 +1362,12 @@
 % \pgfplotstablegetelem{0}{[index]2}\of\table
 % The elem is `\pgfplotsretval'.
 \def\pgfplotstablegetelem#1#2\of#3{%
+	\begingroup
 	\pgfplotstablegetcolumn{#2}\of{#3}\to\pgfplotstable@loc@TMPa
+	\def\pgfplotsexceptionmsg{Sorry, row `#1' does not exist in table \pgfplotstablenameof{#3}}%
 	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotsretval
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
 }%
 
 \def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
@@ -1374,6 +1378,8 @@
 % #1: the column name (not a macro)
 % #2: the table structure
 % #3: the output macro name.
+%
+% @throw `no such element' on error
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
 	\pgfutil@ifundefined{\string#2@#1}{%
 		% Oh, there is no column '#1' in table '#2'!
@@ -1401,14 +1407,12 @@
 				\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
 				\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
 				\pgfutil@ifundefined{\string#2@\pgfplotstable@loc@TMPa}{%
-					\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
-					\pgfplotslistnewempty#3
+					\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}\pgfeov%
 				}{%
 					\expandafter\let\expandafter#3\csname\string#2@\pgfplotstable@loc@TMPa\endcsname
 				}%
 			}{%
-				\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}%
-				\pgfplotslistnewempty#3
+				\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}\pgfeov%
 			}%
 		}%
 	}{%
@@ -1447,17 +1451,15 @@
 			\pgfutil@ifundefined{\string#2@\pgfplotstable@loc@TMPa}{%
 				\def\pgfplotstable@loc@TMPb{/pgfplots/table/create on use/#1}%
 				\pgfkeysifdefined{\pgfplotstable@loc@TMPb/.@cmd}{%
-					\pgfplots@error{Sorry, '\pgfplotstable@loc@TMPb' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here. You can do this using the 'read completely' key, see the manual for details.}%
+					\pgfplotstable@error{Sorry, '\pgfplotstable@loc@TMPb' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here. You can do this using the 'read completely' key, see the manual for details.}%
 				}{%
-					\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}%
+					\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}\pgfeov%
 				}%
-				\let#3=\pgfutil@empty
 			}{%
 				\let#3=\pgfplotstable@loc@TMPa
 			}%
 		}{%
-			\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}%
-			\let#3=\pgfutil@empty
+			\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}\pgfeov%
 		}%
 	}{%
 		\def#3{#1}%
@@ -1686,8 +1688,8 @@
 	\pgfplots@logfileopen{#2}%
 	\pgfplotstableread@impl@prepare{#1}{#2}{#3}%
 	\ifeof1
-		\pgfplotstable@error{Could not read table file '#2'.}%
-		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{#2}{Could not read table file '#2'.}\pgfeov%
+		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
 	\else
 		%
 		\edef\pgfplotstableread@oldendlinechar{\the\endlinechar}%
@@ -2103,8 +2105,7 @@
 % performs \let\content=<content of column no <index> >
 \def\pgfplotstablereadgetcolindex@#1#2{%
 	\pgfutil@ifundefined{pgfplotstblread@colcontent@no#1}{%
-		\pgfplots@error{Sorry, the requested column number '#1' in table '\pgfplotstableread@filename' does not exist!? Please verify you used the correct index 0 <= i < N.}%
-		\let#2=\pgfutil@empty
+		\pgfplotsthrow{no such element}{#2}{Sorry, the requested column number '#1' in table '\pgfplotstableread@filename' does not exist!? Please verify you used the correct index 0 <= i < N.}\pgfeov%
 	}{%
 		\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no#1\endcsname
 	}%
@@ -2154,7 +2155,34 @@
 % \csname, it can't perform sanity checking. Proving an invalid index
 % expands to \pgfkeysvalueof{/pgfplots/table/@undefined column text}.
 \def\pgfplotstablereadvalueofcolname@#1{%
-	\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}%
+	\pgfplotstable@thisrow@impl{#1}{pgfplotstblread@colindex@for@name}{\pgfplotstable@thisrow@impl@read}%
+}%
+\def\pgfplotstable@thisrow@impl@read#1{\csname pgfplotstblread@colcontent@no#1\endcsname}%
+
+% This implements \thisrow in different contexts.
+%
+% Usage:
+% \def\thisrow#1{\pgfplotstable@thisrow@impl{#1}{macroprefix@}{\pgfplotstable@thisrow@impl@}}
+%
+% Then, \thisrow{existingcol}
+% will expand to 
+% -> \pgfplotstable@thisrow@impl@{\csname macroprefix@existingcol\endcsname}
+% -> \csname macroprefix@existingcol\endcsname
+%
+% Furthermore, if '#1' is no existing col and there exists /pgfplots/table/alias/#1,
+% \thisrow{aliased}
+% will expand to
+% -> \pgfplotstable@thisrow@impl@{\csname macroprefix@\pgfkeysvalueof{/pgfplots/table/alias/aliased}\endcsname}
+% -> \csname macroprefix@\pgfkeysvalueof{/pgfplots/table/alias/aliased}\endcsname
+%
+% #1: the argument for \thisrow{#1}
+% #2: a macro prefix such that \csname #2<colname>\endcsname contains
+% the value of the current row for (physical) column <colname>
+% #3: the name of a one-argument-macro which will get \csname #2<colname>\endcsname
+% as argument. This is the last step of \thisrow. It allows indirect
+% access by translating colnames to col indices in '\pgfplotstableread to listener'
+\def\pgfplotstable@thisrow@impl#1#2#3{%
+	\pgfutil@ifundefined{#2#1}%
 	{%
 		% WARNING : this code has been REPLICATED in
 		% *** \pgfplotstablereadgetptrtocolname ***
@@ -2162,19 +2190,20 @@
 		% *** \pgfplotstableresolvecolname ***
 		% *** \pgfplotstablereadvalueofcolname ***
 		\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
-			\pgfutil@ifundefined{pgfplotstblread@colindex@for@name\pgfkeysvalueof{/pgfplots/table/alias/#1}}{%
+			\pgfutil@ifundefined{#2\pgfkeysvalueof{/pgfplots/table/alias/#1}}{%
 				\pgfplotstable@undefinedtext{\pgfkeysvalueof{/pgfplots/table/alias/#1}}%
 			}{%
-				\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name\pgfkeysvalueof{/pgfplots/table/alias/#1}\endcsname\endcsname
+				#3{\csname #2\pgfkeysvalueof{/pgfplots/table/alias/#1}\endcsname}%
 			}%
 		}{%
 			\pgfplotstable@undefinedtext{#1}%
 		}%
 	}%
 	{%
-		\csname pgfplotstblread@colcontent@no\csname pgfplotstblread@colindex@for@name#1\endcsname\endcsname
+		#3{\csname #2#1\endcsname}%
 	}%
 }%
+\def\pgfplotstable@thisrow@impl@#1{#1}%
 
 % \pgfplotstablereadgetptrtocolname{<name>}{\ptr}
 % Creates some sort of "pointer" to the column named <name>. This
@@ -2217,7 +2246,7 @@
 			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
 			\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
 			\pgfutil@ifundefined{pgfplotstblread@colindex@for@name\pgfplotstable@loc@TMPa}{%
-				\pgfplots@error{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename'. The original request was for '#1', which does not exist either.}%
+				\pgfplotsthrow{no such element}{#2}{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename'. The original request was for '#1', which does not exist either.}\pgfeov%
 				\def#2{0}%
 			}{%
 				\edef#2{\csname pgfplotstblread@colindex@for@name\pgfplotstable@loc@TMPa\endcsname}%
@@ -2225,9 +2254,9 @@
 		}{%
 			\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
 			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
-				\pgfplots@error{Sorry, '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here. You can do this using the 'read completely' key, see the manual for details.}%
+				\pgfplotstable@error{Sorry, '\pgfplotstable@loc@TMPa' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here. You can do this using the 'read completely' key, see the manual for details.}%
 			}{%
-				\pgfplots@error{Sorry, could not retrieve column '#1' from table '\pgfplotstableread@filename'. Please check spelling (or introduce name aliases).}%
+				\pgfplotsthrow{no such element}{#2}{Sorry, could not retrieve column '#1' from table '\pgfplotstableread@filename'. Please check spelling (or introduce name aliases).}\pgfeov%
 			}%
 			\def#2{0}%
 		}%
@@ -2267,7 +2296,7 @@
 	\else
 		\begingroup
 		\t@pgfplots@tokc={#1}%
-		\pgfplots@error{Table '\pgfplotstableread@filename' has too much columns in line \thepgfplotstableread@lineno: Ignoring '\the\t@pgfplots@tokc'. Please verify that every cell entry is separated correctly (use braces {<cell entry>} if necessary). This error is not critical}%
+		\pgfplotstable@error{Table '\pgfplotstableread@filename' has too much columns in line \thepgfplotstableread@lineno: Ignoring '\the\t@pgfplots@tokc'. Please verify that every cell entry is separated correctly (use braces {<cell entry>} if necessary). This error is not critical}%
 		\endgroup
 	\fi
 }
@@ -2366,7 +2395,7 @@
 	\pgfplotstableread@NEXT
 }
 
-\def\pgfplotstable@error#1{\pgfplots@error{#1}}%
+\def\pgfplotstable@error#1{\pgfplotsthrow{unsupported operation}{#1}\pgfeov}%
 
 
 \def\pgfplotstableset{%
@@ -2811,7 +2840,7 @@
 	\else
 		\pgfplots@loop@CONTINUEfalse
 	\fi
-	\def\pgfplotstablecolname{\pgfplots@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
+	\def\pgfplotstablecolname{\pgfplotstable@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
 	\pgfutil@loop
 	\ifpgfplots@loop@CONTINUE
 		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
@@ -2905,8 +2934,8 @@
 		\immediate\closeout\pgfplotstable@outfile
 	\fi
 %\message{I have now \meaning\pgfplotstable@result.}%
-	\def\pgfplotstablecol{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
-	\def\pgfplotstablerow{\pgfplots@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
+	\def\pgfplotstablecol{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
+	\def\pgfplotstablerow{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
 	\ifpgfplotstabletypesetresult
 		\pgfplotstable@result
 	\fi
@@ -2966,9 +2995,9 @@
 	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
 	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
 	%
-	\def\prevrow##1{\csname pgfplotstablecreate@prev@##1\endcsname}%
-	\def\thisrow##1{\csname pgfplotstablecreate@cur@##1\endcsname}%
-	\def\nextrow##1{\csname pgfplotstablecreate@next@##1\endcsname}%
+	\def\prevrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@prev@}{\pgfplotstable@thisrow@impl@}}%
+	\def\thisrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@cur@}{\pgfplotstable@thisrow@impl@}}%
+	\def\nextrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@next@}{\pgfplotstable@thisrow@impl@}}%
 	\def\getprevrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@prev@##1\endcsname}%
 	\def\getthisrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@cur@##1\endcsname}%
 	\def\getnextrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@next@##1\endcsname}%
