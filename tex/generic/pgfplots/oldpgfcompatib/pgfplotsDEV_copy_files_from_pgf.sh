@@ -2,17 +2,41 @@
 
 PGFDIR=~/code/tex/pgf_cvs/
 
-HEADER="%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n%%% This file is part of PGF.\n%%% It has been copied here to provide both:\n%%%    compatibility with older PGF versions AND modifications contributed by Christian Feuersaenger.\n%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n\n"
+HEADER='%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% This file is a copy of some part of PGF/Tikz.
+%%% It has been copied here to provide :
+%%%  - compatibility with older PGF versions
+%%%  - availability of PGF contributions by Christian Feuersaenger
+%%%    which are necessary or helpful for pgfplots.
+%%%
+%%% For reasons of simplicity, I have copied the whole file, including own contributions AND
+%%% PGF parts. The copyrights are as they appear in PGF.
+%%%
+%%% Note that pgfplots has compatible licenses.
+%%% 
+%%% This copy has been modified in the following ways:
+%%%  - nested \input commands have been updated
+%%%  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%'
 
-echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/utilities/pgfkeysfiltered.code.tex > pgfplotsoldpgfsupp_pgfkeysfiltered.code.tex || exit 1
-echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/utilities/pgfkeys.code.tex | sed 's/\\input pgfkeysfiltered\.code\.tex/% &/'  > pgfplotsoldpgfsupp_pgfkeys.code.tex || exit 1
-echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex > pgfplotsoldpgfsupp_pgflibraryfpu.code.tex || exit 1
-echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex > pgfplotsoldpgfsupp_pgflibraryplothandlers.code.tex ||exit 1
-echo -e "$HEADER" | cat - $PGFDIR/generic/pgf/math/pgfmathfloat.code.tex > pgfplotsoldpgfsupp_pgfmathfloat.code.tex || exit 1
+HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 
-
-# the manual styles:
-FILES=(`find $PGFDIR/latex/pgf/doc -name '*.tex'`)
+FILES=(\
+	`find $PGFDIR/latex/pgf/doc -name '*.tex'`\
+	$PGFDIR/generic/pgf/utilities/pgfkeysfiltered.code.tex  \
+	$PGFDIR/generic/pgf/utilities/pgfkeys.code.tex  \
+	$PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
+	$PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex \
+	$PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
+	$PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
+	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
+)
 for A in "${FILES[@]}"; do
-	echo -e "$HEADER" | cat - "$A" | sed 's/\input pgfmanual/\input pgfplotsoldpgfsupp_pgfmanual/' > pgfplotsoldpgfsupp_`basename $A` || exit 1
+	echo "creating compatibility version for `basename $A` ... " 
+	echo -e "$HEADER" | \
+		cat - "$A" | \
+		sed 's/\\input \(pgf\|tikz\)\(.*\)\.code\.tex/\\input pgfplotsoldpgfsupp_\1\2.code.tex/' \
+		> pgfplotsoldpgfsupp_`basename $A` \
+		|| exit 1
 done
+
