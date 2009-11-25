@@ -6,8 +6,196 @@ This section contains information of how to single pictures into separate \pdf\ 
 \label{sec:pgfplots:export}
 It is possible to export images to single \pdf-documents using routines of \pgfname\ and/or \Tikz.
 
+\subsubsection{Using the Automatic Externalization Framework of \Tikz}
+\begin{pgfplotslibrary}{external}
+\pgfkeys{
+	/pdflinks/search key prefixes in/.add={/tikz/external/,}{}
+}
+	The |external| library offers a convenient method to export every single |tikzpicture| into a separate~|.pdf| (or~|.eps|). Later runs of \LaTeX\ will simply include these graphics, thereby reducing typesetting time considerably.
+
+	\paragraph{Technical foreword:}
+	The |external| library has been written by Christian Feuers\"anger (author of \PGFPlots). It has been contributed to \Tikz\ as general purpose library, so the reference documentation along with all tweaks can be found in~\cite[Section ``Externalization Library'']{tikz}. The command |\usepgfplotslibrary{external}| is actually just a wrapper which loads |\usetikzlibrary{external}| or, if this library does not yet exist because the installed \pgfname\ has at most version $2.00$, it will load a copy which is shipped with \PGFPlots.
+
+	The |external| library has been designed such that \emph{no changes} to the document as such are necessary. The idea is as follows:
+\begin{enumerate}
+	\item Every |\begin{tikzpicture}| $\dotsc$ |\end{tikzpicture}| gets a file name. The file name can be assigned manually with |\tikzsetnextfilename|\marg{output file name} or automatically, in which case \meta{tex file name}|-figure|\meta{number} is used with an increasing \meta{number}.
+	
+	\item The library writes the resulting images using system calls of the form |pdflatex --jobname |\marg{output file name} automatically, using the write18 system call of \TeX. It is the same framework which can be used to call |gnuplot|.
+\end{enumerate}
+The only steps which are necessary is to use
+
+\pgfmanualpdflabel{\textbackslash tikzexternalize}{}%
+|\usepgfplotslibrary{external}|
+
+|\tikzexternalize|\marg{the main file name}
+
+\noindent where \meta{the main file name} is the name of your |.tex| file (without the extension |.tex|). No further modification to the document is necessary. Suppose we have a file called |test.tex|:
+\begin{codeexample}[code only]
+\documentclass{article}
+
+\usepackage{pgfplots}
+
+\usepgfplotslibrary{external}
+\tikzexternalize{test}
+
+\begin{document}
+	\begin{figure}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot {x^2};
+		\end{axis}
+		\end{tikzpicture}
+	\caption{Our first external graphics example}
+	\end{figure}
+
+	\begin{figure}
+		\begin{tikzpicture}
+		\begin{axis}
+			\addplot {x^3};
+		\end{axis}
+		\end{tikzpicture}
+	\caption{A second graphics}
+	\end{figure}
+\end{document}
+\end{codeexample}
+\noindent To enable the system calls, we type
+\begin{codeexample}[code only]
+pdflatex -shell-escape test
+\end{codeexample}
+\noindent and \LaTeX\ will now generate the required graphics files |test-figure0.pdf| and |test-figure1.pdf| automatically. Any further call to |pdflatex| will simply use |\includegraphics| and the |tikzpicture|s as such are no longer considered.
+
+If a figure shall be remade, one can simply delete all or selected graphics files and re-generate them. Alternatively, one can use the command |\tikzset{external/force remake}| somewhere in the document to remake every following picture automatically.
+
+There are three ways to modify the file names of externalized figures:
+\begin{itemize}
+	\item Changing the overall file name using a |prefix|,
+	\item Changing the file name for a single figure using |\tikzsetnextfilename|,
+	\item Changing the file name for a restricted set of figures using |figure name|.
+\end{itemize}
+\begin{key}{/tikz/external/prefix=\marg{file name prefix} (initially empty)}
+	A shortcut for |\tikzsetexternalprefix|\marg{file name prefix}, see below.
+\end{key}
+
+\begin{command}{\tikzsetexternalprefix\marg{file name prefix}}
+	Assigns a common prefix used by all file names. For example,
+\begin{codeexample}[code only]
+\tikzsetexternalprefix{figures/}
+\end{codeexample}
+	will prepend |figures/| to every external graphics file name.
+\end{command}
+
+\begin{command}{\tikzsetnextfilename\marg{file name}}
+	Sets the file name for the \emph{next} \tikzname\ picture or |\tikz| short command. It will \emph{only} be used for the next picture.
+
+	Pictures for which no explicit file name has been set will get automatically generated file names.
+
+	Please note that |prefix| will still be prepended to \marg{file name}.
+\begin{codeexample}[code only]
+\documentclass{article}
+% main document, called main.tex
+\usepackage{tikz}
+
+\usepgfplotslibrary{external}
+\tikzexternalize[prefix=figures/]{main} % provide the file's real name
+
+\begin{document}
+
+\tikzsetnextfilename{firstplot}
+\begin{tikzpicture} % will be written to 'figures/firstplot.pdf'
+\begin{axis}
+	\addplot {x};  	
+\end{axis}
+\end{tikzpicture}
+
+\begin{tikzpicture} % will be written to 'figures/main-figure0.pdf'
+   \draw[help lines] (0,0) grid (5,5);
+\end{tikzpicture}
+\end{document}
+\end{codeexample}
+\begin{codeexample}[code only]
+pdflatex -shell-escape main
+\end{codeexample}
+\end{command}
+
+\begin{key}{/tikz/external/figure name=\marg{name}}
+	Changes the names of \emph{all} following figures. It is possible to change |figure name| during the document using |\tikzset{external/figure name|=\marg{name}|}|. A unique counter will be used for each different \marg{name}, and each counter will start at $0$.
+
+	The value of |prefix| will be applied after |figure name| has been evaluated.
+\begin{codeexample}[code only]
+\documentclass{article}
+% main document, called main.tex
+\usepackage{tikz}
+
+\usepgfplotslibrary{external}
+\tikzexternalize{main} % provide the file's real name
+
+\begin{document}
+
+% will be written to 'main-figure0.pdf'
+\begin{tikzpicture} 
+\begin{semilogyaxis}
+	\addplot {exp(x)};
+\end{semilogyaxis}
+\end{tikzpicture}
+
+{
+  \tikzset{external/figure name={subset_}}
+  A simple image is \tikz \fill (0,0) circle(5pt);. % will be written to 'subset_0.pdf'
+
+  \begin{tikzpicture} % will be written to 'subset_1.pdf'
+     \begin{axis}
+	 	\addplot {x^2};
+	\end{axis}
+  \end{tikzpicture}
+}% here, the old file name will be restored:
+
+\begin{tikzpicture} % will be written to 'main-figure1.pdf'
+   \begin{axis}
+   		\addplot[domain=1e-3:100] {1/x};
+	\end{axis}
+\end{tikzpicture}
+\end{document}
+\end{codeexample}
+	The scope of |figure name| ends with the next closing brace (as all values set by |\tikzset| do).
+
+	Remark: Use |\tikzset{external/figure name/.add={prefix_}{_suffix_}}| to add a |prefix_| and a |_suffix_| to the actual value of |figure name|.
+\end{key}
+
+
+\begin{key}{/tikz/external/system call=\marg{template}}
+\label{extlib:systemcall:option}
+	A template string used to generate system calls. Inside of \marg{template}, the macro |\image| can be used as placeholder for the image which is about to be generated while |\texsource| contains the main file name.
+
+	The default is 
+\begin{codeexample}[code only]
+\tikzset{external/system call={pdflatex -shell-escape -halt-on-error 
+    -interaction=batchmode -jobname "\image" "\texsource"}
+\end{codeexample}
+
+	For |eps| output, you can (and need to) use
+\begin{codeexample}[code only]
+\tikzset{external/system call={latex -shell-escape -halt-on-error
+    -interaction=batchmode -jobname "\image" "\texsource"; 
+    dvips -o "\image".ps "\image".dvi}}
+\end{codeexample}
+	
+	The argument \marg{template} will be expanded using |\edef|, so any control sequences will be expanded. During this evaluation, `|\\|' will result in a normal backslash, `|\|'. Furthermore, double quotes `|"|', single quotes `|'|', semicolons and dashes `|-|' will be made to normal characters if any package uses them as macros. This ensures compatibility with the |german| package, for example.
+\end{key}
+
+The complete reference documentation and remaining options are documented in~\cite[``Externalization Library'']{tikz}. This reference also contains information about
+\begin{itemize}
+	\item how to remake selected figures with \declareandlabel{force remake} and \declareandlabel{remake next},
+	\item how to disable the externalization partially with \declareandlabel{export}|=false| or completely with |\tikzexternaldisable|,
+	\item how to optimize the speed of the conversion process using |\tikzset{optimize command away=\myExpensiveMacro}|,
+	\item how to typeset such a document without \pgfname\ installed or
+	\item how to provide work-arounds with |.pdf| images and bounding box restrictions.
+\index{External Graphics!Bounding Box Issues}
+\index{Bounding Box Control!Image Externalization Problems}
+\end{itemize}
+\end{pgfplotslibrary}
+
 \subsubsection[Using the Externalization Framework of PGF By Hand]{Using the Externalization Framework of {\normalfont\pgfname} ``By Hand''}
-The first way to export \TeX-pictures to single graphics files is to use the externalization framework of \pgfname.
+Another way to export \TeX-pictures to single graphics files is to use the externalization framework of \pgfname, which requires more work but works more generally than the |external| library.
 The basic idea is to encapsulate the desired parts with
 
 \declareandlabel{\beginpgfgraphicnamed}\marg{output file name}
@@ -78,69 +266,6 @@ I once attempted to write a unix \texttt{bash}--script |pgf2pdf.sh| which simpli
 
 \paragraph{Attention:} Do not forget a correct |\pgfrealjobname| statement! If it is missing, externalization simply won't work. If it is wrong, any call to \LaTeX\ will produce empty output files.
 
-\subsubsection{Using the Automatic Externalization Framework of \Tikz}
-It is also possible to externalize graphics with the high-level library
-
-|\usetikzlibrary{external}|
-
-\noindent which comes with (very recent versions of) \Tikz. At the time of this writing, it is \textbf{only available in the CVS~$2.0$ version of} \pgfname, sorry. It is a front-end for |\beginpgfgraphicnamed| which automatically encapsulates every picture in your document with the required externalization commands and performs commands to generate all required graphics files.
-\begin{enumerate}
-	\item Every |\begin{tikzpicture}| $\dotsc$ |\end{tikzpicture}| gets a file name. The file name can be assigned manually with |\tikzsetnextfilename|\marg{output file name} or automatically, in which case \meta{tex file name}|-figure|\meta{number} is used with an increasing \meta{number}.
-	
-	\item The library issues the required calls to |pdflatex --jobname |\marg{output file name} automatically, using the write18 system call of \TeX. It is the same framework which can be used to call |gnuplot|.
-\end{enumerate}
-The only steps which are necessary is to use
-
-|\tikzexternalize|\marg{the job's real file name}
-
-\noindent as above. No further modification to the document is necessary. Now, the example file |test.tex| of the last subsection reads as follows:
-\begin{codeexample}[code only]
-\documentclass{article}
-
-\usepackage{pgfplots}
-
-\usetikzlibrary{external}
-\tikzexternalize{test}
-
-\begin{document}
-	\begin{figure}
-		\begin{tikzpicture}
-		\begin{axis}
-			\addplot {x^2};
-		\end{axis}
-		\end{tikzpicture}
-	\caption{Our first external graphics example}
-	\end{figure}
-
-	\begin{figure}
-		\begin{tikzpicture}
-		\begin{axis}
-			\addplot {x^3};
-		\end{axis}
-		\end{tikzpicture}
-	\caption{A second graphics}
-	\end{figure}
-\end{document}
-\end{codeexample}
-\noindent To enable the system calls, we type
-\begin{codeexample}[code only]
-pdflatex -shell-escape test
-\end{codeexample}
-\noindent and \LaTeX\ will now generate the required graphics files |test-figure0.pdf| and |test-figure1.pdf| automatically.
-
-The command |\tikzset{external/force remake}| somewhere in the document can be used to remake every following picture automatically. Of course, it is also possible to simply delete every graphics file.
-
-The library can also be configured to produce a list of figures in case system calls are undesired (or unavailable). In that case, |pdflatex --jobname |\marg{output file name} needs to be invoked for every file name listed in \meta{real file name}|.figlist|. This step can be done within a script.
-
-The command \declareandlabel{\tikzsetexternalprefix}\marg{file prefix} can be used to prepend a directory name to every figure, for example with
-\begin{codeexample}[code only]
-\tikzsetexternalprefix{figures/}
-\end{codeexample}
-\noindent to produce |figures/test-figure0.pdf| and |figures/test-figure1.pdf| in our example.
-
-The complete reference documentation and remaining options are documented in the documentation for the ``PDF externalization library'' of~\cite{tikz}. This reference also contains information about how to typeset such a document without \pgfname\ installed or how to provide work-arounds with |.pdf| images and bounding box restrictions.
-\index{External Graphics!Bounding Box Issues}
-\index{Bounding Box Control!Image Externalization Problems}
 
 \subsection{Exporting Mesh Data From Matlab To \PGFPlots}
 While it is easy to write Matlab vectors to files (using |save P.dat data -ASCII|), it is more involved to export mesh data.
