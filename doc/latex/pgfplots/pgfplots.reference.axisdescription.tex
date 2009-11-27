@@ -283,7 +283,9 @@ When it comes to axis descriptions, \PGFPlots\ offers some specialized anchors a
 \subsubsection{Labels}
 
 \begin{pgfplotsxykey}{\x label=\marg{text}}
-The options |xlabel| and |ylabel| change axis labels to \marg{text} which is any \TeX\ text. Use curly braces to include special characters, for example ``|xlabel={, = characters}|'' if characters like `|=|' or `|,|' need to be included literally.
+These options set axis labels to \marg{text} which is any \TeX\ text. Use curly braces to include special characters, for example ``|xlabel={, = characters}|'' if characters like `|=|' or `|,|' need to be included literally.
+
+	Use |xlabel/.add=|\marg{prefix}\marg{suffix} to modify an already assigned label.
 
 Labels are \Tikz-Nodes which are placed with
 \begin{codeexample}[code only]
@@ -299,7 +301,7 @@ Labels are \Tikz-Nodes which are placed with
 \end{codeexample}
 so their position and appearance can be customized. 
 
-The label placement has been modified in version 1.3, since the new |ticklabel cs| allows to respect the size of adjacent tick label sizes. To maintain backwards compatibility, version 1.3 supports a new-feature switch and uses the same, sub-optimal initial settings as versions before 1.3:
+\paragraph{Upgrade notice:} Since version 1.3, label placement \emph{can} respect the size of adjacent tick labels. Use |\pgfplotsset{compat=newest}| in the preamble to activate this feature. See |xlabel near ticks| for details.
 
 \begin{pgfplotsxykeylist}{\x label shift=\marg{dimension} (initially 0pt),label shift=\marg{dimension}}
 	Shifts labels in direction of the outer normal vector of the axis by an amount of \marg{dimension}. The |label shift| sets all three label shifts to the same value.
@@ -308,7 +310,7 @@ The label placement has been modified in version 1.3, since the new |ticklabel c
 \end{pgfplotsxykeylist}
 
 \begin{pgfplotsxykeylist}{\x label near ticks,compat=newest}
-	These keys place axis labels (those of |xlabel|) near the tick labels. If tick labels are small, labels will move closer to the axis. If tick labels are large, axis labels will move away from the axis. This is the default for every three dimensional plot, but it \emph{won't} be used initially for two--dimensional plots for backwards compatibility. Take a look at the definition of |near ticklabel| on page~\pageref{key:near:ticklabel} for an example.
+	These keys place axis labels (like |xlabel|) near the tick labels. If tick labels are small, labels will move closer to the axis. If tick labels are large, axis labels will move away from the axis. This is the default for every three dimensional plot, but it \emph{won't} be used initially for two--dimensional plots for backwards compatibility. Take a look at the definition of |near ticklabel| on page~\pageref{key:near:ticklabel} for an example.
 
 	The definition of these styles is
 \begin{codeexample}[code only]
@@ -355,13 +357,12 @@ Whenever possible, consider using |/.append style| instead of overwriting the de
 \pgfplotsset{every axis x label/.append style={...}}
 \pgfplotsset{every axis y label/.append style={...}}
 \end{codeexample}
-	Use |xlabel/.add=|\marg{prefix}\marg{suffix} to modify an already assigned label.
 \end{pgfplotsxykey}
 
 \begin{pgfplotskey}{title=\marg{text}}
 Adds a caption to the plot. This will place a \Tikz-Node with
 \begin{codeexample}[code only]
-\node[style=every axis title] {text};
+\node[every axis title] {text};
 \end{codeexample}
 to the current axis.
 \begin{codeexample}[]
@@ -410,7 +411,7 @@ The title's appearance and/or placing can be reconfigured with
 \begin{codeexample}[code only]
 \pgfplotsset{every axis title/.append style={at={(0.75,1)}}}
 \end{codeexample}
-This will place the title at~75\% of the $x$-axis. The coordinate~$(0,0)$ is the lower left corner and~$(1,1)$ the upper right one.
+This will place the title at~75\% of the $x$-axis. The coordinate~$(0,0)$ is the lower left corner and~$(1,1)$ the upper right one (see |axis description cs| for details).
 
 Use |title/.add=|\marg{prefix}\marg{suffix} to modify an already assigned title.
 \end{pgfplotskey}
@@ -597,7 +598,7 @@ Use |legend columns=|\marg{number} to configure the number of horizontal legend 
 \end{tikzpicture}
 \end{codeexample}
 \noindent
-Instead of the |.append style|, it is possible to use |legend style| as in the following example. It has the same effect.
+Instead of the |/.append style|, it is possible to use |legend style| as in the following example. It has the same effect.
 
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -616,17 +617,18 @@ Instead of the |.append style|, it is possible to use |legend style| as in the f
 \noindent
 The default |every axis legend| style is
 \begin{codeexample}[code only]
-\pgfplotsset{every axis legend/.style={%
+\pgfplotsset{every axis legend/.style={
 	cells={anchor=center},% Centered entries
 	inner xsep=3pt,inner ysep=2pt,nodes={inner sep=2pt,text depth=0.15em},
-	anchor=north east,%
-	shape=rectangle,%
-	fill=white,%
+	anchor=north east,
+	shape=rectangle,
+	fill=white,
 	draw=black,
 	at={(0.98,0.98)}
-}}
+	}
+}
 \end{codeexample}
-Whenever possible, consider using |.append style| to keep the default styles active. This ensures compatibility with future versions.
+Whenever possible, consider using |/.append style| to keep the default styles active. This ensures compatibility with future versions.
 \begin{codeexample}[code only]
 \pgfplotsset{every axis legend/.append style={...}}
 \end{codeexample}
@@ -710,53 +712,35 @@ Configures where the small line specifications will be drawn: left of the descri
 
 \begin{pgfplotscodekey}{legend image code}
 \label{opt:legend:image:code}
-Allows to replace the default images which are drawn inside of legends. The first argument\footnote{As of version 1.3, this is no longer true -- now, the argument is empty and the plot specification is set \emph{before} \texttt{legend image code} is evaluated. This allows plot styles to change legend drawing commands.} to this option is the plot specification, a key-value list which has been determined by |\addplot|.
+Allows to replace the default images which are drawn inside of legends. When this key is evaluated, the current plot specification has already been activated (using |\begin{scope}[current plot style]|)%
+\footnote{This was different in versions before 1.3. The new scope features allows plot styles to change |legend image code|.}, so any drawing operations use the same styles as the |\addplot| command.
 
-The default is
-\begin{codeexample}[code only]
-/pgfplots/legend image code/.code={%
-	\draw[mark repeat=2,mark phase=2,#1] 
-		plot coordinates {
-			(0cm,0cm) 
-			(0.3cm,0cm)
-			(0.6cm,0cm)%
-		};%
-}
-\end{codeexample}
+
+The default is the style |line legend|.
 \end{pgfplotscodekey}
 
-\begin{pgfplotskey}{reverse legend=\mchoice{true,false} (initially false)}
-	Allows to reverse the order in which the pairs (legend entry, plot style) are drawn.
-\begin{codeexample}[]
-\begin{tikzpicture}
-	\begin{axis}[reverse legend]
-	\addplot {x};
-	\addlegendentry{$x$}
-	\addplot {x^2};
-	\addlegendentry{$x^2$}
-	\addplot {x^3};
-	\addlegendentry{$x^3$}
-	\end{axis}
-\end{tikzpicture}
-\end{codeexample}
-\end{pgfplotskey}
-
 \begin{stylekey}{/pgfplots/line legend}
-	A style which sets |legend image code| back to its initial value. See the |legend image code| for the exact code. The purpose of this is mainly to
-        be used in conjunction with the |area legend| key. See in the example under that key.
+	A style which sets |legend image code| (back) to its initial value. 
+
+	Its initial value is
 \begin{codeexample}[code only]
 \pgfplotsset{
-    legend image code/.code={%
-	\draw[mark repeat=2,mark phase=2,#1] 
-		plot coordinates {
-			(0cm,0cm) 
-			(0.3cm,0cm)
-			(0.6cm,0cm)%
-		};%
-        }
+	/pgfplots/line legend/.style={
+		legend image code/.code={
+			\draw[mark repeat=2,mark phase=2,##1] 
+				plot coordinates {
+					(0cm,0cm) 
+					(0.3cm,0cm)
+					(0.6cm,0cm)
+				};%
+		}
+	}
 }
 \end{codeexample}
+
+	The style |line legend| can be used in conjunction with the |area legend| key. See in the example under that key.
 \end{stylekey}
+
 
 \begin{stylekey}{/pgfplots/area legend}
 	A style which sets |legend image code| to
@@ -795,6 +779,23 @@ The default is
 \end{tikzpicture}
 \end{codeexample}
 \end{stylekey}
+
+\begin{pgfplotskey}{reverse legend=\mchoice{true,false} (initially false)}
+	Allows to reverse the order in which the pairs (legend entry, plot style) are drawn.
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[reverse legend]
+	\addplot {x};
+	\addlegendentry{$x$}
+	\addplot {x^2};
+	\addlegendentry{$x^2$}
+	\addplot {x^3};
+	\addlegendentry{$x^3$}
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{pgfplotskey}
+
 
 \subsubsection{Legends with \texttt{\textbackslash label} and \texttt{\textbackslash ref}}
 \label{pgfplots:legend:labelref}
@@ -1226,10 +1227,12 @@ Their default values are equal to the axis limits.
 \end{codeexample}
 \end{pgfplotsxykeylist}
 
-\begin{pgfplotsxykey}{hide \x\ axis=\mchoice{true,false} (initially false)}
-Allows to hide either the $x$ or the $y$ axis. No outer rectangle, no tick marks and no labels will be drawn. Only titles and legends will be processed as usual.
+\begin{pgfplotsxykeylist}{%
+	hide \x\ axis=\mchoice{true,false} (initially false),
+	hide axis=\mchoice{true,false} (initially false)}
+Allows to hide either a selected axis or all of them. No outer rectangle, no tick marks and no labels will be drawn. Only titles and legends will be processed as usual.
 
-Axis scaling and clipping will be done as if you did not use |hide x axis|.
+Axis scaling and clipping will be done as if you did not use |hide axis|.
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}[
@@ -1251,11 +1254,7 @@ Axis scaling and clipping will be done as if you did not use |hide x axis|.
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
-\end{pgfplotsxykey}
-
-\begin{stylekey}{/pgfplots/hide axis=\mchoice{true,false} (default true)}
-	A style which sets both, |hide x axis| and |hide y axis|.
-\end{stylekey}
+\end{pgfplotsxykeylist}
 
 \subsubsection{Color Bars}
 \label{pgfplots:colorbar}
