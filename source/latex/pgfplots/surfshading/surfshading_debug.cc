@@ -16,6 +16,10 @@
 // g++ <file>.cc
 //
 // Also enable the \message's in the surf shading .code.tex file.
+//
+// Ah -- use 
+// \pdfcompresslevel=0
+// for the test .tex file!
 #include <iostream>
 #include <fstream>
 #include <algorithm>
