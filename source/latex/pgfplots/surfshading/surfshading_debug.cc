@@ -90,7 +90,8 @@ int main(int argc, char** argv)
 	size_t point = 0;
 
 
-	cout << "using\n"
+	cout << "assuming\n"
+		"Length            = " << LENGTH << "\n"
 		"BitsPerCoordinate = " << BitsPerCoordinate << "\n"
 		"BitsPerComponent  = " << BitsPerComponent << "\n"
 		"bytesPerCoord     = " << bytesPerCoord << "\n"
@@ -122,7 +123,7 @@ int main(int argc, char** argv)
 			double x = xmin + double(xi)*(xmax-xmin)/x_encoded_MAX;
 			double y = ymin + double(yi)*(ymax-ymin)/y_encoded_MAX;
 			double c = cmin + double(ci)*(cmax-cmin)/c_encoded_MAX;
-			double cc = 0. + double(ci)*1000./std::numeric_limits<unsigned short>::max();
+			double cc = 0. + double(ci)*1000./c_encoded_MAX;
 			std::cout << 
 					"\tx = " << x << ";\n"
 					"\ty = " << y << ";\n"
@@ -136,7 +137,7 @@ int main(int argc, char** argv)
 			std::cout << endl;
 		}
 	}
-	cout << " OK!" << endl;
+	cout << " All points are in their respective number ranges." << endl;
 	
 	
 	return 0;
