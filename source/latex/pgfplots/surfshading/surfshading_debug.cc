@@ -35,13 +35,30 @@ int main(int argc, char** argv)
 	buf.resize(100000);
 	buf2.resize(100000);
 
-	ifstream f("/tmp/P.pdf");
+	string file = "surfshading_debug.pdf";
+	ifstream f(file.c_str());
 	if( !f ) {
 		cerr <<"laden ging nich!" << endl;
 		return 1;
 	}
 
-	size_t BINARY_START = 518;
+	size_t BitsPerCoordinate = 24;
+	size_t BitsPerComponent = 16;
+	size_t bytesPerCoord = BitsPerCoordinate/8;
+	size_t bytesPerComponent = BitsPerComponent/8;
+
+	size_t BINARY_START=0;
+	size_t numPoints=0;
+	size_t verticesPerRow = 0;
+	if( file == "surfshading_debug.pdf" ) {
+		BINARY_START = 518;
+		numPoints = 100;
+		verticesPerRow = 10;
+
+	} else {
+		cerr << "don't know BINARY_START offset for \"" << file << "\". hardcode it here." << endl;
+		return 1;
+	}
 	f.read( &buf[0], BINARY_START );
 
 	if( !f ) {
@@ -52,7 +69,7 @@ int main(int argc, char** argv)
 	std::cout.write( &buf[0], BINARY_START ) << std::endl;
 
 	int i = 1;
-	std::copy( (char*) &i, (char*)&i +4, &buf2[0]);
+	std::copy( (char*) &i, (char*)&i +sizeof(int), &buf2[0]);
 
 	std::cout << "sizeof(unsigned int) = "  << sizeof(unsigned int) << "; sizeof(unsigned short) = " << sizeof(unsigned short) << ";" << endl;
 	std::cout << "1 in binary is ";;
@@ -61,10 +78,8 @@ int main(int argc, char** argv)
 
 	cout.precision(16);
 
-	size_t LENGTH = 800;
-//	size_t LENGTH = 6250;
+	size_t LENGTH = numPoints * (2*bytesPerCoord + bytesPerComponent);
 	f.read( &buf[0], LENGTH );
-	size_t verticesPerRow = 10;
 	size_t off = 0;
 	double xmin = -16383.999992;
 	double xmax = 16384;
@@ -74,11 +89,6 @@ int main(int argc, char** argv)
 	double cmax = 1;
 	size_t point = 0;
 
-	assert( sizeof(size_t) > sizeof(unsigned) );// sorry, I used a 64 bit machine. ..
-	size_t BitsPerCoordinate = 24;
-	size_t BitsPerComponent = 16;
-	size_t bytesPerCoord = BitsPerCoordinate/8;
-	size_t bytesPerComponent = BitsPerComponent/8;
 
 	cout << "using\n"
 		"BitsPerCoordinate = " << BitsPerCoordinate << "\n"
@@ -86,6 +96,7 @@ int main(int argc, char** argv)
 		"bytesPerCoord     = " << bytesPerCoord << "\n"
 		"bytesPerComponent = " << bytesPerComponent << "\n";
 
+	assert( bytesPerCoord < sizeof(size_t) );// might need a 64 bit machine. ..
 	size_t x_encoded_MAX = (size_t(1) << BitsPerCoordinate) -1;
 	size_t y_encoded_MAX = (size_t(1) << BitsPerCoordinate) -1;
 	size_t c_encoded_MAX = (size_t(1) << BitsPerComponent) -1;
