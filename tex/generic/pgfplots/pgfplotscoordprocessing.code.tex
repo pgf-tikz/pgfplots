@@ -1057,6 +1057,196 @@
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
 }
 
+% Adds a further, temporary anchor to every node which will be
+% processed. The anchor will be named '#3'. It is placed such that
+% 1. the node's center is on a line in direction of the inwards normal
+% vector of the axis line denoted by '#2' and the 'at' position of the node,
+% 2. the node does not intrude the axis.
+%
+% #1: either x,y or z the direction which varies
+% #2: a three-char-string uniquely identifying the axis line.
+%   The parameter '#1' is redundand: it is the same as the 'v'
+%   character in '#2'.
+% #3: the newly defined achor name.
+%
+% @see \pgfplotsdeclareborderanchorforticklabelaxis
+\def\pgfplotsdeclareborderanchorforaxis#1#2#3{%
+	%
+	%
+	\pgfdeclaregenericanchor{#3}{%
+		\begingroup
+		\pgfutil@ifundefined{pgfreferencednodename}{%
+			% use given transformation matrix.
+		}{%
+			\ifx\pgfreferencednodename\pgfutil@empty
+				% just use the given transformation matrix - we are
+				% typesetting an unlabeled node.
+			\else
+				\pgfsettransform{\csname pgf@sh@nt@\pgfreferencednodename\endcsname}%
+			\fi
+		}%
+		% I only need to apply the trafo matrix to direction vectors. Eliminate
+		% shifts.
+		\pgf@pt@x=0pt
+		\pgf@pt@y=0pt
+		%
+		% I'll apply the inverse transformation matrix to direction
+		% vectors. To ensure the relative position of these vectors
+		% and the anchors of the node, I have to invert the matrix:
+		\pgftransforminvert
+		%
+		%
+		% This here is the normal direction (points to the axis)
+		\pgfqpointscale{-1}{\pgfplotspointouternormalvectorofaxis{#2}}%
+		%
+		% we apply the inverse CM onto it here:
+		\pgf@pos@transform\pgf@x\pgf@y
+		\edef\pgfplots@tmp@normaldir{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+		% 
+		% Now:
+		% auto-determine the canonical (north, north east etc) anchor
+		% at which the node touches the axis (remember: the axis is to
+		% be found in direction of the normal vector).  If we choose
+		% this anchor, we *won't* penetrate the axis!
+		%
+		% This is a heuristicial procedure.
+		%
+		\def\pgfplots@thresh{0.17pt }% 80 degrees
+		%\def\pgfplots@thresh{0.3pt }%
+		%\def\pgfplots@thresh{0.707pt }% 45 degrees
+		\ifdim\pgf@y>0pt
+			\ifdim\pgf@y>\pgfplots@thresh
+				% only north anchor
+				\def\pgfplots@ycomp{north}%
+			\else
+				\def\pgfplots@ycomp{}%
+			\fi
+		\else
+			\ifdim\pgf@y<-\pgfplots@thresh
+				\def\pgfplots@ycomp{south}%
+				% south anchor
+			\else
+				\def\pgfplots@ycomp{}%
+			\fi
+		\fi
+		\ifdim\pgf@x>0pt
+			\ifdim\pgf@x>\pgfplots@thresh
+				\def\pgfplots@xcomp{east}%
+			\else
+				\def\pgfplots@xcomp{}%
+			\fi
+		\else
+			\ifdim\pgf@x<-\pgfplots@thresh
+				\def\pgfplots@xcomp{west}%
+			\else
+				\def\pgfplots@xcomp{}%
+			\fi
+		\fi
+		\edef\pgfplots@anchor{%
+			\pgfplots@ycomp
+			\ifx\pgfplots@ycomp\pgfutil@empty
+			\else
+				\ifx\pgfplots@xcomp\pgfutil@empty
+				\else
+					\space
+				\fi
+			\fi
+			\pgfplots@xcomp}%
+		%
+		%
+		% Now, I'd like the 'center' of the node on one line with the
+		% 'at={}' coordinate at which it shall be placed!
+		% This can be done as follows:
+		%
+		% Now, compute two lines:
+		% 1. a line parallel to the #1 axis which goes
+		% through our recently identified anchor,
+		%   { x = x_a + r_1 * (#1 axis direction)
+		% 2. a line from center in direction of the normal,
+		% 	{ x = x_c + r_2 n, r in R }
+		%
+		% Calculate the intersection point and return it! This
+		% involves a lot of arithmetics :-(
+		%
+		% compute (unit#1 - normal):
+		\pgfplots@tmp@normaldir
+		\pgf@xb=\pgf@x
+		\pgf@yb=\pgf@y
+		%
+		% and the axis direction (in fact, I use -axis dir. But that
+		% doesn't matter).
+		% Scale unit vector to length 1 to improve conditioning:
+		\pgfqpointscale
+			{\csname pgfplotsunit#1invlength\endcsname}
+			{\csname pgfplotspointunit#1\endcsname}%
+		\pgf@pos@transform\pgf@x\pgf@y
+		%
+		\edef\pgfplots@LEQ{%
+		% solve linear system
+			{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@x}%
+			{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@y}%
+		}%
+		% 
+		% apply inverse matrix to right-hand-side (and compute RHS):
+		\pgf@sh@reanchor{##1}{center}%
+		\edef\pgfplots@loc@center{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+		\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
+			{\pgfplots@loc@center}%
+			{\pgf@sh@reanchor{##1}{\pgfplots@anchor}}%
+		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+		%
+		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
+		\def\pgfplots@extract####1####2{%
+			\def\pgfplots@r{####1}%
+		}%
+		\expandafter\pgfplots@extract\pgfmathresult
+		% GOT IT!
+		%
+		% compute x_c + r*n:
+		\pgfpointadd
+			{\pgfplots@loc@center}%
+			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
+%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
+		\pgf@process{}% <- transport outside of group
+		\endgroup
+	}%
+	% 
+	% This variant will ALWAYS be placed on the boundary of the node.
+	% It is deprecated, I am keeping it for some time....
+	\pgfdeclaregenericanchor{#3*}{%
+		\csname pgf@anchor@##1@border\endcsname{%
+			\pgf@process{%
+				%
+				% I want to rotate the node FIRST, then 
+				% I'd like to get the boundary anchor! 
+				%
+				% My idea: apply the INVERSE transformation
+				% matrix, then compute the boundary anchor.
+				%
+				% As soon as pgf draws the node, the
+				% transformation matrix will be applied and
+				% everything is fine.
+				\pgfutil@ifundefined{pgfreferencednodename}{%
+					% use given transformation matrix.
+				}{%
+					\ifx\pgfreferencednodename\pgfutil@empty
+						% just use the given transformation matrix - we are
+						% typesetting an unlabeled node.
+					\else
+						\pgfsettransform{\csname pgf@sh@nt@\pgfreferencednodename\endcsname}%
+					\fi
+				}%
+				\pgftransforminvert
+				%
+				% This here is the anchor as such.
+				\pgfqpointscale{-1}{\pgfplotspointouternormalvectorofaxis{#2}}%
+				%
+				\pgf@pos@transform\pgf@x\pgf@y
+			}%
+		}%
+	}%
+}%
+
 % Takes azimuth (horizontal angle) '#1' and elongation (vertical
 % angle) '#2' (both in degrees) and computes 
 % x,y and z vectors which define the view in the direction
