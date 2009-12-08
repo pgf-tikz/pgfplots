@@ -1259,15 +1259,21 @@
 % #1: a table macro name which will be overwritten (redefined)
 % #2: either a file name or a table macro (loaded table).
 \def\pgfplotstabletranspose{%
-	\pgfutil@ifnextchar[{\pgfplotstabletranspose@opt}{\pgfplotstabletranspose@opt[]}%
+	\begingroup
+	\pgfutil@ifnextchar*{%
+		\pgfplotstabletranspose@star%
+	}{%
+		\pgfkeyslet{/pgfplots/table/columns}\pgfutil@empty% clear!
+		\pgfplotstabletranspose@star*%
+	}%
 }
+\def\pgfplotstabletranspose@star*{\pgfutil@ifnextchar[{\pgfplotstabletranspose@opt}{\pgfplotstabletranspose@opt[]}}%
 \def\pgfplotstabletranspose@opt[#1]#2#3{%
 	\pgfplotstable@isloadedtable{#3}{%
 		\pgfplotstabletranspose@[#1]{#2}{#3}%
 	}{%
-		% FIXME : restore memory here !? SCOPING BUG
 		\pgfplotstableread{#3}\pgfplotstable@tmptbl
-		\pgfplotstabletranspose@opt[#1]{#2}{\pgfplotstable@tmptbl}%
+		\pgfplotstabletranspose@[#1]{#2}{\pgfplotstable@tmptbl}%
 	}%
 }%
 
@@ -3380,7 +3386,7 @@
 
 
 \def\pgfplotstabletranspose@[#1]#2#3{%
-	\begingroup
+	%\begingroup is already in \pgfplotstabletranspose
 		\def\pgfplotstable@loc@TMPa{#1}%
 		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
 		\else
@@ -3389,6 +3395,34 @@
 		%
 		\pgfkeysgetvalue{/pgfplots/table/colnames from}\pgfplotstabletranspose@outcolnames
 		\pgfkeysgetvalue{/pgfplots/table/input colnames to}\pgfplotstabletranspose@incolnames
+		\pgfkeysgetvalue{/pgfplots/table/columns}\pgfplotstable@colnames
+		%
+		\ifx\pgfplotstable@colnames\pgfutil@empty
+			\pgfplotstableforeachcolumn{#3}\as\pgfplots@colname{%
+				\ifnum\pgfplotstablecol=0
+					\let\pgfplotstable@colnames=\pgfplots@colname
+				\else
+					\t@pgfplots@toka=\expandafter{\pgfplots@colname}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+					\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+				\fi
+			}%
+		\fi
+		%
+		% sanity checking:
+		\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+		\else
+			\def\pgfplotstable@loc@TMPa{\expandafter\pgfutil@in@\expandafter{\pgfplotstabletranspose@outcolnames}}%
+			\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstable@colnames}%
+			\ifpgfutil@in@
+			\else
+				% insert the 'colnames from' column into 'columns':
+				\pgfplots@warning{table transposition: the 'colnames from=\pgfplotstabletranspose@outcolnames' is not part of 'columns'. Adding it.}%
+				\t@pgfplots@toka=\expandafter{\pgfplotstabletranspose@outcolnames}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+				\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+			\fi
+		\fi
 		%
 		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 		% this thing counts output columns:
@@ -3404,7 +3438,8 @@
 			\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@0\endcsname
 			\advance\c@pgfplotstable@numoutcols by1
 		\fi
-		\pgfplotstableforeachcolumn{#3}\as\pgfplots@colname{%
+		\def\pgfplotstable@isfirstcol{1}%
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotstable@colnames}\as\pgfplots@colname{%
 			\c@pgfplotstable@rowindex=0
 			\ifx\pgfplotstabletranspose@incolnames\pgfutil@empty
 			\else
@@ -3424,7 +3459,7 @@
 			\fi
 			%
 			\pgfplotstableforeachcolumnelement\pgfplots@colname\of#3\as\pgfplots@cell{%
-				\ifnum\pgfplotstablecol=0
+				\if1\pgfplotstable@isfirstcol
 					% prepare a new column for the output:
 					\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
 					\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
@@ -3461,6 +3496,7 @@
 					\advance\c@pgfplotstable@rowindex by1
 				\fi
 			}%
+			\def\pgfplotstable@isfirstcol{0}%
 		}%
 		%
 		% flush the buffers of the applistX things:
@@ -3472,7 +3508,7 @@
 		\pgfutil@repeat
 		% finalize the global buffers:
 		\def\pgfplotsscanlinelength{-1}%
-		\edef\pgfplots@loc@TMPa{\pgfplotstablenameof{#3}}%
+		\edef\pgfplots@loc@TMPa{\pgfplotstablenameof{#3}_transposed}%
 		\expandafter\pgfplotstable@copy@to@globalbuffers@simple\expandafter{\pgfplots@loc@TMPa}%
 	\endgroup
 	\pgfplotstable@copy@globalbuffers@to{#2}%
