@@ -55,6 +55,7 @@
 
 
 \newif\ifpgfplotstable@search@header
+\newif\ifpgfplotstable@firstline@is@header
 \newcount\c@pgfplotstable@counta
 \newwrite\pgfplotstable@outfile
 \newif\ifpgfplotstabletypesetdebug
@@ -95,7 +96,10 @@
 % /pgfplots/table/display columns/<col index>/.style={}
 % /pgfplots/table/create on use/<col name>/.style={create options}
 \pgfkeys{%
-	/pgfplots/table/header/.is if=pgfplotstable@search@header,
+	/pgfplots/table/header/.is choice,
+	/pgfplots/table/header/true/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headertrue},
+	/pgfplots/table/header/false/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headerfalse},
+	/pgfplots/table/header/numeric/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
 	/pgfplots/table/header=true,
 	/pgfplots/table/x index/.initial=0,
 	/pgfplots/table/x/.initial=,
@@ -870,8 +874,21 @@
 		/pgfplots/table/every first row/.code=,
 		/pgfplots/table/every last row/.code=,
 	},
+	/pgfplots/table/colnames from/.initial=,% for \pgfplotstabletranspose
+	/pgfplots/table/input colnames to/.initial=colnames,% for \pgfplotstabletranspose
 }
-
+\pgfkeys{
+	% #1: the argument which should have been assigned.
+	% #2: an error message. 
+	/pgfplots/exception/non unique colname/.code 2 args={%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#2}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+		\let#1=\pgfutil@empty
+	},%
+}
 % 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
 %
 % fills the column with x1,...,xN such that yi(xi) == epsilon where
@@ -1232,6 +1249,33 @@
 	}%
 }
 
+% \pgfplotstabletranspose{<\outtable>}{<intable>}
+% \pgfplotstabletranspose[<colname>]{<\outtable>}{<intable>}
+% Defines <\outtable> to be the transposed of <intable>. 
+%
+% If <colname> is not empty, the respective column's entries will be used to
+% make output column names.
+%
+% #1: a table macro name which will be overwritten (redefined)
+% #2: either a file name or a table macro (loaded table).
+\def\pgfplotstabletranspose{%
+	\begingroup
+	\pgfutil@ifnextchar*{%
+		\pgfplotstabletranspose@star%
+	}{%
+		\pgfkeyslet{/pgfplots/table/columns}\pgfutil@empty% clear!
+		\pgfplotstabletranspose@star*%
+	}%
+}
+\def\pgfplotstabletranspose@star*{\pgfutil@ifnextchar[{\pgfplotstabletranspose@opt}{\pgfplotstabletranspose@opt[]}}%
+\def\pgfplotstabletranspose@opt[#1]#2#3{%
+	\pgfplotstable@isloadedtable{#3}{%
+		\pgfplotstabletranspose@[#1]{#2}{#3}%
+	}{%
+		\pgfplotstableread{#3}\pgfplotstable@tmptbl
+		\pgfplotstabletranspose@[#1]{#2}{\pgfplotstable@tmptbl}%
+	}%
+}%
 
 % Iterates through every column of table '#1' and invokes the code
 % '#3' for each column. The current column name will be available as
@@ -1288,8 +1332,8 @@
 % REMARK: this routine does NOT introduce TeX groups.
 \long\def\pgfplotstableforeachcolumnelement#1\of#2\as#3#4{%
 	\def\pgfplotstablerow{0}%
-	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstable@loc@TMPb
-	\pgfplotslistforeachungrouped\pgfplotstable@loc@TMPb\as#3{%
+	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstableforeachcolumnelement@list
+	\pgfplotslistforeachungrouped\pgfplotstableforeachcolumnelement@list\as#3{%
 		% allow nesting by copying the old value of \pgfplotstablerow:
 		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
 	}%
@@ -1906,6 +1950,9 @@
 			% 	- count columns
 			% 	- find header data
 			\pgfplotstableread@countreset\pgfplotstableread@curcol
+			\ifpgfplotstable@firstline@is@header
+				\pgfplotstableread@curline@contains@colnamestrue
+			\fi
 			\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
 			\pgfplotstableread@countset\pgfplotstableread@numcols{\pgfplotstableread@curcol}%
 			\pgfplotstableread@countreset\pgfplotstableread@curcol
@@ -3334,6 +3381,137 @@
 		\xdef\pgfplotstable@fgc@index{\the\c@pgfplotstable@counta}%
 	\fi
 	\global\def\pgfplotstable@fgc@lastwasless{#2}%
+}%
+
+
+
+\def\pgfplotstabletranspose@[#1]#2#3{%
+	%\begingroup is already in \pgfplotstabletranspose
+		\def\pgfplotstable@loc@TMPa{#1}%
+		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplotstableset{#1}%
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/table/colnames from}\pgfplotstabletranspose@outcolnames
+		\pgfkeysgetvalue{/pgfplots/table/input colnames to}\pgfplotstabletranspose@incolnames
+		\pgfkeysgetvalue{/pgfplots/table/columns}\pgfplotstable@colnames
+		%
+		\ifx\pgfplotstable@colnames\pgfutil@empty
+			\pgfplotstableforeachcolumn{#3}\as\pgfplots@colname{%
+				\ifnum\pgfplotstablecol=0
+					\let\pgfplotstable@colnames=\pgfplots@colname
+				\else
+					\t@pgfplots@toka=\expandafter{\pgfplots@colname}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+					\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+				\fi
+			}%
+		\fi
+		%
+		% sanity checking:
+		\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+		\else
+			\def\pgfplotstable@loc@TMPa{\expandafter\pgfutil@in@\expandafter{\pgfplotstabletranspose@outcolnames}}%
+			\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstable@colnames}%
+			\ifpgfutil@in@
+			\else
+				% insert the 'colnames from' column into 'columns':
+				\pgfplots@warning{table transposition: the 'colnames from=\pgfplotstabletranspose@outcolnames' is not part of 'columns'. Adding it.}%
+				\t@pgfplots@toka=\expandafter{\pgfplotstabletranspose@outcolnames}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+				\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+			\fi
+		\fi
+		%
+		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+		% this thing counts output columns:
+		\let\c@pgfplotstable@numoutcols=\c@pgf@countd
+		\c@pgfplotstable@numoutcols=0
+		\let\c@pgfplotstable@rowindex=\c@pgf@counta
+		\c@pgfplotstable@rowindex=0
+		%
+		\ifx\pgfplotstabletranspose@incolnames\pgfutil@empty
+		\else
+			\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstabletranspose@incolnames}\to\pgfplotstable@colnames@glob
+			\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+			\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@0\endcsname
+			\advance\c@pgfplotstable@numoutcols by1
+		\fi
+		\def\pgfplotstable@isfirstcol{1}%
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotstable@colnames}\as\pgfplots@colname{%
+			\c@pgfplotstable@rowindex=0
+			\ifx\pgfplotstabletranspose@incolnames\pgfutil@empty
+			\else
+				\def\pgfplotstabletranspose@useit{1}%
+				\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+				\else
+					\ifx\pgfplotstabletranspose@outcolnames\pgfplots@colname
+						\def\pgfplotstabletranspose@useit{0}%
+					\fi
+				\fi
+				\if1\pgfplotstabletranspose@useit
+					\expandafter\pgfplotslist@assembleentry\expandafter{\pgfplots@colname}\into\t@pgfplots@tokc
+					\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+					\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+					\advance\c@pgfplotstable@rowindex by1
+				\fi
+			\fi
+			%
+			\pgfplotstableforeachcolumnelement\pgfplots@colname\of#3\as\pgfplots@cell{%
+				\if1\pgfplotstable@isfirstcol
+					% prepare a new column for the output:
+					\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+					\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+					%
+					\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+						\edef\pgfplotstable@loc@TMPa{\pgfplotstablerow}%
+						\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames@glob
+					\fi
+					\advance\c@pgfplotstable@numoutcols by1
+				\fi
+				\def\pgfplotstabletranspose@useit{1}%
+				\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+				\else
+					\ifx\pgfplotstabletranspose@outcolnames\pgfplots@colname
+						\pgfutil@ifundefined{pgfplotstabletranspose@@\pgfplots@cell}{%
+						}{%
+							\let\pgfplots@loc@TMPa=\pgfplots@cell
+							\pgfplotsthrow{non unique colname}{\pgfplots@loc@TMPa}{Sorry, 'colnames from=\pgfplotstabletranspose@outcolnames' doesn't yield unique column names (`\pgfplots@cell' comes twice)}\pgfeov%
+							\ifx\pgfplots@loc@TMPa\pgfutil@empty
+								\edef\pgfplots@cell{row no \pgfplotstablerow}%
+							\fi
+						}%
+						\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@cell}\to\pgfplotstable@colnames@glob
+						\expandafter\def\csname pgfplotstabletranspose@@\pgfplots@cell\endcsname{1}%
+						\def\pgfplotstabletranspose@useit{0}%
+					\fi
+				\fi
+				\if1\pgfplotstabletranspose@useit
+					% append everything to the output column with index
+					% \pgfplotstablerow
+					\expandafter\pgfplotslist@assembleentry\expandafter{\pgfplots@cell}\into\t@pgfplots@tokc
+					\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+					\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+					\advance\c@pgfplotstable@rowindex by1
+				\fi
+			}%
+			\def\pgfplotstable@isfirstcol{0}%
+		}%
+		%
+		% flush the buffers of the applistX things:
+		\c@pgfplotstable@rowindex=0
+		\pgfutil@loop
+		\ifnum\c@pgfplotstable@rowindex<\c@pgfplotstable@numoutcols
+			\expandafter\pgfplotsapplistXflushbuffers\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+			\advance\c@pgfplotstable@rowindex by1
+		\pgfutil@repeat
+		% finalize the global buffers:
+		\def\pgfplotsscanlinelength{-1}%
+		\edef\pgfplots@loc@TMPa{\pgfplotstablenameof{#3}_transposed}%
+		\expandafter\pgfplotstable@copy@to@globalbuffers@simple\expandafter{\pgfplots@loc@TMPa}%
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to{#2}%
 }%
 
 \endinput
