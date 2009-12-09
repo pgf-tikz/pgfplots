@@ -99,7 +99,7 @@
 	/pgfplots/table/header/.is choice,
 	/pgfplots/table/header/true/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headertrue},
 	/pgfplots/table/header/false/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headerfalse},
-	/pgfplots/table/header/numeric/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
+	/pgfplots/table/header/has colnames/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
 	/pgfplots/table/header=true,
 	/pgfplots/table/x index/.initial=0,
 	/pgfplots/table/x/.initial=,
@@ -255,62 +255,112 @@
 	/pgfplots/table/multicolumn names/.default=c,
 	/pgfplots/table/dec sep align/.code={%
 		\pgfplots@assert@LaTeX@package@loaded{array}{dec sep align}%
+		\def\pgfplotstable@scisepalign@headeralign{#1}%
 		\pgfkeysalso{%
-		/pgf/number format/assume math mode,
-		/pgf/number format/@dec sep mark={$&$},
-		/pgfplots/table/assign column name/.code={%
-			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
-		},%
-		/pgfplots/table/column type={%
-			r<{\pgfplotstableresetcolortbloverhangright}%
-			@{}%
-			l<{\pgfplotstableresetcolortbloverhangleft}%
-		},
-		/pgfplots/table/assign cell content/.code={%
-			\def\pgfmathresult{##1}%
-			\ifx\pgfmathresult\pgfutil@empty
-				\def\pgfmathresult{&}%
-			\else
-				\pgfmathprintnumberto{##1}\pgfmathresult%
-				% now make sure we have math mode for the single
-				% columns:
-				\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
-			\fi
-			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
-		},
+			/pgf/number format/assume math mode,
+			/pgf/number format/@dec sep mark={$&$},
+			/pgfplots/table/assign column name/.code={%
+				\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
+			},%
+			/pgfplots/table/column type={%
+				r<{\pgfplotstableresetcolortbloverhangright}%
+				@{}%
+				l<{\pgfplotstableresetcolortbloverhangleft}%
+			},
+			/pgfplots/table/assign cell content/.code={%
+				\def\pgfmathresult{##1}%
+				\let\continue=\pgfutil@empty
+				% allow special handling:
+				\pgfplots@invoke@pgfkeyscode{/pgfplots/table/dec sep align/process/.@cmd}{##1}%
+				\ifx\continue\pgfutil@empty
+					% nothing has changed. Processed as usual:
+					\ifx\pgfmathresult\pgfutil@empty
+						\def\pgfmathresult{&}%
+					\else
+						% -6.90000001e-01 -> \meaning\pgfmathresult = macro:->-0$&$.69
+						\pgfmathprintnumberto{\pgfmathresult}\pgfmathresult%
+						% now make sure we have math mode for the single
+						% columns:
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+					\fi
+				\fi
+				\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+			},
 		}%
 	},
 	/pgfplots/table/dec sep align/.default=c,
+	%
+	% A part of dec sep align which can be used to process special
+	% cases.
+	%
+	% #1: the unprocessed input argument.
+	% PRECONDITION:
+	%   \pgfmathresult contains '#1', not more.
+	%   \continue is empty.
+	%
+	% POSTCONDITION:
+	% 	If \continue is empty, `dec sep align' will continue just as
+	% 	if the 'process' key hadn't been invoked.
+	% 	It will, however, use the current value of \pgfmathresult.
+	%
+	% 	If \continue is NOT empty, for example \def\continue{0}, 
+	% 	`dec sep align' assumes that \pgfmathresult contains the
+	% 	completely typeset cell, including any alignment material.
+	/pgfplots/table/dec sep align/process/.code=,%
+	/pgfplots/table/dec sep align/no unbounded/.style={%
+		/pgfplots/table/dec sep align/process/.code={%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber\pgfmathresult
+				\pgfmathfloatiffinite{\pgfmathresult}{%
+					% do nothing, just communicate the parsed
+					% \pgfmathresult
+				}{%
+					\begingroup
+						\t@pgfplots@toka=\expandafter{\pgfplotstable@scisepalign@headeralign}%
+						\t@pgfplots@tokb={\pgfkeyslet{/pgf/number format/@dec sep mark}\pgfutil@empty\pgfmathprintnumber}%
+						\t@pgfplots@tokc=\expandafter{\pgfmathresult}%
+						\xdef\pgfplotstable@glob@TMPc{%
+							\noexpand\multicolumn{2}{\the\t@pgfplots@toka}%
+								{\the\t@pgfplots@tokb{\the\t@pgfplots@tokc}}%
+						}%
+					\endgroup
+					\let\pgfmathresult=\pgfplotstable@glob@TMPc
+					\def\continue{0}%
+				}%
+			\fi
+		},%
+	},%
 	/pgfplots/table/sci sep align/.code={%
 		\pgfplots@assert@LaTeX@package@loaded{array}{sci sep align}%
-		\pgfkeysalso{%
-		/pgf/number format/assume math mode,
-		/pgf/number format/@sci exponent mark={$&$},
-		/pgfplots/table/assign column name/.code={%
-			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
-		},%
-		/pgfplots/table/column type={%
-			r<{\pgfplotstableresetcolortbloverhangright}%
-			@{}%
-			l<{\pgfplotstableresetcolortbloverhangleft}%
-		},
-		/pgfplots/table/assign cell content/.code={%
-			\def\pgfmathresult{##1}%
-			\ifx\pgfmathresult\pgfutil@empty
-				\def\pgfmathresult{&}%
-			\else
-				\pgfmathprintnumberto{##1}\pgfmathresult%
-				\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
-				% now make sure we have math mode for the single
-				% columns:
-				\ifpgfutil@in@
-					\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+			\pgfkeysalso{%
+			/pgf/number format/assume math mode,
+			/pgf/number format/@sci exponent mark={$&$},
+			/pgfplots/table/assign column name/.code={%
+				\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
+			},%
+			/pgfplots/table/column type={%
+				r<{\pgfplotstableresetcolortbloverhangright}%
+				@{}%
+				l<{\pgfplotstableresetcolortbloverhangleft}%
+			},
+			/pgfplots/table/assign cell content/.code={%
+				\def\pgfmathresult{##1}%
+				\ifx\pgfmathresult\pgfutil@empty
+					\def\pgfmathresult{&}%
 				\else
-					\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter\pgfutilensuremath\expandafter{\pgfmathresult}&}%
+					\pgfmathprintnumberto{##1}\pgfmathresult%
+					\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+					% now make sure we have math mode for the single
+					% columns:
+					\ifpgfutil@in@
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+					\else
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter\pgfutilensuremath\expandafter{\pgfmathresult}&}%
+					\fi
 				\fi
-			\fi
-			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
-		},
+				\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+			},
 		}%
 	},
 	/pgfplots/table/sci sep align/.default=c,
@@ -2534,7 +2584,7 @@
 }%
 
 % This routine invokes 'postproc cell content' for columns which
-% contain the column separate '&'.
+% contain the column separator '&'.
 %
 % #1&#2 is the formatted number, the result of 'dec sep align
 % #3 is the (unformatted) input number.
