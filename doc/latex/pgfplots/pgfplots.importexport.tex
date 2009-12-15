@@ -13,6 +13,8 @@ It is possible to export images to single \pdf-documents using routines of \pgfn
 }
 	The |external| library offers a convenient method to export every single |tikzpicture| into a separate~|.pdf| (or~|.eps|). Later runs of \LaTeX\ will simply include these graphics, thereby reducing typesetting time considerably.
 
+	The library can also be used to submit documents to authors who do not even have \PGFPlots\ or \Tikz\ installed.
+
 	\paragraph{Technical foreword:}
 	The |external| library has been written by Christian Feuers\"anger (author of \PGFPlots). It has been contributed to \Tikz\ as general purpose library, so the reference documentation along with all tweaks can be found in~\cite[Section ``Externalization Library'']{tikz}. The command |\usepgfplotslibrary{external}| is actually just a wrapper which loads |\usetikzlibrary{external}| or, if this library does not yet exist because the installed \pgfname\ has at most version $2.00$, it will load a copy which is shipped with \PGFPlots.
 
@@ -118,6 +120,9 @@ pdflatex -shell-escape main
 \end{command}
 
 \begin{key}{/tikz/external/figure name=\marg{name}}
+	Same as |\tikzsetfigurename|\marg{name}.
+\end{key}
+\begin{command}{\tikzsetfigurename\marg{name}}
 	Changes the names of \emph{all} following figures. It is possible to change |figure name| during the document using |\tikzset{external/figure name|=\marg{name}|}|. A unique counter\footnote{These counters are stored into into different \emph{macros}. In other words: no \TeX\ register will be needed.} will be used for each different \marg{name}, and each counter will start at $0$.
 
 	The value of |prefix| will be applied after |figure name| has been evaluated.
@@ -171,7 +176,7 @@ pdflatex -shell-escape main
 	% uses main_firstsection_0.pdf, main_firstsection_1.pdf, ...
 }
 
-\section{The second secion}
+\section{The second section}
 {\tikzset{external/figure name/.add={}{secondsection_}}
 	...
 	% uses main_secondsection_0.pdf, main_secondsection_1.pdf, ...
@@ -183,7 +188,7 @@ pdflatex -shell-escape main
 	% uses main_secondsection_2.pdf, main_secondsection_3.pdf, ...
 }
 \end{codeexample}
-\end{key}
+\end{command}
 
 
 \begin{key}{/tikz/external/system call=\marg{template}}
@@ -216,6 +221,33 @@ The complete reference documentation and remaining options are documented in~\ci
 \index{External Graphics!Bounding Box Issues}
 \index{Bounding Box Control!Image Externalization Problems}
 \end{itemize}
+
+\paragraph{Using the Library Without {\normalfont\pgfname} or {\normalfont\PGFPlots} Installed}
+There is a small replacement package \declareandlabel{tikzexternal.sty} which can be used once every figure has been exported. The idea is to uncomment |\usepackage{tikz}| and |\usepackage{pgfplots}| and write |\usepackage{tikzexternal}| instead:
+\begin{codeexample}[code only]
+% \usepackage{tikz}
+% \usepackage{pgfplots}
+\usepackage{tikzexternal}
+\tikzexternalize{test} % <-- provide the main .tex name
+
+\begin{document}
+\begin{tikzpicture}
+	...
+\end{tikzpicture}
+...
+\end{document}
+\end{codeexample}
+You do not need \pgfname, \tikzname\ or \PGFPlots\ installed. What you need is |tikzexternal.sty| and all generated figures (consisting of the image files, `|.pdf|' and the `|.dpth|' files containing information of the |baseline| option). The file |tikzexternal.sty| is shipped with \pgfname\ in the directory
+\begin{codeexample}[code only]
+latex/pgf/utilities/tikzexternal.sty
+\end{codeexample}
+and a copy is shipped with \PGFPlots\ in
+\begin{codeexample}[code only]
+tex/generic/pgfplots/oldpgfcompatib/pgfplotsoldpgfsupp_tikzexternal.sty
+\end{codeexample}
+Just copy the file into your directory and rename it to |tikzexternal.sty|.
+
+Please use |\tikzsetexternalprefix| instead of the |prefix| option and |\tikzsetfigurename| instead of the |figure name| option since |\tikzset| is not available in such a context. Also, you may want to define a dummy--macro |\pgfplotsset| if you have used |\pgfplotsset|.
 \end{pgfplotslibrary}
 
 \subsubsection[Using the Externalization Framework of PGF By Hand]{Using the Externalization Framework of {\normalfont\pgfname} ``By Hand''}
@@ -284,11 +316,30 @@ pdflatex --jobname testfigure2 test
 
 In summary, one needs |\pgfrealjobname| and calls |pdflatex --jobname |\marg{graphics file} for every externalized graphics environment. Please note that it is absolutely necessary to use the syntax above, \emph{not} |\begin{pgfgraphicnamed}|.
 
-These steps are explained in much more detail in Section``Externalizing Graphics'' of~\cite{tikz}.  This reference also contains information about how to typeset such a document without \pgfname\ installed.
+These steps are explained in much more detail in Section``Externalizing Graphics'' of~\cite{tikz}.
 
 \paragraph{Attention:} Do not forget a correct |\pgfrealjobname| statement! If it is missing, externalization simply won't work. If it is wrong, any call to \LaTeX\ will produce empty output files.
 
 It should be noted that this approach of image externalization is not limited to \Tikz\ picture environments. In fact, it collects everything between the begin and end statements into the external file. It is implicitly assumed that the encapsulated stuff is one box, but you can also encapsulate complete paragraphs using something like the \LaTeX\ minipage (or a |\vbox| which is not as powerful but does not affect the remaining document that much).
+
+\paragraph{Using the Library Without {\normalfont\pgfname} Installed}
+Simply uncomment the packages |\usepackage{tikz}| and |\usepackage{pgfplots}| and use
+\begin{codeexample}[code only]
+\long\def\beginpgfgraphicnamed#1#2\endpgfgraphicnamed{%
+	\begingroup
+	\setbox1=\hbox{\includegraphics{#1}}%
+	\openin1=#1.dpth
+	\ifeof1 \box1 
+	\else
+		\read1 to\pgfincludeexternalgraphicsdp \closein1
+		\dimen0=\pgfincludeexternalgraphicsdp\relax
+		\hbox{\lower\dimen0 \box1 }%
+	\fi
+	\endgroup
+}
+\end{codeexample}
+instead. This will include the generated graphics files (and it will respect the |baseline| information stored in |.dpth| files). Consequently, you won't need \pgfname\ or \PGFPlots\ installed. See Section``Externalizing Graphics'' of~\cite{tikz} for details.
+
 
 \subsection{Exporting Mesh Data From Matlab To \PGFPlots}
 While it is easy to write Matlab vectors to files (using |save P.dat data -ASCII|), it is more involved to export mesh data.

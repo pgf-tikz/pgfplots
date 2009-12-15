@@ -29,6 +29,7 @@ FILES=(\
 	$PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex \
 	$PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
 	$PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
+	$PGFDIR/latex/pgf/utilities/tikzexternal.sty \
 	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
 )
 for A in "${FILES[@]}"; do
