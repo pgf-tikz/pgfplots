@@ -331,6 +331,7 @@
 \def\pgfplots@cycle@multi@list@EOI{\pgfplots@cycle@multi@list@EOI}%
 \def\pgfplots@cycle@multi@list#1{%
 	\def\pgfplots@loc@TMPb{0}%
+	\gdef\pgfplots@cycle@multi@list@finalize@{}%
 	\pgfplots@cycle@multi@list@#1\nextlist\pgfplots@cycle@multi@list@EOI
 }%
 \def\pgfplots@cycle@multi@list@#1\nextlist{%
@@ -342,11 +343,7 @@
 		\begingroup
 			\def\pgfplots@as@string{#1}% this deals with control sequences inside of #1.
 			\pgfplots@command@to@string\pgfplots@as@string\pgfplots@as@string
-			\expandafter\pgfplotsifcyclelistexists\expandafter{\pgfplots@as@string}{%
-				\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfp@cyclist@\string#1@\endcsname%
-			}{%
-				\let\pgfplots@loc@TMPa=\pgfutil@empty
-			}%
+			\expandafter\pgfplots@cycle@multi@list@findnamed\pgfplots@as@string\pgfplots@EOI
 			\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
 		\endgroup
 		\ifx\pgfplots@glob@TMPa\pgfutil@empty
@@ -374,8 +371,42 @@
 	}%
 }%
 
+% checks for 
+% - <known list>
+% - [<elements> of]<known list>
+% POSTCONDITION:
+% 	1. pgfplots@loc@TMPa will be \pgfutil@empty if there is no such
+% 	list.
+% 	2. \pgfplots@loc@TMPa will be \let to the list if there is one.
+% 	3. \pgfplots@cycle@multi@list@finalize@ will contain any 'partial sublist'
+% 	commands.
+\def\pgfplots@cycle@multi@list@findnamed{\pgfutil@ifnextchar[{\pgfplots@cycle@multi@list@findnamed@}{\pgfplots@cycle@multi@list@findnamed@[]}}%
+\def\pgfplots@cycle@multi@list@findnamed@[#1]#2\pgfplots@EOI{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfplots@cycle@multi@list@findnamed@@#1 \pgfplots@EOI
+	\fi
+	\pgfplotsifcyclelistexists{#2}{%
+		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfp@cyclist@\string#2@\endcsname%
+	}{%
+		\let\pgfplots@loc@TMPa=\pgfutil@empty
+	}%
+}
+\def\pgfplots@cycle@multi@list@findnamed@@#1 {\pgfutil@ifnextchar o{\pgfplots@cycle@multi@list@findnamed@@@{#1}}{\pgfplots@cycle@multi@list@findnamed@@@{#1}of}}%
+\def\pgfplots@cycle@multi@list@findnamed@@@#1of#2\pgfplots@EOI{%
+	\begingroup
+		\t@pgfplots@toka=\expandafter{\pgfplots@cycle@multi@list@finalize@}%
+		\t@pgfplots@tokb={#1}%
+		\xdef\pgfplots@cycle@multi@list@finalize@{\the\t@pgfplots@toka
+			\noexpand\pgfkeys{/pgfplots/cycle multi list/partial sublist={\pgfplots@loc@TMPb}{\the\t@pgfplots@tokb}}%
+		}%
+	\endgroup
+}
+
 \def\pgfplots@cycle@multi@list@finalize\pgfplots@cycle@multi@list@EOI{%
 	\pgfkeyslet{/pgfplots/cycle multi list/@dim}\pgfplots@loc@TMPb
+	\pgfplots@cycle@multi@list@finalize@
 }%
 
 \pgfkeys{%
@@ -636,6 +667,7 @@
 			axis on top,
 			at={(parent axis.right of north east)},
 			anchor=north west,
+			grid=none,
 			xmin=0,
 			xmax=1,
 			ymin=\pgfkeysvalueof{/pgfplots/point meta min},
@@ -648,8 +680,11 @@
 			scale only axis,
 			height=\pgfkeysvalueof{/pgfplots/parent axis height},%
 			x=\pgfkeysvalueof{/pgfplots/colorbar/width},
-			yticklabel pos=right,
 			xtick=\empty,
+			xticklabel=,
+			ytick=,
+			yticklabel=,
+			yticklabel pos=right,
 			colorbar vertical/lowlevel,
 		}%
 	},%
@@ -674,6 +709,7 @@
 			axis on top,
 			at={(parent axis.below south west)},
 			anchor=north west,
+			grid=none,
 			ymin=0,
 			ymax=1,
 			xmin=\pgfkeysvalueof{/pgfplots/point meta min},
@@ -687,7 +723,10 @@
 			width=\pgfkeysvalueof{/pgfplots/parent axis width},%
 			y=\pgfkeysvalueof{/pgfplots/colorbar/width},
 			xticklabel pos=left,
+			xtick=\empty,
+			xticklabel=,
 			ytick=\empty,
+			yticklabel=,
 			colorbar horizontal/lowlevel,
 		}%
 	},%
@@ -7020,10 +7059,6 @@
 			\else
 				% use a different basis.
 				%
-				% The use of this feature is limited -- there is
-				% probably only a good use for it, if tick labels
-				% are provided in log_a  representation.
-				% The 10^e notation hides the underlying log.
 				% 
 				\pgfmathlog@{\pgfplots@loc@TMPa}%
 				\let\pgfplots@loc@TMPa=\pgfmathresult
