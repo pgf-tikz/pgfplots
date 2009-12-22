@@ -7553,13 +7553,55 @@
 		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis width}{\pgfkeysvalueof{/pgfplots/parent axis width}}%
 		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
 		\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
+		\noexpand\pgfplots@colorbar@define@hook%
 		\noexpand\pgfkeysvalueof{/pgfplots/colorbar/draw/.@cmd}\noexpand\pgfeov
 		\noexpand\endgroup
 		\noexpand\pgfnodealias{current colorbar axis}{current axis}%
 		\noexpand\pgfnodealias{current axis}{parent axis}%
 	}%
 }%
-
+\let\pgfplots@colorbar@position@hook\relax
+\def\pgfplots@colorbar@define@hook{%
+	\def\pgfplots@colorbar@position@hook{%
+		% I patch \pgfplots@at...
+		\let\pgfplots@at@orig=\pgfplots@at
+		%
+		% ... and I patch \pgfplotspointdescriptionxy (but only INSIDE
+		% of \pgfplots@at) ...
+		\let\pgfplotspointdescriptionxy@orig=\pgfplotspointdescriptionxy
+		\let\pgfplotsqpointdescriptionxy@orig=\pgfplotsqpointdescriptionxy
+		\def\pgfplots@colorbar@position@prepare@CS{%
+			% ... which needs to set up ONLY \pgfplotspoint@bb@@@,
+			% nothing more.
+			\pgfpointanchor{parent axis}{south west}%
+			\edef\pgfplots@loc@TMPa{\the\pgf@x}
+			\edef\pgfplots@loc@TMPb{\the\pgf@y}%
+			\pgfpointanchor{parent axis}{north east}%
+			\pgf@xa=\pgf@x
+			\pgf@ya=\pgf@y
+			\advance\pgf@xa by-\pgfplots@loc@TMPa\relax
+			\advance\pgf@ya by-\pgfplots@loc@TMPb\relax
+			\edef\pgfplotspoint@bb@@@{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\the\pgf@xa}{\the\pgf@ya}}%
+		}%
+		%
+		% Install replacements:
+		\def\pgfplots@at{%
+			\begingroup
+			\def\pgfplotspointdescriptionxy########1########2{%
+				\pgfplots@colorbar@position@prepare@CS
+				\pgfplotspointdescriptionxy@orig{########1}{########2}%
+			}%
+			\def\pgfplotsqpointdescriptionxy########1########2{%
+				\pgfplots@colorbar@position@prepare@CS
+				\pgfplotsqpointdescriptionxy@orig{########1}{########2}%
+			}%
+			\pgfplots@deprecated@anchorsfalse
+			\pgfplots@change@pgfpoints@to@descriptioncs
+			\pgfplots@at@orig
+			\endgroup
+		}%
+	}%
+}%
 
 % Parses all options in #1 which are known in the currently active families.
 %
@@ -8451,7 +8493,13 @@
 	% These would be lost otherwise.
 	\pgftransformshift{\pgfplots@savedtransformshift}%
 	%
+	% allow positioning of colorbars with this hook.
+	% It is \relax unless this here is a color bar axis.
+	% Its intention is to re-define `\pgfplots@at':
+	\pgfplots@colorbar@position@hook%
+	%
     \pgftransformshift{\pgfplots@at}%
+	%
 	\ifpgfplots@deprecated@anchors
 		\pgfplots@restore@deprecated@lowlevel@shape
 		\pgfmultipartnode{pgfplots@low@level@shape@deprecated}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
