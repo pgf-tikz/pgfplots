@@ -1607,6 +1607,151 @@
 }%
 
 
+% #1  the name of an input method for point meta. It must have been
+% declared by \pgfplotsdeclarepointmetasource first.
+% #2  any arguments supplied by the user (maybe empty).
+\def\pgfplotssetpointmetainput#1#2{%
+	\csname pgfpmeta@#1@initfor\endcsname{#2}%
+	%
+	\edef\pgfplotspointmetainputhandler{#1}%
+}%
+
+% Expands to the current value of 'point meta'.
+\def\pgfplotspointmetainputhandler{}
+
+% Declares a routine which can be used to get point meta input.
+%
+% Such a routine is invoked in a context where point coordinates are
+% processed, i.e. during 'plot coordinates', 'plot table' or the like.
+%
+% The routine is called `#1'. It consists of several methods:
+% - \csname pgfpmeta@#1@assign\endcsname{}
+% 	During the survey phase, this macro is expected to assign
+% 	\pgfplots@current@point@meta
+%	This method should prepare everything which is needed to invoke
+%	the postprocessors, i.e. it prepares the input for point meta
+%	transformations to [0,1000] or the scatter plot things. In other
+%	words: if it is a numeric input method, it should return a
+%	floating point number.
+%	It is allowed to return an empty string to say "there is no point
+%	meta".
+%	PRECONDITION for '@assign':
+%		- the coordinate input method has already assigned its
+%		'\pgfplots@current@point@meta' (probably as raw input string).
+%		- the other input coordinates are already read.
+%	POSTCONDITION for '@assign':
+%		- \pgfplots@current@point@meta is ready for use:
+%		- EITHER a parsed floating point number 
+%		- OR an empty string,
+%		- OR a symbolic string (if #3=symbolic)
+%	The default implementation is
+%	\let\pgfplots@current@point@meta=\pgfutil@empty
+%
+% - \csname pgfpmeta@#1@issymbolic\endcsname -> expands to either '1' or '0'
+% 		A numeric source will be processed numerically, i.e. the final map
+% 		to [0,1000] will be initialised and meta limits will be updated.
+% 		A symbolic input routine won't be processed.
+% 	Default is '0'
+%
+% - \csname pgfpmeta@#1@explicitinput\endcsname -> expands to either
+%   '1' or '0'. In case '1', it expects explicit input from the
+%   coordinate input routines. For example, 'plot file' will look for
+%   further input after the x,y,z coordinates.
+%   Default is '0'
+%
+% - \csname pgfpmeta@#1@initfor\endcsname##1{....}
+% 		a macro used to initialise the point meta source when it is
+% 		selected.
+% 		This macro body is invoked by pgfplots when someone types 
+%		'point meta=x' -> will invoke 'pgfpmeta@x@initfor{}'.
+%		The first argument to initfor can be supplied by the user.
+%		PRECONDITION for 'initfor':
+%			- it will be invoked just before
+%			'\pgfplotspointmetainputhandler' will be changed.
+%	Default is to do nothing.
+%
+% #1: the name of the input routine.
+% #2: a sequence of key-value pairs which can be used to overwrite
+% 'assign', 'initfor' or the other components.
+% 	See the definitions below for examples.
+\def\pgfplotsdeclarepointmetasource#1#2{%
+	\expandafter\def\csname pgfpmeta@#1@assign\endcsname{\let\pgfplots@current@point@meta=\pgfutil@empty}%
+	\expandafter\def\csname pgfpmeta@#1@initfor\endcsname##1{}%
+	\expandafter\def\csname pgfpmeta@#1@issymbolic\endcsname{0}%
+	\expandafter\def\csname pgfpmeta@#1@explicitinput\endcsname{0}%
+	\edef\pgfplotsdeclarepointmetasource@{#1}%
+	\pgfqkeys{/pgfplots/@declare point meta src}{#2}%
+}%
+\pgfqkeys{/pgfplots/@declare point meta src}{%
+	assign/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @assign\endcsname{#1}},%
+	initfor/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @initfor\endcsname##1{#1}},%
+	issymbolic/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @issymbolic\endcsname{#1}},%
+	explicitinput/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @explicitinput\endcsname{#1}},%
+}%
+
+% An empty one. This is simple to check with
+% \ifx\pgfplotspointmetainputhandler\pgfutil@empty:
+\pgfplotsdeclarepointmetasource{}{}
+\pgfplotsdeclarepointmetasource{x}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@x
+		\ifpgfplots@xislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+\pgfplotsdeclarepointmetasource{y}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@y
+		\ifpgfplots@yislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+\pgfplotsdeclarepointmetasource{z}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@z
+		\ifpgfplots@zislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+
+\pgfplotsdeclarepointmetasource{explicit}{%
+	assign={%
+		\ifx\pgfplots@current@point@meta\pgfutil@empty
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi
+	},
+	explicitinput=1%
+}%
+\pgfplotsdeclarepointmetasource{explicit symbolic}{%
+	assign={},% no math, simply collect.
+	explicitinput=1,%
+	issymbolic=1%
+}%
+
+\pgfplotsdeclarepointmetasource{expr}{%
+	assign={%
+		\csname pgfpmeta@\pgfpmeta@expr@origchoice @assign\endcsname
+		%
+		\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfmathparse{\pgfplots@loc@TMPa}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi
+	},%
+	initfor={%
+		\pgfkeyssetvalue{/pgfplots/point meta/expr}{#1}%
+		\let\pgfpmeta@expr@origchoice\pgfplotspointmetainputhandler
+	},
+}%
+\pgfkeyssetvalue{/pgfplots/point meta/expr}{}%
+
 % Internal stream methods.
 %
 % Please overwrite 
@@ -2347,90 +2492,10 @@
 	% %%%%%%%%%%%%%%
 	%
 	% Define \pgfplots@set@perpointmeta properly:
-	\ifcase\pgfplots@perpointmeta@choice
-		% point meta/none: disabled.
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfutil@empty
-		}%
-	\or
-		% point meta/x
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@x
-		}%
-		\ifpgfplots@xislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/y
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@y
-		}%
-		\ifpgfplots@yislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/z
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@z
-		}%
-		\ifpgfplots@zislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/explicit : parse the information found
-		% somewhere:
-		\def\pgfplots@set@perpointmeta{%	
-			\ifx\pgfplots@current@point@meta\pgfutil@empty
-			\else
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\fi
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		}%
-	\or
-		% point meta/explicit symbolic : simply collect the
-		% information, no math.
-		\def\pgfplots@set@perpointmeta{}%
-	% the 'point meta/expr cases is handled below.
-	\fi
-	% check 
-	%   if( we have point meta )...
-	\pgfplots@loc@tmptrue
-	\if\pgfplots@perpointmeta@choice0%
-		\pgfplots@loc@tmpfalse
-	\else
-		\if\b@pgfplots@perpointmeta@issymbolic1%
-			\pgfplots@loc@tmpfalse
-		\fi
-	\fi
-	\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-			\pgfplots@set@perpointmeta
-			\pgfmathparse{\pgfkeysvalueof{/pgfplots/point meta/expr}}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		}%
-		% update limits in this case:
-		\pgfplots@loc@tmptrue
-		% make sure it is not 'none':
-		\def\pgfplots@perpointmeta@choice{4}%
-	\fi
-	\ifpgfplots@loc@tmp
+	\def\pgfplots@set@perpointmeta{%
+		\csname pgfpmeta@\pgfplotspointmetainputhandler @assign\endcsname
+	}%
+	\if0\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 		% We need to work with per point meta data.
 		% So, also compute the data range on a per-plot basis!
 		% These limits are important later.
@@ -2581,8 +2646,7 @@
 				% this plot:
 				\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 				\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-				\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-				\noexpand\def\noexpand\b@pgfplots@perpointmeta@issymbolic{\b@pgfplots@perpointmeta@issymbolic}%
+				\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
 			}%
 			{% draw command:
 				\noexpand\draw%
@@ -3297,8 +3361,7 @@
 		\def\pgfplotspointmetatransformed{1.0}%
 	\else
 		% prepare arguments:
-		\if\b@pgfplots@perpointmeta@issymbolic1%
-			%point meta=explicit symbolic
+		\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 			\let\pgfplotspointmeta=\pgfplots@current@point@meta
 			\let\pgfplotspointmetatransformed=\pgfplotspointmeta
 		\else
@@ -4197,21 +4260,13 @@
 		\let\pgfplots@current@point@meta=\pgfutil@empty
 		\ifpgfplots@curplot@threedim
 			\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim
-			\ifnum\pgfplots@perpointmeta@choice=4
+			\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @explicitinput\endcsname
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim@andmeta
-			\else
-				\ifnum\pgfplots@perpointmeta@choice=5
-					\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim@andmeta
-				\fi
 			\fi
 		\else
 			\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim
-			\ifnum\pgfplots@perpointmeta@choice=4
+			\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @explicitinput\endcsname
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
-			\else
-				\ifnum\pgfplots@perpointmeta@choice=5
-					\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
-				\fi
 			\fi
 		\fi
 		\pgfplots@addplotimpl@file@readall
@@ -5302,7 +5357,7 @@
 	% Will be inserted in one of two possible places below (to collect
 	% marker positions)
 	\def\pgfplots@visualize@performserizalization{%
-		\ifnum\pgfplots@perpointmeta@choice=0
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
 			% we don't have per-point meta data. Nothing special to
 			% do:
 			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
@@ -5521,8 +5576,7 @@
 		%
 		\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 		\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-		\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-		\noexpand\def\noexpand\b@pgfplots@perpointmeta@issymbolic{\b@pgfplots@perpointmeta@issymbolic}%
+		\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
 		%
 		\the\t@pgfplots@tokb
 		\noexpand\pgfextra
@@ -6012,7 +6066,7 @@
 		%
 		%
 		% Prepare color data source:
-		\if\pgfplots@perpointmeta@choice0%
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
 			% oh. There is no color data!? Well... then use a constant
 			% color.
 			% 
@@ -6930,7 +6984,7 @@
 		% ups - no styles available? Maybe something went
 		% wrong with the 'scatter src' key. Check whether it
 		% was accidentally a numerical style:
-		\if\b@pgfplots@perpointmeta@issymbolic1%
+		\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 		\else
 			% ok, be fault tolerant and round to an integer:
 			\pgfmathfloattofixed{\pgfplotspointmeta}%
