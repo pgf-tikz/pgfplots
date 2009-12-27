@@ -1230,9 +1230,7 @@
 			\pgfplots@if{pgfplots@#1islinear}{%
 				\pgfplots@init@scaled@tick@for{#1}%
 			}{\relax}%
-			\def\pgfplots@auto@anchor@mode{1}%
 			\begingroup
-		%	\pgfkeysalso{/tikz/anchor/.append code={\def\pgfplots@auto@anchor@mode{0}}}%
 			\pgfkeysalso{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
 			\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1%
 			%
@@ -1305,8 +1303,14 @@
 
 % This here does the main work for any tick label ANCHORING.
 %
+% FIXME : the new 'near ticklabel' anchors are now the default method
+% to place tick labels.
+%
+% This feature here can be used to disable this anchoring, i.e. set
+% 'ticklabel anchor=tikz' to use a stupid heuristics.
+%
 % There are actually two choices:
-% Choice 1: paraxial
+% Choice 1: near ticklabel
 % 	This choice places tick labels fully automatic outside of the
 % 	figure, all on a line which is parallel to the axis which
 % 	contains the corresponding tick labels.
@@ -1344,53 +1348,17 @@
 % 			(BOTTOM) of the axis,
 \def\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1{%
 	\if\csname pgfplots@ticklabel@anchor@#1\endcsname0%
-		\ifpgfplots@threedim
-			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% 3D => paraxial
-		\else
-			\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}% use the general paraxial mode!
-			\if0\pgfplots@auto@anchor@mode
-				\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{2}% use only tikz mode.
-			\fi
-		\fi
+		% auto is the same as 'near ticklabel':
+		\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}%
 	\fi
 	\ifcase\csname pgfplots@ticklabel@anchor@#1\endcsname%
 		% 0: doesn't happen, see above.
 	\or
-		% 1: paraxial.
+		% 1: near ticklabel.
 		% The following code contains automatically
 		% aligned tick labels (especially for 3D axes). 
-		%
-		%
-		% Process anchors.
-		% see \pgfplots@init@ticklabelaxisspecfor
-		%
-		% FIXME : perhaps this implementation here is better than the
-		% auto-anchor thing below:
-		%\edef\pgfplots@loc@TMPa{anchor=\csname pgfplots@#1ticklabel@suggested@anchor\endcsname}%
-		%\expandafter\tikzset\expandafter{\pgfplots@loc@TMPa}%
-		% ADVANTAGE of the fixed anchor: all labels appear on the same
-		% line. 
-		%
-		% My ideas are as follows:
-		% - the CENTER of tick labels should be on a line starting at
-		%   the tick position in direction
-		%   \pgfplots@loc@vector@to@outside.
-		% - the ANCHOR should be on the boundary of the shape.
-		%   
-		% Implementation: create a new, temporary anchor and invoke
-		% the respective 'border' anchor processing.
-		% Unfortunately, this is relatively low-level and may not be
-		% portable.
-		%
-		% 1. initialise the direction vector for tick label anchors:
-		\pgfplotspointouternormalvectorofticklabelaxis{#1}%
-		\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{}%
-		\pgfpointscale{-1}{}%
-		\edef\pgfplots@loc@vector@to@inside{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
-		% 2. init the anchors.
-		\pgfkeys{%
-			/tikz/anchor=near #1ticklabel,%
-		}%
+		% see the manual for the |near ticklabel| anchors.
+		\pgfkeys{/tikz/anchor=near #1ticklabel}%
 		%
 		% process the (optional) ticklabel distance:
 		\begingroup
@@ -1405,13 +1373,11 @@
 			\pgfmath@smuggleone\pgfmathresult
 		\endgroup
 		\let\pgfplots@loc@TMPc=\pgfmathresult
-%\message{pgfplots@drawticklabels@onorientedsurf@prepareanchor{#1}: Installing a SHIFT TRANSFORMATION of \pgfplots@loc@TMPc * pgfplotspointonorientedsurfbN{\pgfplots@loc@baxisscale}{\pgfplots@loc@naxisscale} where b = \pgfplotspointonorientedsurfaceB; N = \pgfplotspointonorientedsurfaceN. pgfplotspointonorientedsurfbN = \meaning\pgfplotspointonorientedsurfbN.}%
 		\ifx\pgfplots@loc@TMPc\pgfutil@empty
 		\else
 			\pgftransformshift{%
-				\pgfqpointscale
-					{\pgfplots@loc@TMPc}
-					{\pgfplots@loc@vector@to@inside}%
+				\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+				\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
 			}%
 		\fi
 		%
@@ -1419,27 +1385,27 @@
 		\let\pgfplots@tickposchoicea=\pgfutil@empty
 		\let\pgfplots@tickposchoiceb=\pgfutil@empty
 	\or
-		\if1\pgfplots@auto@anchor@mode
-			% 2: tikz.
-			% We simply prepare the default anchor.
-			% Actually, this code is just for backwards compatibility -
-			% there may be people who prefer to set anchors. The
-			% 'paraxial' implementation is much more general, however.
-			\if\pgfplotspointonorientedsurfaceB x
-				\def\pgfplots@tickposchoicea{\tikzset{right}}%
-				\def\pgfplots@tickposchoiceb{\tikzset{left}}%
+		% 2: tikz.
+		% We simply prepare the default anchor.
+		% Actually, this code is just for backwards compatibility -
+		% there may be people who prefer to set anchors. The
+		% 'near ticklabel' implementation is much more general, however.
+		\if\pgfplotspointonorientedsurfaceB x
+			\def\pgfplots@tickposchoicea{\tikzset{right}}%
+			\def\pgfplots@tickposchoiceb{\tikzset{left}}%
+		\else
+			\if\pgfplotspointonorientedsurfaceB y
+				\def\pgfplots@tickposchoicea{\tikzset{above}}%
+				\def\pgfplots@tickposchoiceb{\tikzset{below}}%
 			\else
-				\if\pgfplotspointonorientedsurfaceB y
-					\def\pgfplots@tickposchoicea{\tikzset{above}}%
-					\def\pgfplots@tickposchoiceb{\tikzset{below}}%
-				\else
-					\def\pgfplots@tickposchoicea{\tikzset{anchor=north east}}%
-					\def\pgfplots@tickposchoiceb{\tikzset{anchor=south east}}%
-				\fi
+				\def\pgfplots@tickposchoicea{\tikzset{anchor=north east}}%
+				\def\pgfplots@tickposchoiceb{\tikzset{anchor=south east}}%
 			\fi
 		\fi
-		\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
 	\fi
+	\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec
+		{#1}%
+		{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
 }%
 
 \newif\ifpgfplots@checkuniform@isfirst
