@@ -1600,12 +1600,13 @@
 	\let\Wr=\pgf@xc
 	\Wr=\csname pgfplotspoint#1axislength\endcsname\relax
 	% r = max place without ticks in pt -> choose desirednumticks >= W/r
-	\expandafter\expandafter\divide\Wr\axisdefaulttickwidth
-	\pgfmathsetcount{\desirednumticks}{\Wr}%
+	\divide\Wr by\axisdefaulttickwidth\relax
+	\afterassignment\pgfplots@gobble@until@relax
+	\desirednumticks=\the\Wr\relax
 	\advance\desirednumticks by1
 	\csname ifpgfplots@#1islinear\endcsname
 		\ifnum\axisdefaulttryminticks>\desirednumticks\relax
-			\desirednumticks=\axisdefaulttryminticks
+			\desirednumticks=\axisdefaulttryminticks\relax
 		\fi
 	\else
 		\ifnum\pgfplots@default@try@minticks@log>\desirednumticks\relax
@@ -1628,15 +1629,15 @@
 		\let\MAX=\pgf@ya
 		\let\MIN=\pgf@yb
 		% compute step size 'H':
-		\expandafter\MAX\csname pgfplots@#1max\endcsname pt
+		\expandafter\MAX\csname pgfplots@#1max\endcsname pt %
 		\advance\MAX by0.001pt % avoid round errors
 		%\expandafter\MIN\the\c@pgf@counta pt
-		\expandafter\MIN\csname pgfplots@#1min\endcsname pt
+		\expandafter\MIN\csname pgfplots@#1min\endcsname pt %
 		\H=\MAX
 		\advance\H by-\MIN
 %\message{Axis limit #1: [\the\MIN:\the\MAX], diff = \the\H.}%
 		\c@pgf@counta=\desirednumticks
-		\advance\c@pgf@counta by-1
+		\advance\c@pgf@counta by-1 %
 		\divide\H by\c@pgf@counta
 %\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
 		%
@@ -1711,10 +1712,10 @@
 			\fi
 			%
 			% And, since we have used finite precision, I is most
-			% likely to large. So: subtract one H. In the worst
+			% likely to be large. So: subtract one H. In the worst
 			% case, this produces one tick position too much (but
 			% it won't be printed).
-			\advance\MIN by-\H
+			\advance\MIN by-\H\relax
 		\else
 			% CASE LOG AXIS
 			%
@@ -1812,89 +1813,93 @@
 		\pgfplots@tmpa=\MINH
 		\advance\pgfplots@tmpa by\H
 		\ifdim\MAX<\pgfplots@tmpa
-			\aftergroup\pgfplots@isuniformtickfalse
-			% ok, do something special.
-			%
-			% The idea is now to place ticks at
-			% 10^{i*h} with properly choosen 'h'.
-			%
-			% So: apply basically the SAME code as above for linear
-			% axis, just everything log 10!  And keep in mind that all
-			% coordinates are actually given as natural logarithms.
-			\expandafter\MIN\csname pgfplots@#1min\endcsname pt
-			\H=\MAX
-			\advance\H by-\MIN
-			\H=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\H
+			\pgfplots@if{pgfplots@#1islinear}{%
+				% FIXME : IMPLEMENT
+			}{%
+				\aftergroup\pgfplots@isuniformtickfalse
+				% ok, do something special.
+				%
+				% The idea is now to place ticks at
+				% 10^{i*h} with properly choosen 'h'.
+				%
+				% So: apply basically the SAME code as above for linear
+				% axis, just everything log 10!  And keep in mind that all
+				% coordinates are actually given as natural logarithms.
+				\expandafter\MIN\csname pgfplots@#1min\endcsname pt
+				\H=\MAX
+				\advance\H by-\MIN
+				\H=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\H
 %\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
-			\c@pgf@counta=\desirednumticks\relax
-			\advance\c@pgf@counta by-1
-			\ifnum\c@pgf@counta>2
-				% subtract one more. This algorithm here produces more
-				% ticks than the normal one which is designed for 10^i
+				\c@pgf@counta=\desirednumticks\relax
 				\advance\c@pgf@counta by-1
-			\fi
-			\divide\H by\c@pgf@counta\relax
+				\ifnum\c@pgf@counta>2
+					% subtract one more. This algorithm here produces more
+					% ticks than the normal one which is designed for 10^i
+					\advance\c@pgf@counta by-1
+				\fi
+				\divide\H by\c@pgf@counta\relax
 %\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
-			%
-			% SEARCH for the NEXT FEASABLE H.
-			\edef\Hmacro{\pgf@sys@tonumber\H}%
-			\pgfmathfloatparsenumber{\Hmacro}%
-			\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
-			% Determine properly snapped mantisse...
-			\ifdim\H<2pt
-				\ifdim\H<1.5pt
-					\H=1.0pt
-				\else
-					\H=2.0pt
-				\fi
-			\else
-				\ifdim\H<4.9999pt
-					\ifdim\H<3.5pt
-						\H=2.0pt\relax
+				%
+				% SEARCH for the NEXT FEASABLE H.
+				\edef\Hmacro{\pgf@sys@tonumber\H}%
+				\pgfmathfloatparsenumber{\Hmacro}%
+				\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
+				% Determine properly snapped mantisse...
+				\ifdim\H<2pt
+					\ifdim\H<1.5pt
+						\H=1.0pt
 					\else
-						\H=5.0pt\relax
+						\H=2.0pt
 					\fi
 				\else
-					\ifdim\H<7.5pt
-						\H=5.0pt\relax
+					\ifdim\H<4.9999pt
+						\ifdim\H<3.5pt
+							\H=2.0pt\relax
+						\else
+							\H=5.0pt\relax
+						\fi
 					\else
-						\H=1.0pt\relax
-						\advance\pgfmathfloat@a@E by1
+						\ifdim\H<7.5pt
+							\H=5.0pt\relax
+						\else
+							\H=1.0pt\relax
+							\advance\pgfmathfloat@a@E by1
+						\fi
 					\fi
 				\fi
-			\fi
-			\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
-			\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
-			\let\Hmacro=\pgfmathresult
-			\H=\Hmacro pt %
-			% Ok, our step size h for 10^{i*h} is ready!
+				\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+				\let\Hmacro=\pgfmathresult
+				\H=\Hmacro pt %
+				% Ok, our step size h for 10^{i*h} is ready!
 %\message{determined step size 10^{\Hmacro}}%
-			% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
-			% compute I such that
-			%   10^{min} = 10^{I * H + rest};  |rest| < H
-			% -> I = round(xmin/H)
-			% -> MIN = I * H
-			% BUT EVERYTHING to log(10) basis!
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname \MIN\relax
-			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-				{\pgf@sys@tonumber\MIN}%
-				{\Hmacro}%
+				% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
+				% compute I such that
+				%   10^{min} = 10^{I * H + rest};  |rest| < H
+				% -> I = round(xmin/H)
+				% -> MIN = I * H
+				% BUT EVERYTHING to log(10) basis!
+				\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname \MIN\relax
+				\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+					{\pgf@sys@tonumber\MIN}%
+					{\Hmacro}%
+				}%
+				\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+				\ifdim\MIN<0pt
+					% the truncation rounds TOWARDS 0 which is not what I want.
+					\advance\c@pgf@counta by-1
+				\fi
+				\MIN=\H\relax
+				\multiply\MIN by\c@pgf@counta\relax
+				%
+				% convert back to basis 'e':
+				\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\MIN\relax
+				\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
+				\MINH=\MIN\relax
+				\advance\MINH by\H\relax
 			}%
-			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
-			\ifdim\MIN<0pt
-				% the truncation rounds TOWARDS 0 which is not what I want.
-				\advance\c@pgf@counta by-1
-			\fi
-			\MIN=\H\relax
-			\multiply\MIN by\c@pgf@counta\relax
-			%
-			% convert back to basis 'e':
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\MIN\relax
-			\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
-			\MINH=\MIN\relax
-			\advance\MINH by\H\relax
 		\fi
-%\pgfplots@message{final H=\the\H.}%
+%\message{final H=\the\H.}%
 		\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\H}}%
 		\advance\MAX by0.5\H % avoid rounding inaccuracies:
 		\xdef\pgfplots@glob@TMPa{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
