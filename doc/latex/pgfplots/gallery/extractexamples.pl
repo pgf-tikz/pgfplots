@@ -51,6 +51,7 @@ $header =
 % http://www.ctan.org/tex-archive/graphics/pgf/contrib/pgfplots/doc/latex/plotdata/
 
 \usepackage{pgfplots}
+\pgfplotsset{compat=newest}
 
 \pagestyle{empty}
 ';
