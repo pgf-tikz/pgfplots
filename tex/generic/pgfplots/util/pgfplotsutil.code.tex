@@ -787,51 +787,11 @@
 
 \def\pgfplots@logfileopen#1{%
 	\immediate\write-1{PGFPlots: reading {#1}}%
-	\pgfutil@ifundefined{tikzexternalifwritesmakefile}{%
+	\pgfutil@ifundefined{tikzpicturedependsonfile}{%
 	}{%
-		\pgfplots@write@makefile@deps@for@input@file{#1}%
+		\tikzpicturedependsonfile{#1}%
 	}%
 }%
-
-\def\pgfplots@write@makefile@deps@for@input@file#1{%
-	\tikzifexternalizing{%
-		\tikzexternalifwritesmakefile{%
-			\begingroup
-			\pgfutil@ifundefined{w@pgfplots@external@dep@\jobname}{%
-				\def\pgfplots@loc@TMPa{\csname newwrite\endcsname}%
-				\begingroup
-					\globaldefs=1
-					\expandafter\pgfplots@loc@TMPa\csname w@pgfplots@external@dep@\jobname\endcsname
-				\endgroup
-				\expandafter\let\expandafter\w@pgfplots@dep\csname w@pgfplots@external@dep@\jobname\endcsname
-				\immediate\openout\w@pgfplots@dep=\jobname.dep
-			}{%
-				\expandafter\let\expandafter\w@pgfplots@dep\csname w@pgfplots@external@dep@\jobname\endcsname
-			}%
-			\immediate\write\w@pgfplots@dep{\jobname\tikzexternalimgextension: #1}%
-			\endgroup
-		}{}%
-	}{}%
-}%
-\def\pgfplots@modify@externalization@makefile{%
-	\tikzexternalifwritesmakefile{%
-		\tikzexternalwritetomakefile{include $(ALL_FIGURE_NAMES:\pgfplots@PERCENT@TEXT=\pgfplots@PERCENT@TEXT.dep)}%
-		\tikzexternalwritetomakefile{}%
-		\tikzexternalwritetomakefile{\pgfplots@PERCENT@TEXT.dep:}%
-		\tikzexternalwritetomakefile{\pgfplots@TAB touch $@ \pgfplots@ROUTE\space will be filled later.}%
-		\tikzexternalwritetomakefile{}%
-	}{}
-}
-
-\pgfutil@ifundefined{AtBeginDocument}{%
-}{%
-	\AtBeginDocument{%
-		\pgfutil@ifundefined{tikzexternalifwritesmakefile}{%
-		}{%
-			\pgfplots@modify@externalization@makefile
-		}%
-	}%
-}
 
 % Expands #2 using \edef and invokes #1 with the resulting string.
 %
@@ -960,6 +920,36 @@
 
 % this command is in pgfplotscore.code.tex:
 % \pgfplotsiffileexists
+
+% EXPERIMENTAL OPTIMIZATION:
+\let\pgfmathparsex@orig=\pgfmathparse
+\def\pgfmathparsex#1{%
+	\begingroup
+	\message{WORKING ON #1...}%
+	\tracingmacros=2 \tracingcommands=2
+	\let\pgfmath@parse@@@operator\relax
+	\let\pgfmath@parse@@operator\relax
+	\let\pgfmath@parse@operator\relax
+	\let\pgfmath@stack@push@operand\pgfutil@gobble
+	\let\pgfmath@base=\pgfmath@empty
+	\let\pgfmath@number=\pgfmath@empty
+	\let\pgfmath@parse@number@failed=\relax
+    \edef\pgfmath@expression{#1}%
+	\expandafter\pgfmathparsex@first\pgfmath@expression\pgfmathparsex@EOI%
+	\if1\pgfmathparsex@recover@
+		\xdef\pgfmathparsex@@{\noexpand\pgfmathparsex@orig{\pgfmath@expression}}%
+	\else
+		\xdef\pgfmathparsex@@{\noexpand\def\noexpand\pgfmathresult{\pgfmathresult}}%
+	\fi
+	\endgroup
+	\pgfmathparsex@@
+}%
+\def\pgfmathparsex@first#1#2\pgfmathparsex@EOI{%
+	\def\pgfmath@token@next{#1}%
+	\pgfmath@parse@number{#2}%
+}%
+\def\pgfmathparsex@recover{\def\pgfmathparsex@recover@{1}}%
+\def\pgfmathparsex@recover@{0}%
 
 \input pgfplotsliststructure.code.tex
 \input pgfplotsliststructureext.code.tex

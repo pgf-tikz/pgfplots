@@ -3759,10 +3759,10 @@
 % 	\pgfplots@plot@ydomain (will be set to \pgfplots@plot@domain if empty)
 % 	\pgfplots@plot@samples@at
 % 	\pgfplots@plot@samples@y (will be set to the x variant if empty)
-% 	\tikz@plot@var
-% 	\pgfplots@plot@var@nonmacro
-% 	\pgfplots@plot@var@y
-% 	\pgfplots@plot@var@y@nonmacro
+% 	\tikz@plot@var (will become a macro like '\x')
+% 	\pgfplots@plot@var@nonmacro (the same as \tikz@plot@var, but without backslash)
+% 	\pgfplots@plot@var@y (like \tikz@plot@var, but for y)
+% 	\pgfplots@plot@var@y@nonmacro (like \pgfplots@plot@var@nonmacro, but for y)
 % 	2. the following key-value things are set:
 % 		/pgfplots/mesh/rows
 % 		/pgfplots/mesh/cols
@@ -3774,7 +3774,7 @@
 % 		if the expression plotter should sample a line
 % 		and
 % 		\def\b@pgfplots@should@sample@LINE{0}
-% 		if it should samples a mesh.
+% 		if it should sample a mesh.
 \def\pgfplots@plot@expression@preparekeys{%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
@@ -3793,6 +3793,15 @@
 	% without the '\', i.e. 'x' by default:
 	\let\pgfplots@plot@var@nonmacro=\pgfplots@glob@TMPa
 	\let\pgfplots@plot@var@y@nonmacro=\pgfplots@glob@TMPb
+	%
+	% make sure the 'plot vars' have a backslash (as it was in tikz
+	% plot expression):
+	\ifx\pgfplots@plot@var@nonmacro\tikz@plot@var
+		\edef\tikz@plot@var{\expandafter\noexpand\csname \tikz@plot@var\endcsname}%
+	\fi
+	\ifx\pgfplots@plot@var@y@nonmacro\pgfplots@plot@var@y
+		\edef\pgfplots@plot@var@y{\expandafter\noexpand\csname \pgfplots@plot@var@y\endcsname}%
+	\fi
 	%
 	% Check if we have to sample a line.
 	\def\b@pgfplots@should@sample@LINE{0}%
@@ -4106,6 +4115,26 @@
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
 	%
+	% determine dummy variables:
+	\iftikz@plot@parametric
+		\ifpgfplots@curplot@threedim
+			\pgfkeysgetvalue{/pgfplots/parametric/var 2d}\pgfplots@gnuplot@dummy%
+		\else
+			\pgfkeysgetvalue{/pgfplots/parametric/var 1d}\pgfplots@gnuplot@dummy%
+		\fi
+		\ifx\pgfplots@gnuplot@dummy\pgfutil@empty
+		\else
+			\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@gnuplot@dummy}%
+			\ifpgfutil@in@	
+				\def\pgfplots@loc@TMPa##1,##2\pgfeov{\pgfplotsset{variable={##1},variable y={##2}}}%
+			\else
+				\def\pgfplots@loc@TMPa##1\pgfeov{\pgfplotsset{variable={##1}}}%
+			\fi
+			\expandafter\pgfplots@loc@TMPa\pgfplots@gnuplot@dummy\pgfeov
+		\fi
+	\fi
+	%
+	% prepare domain and samples, normalize dummy variables:
 	\pgfplots@plot@expression@preparekeys
 	%
 	% FIXME: what with 'samples at'!?
@@ -4294,6 +4323,7 @@
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
 			\fi
 		\fi
+		\pgfplotstableinstallignorechars%
 		\pgfplots@addplotimpl@file@readall
 	\fi
 	\pgfplotsscanlinelengthcleanup
@@ -4728,20 +4758,9 @@
 	% They may contain behavior options.
 	\pgfplots@addplotimpl@table@installkeypath
 	\pgfplotstableset{#2}%
-	%--------------------------------------------------
-	% \begingroup
-	% \pgfplotstableset{#2}%
-	% \pgfplotstableread{#3}\pgfplots@table
-	% \pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
-	% \endgroup
-	%-------------------------------------------------- 
-	%\begingroup
 	\ifpgfplots@addplotimpl@readcompletely
 		\pgfplotstableread{#3}\pgfplots@table
 		\pgfplots@addplotimpl@table@fromstructure@{#1}{}{\pgfplots@table}{#4}%
-	%	\pgfmath@smuggleone\pgfplotsscanlinelength
-	%	\endgroup
-	%	\pgfplotsscanlinedisablechanges
 	\else
 		\pgfplotsapplistXXglobalnewempty
 		%
@@ -4790,28 +4809,6 @@
 			\pgfplotstableread*{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 		\fi
 		\pgfplots@coord@stream@end
-		% FIXME : i'd be glad if I could save this group: check why not
-		% perhaps because \pgfplotstableread uses several pgf
-		% variables?
-		%\pgfmath@smuggleone\pgfplotsscanlinelength
-		%\endgroup
-		%\pgfplotsscanlinedisablechanges
-		%
-		%\pgfplots@PREPARE@COORD@STREAM{#4}%
-		%\pgfplotsapplistXXgloballet\pgfplots@coordlist
-		%\pgfplotsapplistXXglobalclear
-		%\ifpgfplots@errorbars@enabled
-		%	\pgfplots@plot@coords@mathparserfalse
-		%	\ifpgfplots@curplot@threedim
-		%		\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@coordlist}%%
-		%	\else
-		%		\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
-		%	\fi
-		%\else
-			% this here is the usual case; it is faster than the error bar
-			% stuff.
-		%	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coordlist}%
-		%\fi
 	\fi
 }
 \def\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED{%
