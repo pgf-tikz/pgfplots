@@ -1907,6 +1907,8 @@
 	\let\pgfplotsscanlinelengthinitzero=\relax
 }%
 
+\newif\ifpgfplotsaxispreparecoordinateok
+
 % Initialises 
 % \pgfplots@coord@stream@start
 % \pgfplots@coord@stream@coord
@@ -2205,107 +2207,39 @@
 	\fi
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	%
-	% This here is the MAIN code of \pgfplots@process@one@point .
-	% It is inserted below into the right, into one of two prepared
-	% places.
-	\def\pgfplots@loc@surveypoint{%
-		\ifpgfplots@apply@datatrafo
-			\ifpgfplots@datascaletrafo@initialised
-				% apply data transformation directly.
-				\ifpgfplots@apply@datatrafo@x
-					\E\pgfplots@datascaletrafo@x\E\pgfplots@current@point@x
-					\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
-				\fi
-				\ifpgfplots@apply@datatrafo@y
-					\E\pgfplots@datascaletrafo@y\E\pgfplots@current@point@y
-					\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
-				\fi
-				\ifpgfplots@curplot@threedim
-					\ifpgfplots@apply@datatrafo@z
-						\E\pgfplots@datascaletrafo@z\E\pgfplots@current@point@z
-						\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
-					\fi
-				\fi
-			\fi
-		\fi
-		% All following routines (limit updating/stacking/error
-		% bars) will use float numerics if necessary (controlled
-		% by ifs).
-		\ifpgfplots@stackedmode
-			\E\pgfplots@stacked@preparepoint@inmacro%
-			\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
-				\E\pgfplots@stacked@finishpoint
-			\else
-				% the finishpoint routine will be invoked at
-				% \endaxis.
-			\fi
-		\fi
-		%
-		% Prepare \pgfplots@current@point@meta (see the preparation
-		% routine above):
-		\E\pgfplots@set@perpointmeta
-		%
-		% update also axis / data limits:
-		% Arguments: \pgfplots@current@point@[xy]
-		\E\pgfplots@update@limits@for@one@point
-		\ifpgfplots@errorbars@enabled
-			% This thing gets the 'current@point@...' context,
-			% that means 
-			% \pgfplots@current@point@[xy]
-			% \pgfplots@current@point@[xy]@error
-			% \pgfplots@current@point@[xy]@unfiltered
-			\E\pgfplots@PREPARE@errorbar@process@x%
-			\E\pgfplots@PREPARE@errorbar@process@y%
-			\E\pgfplots@PREPARE@errorbar@process@z%
-		\fi
-		%
-		\ifpgfplots@collect@firstplot@astick
-			\ifnum\pgfplots@numplots=0
-				\E\ifx\E\pgfplots@firstplot@coords@x\E\pgfutil@empty
-					\E\t@pgfplots@tokc={}%
-				\E\else
-					\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@x,}%
-				\E\fi
-				\E\xdef\E\pgfplots@firstplot@coords@x{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@x}%
-				\E\ifx\E\pgfplots@firstplot@coords@y\E\pgfutil@empty
-					\E\t@pgfplots@tokc={}%
-				\E\else
-					\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@y,}%
-				\E\fi
-				\E\xdef\E\pgfplots@firstplot@coords@y{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@y}%
-				%
-				\ifpgfplots@curplot@threedim
-					\E\ifx\E\pgfplots@firstplot@coords@z\E\pgfutil@empty
-						\E\t@pgfplots@tokc={}%
-					\E\else
-						\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@z,}%
-					\E\fi
-					\E\xdef\E\pgfplots@firstplot@coords@z{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@z}%
-				\fi
-			\fi
-		\fi
-		%
-	}%
-	\def\pgfplots@loc@performserizalization{%
-		% Store normalized point for list:
-		% We need
-		% xi,yi,zi,mi;
-		% where zi and mi may be empty. mi is the per-point meta
-		% information. It is used for per-coordinate marker
-		% modifications (like colormaps for scatter plots).
-		\E\edef\E\pgfplots@loc@TMPa{\E\pgfplots@current@point@x,\E\pgfplots@current@point@y,\E\pgfplots@current@point@z,\E\pgfplots@current@point@meta;}%
-		\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfplots@loc@TMPa}%
-	}%
-	% The following code assembles the command which is executed for
-	% each coordinate.
 	%
-	% To eliminate all those case distinctions, it is created with
-	% 'edef' and a lot of '\noexpand' calls here:
+	% A routine which prepares a coordinate.
+	% Here, 'coordinate' means (x,y) for a two dimensional plot and
+	% '(x,y,z)' for a three dimensional one.
 	%
-	% Arguments:
-	% \pgfplots@current@point@[xyz]
-	% \pgfplots@current@point@[xyz]@error (if in argument list)
-	\xdef\pgfplots@process@one@point{%
+	% The preparation consists of
+	% - filtering.
+	% - coordinate parsing and high level transformations.
+	% - logs.
+	% - limit updates.
+	%
+	% It might happen that \pgfplotsaxispreparecoordinate is called
+	% multiple times for a single data "point" (for example, a quiver
+	% point might call it for the point where the vector starts and
+	% where the vector ends).
+	% 
+	% @PRECONDITION
+	% 	- the plot's survey phase is running (has already been started)
+	% 	- \pgfplots@current@point@[xyz] contains the coordinates of the
+	% 	point. I assume they are unparsed.
+	%
+	%
+	% @POSTCONDITION
+	% 	- the axis' state will be updated.
+	% 	- the \pgfplots@current@point@[xyz] macros will contain parsed data.
+	% 	- \ifpgfplotsaxispreparecoordinateok will be true if and only
+	% 	if the data point has not been filtered away. If it has been
+	% 	filtered away, \pgfplots@current@point@[xyz] will be empty.
+	% 	- \pgfplots@current@point@[xyz]@unfiltered contain unparsed
+	% 	data.
+	%
+	% @see \pgfplotsaxissurveydatapoint
+	\xdef\pgfplotsaxispreparecoordinate{%
 		% These things are necessary for error bars and are available
 		% as public results in math parser invocations (for meta and
 		% filters)
@@ -2379,31 +2313,153 @@
 		\fi
 		%
 		% check if coordinates are bounded:
-		\E\pgfplots@loc@tmptrue
+		\E\pgfplotsaxispreparecoordinateoktrue
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
-			\E\pgfplots@loc@tmpfalse
+			\E\pgfplotsaxispreparecoordinateokfalse
 		\E\else
 			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
-				\E\pgfplots@loc@tmpfalse
+				\E\pgfplotsaxispreparecoordinateokfalse
 			\E\else
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
-						\E\pgfplots@loc@tmpfalse
+						\E\pgfplotsaxispreparecoordinateokfalse
 					\E\fi
 				\fi
 			\E\fi
 		\E\fi
 		%
-		\E\ifpgfplots@loc@tmp
+		%
+		\E\ifpgfplotsaxispreparecoordinateok
 			% coordinate is bounded AND non-empty, ok.
 			% insert the main 2d/3d code here:
-			\pgfplots@loc@surveypoint
-			\pgfplots@loc@performserizalization
+			\ifpgfplots@apply@datatrafo
+				\ifpgfplots@datascaletrafo@initialised
+					% apply data transformation directly.
+					\ifpgfplots@apply@datatrafo@x
+						\E\pgfplots@datascaletrafo@x\E\pgfplots@current@point@x
+						\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
+					\fi
+					\ifpgfplots@apply@datatrafo@y
+						\E\pgfplots@datascaletrafo@y\E\pgfplots@current@point@y
+						\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
+					\fi
+					\ifpgfplots@curplot@threedim
+						\ifpgfplots@apply@datatrafo@z
+							\E\pgfplots@datascaletrafo@z\E\pgfplots@current@point@z
+							\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
+						\fi
+					\fi
+				\fi
+			\fi
+			% update also axis / data limits:
+			% Arguments: \pgfplots@current@point@[xy]
+			\E\pgfplots@update@limits@for@one@point
 		\E\else
+			% COORDINATE HAS BEEN FILTERED AWAY:
+			%
 			% make ALL empty to simplify special case checking:
 			\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
 			\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
 			\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
+		\E\fi
+	}%
+	%
+	% A macro which should be called once for every data point during the
+	% survey phase.
+	%
+	% The caller is the plot handler's point survey routine.
+	%
+	% A data point might be a complicated thing which contains
+	% multiple coordinates. You need to invoke
+	% \pgfplotsaxispreparecoordinate for each of them. But
+	% \pgfplotsaxissurveydatapoint is invoked once for the complete
+	% set.
+	% 
+	% @PRECONDITION
+	% 	- \pgfplots@current@point@[xyz] contain readily parsed data
+	% 	(i.e. output of \pgfplotsaxispreparecoordinate)
+	%
+	% @POSTCONDITION
+	% 	- stacked plot things, 
+	% 	- error bars,
+	% 	- xtick=data
+	% 	are all processed.
+	%
+	\xdef\pgfplotsaxissurveydatapoint{%
+		\E\ifpgfplotsaxispreparecoordinateok
+			% All following routines (limit updating/stacking/error
+			% bars) will use float numerics if necessary (controlled
+			% by ifs).
+			\ifpgfplots@stackedmode
+				\E\pgfplots@stacked@preparepoint@inmacro%
+				\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
+					\E\pgfplots@stacked@finishpoint
+				\else
+					% the finishpoint routine will be invoked at
+					% \endaxis.
+				\fi
+			\fi
+			%
+			% Prepare \pgfplots@current@point@meta (see the preparation
+			% routine above):
+			\E\pgfplots@set@perpointmeta
+			%
+			\ifpgfplots@errorbars@enabled
+				% This thing gets the 'current@point@...' context,
+				% that means 
+				% \pgfplots@current@point@[xy]
+				% \pgfplots@current@point@[xy]@error
+				% \pgfplots@current@point@[xy]@unfiltered
+				\E\pgfplots@PREPARE@errorbar@process@x%
+				\E\pgfplots@PREPARE@errorbar@process@y%
+				\E\pgfplots@PREPARE@errorbar@process@z%
+			\fi
+			%
+			\ifpgfplots@collect@firstplot@astick
+				\ifnum\pgfplots@numplots=0
+					\E\ifx\E\pgfplots@firstplot@coords@x\E\pgfutil@empty
+						\E\t@pgfplots@tokc={}%
+					\E\else
+						\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@x,}%
+					\E\fi
+					\E\xdef\E\pgfplots@firstplot@coords@x{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@x}%
+					\E\ifx\E\pgfplots@firstplot@coords@y\E\pgfutil@empty
+						\E\t@pgfplots@tokc={}%
+					\E\else
+						\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@y,}%
+					\E\fi
+					\E\xdef\E\pgfplots@firstplot@coords@y{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@y}%
+					%
+					\ifpgfplots@curplot@threedim
+						\E\ifx\E\pgfplots@firstplot@coords@z\E\pgfutil@empty
+							\E\t@pgfplots@tokc={}%
+						\E\else
+							\E\t@pgfplots@tokc=\E\expandafter{\E\pgfplots@firstplot@coords@z,}%
+						\E\fi
+						\E\xdef\E\pgfplots@firstplot@coords@z{\E\the\E\t@pgfplots@tokc\E\pgfplots@current@point@z}%
+					\fi
+				\fi
+			\fi
+		\E\fi
+	}%
+	%
+	% The following code assembles the command which is executed for
+	% each coordinate.
+	%
+	% To eliminate all those case distinctions, it is created with
+	% 'edef' and a lot of '\noexpand' calls here:
+	%
+	% Arguments:
+	% \pgfplots@current@point@[xyz]
+	% \pgfplots@current@point@[xyz]@error (if in argument list)
+	\xdef\pgfplots@process@one@point{%
+		% this here should be done by the plot handler:
+		% it should invoke its 'surveypoint' method:
+		\E\pgfplotsplothandlersurveypoint
+		%
+		\E\ifpgfplotsaxispreparecoordinateok
+			\E\pgfplots@acquire@serialized@point@and@store@it
+		\E\else
 			% check whether we have UNBOUNDED or just unfiltered
 			% coords:
 			\if\pgfplots@unbounded@handler d% unbounded coords=discard
@@ -2428,7 +2484,7 @@
 						}%
 					\fi
 				\E\else
-					\pgfplots@loc@performserizalization
+					\E\pgfplots@acquire@serialized@point@and@store@it
 				\E\fi
 			\fi
 		\E\fi
@@ -2619,6 +2675,8 @@
 		\else
 			\t@pgfplots@tokc={}%
 		\fi
+		\pgfplotsplothandlerserializestateto\pgfplots@loc@TMPa
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
 		% SERIALIZE RESULT:
 		%
 		% everything which has been accumulated so far (including the
@@ -2658,6 +2716,7 @@
 				\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 				\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
 				\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
+				\noexpand\pgfplotsplothandlerdeserializestatefrom{\the\t@pgfplots@tokb}%
 			}%
 			{% draw command:
 				\noexpand\draw%
@@ -2702,6 +2761,76 @@
 		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 	\fi
 	\pgfplots@end@plot
+}%
+
+\def\pgfplotsplothandlersurveypoint@genericimpl{%
+	\pgfplotsaxispreparecoordinate
+	\pgfplotsaxissurveydatapoint
+}%
+\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@genericimpl
+
+% \pgfplotsplothandlerserializepointto{<\macro>}
+% should save a complete data point to <\macro> such that it can be
+% de-serialized later.
+%
+% #1: a macro name. Will be filled with (expandable) data.
+% 	The format can be arbitrary, but you should be able to extra it.
+%
+% @PRECONDITION
+% 	this macro will be invoked in a context where the current data
+% 	point has been processed completely, including any preparations.
+% 	The required data which should be saved depends on the plot
+% 	handler. Usually, all plot handlers require
+% 	\pgfplots@current@point@[xyz] and \pgfplots@current@point@meta.
+\def\pgfplotsplothandlerserializepointto@genericimpl#1{%
+	% Store normalized point for list:
+	% We need
+	% xi,yi,zi,mi;
+	% where zi and mi may be empty. mi is the per-point meta
+	% information. It is used for per-coordinate marker
+	% modifications (like colormaps for scatter plots).
+	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta}%
+}%
+\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@genericimpl
+
+% the counterpart for \pgfplotsplothandlerserializepointto.
+% It should restore the state as it was before the serialization.
+%
+% #1: the serialized information.
+\def\pgfplotsplothandlerdeserializepointfrom@genericimpl#1{%
+	\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1\relax
+}%
+\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@genericimpl
+
+\def\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1,#2,#3,#4\relax{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+	\def\pgfplots@current@point@meta{#4}%
+}%
+% \pgfplotsplothandlerserializestateto{<\macro>}
+% should save the state of the current plot handler such that it can
+% be de-serialized later.
+%
+% The state does usually NOT contain a coordinate stream, this is
+% accomplished by \pgfplotsplothandlerserializepointto.
+%
+% #1: a macro name. Can be filled with anything, including
+% non-expandable macro invocations.
+\def\pgfplotsplothandlerserializestateto@genericimpl#1{%
+	\def#1{}%
+}%
+\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@genericimpl
+
+%
+\def\pgfplotsplothandlerdeserializestatefrom@genericimpl#1{%
+	#1%
+}%
+\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@genericimpl
+
+\def\pgfplots@acquire@serialized@point@and@store@it{%
+	\pgfplotsplothandlerserializepointto\pgfplots@loc@TMPa
+	\expandafter\pgfplotsapplistXXpushback\expandafter{\expandafter{\pgfplots@loc@TMPa}}%
 }%
 
 % PRECONDITION: must be called inside of
@@ -3569,38 +3698,39 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 %
-% The same in normalized coordinates of the form
-%  x1,y1,z1,m1;x2,y2,z2,m2;...;xN,yN,zN,mN;
-% if the plot is not threedim, zi is empty.
+% A coordinate stream which works like this:
+% 
+% -------------
+% \pgfplots@coord@stream@start
 %
-% The mi are Meta Values associated to point coordinates. They are
-% usually empty, but can be used to realize per-point marker
-% modifications (scatter plots, especially for colormaps).
+% foreach encoded coordinate:
+%   \def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded{<encoded data>}
+%   \pgfplotsplothandlerdeserializepointfrom{<encoded data>}
+% 	\pgfplots@coord@stream@coord
+%
+% \pgfplots@coord@stream@end
+% -------------
+%
+% The format of #1 is
+%  {<datapoint>}{<datapoint>}...{<datapoint>}
+% Each data point is decoded with
+% \pgfplotsplothandlerdeserializepointfrom
+% and then, \pgfplots@coord@stream@coord will be called.
 \long\def\pgfplots@coord@stream@foreach@NORMALIZED#1{%
 	\pgfplots@coord@stream@start
-	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE#1\pgfplots@EOI
+	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE#1\pgfplots@EOI%
 	\pgfplots@coord@stream@end
 }%
-
-% A looping command to loop through plot coordinates.
-% For every point, #1{X}{Y} will be invoked.
-%
 % No scoping is used during this operation, so you can access outer
 % variables.
-\def\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE{%
-	\pgfutil@ifnextchar\pgfplots@EOI{%
-		\pgfplots@foreach@plot@coord@FINISH%
-	}{%
-		\pgfplots@foreach@plot@coord@NORMALIZED@NEXT%
-	}%
-}
-\def\pgfplots@foreach@plot@coord@NORMALIZED@NEXT#1,#2,#3,#4;{%
-	\def\pgfplots@current@point@x{#1}%
-	\def\pgfplots@current@point@y{#2}%
-	\def\pgfplots@current@point@z{#3}%
-	\def\pgfplots@current@point@meta{#4}%
-	\pgfplots@coord@stream@coord
-	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
+\def\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE#1{%
+	\def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded{#1}%
+	\ifx\pgfplots@coord@stream@foreach@NORMALIZED@curencoded\pgfplots@EOI
+	\else
+		\pgfplotsplothandlerdeserializepointfrom{#1}%
+		\pgfplots@coord@stream@coord
+		\expandafter\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
+	\fi
 }
 
 
@@ -6661,8 +6791,7 @@
 			\pgfplotsprependlistXnewempty{reversed}%
 		}%
 		\def\pgfplots@coord@stream@coord{%
-			\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
-			\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@loc@TMPa}\to{reversed}%
+			\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}\to{reversed}%
 		}%
 		\def\pgfplots@coord@stream@end{%
 			\pgfplotsprependlistXlet\pgfplots@loc@TMPa={reversed}%
@@ -6684,8 +6813,7 @@
 				}%
 			}%
 			\def\pgfplots@coord@stream@coord{%
-				\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
-				\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@loc@TMPa}%
+				\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}%
 				\advance\c@pgfplots@scanlineindex by1
 			}%
 			\def\pgfplots@coord@stream@end{%
@@ -6796,8 +6924,7 @@
 		\pgfplotsapplistXnewempty{\resultlist}%
 	}%
 	\def\pgfplots@coord@stream@coord{%
-		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
-		\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@loc@TMPa}\to{reversedscanline}%
+		\expandafter\pgfplotsprependlistXpushfront\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}\to{reversedscanline}%
 		\advance\c@pgfplots@scanlineindex by1
 		\ifnum\c@pgfplots@scanlineindex=\pgfplotsscanlinelength\relax
 			\pgfplotsprependlistXlet\pgfplots@loc@TMPa={reversedscanline}%
@@ -6832,8 +6959,7 @@
 		\pgfplotsprependlistXnewempty{resultlist}%
 	}%
 	\def\pgfplots@coord@stream@coord{%
-		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta;}%
-		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to{\scanline}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}\to{\scanline}%
 		\advance\c@pgfplots@scanlineindex by1
 		\ifnum\c@pgfplots@scanlineindex=\pgfplotsscanlinelength\relax
 			\pgfplotsapplistXlet\pgfplots@loc@TMPa={\scanline}%
@@ -6862,12 +6988,14 @@
 % A special '<' operation which returns true if the point coordinate
 % '#1' is BEHIND #2 with respect to the current 3D view.
 \def\pgfplots@apply@zbuffer@SORT@iflessthan#1#2#3#4\pgfeov{%
-	\edef\pgfplots@loc@TMPa{#1}%
-	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPa\relax
+	\pgfplotsplothandlerdeserializepointfrom{#1}%
+	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
 	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfmathresult
-	\edef\pgfplots@loc@TMPb{#2}%
-	\expandafter\pgfplots@apply@zbuffer@SORT@iflessthan@\pgfplots@loc@TMPb\relax
+	%
+	\pgfplotsplothandlerdeserializepointfrom{#2}%
+	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
 	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfmathresult
+	%
 	\pgfmathfloatlessthan@{\pgfplots@apply@zbuffer@SORT@iflessthan@b}{\pgfplots@apply@zbuffer@SORT@iflessthan@a}%
 	\ifpgfmathfloatcomparison
 		#3\relax
@@ -6876,14 +7004,6 @@
 	\fi
 }%
 
-% returns the view depth of the provided serialized coordinate into
-% \pgfmathresult
-%
-% FIXME : relies on the internal repr in
-% \pgfplots@coord@stream@foreach@NORMALIZED :
-\def\pgfplots@apply@zbuffer@SORT@iflessthan@#1,#2,#3,#4;{%
-	\pgfplotsmathfloatviewdepthxyz{#1}{#2}{#3}%
-}%
 
 % Defines \pgfmathresult to be the view depth of a three component
 % vector. The third component will be used if and only if the boolean
