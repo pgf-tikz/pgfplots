@@ -24,7 +24,8 @@
 %
 %--------------------------------------------
 
-
+% 1. OVERVIEW
+%
 % Plot handlers are extended versions of the plot handlers of PGF with
 % backwards compatibility.
 %
@@ -69,6 +70,9 @@
 % }
 % \pgfplotstreamend
 %
+% See below for details about the survey phase and the visualization
+% phase and the API of an axis.
+%
 % Thus, the PGF basic level streams can (but don't need to) make use
 % of the macros assigned by the
 % \pgfplotsplothandlerdeserializepointfrom and
@@ -84,3 +88,115 @@
 % If it overwrites something, it should do so in its main method, the
 % one in which it also defines the \pgf@plotstreamstart etc. methods
 % (see pgfmoduleplot.code.tex for example).
+%
+% 2. THE SURVEY PHASE:
+%   The survey phase works as follows.
+%   PRECONDITION:
+%   	- we are `inside' of an axis.
+%   	- \addplot starts the survey phase.
+%
+%   The following happens:
+%   	- the plot handler is determined and activated such that its
+%   	methods are usable ("class is instantiated")
+%   	- \pgfplots@PREPARE@COORD@STREAM is the internal, low level
+%   	entry point where pgfplots controls the survey phase.
+%   	- the coordinate input routine is initialised. It issues a
+%   	series of commands (all within the *same* TeX scope):
+%   		\pgfplots@coord@stream@start
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		...
+%   		\pgfplots@coord@stream@end
+%   	- \pgfplotsplothandlersurveystart is called in
+%   	\pgfplots@coord@stream@start.
+%   	- \pgfplots@coord@stream@coord calls
+%   	\pgfplotsplothandlersurveypoint
+%   	- \pgfplots@coord@stream@end calls
+%   	\pgfplotsplothandlersurveyend
+%   	\pgfplotsplothandlerserializestateto<\macro>
+%   	Furthermore, it remembers the <\macro> such that it can be
+%   	deserialized later.
+%   Then, the survey phase ends. The main point of interest is the
+%   \pgfplotsplothandlersurveypoint routine, especially its
+%   communication with the axis. It is described below.
+%
+%   POSTCONDITION:
+%   	- the state of the axis is now aware of the new plot (limits,
+%   	stacking, ...).
+%   	- The plot's survey state is stored using its serialized
+%   	representation.
+%
+% 2.1 The API of an axis
+%
+% As described above, the coordinate input routine fires a lot of
+% \pgfplots@coord@stream@coord commands, which, in turn, invoke
+% \pgfplotsplothandlersurveypoint. Somehow this should update the
+% axis' state to reflect each point. But the 'data point' is a rather
+% abstract thing. Usually, it will contain at least (x,y) (or maybe z)
+% coordinates. But it may be more complex.
+%
+% So, the coordinate input routine provides whatever the user has
+% chosen. Let's assume, we are using \addplot table. Then, we can 
+% access every cell in the current row (using \thisrow{<colname>} for
+% example). The plot handler knows how to extract its information from
+% this state. So:
+% - the plot handler assembles coordinates.
+% - every assembled coordinate should be reported to the axis by
+%   defining \pgfplots@current@point@[xyz] to its coordinates and
+%   calling
+%   \pgfplotsaxispreparecoordinate{}.
+%   This will apply coordinate filters, parse the single coordinates
+%   and apply high level transformations and any logarithms.
+%   It is some sort of advanced coordinate parser which works only for 
+%   (x,y) or for (x,y,z), but it doesn't do anything but to return
+%   valid coordinates for x,y and z.%
+%
+%   If necessary, the plot handler calls
+%   \pgfplotsaxispreparecoordinate{} multiple times, ones for each
+%   encountered coordinate.
+%
+%   It might happen that a coordinate filter discards a coordinate.
+%   This is returned in the \ifpgfplotsaxispreparecoordinateok boolean
+%   and has to checked by the plot handler.
+%
+% - the plot handler knows which of the coordinates contribute to the
+%   final plot. It invokes
+%   \ifpgfplotsaxispreparecoordinateok
+%   	\pgfplotsaxisupdatelimitsforcoordinate
+%   \fi
+%   for each of these coordinates.
+%
+% - eventually, the plot handler is satisfied and considers a data
+%   point as "readily surveyed". It is allowed if this does *not*
+%   happen inside of \pgfplotsplothandlersurveypoint, but it must
+%   happen before \pgfplotsplothandlersurveyend is finished.
+%   
+%   The plot handler invokes \pgfplotsaxisdatapointsurveyed.
+%   This tells the axis that it can perform is own surveying tasks
+%   (FIXME) and furthermore, that it can serialize the data point.
+%   Consequently, it will invoke
+%   \pgfplotsplothandlerserializepointto{<\macro>} 
+%   and it will remember that \macro internally. This serialization is
+%   employed to place plot marks and to apply z buffering techniques
+%   (that's why it is done by the axis and not by the plot handler on
+%   its own).
+%
+% - Later, the coordinate input routine invokes
+%   \pgfplots@coord@stream@end indicating the end-of-input. This will
+%   finalize the survey phase.
+%
+% A simple example looks like this:
+% \pgfplotsplothandlersurveystart: does nothing.
+% \pgfplotsplothandlersurveypoint:
+%   parses the input format somehow to get (x,y,z) in raw, symbolic format
+% 	calls \pgfplotsaxispreparecoordinate
+% 	calls \ifpgfplotsaxispreparecoordinateok \pgfplotsaxisupdatelimitsforcoordinate \fi
+% 	calls \pgfplotsaxisdatapointsurveyed
+% \pgfplotsplothandlersurveyend: does nothing.
+%
+% In fact, this is more or less the initial configuration used for
+% lineto or similar plot handlers.
