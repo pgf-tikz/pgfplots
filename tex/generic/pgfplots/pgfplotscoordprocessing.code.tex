@@ -1907,7 +1907,7 @@
 	\let\pgfplotsscanlinelengthinitzero=\relax
 }%
 
-\newif\ifpgfplotsaxispreparecoordinateok
+\newif\ifpgfplotsaxisparsecoordinateok
 
 % Initialises 
 % \pgfplots@coord@stream@start
@@ -1967,6 +1967,7 @@
 % 	be as deep as necessary - as long as all operations have the
 % 	same level of scoping.
 %
+% @see the detailed documentation in pgfplotsplothandlers.code.tex
 \long\def\pgfplots@PREPARE@COORD@STREAM#1{%
 	\ifpgfplots@curplot@threedim
 		\global\pgfplots@threedimtrue
@@ -2208,7 +2209,7 @@
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	%
 	%
-	% A routine which prepares a coordinate.
+	% A routine which parses a coordinate.
 	% Here, 'coordinate' means (x,y) for a two dimensional plot and
 	% '(x,y,z)' for a three dimensional one.
 	%
@@ -2216,9 +2217,8 @@
 	% - filtering.
 	% - coordinate parsing and high level transformations.
 	% - logs.
-	% - limit updates.
 	%
-	% It might happen that \pgfplotsaxispreparecoordinate is called
+	% It might happen that \pgfplotsaxisparsecoordinate is called
 	% multiple times for a single data "point" (for example, a quiver
 	% point might call it for the point where the vector starts and
 	% where the vector ends).
@@ -2232,14 +2232,15 @@
 	% @POSTCONDITION
 	% 	- the axis' state will be updated.
 	% 	- the \pgfplots@current@point@[xyz] macros will contain parsed data.
-	% 	- \ifpgfplotsaxispreparecoordinateok will be true if and only
+	% 	- \ifpgfplotsaxisparsecoordinateok will be true if and only
 	% 	if the data point has not been filtered away. If it has been
 	% 	filtered away, \pgfplots@current@point@[xyz] will be empty.
 	% 	- \pgfplots@current@point@[xyz]@unfiltered contain unparsed
 	% 	data.
 	%
+	% @see \pgfplotsaxispreparecoordinate
 	% @see \pgfplotsaxisdatapointsurveyed
-	\xdef\pgfplotsaxispreparecoordinate{%
+	\xdef\pgfplotsaxisparsecoordinate{%
 		% These things are necessary for error bars and are available
 		% as public results in math parser invocations (for meta and
 		% filters)
@@ -2313,23 +2314,23 @@
 		\fi
 		%
 		% check if coordinates are bounded:
-		\E\pgfplotsaxispreparecoordinateoktrue
+		\E\pgfplotsaxisparsecoordinateoktrue
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
-			\E\pgfplotsaxispreparecoordinateokfalse
+			\E\pgfplotsaxisparsecoordinateokfalse
 		\E\else
 			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
-				\E\pgfplotsaxispreparecoordinateokfalse
+				\E\pgfplotsaxisparsecoordinateokfalse
 			\E\else
 				\ifpgfplots@curplot@threedim
 					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
-						\E\pgfplotsaxispreparecoordinateokfalse
+						\E\pgfplotsaxisparsecoordinateokfalse
 					\E\fi
 				\fi
 			\E\fi
 		\E\fi
 		%
 		%
-		\E\ifpgfplotsaxispreparecoordinateok
+		\E\ifpgfplotsaxisparsecoordinateok
 			% coordinate is bounded AND non-empty, ok.
 			% insert the main 2d/3d code here:
 			\ifpgfplots@apply@datatrafo
@@ -2351,39 +2352,22 @@
 					\fi
 				\fi
 			\fi
-		\E\else
-			% COORDINATE HAS BEEN FILTERED AWAY:
-			%
-			% make ALL empty to simplify special case checking:
-			\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
-			\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
-			\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
 		\E\fi
 	}%
 	%
-	% A macro which should be called once for every data point during the
-	% survey phase.
+	% Takes a coordinate which is already parsed and applies steps
+	% such that it becomes its final values.
 	%
-	% The caller is the plot handler's point survey routine.
+	% This implements the stacked plot feature currently.
 	%
-	% A data point might be a complicated thing which contains
-	% multiple coordinates. You need to invoke
-	% \pgfplotsaxispreparecoordinate for each of them. But
-	% \pgfplotsaxisdatapointsurveyed is invoked once for the complete
-	% set.
-	% 
-	% @PRECONDITION
-	% 	- \pgfplots@current@point@[xyz] contain readily parsed data
-	% 	(i.e. output of \pgfplotsaxispreparecoordinate)
+	% PRECONDITION:
+	% 	\pgfplotsaxisparsecoordinate has already been called.
 	%
-	% @POSTCONDITION
-	% 	- stacked plot things, 
-	% 	- error bars,
-	% 	- xtick=data
-	% 	are all processed.
-	%
-	\xdef\pgfplotsaxisdatapointsurveyed{%
-		\E\ifpgfplotsaxispreparecoordinateok
+	% POSTCONDITION:
+	% 	the point has its final coordinates; the axis won't change it
+	% 	anymore.
+	\xdef\pgfplotsaxispreparecoordinate{%
+		\E\ifpgfplotsaxisparsecoordinateok
 			% All following routines (limit updating/stacking/error
 			% bars) will use float numerics if necessary (controlled
 			% by ifs).
@@ -2396,6 +2380,36 @@
 					% \endaxis.
 				\fi
 			\fi
+		\E\fi
+	}%
+	%
+	% A macro which should be called once for every data point during the
+	% survey phase.
+	%
+	% The caller is the plot handler's point survey routine.
+	%
+	% A data point might be a complicated thing which contains
+	% multiple coordinates. You need to invoke
+	% \pgfplotsaxisparsecoordinate and 
+	% \pgfplotsaxispreparecoordinate for each of them. But
+	% \pgfplotsaxisdatapointsurveyed is invoked once for the complete
+	% set.
+	% 
+	% @PRECONDITION
+	% 	- \pgfplots@current@point@[xyz] contain final coordinates
+	% 	(i.e. output of \pgfplotsaxispreparecoordinate)
+	%
+	% @POSTCONDITION
+	% 	- stacked plot things, 
+	% 	- error bars,
+	% 	- xtick=data
+	% 	are all processed.
+	%
+	\xdef\pgfplotsaxisdatapointsurveyed{%
+		\E\ifpgfplotsaxisparsecoordinateok
+			% All following routines (limit updating/stacking/error
+			% bars) will use float numerics if necessary (controlled
+			% by ifs).
 			%
 			% Prepare \pgfplots@current@point@meta (see the preparation
 			% routine above):
@@ -2439,6 +2453,12 @@
 			\fi
 			\E\pgfplots@acquire@serialized@point@and@store@it
 		\E\else
+			% COORDINATE HAS BEEN FILTERED AWAY:
+			%
+			% make ALL empty to simplify special case checking:
+			\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
+			\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
+			\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
 			% check whether we have UNBOUNDED or just unfiltered
 			% coords:
 			\if\pgfplots@unbounded@handler d% unbounded coords=discard
@@ -2472,27 +2492,13 @@
 		\E\advance\E\c@pgfplots@coordindex by1
 	}%
 	%
-	% The following code assembles the command which is executed for
-	% each coordinate.
-	%
-	% To eliminate all those case distinctions, it is created with
-	% 'edef' and a lot of '\noexpand' calls here:
-	%
-	% Arguments:
-	% \pgfplots@current@point@[xyz]
-	% \pgfplots@current@point@[xyz]@error (if in argument list)
-	\xdef\pgfplots@process@one@point{%
-		% this here should be done by the plot handler:
-		% it should invoke its 'surveypoint' method:
-		\E\pgfplotsplothandlersurveypoint
-	}%
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 	\endgroup
 %\message{Prepared macro \string\pgfplots@update@limits@for@one@point: {\meaning\pgfplotsaxisupdatelimitsforcoordinate}}%
 %\message{Prepared macro \string\pgfplots@process@one@point: {\meaning\pgfplots@process@one@point}}%
 	% 
 	\let\pgfplots@coord@stream@start@=\pgfplots@PREPARE@COORD@STREAM@start@
-	\let\pgfplots@coord@stream@coord@=\pgfplots@process@one@point
+	\let\pgfplots@coord@stream@coord@=\pgfplotsplothandlersurveypoint
 	\def\pgfplots@coord@stream@end@{\pgfplots@PREPARE@COORD@STREAM@end@{#1}}%
 }%
 
@@ -2508,6 +2514,9 @@
 	% optimized 'applistXX' structure:
 	\pgfplotsapplistXXnewempty
 	%
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	\pgfplots@basiclevel@plothandler
+	\pgfplotsplothandlersurveystart
 	%
 	\ifpgfplots@errorbars@enabled
 		% prepare error bar processing.
@@ -2653,6 +2662,7 @@
 		\pgfplotspreparemeshkeydefaults%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting x%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting y%
+		\pgfplotsplothandlersurveyend
 		\ifpgfplots@curplot@isirrelevant
 			% for \label commands:
 			\expandafter\pgfplots@rememberplotspec@for@label\expandafter{\pgfplots@addplot@survey@@optionlist}%
@@ -2778,8 +2788,9 @@
 % eventually). This DV engine stores data point entries in keys,
 % namely those in the key path /pgf/data point. See the pgf manual.
 \def\pgfplotsplothandlersurveypoint@genericimpl{%
+	\pgfplotsaxisparsecoordinate
 	\pgfplotsaxispreparecoordinate
-	\ifpgfplotsaxispreparecoordinateok
+	\ifpgfplotsaxisparsecoordinateok
 		\pgfplotsaxisupdatelimitsforcoordinate
 	\fi
 	\pgfplotsaxisdatapointsurveyed
@@ -5239,9 +5250,14 @@
 	% need to change the .unknown handler. See the available
 	% compatibility styles!
 	%
-	\pgfkeysdef{/pgfplots/.unknown}{%
+%	\pgfkeysdef{/pgfplots/.unknown}{%
 %\message{In \string\addplot[#1]: I am silently ignoring key `\pgfkeyscurrentkeyRAW' during the preparation phase.}%
-	}%
+%	}%
+	% ATTENTION:
+	% as of january 30, 2010, I will set /tikz keys as well. This won't hurt
+	% too much, I hope... there are no graphics operations anyway. But it *is*
+	% necessary since I *need* the plot handler for the new version. And the plot
+	% handler is, most likely, a /tikz key.
 	%
 	% it is possible that '#1' contains 'forget plot'. So, we need to
 	% set the options before checking
