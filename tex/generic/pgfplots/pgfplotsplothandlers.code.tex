@@ -228,13 +228,35 @@
 % User defined plot handlers might need to invoke
 % \pgfplotsaxisvisphasetransformcoordinate on their own.
 
+
+% The 'quiver' plot handler for two- and three dimensional plots.
+%
+% User Interface:
+% use /pgfplots/quiver to enable the plot handler.
+% Then, provide `quiver/u value' or `quiver/u expr' to 
+% tell where to find the 'x' coordinates of the vectors, and similarly
+% for 'v' and 'w' instead of 'u'.
 \pgfplotsset{
 	quiver/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerquiver
-		\pgfkeyssetvalue{/pgf/data point/u}{0}%
-		\pgfkeyssetvalue{/pgf/data point/v}{0}%
-		\pgfkeyssetvalue{/pgf/data point/w}{0}%
 	},%
+	quiver/u value*/.initial=,
+	quiver/v value*/.initial=,
+	quiver/w value*/.initial=,
+	quiver/u value is expr/.initial=0,
+	quiver/v value is expr/.initial=0,
+	quiver/w value is expr/.initial=0,
+	quiver/u value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{u}{0},%
+	quiver/u expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{u}{1},%
+	quiver/v value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{v}{0},%
+	quiver/v expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{v}{1},%
+	quiver/w value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{w}{0},%
+	quiver/w expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{w}{1},%
+}%
+
+\def\pgfplots@quiver@pgfkeys@src#1#2#3{%
+	\pgfkeyssetvalue{/pgfplots/quiver/#2 value*}{#1}%
+	\pgfkeyssetvalue{/pgfplots/quiver/#2 is expr}{#3}%
 }%
 
 \def\pgfplotsplothandlerquiver{%
@@ -246,17 +268,47 @@
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@quiver
 	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@quiver
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@quiver
+	\pgfkeyslet{/pgf/data point/u}\pgfutil@empty%
+	\pgfkeyslet{/pgf/data point/v}\pgfutil@empty%
+	\pgfkeyslet{/pgf/data point/w}\pgfutil@empty%
+	\pgfplots@quiver@prepare@src u%
+	\pgfplots@quiver@prepare@src v%
+	\pgfplots@quiver@prepare@src w%
 }%
+\def\pgfplots@quiver@prepare@src#1{%
+	\pgfkeysgetvalue{/pgfplots/quiver/#1 value*}\pgfplots@loc@TMPa
+	\t@pgfplots@tokb=\expandafter{\csname pgfplots@quiver@#1\endcsname}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% assume the '/pgf/data point/#1' is set by some input
+		% routine.
+		% Invoke math parser in this case.
+		\pgfkeyssetvalue{/pgfplots/quiver/#1 is expr}{1}%
+	\else
+		\pgfkeyslet{/pgf/data point/#1}\pgfplots@loc@TMPa
+	\fi
+	\if1\pgfkeysvalueof{/pgfplots/quiver/#1 is expr}%
+		\t@pgfplots@toka={%
+			\pgfmathparse{\pgfkeysvalueof{/pgf/data point/#1}}%
+		}%
+	\else
+		\t@pgfplots@toka={%
+			\pgfmathfloatparsenumber{\pgfkeysvalueof{/pgf/data point/#1}}%
+		}%
+	\fi
+	\expandafter\edef\csname pgfplots@quiver@parse@#1\endcsname{%
+		\the\t@pgfplots@toka
+		\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
+	}%
+}%
+
 \def\pgfplotsplothandlersurveypoint@quiver{%
-	% FIXME : do I *really* want to use the math parser here!?
-	\pgfmathparse{\pgfkeysvalueof{/pgf/data point/u}}%
-	\let\pgfplots@quiver@u=\pgfmathresult
-	\pgfmathparse{\pgfkeysvalueof{/pgf/data point/v}}%
-	\let\pgfplots@quiver@v=\pgfmathresult
+	\pgfplots@quiver@parse@u
+	\pgfplots@quiver@parse@v
 	\pgfplotsifcurplotthreedim{%
-		\pgfmathparse{\pgfkeysvalueof{/pgf/data point/w}}%
-		\let\pgfplots@quiver@w=\pgfmathresult
-	}{\let\pgfplots@quiver@w=\pgfutil@empty}%
+		\pgfplots@quiver@parse@w
+	}{%
+		\let\pgfplots@quiver@w=\pgfutil@empty
+	}%
 	\pgfplotsaxisparsecoordinate
 	\pgfplotsaxispreparecoordinate
 	\ifpgfplotsaxisparsecoordinateok
