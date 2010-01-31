@@ -3529,7 +3529,26 @@
 	\fi
 	\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
 }%
-\def\pgfplots@perpointmeta@trafo@APPLY{%
+
+% A command which is readily available during the visualization phase of each plot.
+% 
+% It takes existing point meta data and transforms it, i.e. it defines
+% \pgfplotspointmetatransformed.
+%
+% The command won't be invoked automatically, it is task of a plot
+% handler to decide if it is needed. It's application is relatively
+% fast, however.
+%
+% PRECONDITION:
+% 	- point meta has been set up during the survey phase (i.e. the
+% 	/pgfplots/point meta!=none),
+% 	- there *is* point meta data for the current data point.
+%
+% POSTCONDITION:
+% 	- the macros \pgfplotspointmeta and \pgfplotspointmetatransformed
+% 	are defined.
+%
+\def\pgfplotsaxisvisphasetransformpointmeta{%
 	\ifx\pgfplots@current@point@meta\pgfutil@empty%
 		\pgfplots@error{could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\string\addplot[point meta=y]' or something like that?}%
 		\pgfmathfloatcreate{1}{1.0}{0}%
@@ -5231,9 +5250,6 @@
 	\c@pgfplots@coordindex=0
 	\def\pgfplots@current@point@coordindex{\the\c@pgfplots@coordindex}% can be used inside of coordinate filters.
 	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
-	\ifpgfplots@usefpu
-		\pgfkeys{/pgf/fpu=true}%
-	\fi
 	\def\pgfplots@addplot@running{1}%
 	%
 	% these styles may contain behavior options (error bars,
@@ -5268,6 +5284,12 @@
 	% set the options before checking
 	% \ifpgfplots@curplot@isirrelevant:
 	\pgfplotsset{/pgfplots/every axis plot,#1}%
+	%
+	% enable FPU after setting options of '#1'. Otherwise things like
+	% linewidth=... which use the math parser might fail.
+	\ifpgfplots@usefpu
+		\pgfkeys{/pgf/fpu=true}%
+	\fi
 	%
 	% hooks:
 	\pgfkeysvalueof{/pgfplots/execute at begin plot@@}%
@@ -5479,6 +5501,8 @@
 	\else
 		\def\pgfplots@loc@TMPa{1}%
 	\fi
+	%
+	\pgfplots@perpointmeta@preparetrafo
 	%
 	\if\pgfplots@loc@TMPa0%
 		% mark=none : no need to waste time collecting marker
@@ -5855,7 +5879,7 @@
 		% Prepare arguments for '@pre/@post' macros:
 		\t@pgfplots@toka={%
 			\begingroup
-			\pgfplots@perpointmeta@trafo@APPLY
+			\pgfplotsaxisvisphasetransformpointmeta
 			\pgfkeysvalueof{/pgfplots/scatter/@pre marker code/.@cmd}\pgfeov
 		}%
 		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
@@ -6292,7 +6316,6 @@
 			% Ok, we have color data.
 			%
 			% Prepare:
-			\pgfplots@perpointmeta@preparetrafo
 			\def\pgfplotsplothandlermesh@preparedrawforcurrent{%
 				\pgfplotscolormapdefinemappedcolor{\pgfplotsplothandlermesh@shader@cellcolor}%
 %				\pgfplotsplothandlermesh@setcolor{mapped color}%
@@ -6340,7 +6363,7 @@
 					\let\pgfplotsplothandlermesh@unpack=\pgfplotsplothandlermesh@unpack@corner
 					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
 					\t@pgfplots@tokb={%
-						\pgfplots@perpointmeta@trafo@APPLY
+						\pgfplotsaxisvisphasetransformpointmeta
 						\let\pgfplotsplothandlermesh@shader@cellcolor=\pgfplotspointmetatransformed}%
 					\edef\pgfplotsplothandlermesh@preparedrawforcurrent{%
 						\the\t@pgfplots@tokb
@@ -6709,11 +6732,11 @@
 	\fi
 }%
 \def\pgfplotsplothandlermesh@shader@interp#1{%
-	\pgfplots@perpointmeta@trafo@APPLY
+	\pgfplotsaxisvisphasetransformpointmeta
 	\pgfplotslibrarysurfstreamcoord{#1}{\pgfplotspointmetatransformed}%
 }%
 \def\pgfplotsplothandlermesh@shader@interp@incremental@transpose#1{%
-	\pgfplots@perpointmeta@trafo@APPLY
+	\pgfplotsaxisvisphasetransformpointmeta
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i{\noexpand\pgfplotsplothandlermesh@shader@interp@next{\the\pgf@x}{\the\pgf@y}{\pgfplotspointmetatransformed}}%
 	%
@@ -6791,7 +6814,7 @@
 	\pgf@x=#1\relax
 	\pgf@y=#2\relax
 	\def\pgfplots@current@point@meta{#3}%
-	\pgfplots@perpointmeta@trafo@APPLY
+	\pgfplotsaxisvisphasetransformpointmeta
 	\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
 }%
 % same as above, just for one dim plots (rows == 1 || cols==1)
