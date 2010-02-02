@@ -233,13 +233,25 @@
 % Use this only if there *is* point meta, see
 % \pgfplotsaxisvisphasetransformpointmeta.
 
+
+
+
+
+% ==================================
+% The quiver plot handler.
+% It draws a lot of arrows.
+% Its input is (x_i,y_i); (u_i,v_i) for data point i and it draws a
+% vector in direction (u_i,v_i) starting from (x_i,y_i) .
+% It also supports 3D arrows (involving z_i and w_i).
+ 
 \newif\ifpgfplots@quiver@usetikz
+\newif\ifpgfplots@quiver@updatelimits
 
 % The 'quiver' plot handler for two- and three dimensional plots.
 %
 % User Interface:
 % use /pgfplots/quiver to enable the plot handler.
-% Then, provide `quiver/u value' or `quiver/u expr' to 
+% Then, provide `quiver/u value' or `quiver/u' to 
 % tell where to find the 'x' coordinates of the vectors, and similarly
 % for 'v' and 'w' instead of 'u'.
 \pgfplotsset{
@@ -253,25 +265,27 @@
 	quiver/v value is expr/.initial=0,
 	quiver/w value is expr/.initial=0,
 	quiver/u value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{u}{0},%
-	quiver/u expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{u}{1},%
+	quiver/u/.code			=\pgfplots@quiver@pgfkeys@src{#1}{u}{1},%
 	quiver/v value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{v}{0},%
-	quiver/v expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{v}{1},%
+	quiver/v/.code			=\pgfplots@quiver@pgfkeys@src{#1}{v}{1},%
 	quiver/w value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{w}{0},%
-	quiver/w expr/.code		=\pgfplots@quiver@pgfkeys@src{#1}{w}{1},%
+	quiver/w/.code			=\pgfplots@quiver@pgfkeys@src{#1}{w}{1},%
 	quiver/before arrow/.code=,
 	quiver/after arrow/.code=,
-	quiver/colored/.style={%
-		set point meta if empty=f(x),%
-		quiver/before arrow/.append code={%
-			\pgfplotsaxisvisphasetransformpointmeta
-			\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
-			\scope[#1]
-		},%
-		quiver/after arrow/.prefix code={%
-			\endscope
-		},%
+	quiver/every arrow/.style={},
+	quiver/arrow color/.initial=,
+	quiver/scale arrows/.initial=1,
+	quiver/update limits/.is if=pgfplots@quiver@updatelimits,
+	quiver/update limits=true,
+	quiver/colored/.code={%
+		\def\pgfplots@loc@TMPa{#1}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfkeyslet{/pgfplots/quiver/arrow color}\pgfplots@loc@TMPa
+			\pgfkeysalso{/pgfplots/set point meta if empty=f(x)}%
+		\fi
 	},%
-	quiver/colored/.default={color=mapped color},
+	quiver/colored/.default=mapped color,
 }%
 
 \def\pgfplots@quiver@pgfkeys@src#1#2#3{%
@@ -288,6 +302,72 @@
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@quiver
 	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@quiver
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@quiver
+	\let\pgfplotsplothandlerquiver@vis@hook=\pgfutil@empty
+	%
+	\def\pgfplots@quiver@has@handled@point@meta{0}%
+	\pgfkeysgetvalue{/pgfplots/quiver/arrow color}\pgfplots@quiver@color
+	\ifx\pgfplots@quiver@color\pgfutil@empty
+	\else
+		% prepare the color data and define 'mapped color':
+		\def\pgfplots@quiver@has@handled@point@meta{1}%
+		\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+			\pgfplotsplothandlerquiver@vis@hook
+			\pgfplotsaxisvisphasetransformpointmeta
+			\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+		}%
+		% SEE BELOW AS WELL FOR HOW TO ENABLE THE COLOR.
+	\fi
+	%
+	%
+	\pgfkeysgetvalue{/pgfplots/quiver/every arrow/.@cmd}\pgfplots@quiver@everyarrow
+	\ifx\pgfplots@quiver@everyarrow\pgfplots@empty@style@key
+		% use PGF basic level methods to set the 'arrow color':
+		\ifx\pgfplots@quiver@color\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+				\pgfplotsplothandlerquiver@vis@hook
+				\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/quiver/arrow color}}%
+				% for arrow heads:
+				\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/quiver/arrow color}}%
+			}%
+		\fi
+	\else
+		% 'every arrow' should provide a high level user interface.
+		% Use tikz instead of pgf. This is slower, but more powerfull.
+		\pgfplots@quiver@usetikztrue
+		\pgfplotsaxishaspointmeta{%
+			% ASSERT(mapped color is available)
+			\if0\pgfplots@quiver@has@handled@point@meta%
+				% -> define mapped color
+				\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+					\pgfplotsplothandlerquiver@vis@hook
+					\pgfplotsaxisvisphasetransformpointmeta
+					\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+				}%
+				\def\pgfplots@quiver@has@handled@point@meta{1}%
+			\fi
+		}{}%
+		% use tikz methods to set the 'arrow color':
+		\ifx\pgfplots@quiver@color\pgfutil@empty
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplots@quiver@color}%
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfkeysalso{/pgfplots/quiver/every arrow/.prefix style={\the\t@pgfplots@toka}}}%
+			\pgfplots@loc@TMPa
+		\fi
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/quiver/scale arrows}\pgfplots@quiver@scale
+	\ifx\pgfplots@quiver@scale\pgfutil@empty
+	\else
+		\def\pgfplots@loc@TMPa{1}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@quiver@scale
+			\let\pgfplots@quiver@scale=\pgfutil@empty
+		\else
+			\pgfmathparse{\pgfplots@quiver@scale}%
+			\let\pgfplots@quiver@scale=\pgfmathresult
+		\fi
+	\fi
+	%
 	\pgfkeyslet{/pgf/data point/u}\pgfutil@empty%
 	\pgfkeyslet{/pgf/data point/v}\pgfutil@empty%
 	\pgfkeyslet{/pgf/data point/w}\pgfutil@empty%
@@ -315,17 +395,22 @@
 			\pgfmathfloatparsenumber{\pgfkeysvalueof{/pgf/data point/#1}}%
 		}%
 	\fi
-	\expandafter\edef\csname pgfplots@quiver@parse@#1\endcsname{%
+	\expandafter\edef\csname pgfplots@quiver@prepare@#1\endcsname{%
 		\the\t@pgfplots@toka
 		\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
+		\ifx\pgfplots@quiver@scale\pgfutil@empty
+		\else
+			\noexpand\pgfmathmultiply@{\pgfplots@quiver@scale}{\the\t@pgfplots@tokb}%
+			\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
+		\fi
 	}%
 }%
 
 \def\pgfplotsplothandlersurveypoint@quiver{%
-	\pgfplots@quiver@parse@u
-	\pgfplots@quiver@parse@v
+	\pgfplots@quiver@prepare@u
+	\pgfplots@quiver@prepare@v
 	\pgfplotsifcurplotthreedim{%
-		\pgfplots@quiver@parse@w
+		\pgfplots@quiver@prepare@w
 	}{%
 		\let\pgfplots@quiver@w=\pgfutil@empty
 	}%
@@ -342,7 +427,9 @@
 			\pgfmathadd@{\pgfplots@quiver@w}{\pgfplots@current@point@z}%
 			\let\pgfplots@quiver@w=\pgfmathresult
 		}{}%
-		\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
+		\ifpgfplots@quiver@updatelimits
+			\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
+		\fi
 	\fi
 	\pgfplotsaxisdatapointsurveyed
 }%
@@ -363,6 +450,16 @@
 }%
 \def\pgfplotsplothandlerquiver@vis#1{%
 	\pgfkeysvalueof{/pgfplots/quiver/before arrow/.@cmd}\pgfeov
+	\pgfplotsplothandlerquiver@vis@hook
+	\ifpgfplots@quiver@usetikz
+		\draw[/pgfplots/quiver/every arrow] \pgfextra{\pgfplotsplothandlerquiver@vis@path{#1}};
+	\else
+		\pgfplotsplothandlerquiver@vis@path{#1}%
+		\pgfusepath{stroke}%
+	\fi
+	\pgfkeysvalueof{/pgfplots/quiver/after arrow/.@cmd}\pgfeov
+}%
+\def\pgfplotsplothandlerquiver@vis@path#1{%
 	\pgfpathmoveto{#1}%
 	\pgfplotsaxisvisphasetransformcoordinate\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
 	\pgfpathlineto{%
@@ -372,6 +469,4 @@
 			\pgfplotsqpointxy\pgfplots@quiver@u\pgfplots@quiver@v
 		}%
 	}%
-	\pgfusepath{stroke}%
-	\pgfkeysvalueof{/pgfplots/quiver/after arrow/.@cmd}\pgfeov
 }%
