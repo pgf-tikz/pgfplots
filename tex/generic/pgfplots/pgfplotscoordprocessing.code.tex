@@ -2455,7 +2455,7 @@
 					\fi
 				\fi
 			\fi
-			\E\pgfplots@acquire@serialized@point@and@store@it
+			\E\pgfplotsaxisserializedatapoint
 		\E\else
 			% COORDINATE HAS BEEN FILTERED AWAY:
 			%
@@ -2487,7 +2487,7 @@
 						}%
 					\fi
 				\E\else
-					\E\pgfplots@acquire@serialized@point@and@store@it
+					\E\pgfplotsaxisserializedatapoint
 				\E\fi
 			\fi
 		\E\fi
@@ -2829,7 +2829,7 @@
 	% where zi and mi may be empty. mi is the per-point meta
 	% information. It is used for per-coordinate marker
 	% modifications (like colormaps for scatter plots).
-	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z,\pgfplots@current@point@meta}%
+	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}%
 }%
 \let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@genericimpl
 
@@ -2842,11 +2842,10 @@
 }%
 \let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@genericimpl
 
-\def\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1,#2,#3,#4\relax{%
+\def\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1,#2,#3\relax{%
 	\def\pgfplots@current@point@x{#1}%
 	\def\pgfplots@current@point@y{#2}%
 	\def\pgfplots@current@point@z{#3}%
-	\def\pgfplots@current@point@meta{#4}%
 }%
 % \pgfplotsplothandlerserializestateto{<\macro>}
 % should save the state of the current plot handler such that it can
@@ -2868,9 +2867,17 @@
 }%
 \let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@genericimpl
 
-\def\pgfplots@acquire@serialized@point@and@store@it{%
+\def\pgfplotsaxisserializedatapoint{%
 	\pgfplotsplothandlerserializepointto\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@current@point@meta;\pgfplots@loc@TMPa}%
 	\expandafter\pgfplotsapplistXXpushback\expandafter{\expandafter{\pgfplots@loc@TMPa}}%
+}%
+\def\pgfplotsaxisdeserializedatapointfrom#1{%
+	\expandafter\pgfplotsaxisdeserializedatapointfrom@#1\pgfplots@EOI
+}%
+\def\pgfplotsaxisdeserializedatapointfrom@#1;#2\pgfplots@EOI{%
+	\def\pgfplots@current@point@meta{#1}%
+	\pgfplotsplothandlerdeserializepointfrom{#2}%
 }%
 
 % PRECONDITION: must be called inside of
@@ -3436,27 +3443,94 @@
 % If there is no data range (for example because meta information is
 % not available or is not of numeric type), the trafo will simply
 % copy the input argument symbolically.
+%
+% Note: it does not hurt to call it multiple times. It checks automatically whether it already is up-to-date.
 \def\pgfplots@perpointmeta@preparetrafo{%
-	\let\pgfplots@current@point@meta=\pgfutil@empty
-	\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
-	\ifpgfplots@warn@for@filter@discards
-		\global\let\pgfplots@perpointmeta@unboundedwarning@stop=\relax
-		\def\pgfplots@perpointmeta@unboundedwarning##1{%
-			\ifx\pgfplots@perpointmeta@unboundedwarning@stop\relax
-				\begingroup
-					\pgfmathfloattofixed{##1}%
-					\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
-				\endgroup
-				\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
+	\pgfutil@ifundefined{pgfplots@perpointmeta@trafo}{%
+		\let\pgfplots@current@point@meta=\pgfutil@empty
+		\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
+		\ifpgfplots@warn@for@filter@discards
+			\global\let\pgfplots@perpointmeta@unboundedwarning@stop=\relax
+			\def\pgfplots@perpointmeta@unboundedwarning##1{%
+				\ifx\pgfplots@perpointmeta@unboundedwarning@stop\relax
+					\begingroup
+						\pgfmathfloattofixed{##1}%
+						\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
+					\endgroup
+					\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
+				\fi
+			}%
+		\else
+			\def\pgfplots@perpointmeta@unboundedwarning##1{}%
+		\fi
+		\if m\pgfplots@colormap@access
+			% colormap access=map
+			\ifx\pgfplots@metamax\pgfutil@empty
+				\def\pgfplots@perpointmeta@trafo##1{%
+					\pgfmathfloatiffinite{##1}{%
+						\pgfmathfloattofixed@{##1}%
+					}{%
+						\def\pgfmathresult{0}%
+						\pgfplots@perpointmeta@unboundedwarning{##1}%
+					}%
+				}%
+				\def\pgfplots@perpointmeta@traforange{0:1000}%
+				\edef\pgfplotspointmetarange{0:1000}%
+			\else
+				% The transformation is
+				%
+				% phi(m) = ( m- meta_min) * 1000/ (meta_max-meta_min).
+				%
+				% -> precompute the scaling factor!
+				\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
+				\ifnum\pgfplots@loc@TMPa=1000
+				\else
+					\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
+				\fi
+				\if\pgfplots@perpointmeta@rel@choice0%
+					% point meta rel=axis wide:
+					\edef\pgfplotspointmetarange{\pgfplots@axiswide@metamin:\pgfplots@axiswide@metamax}%
+					% Now, prepare the trafo as such.
+					% It assigns \pgfmathresult (in fixed point).
+					\def\pgfplots@perpointmeta@trafo##1{%
+						\pgfmathfloatiffinite{##1}{%
+							\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
+							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+						}{%
+							\def\pgfmathresult{0}%
+							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}%
+					}%
+					\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
+				\else
+					% point meta rel=per plot:
+					\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
+					% Now, prepare the trafo as such.
+					% It assigns \pgfmathresult (in fixed point).
+					\def\pgfplots@perpointmeta@trafo##1{%
+						\pgfmathfloatiffinite{##1}{%
+							\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
+							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
+							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
+						}{%
+							\def\pgfmathresult{0}%
+							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}%
+					}%
+					\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
+				\fi
+				\let\pgfplots@loc@TMPa=\pgfmathresult
+				\pgfmathfloatcreate{1}{1.0}{3}%
+				\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+				\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
+				%
+				% Expands to the transformation range as 'a:b':
+				\def\pgfplots@perpointmeta@traforange{0:1000}%
 			\fi
-		}%
-	\else
-		\def\pgfplots@perpointmeta@unboundedwarning##1{}%
-	\fi
-	\if m\pgfplots@colormap@access
-		% colormap access=map
-		\ifx\pgfplots@metamax\pgfutil@empty
-			\def\pgfplots@perpointmeta@trafo##1{%
+		\else
+			% colormap access=direct
+			\def\pgfplots@perpointmeta@trafo##1{
 				\pgfmathfloatiffinite{##1}{%
 					\pgfmathfloattofixed@{##1}%
 				}{%
@@ -3464,74 +3538,11 @@
 					\pgfplots@perpointmeta@unboundedwarning{##1}%
 				}%
 			}%
-			\def\pgfplots@perpointmeta@traforange{0:1000}%
-			\edef\pgfplotspointmetarange{0:1000}%
-		\else
-			% The transformation is
-			%
-			% phi(m) = ( m- meta_min) * 1000/ (meta_max-meta_min).
-			%
-			% -> precompute the scaling factor!
-			\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
-			\ifnum\pgfplots@loc@TMPa=1000
-			\else
-				\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
-			\fi
-			\if\pgfplots@perpointmeta@rel@choice0%
-				% point meta rel=axis wide:
-				\edef\pgfplotspointmetarange{\pgfplots@axiswide@metamin:\pgfplots@axiswide@metamax}%
-				% Now, prepare the trafo as such.
-				% It assigns \pgfmathresult (in fixed point).
-				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatiffinite{##1}{%
-						\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
-						\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-						\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-					}{%
-						\def\pgfmathresult{0}%
-						\pgfplots@perpointmeta@unboundedwarning{##1}%
-					}%
-				}%
-				\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
-			\else
-				% point meta rel=per plot:
-				\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
-				% Now, prepare the trafo as such.
-				% It assigns \pgfmathresult (in fixed point).
-				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatiffinite{##1}{%
-						\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
-						\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-						\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-					}{%
-						\def\pgfmathresult{0}%
-						\pgfplots@perpointmeta@unboundedwarning{##1}%
-					}%
-				}%
-				\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
-			\fi
-			\let\pgfplots@loc@TMPa=\pgfmathresult
-			\pgfmathfloatcreate{1}{1.0}{3}%
-			\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
-			\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
-			%
-			% Expands to the transformation range as 'a:b':
-			\def\pgfplots@perpointmeta@traforange{0:1000}%
+			\def\pgfplots@perpointmeta@traforange{0:0}%
+			\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 		\fi
-	\else
-		% colormap access=direct
-		\def\pgfplots@perpointmeta@trafo##1{
-			\pgfmathfloatiffinite{##1}{%
-				\pgfmathfloattofixed@{##1}%
-			}{%
-				\def\pgfmathresult{0}%
-				\pgfplots@perpointmeta@unboundedwarning{##1}%
-			}%
-		}%
-		\def\pgfplots@perpointmeta@traforange{0:0}%
-		\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
-	\fi
-	\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
+		\edef\pgfplotspointmetatransformedrange{\pgfplots@perpointmeta@traforange}%
+	}{}%
 }%
 
 % A command which is readily available during the visualization phase of each plot.
@@ -3765,7 +3776,7 @@
 % foreach encoded coordinate:
 %   \def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded{<encoded data>}%
 %   \def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded@braced{{<encoded data>}}% note the extra braces.
-%   \pgfplotsplothandlerdeserializepointfrom{<encoded data>}
+%   \pgfplotsaxisdeserializedatapointfrom{<encoded data>}
 % 	\pgfplots@coord@stream@coord
 %
 % \pgfplots@coord@stream@end
@@ -3774,7 +3785,7 @@
 % The format of #1 is
 %  {<datapoint>}{<datapoint>}...{<datapoint>}
 % Each data point is decoded with
-% \pgfplotsplothandlerdeserializepointfrom
+% \pgfplotsaxisserializedatapoint
 % and then, \pgfplots@coord@stream@coord will be called.
 \long\def\pgfplots@coord@stream@foreach@NORMALIZED#1{%
 	\pgfplots@coord@stream@start
@@ -3788,7 +3799,7 @@
 	\ifx\pgfplots@coord@stream@foreach@NORMALIZED@curencoded\pgfplots@EOI
 	\else
 		\def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded@braced{{#1}}%
-		\pgfplotsplothandlerdeserializepointfrom{#1}%
+		\pgfplotsaxisdeserializedatapointfrom{#1}%
 		\pgfplots@coord@stream@coord
 		\expandafter\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
 	\fi
@@ -6306,6 +6317,8 @@
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
 		%
+		% this shouldn't be necessary, but it doesn't hurt either.
+		\pgfplots@perpointmeta@preparetrafo
 		%
 		% Prepare color data source:
 		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
@@ -7078,11 +7091,11 @@
 % A special '<' operation which returns true if the point coordinate
 % '#1' is BEHIND #2 with respect to the current 3D view.
 \def\pgfplots@apply@zbuffer@SORT@iflessthan#1#2#3#4\pgfeov{%
-	\pgfplotsplothandlerdeserializepointfrom{#1}%
+	\pgfplotsaxisdeserializedatapointfrom{#1}%
 	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
 	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfmathresult
 	%
-	\pgfplotsplothandlerdeserializepointfrom{#2}%
+	\pgfplotsaxisdeserializedatapointfrom{#2}%
 	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
 	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfmathresult
 	%
