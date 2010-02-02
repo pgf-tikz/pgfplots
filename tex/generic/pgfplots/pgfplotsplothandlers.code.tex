@@ -231,9 +231,98 @@
 % During the visualization phase, you can also use
 % \pgfplotsaxisvisphasetransformpointmeta to set up point meta.
 % Use this only if there *is* point meta, see
-% \pgfplotsaxisvisphasetransformpointmeta.
+% \pgfplotsaxisifhaspointmeta{<true code>}{<false code>}.
 
 
+% Called at the start of each survey phase.
+\def\pgfplotsplothandlersurveystart{}%
+
+% Called at the end of each survey phase.
+\def\pgfplotsplothandlersurveyend{}%
+
+% \pgfplotsplothandlersurveypoint is called for each encountered data
+% point.
+%
+% The data point as such is available using the current state of any
+% macros which are assigned during the survey phase (during \addplot).
+% This includes any table macros etc.
+% PGFPlots stores the x,y and z coordinates into \pgfplots@current@point@[xyz]. 
+% The point meta coordinate is in \pgfplots@current@point@meta.
+%
+% Note that since any currently assigned macro can be used here, the
+% new DV engine of PGF is also valid (and will be supported
+% eventually). This DV engine stores data point entries in keys,
+% namely those in the key path /pgf/data point. See the pgf manual.
+\def\pgfplotsplothandlersurveypoint@genericimpl{%
+	\pgfplotsaxisparsecoordinate
+	\pgfplotsaxispreparecoordinate
+	\ifpgfplotsaxisparsecoordinateok
+		\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z
+	\fi
+	\pgfplotsaxisdatapointsurveyed
+}%
+\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@genericimpl
+
+% \pgfplotsplothandlerserializepointto{<\macro>}
+% should save a complete data point to <\macro> such that it can be
+% de-serialized later.
+%
+% #1: a macro name. Will be filled with (expandable) data.
+% 	The format can be arbitrary, but you should be able to extra it.
+%
+% @PRECONDITION
+% 	this macro will be invoked in a context where the current data
+% 	point has been processed completely, including any preparations.
+% 	The required data which should be saved depends on the plot
+% 	handler. Usually, all plot handlers require
+% 	\pgfplots@current@point@[xyz] and \pgfplots@current@point@meta.
+%   This macro should only assign keys which have been defined or
+%   validated by any of the plot handler relevant methods (including
+%   the de-serialization or survey methods).
+\def\pgfplotsplothandlerserializepointto@genericimpl#1{%
+	% Store normalized point for list:
+	% We need
+	% xi,yi,zi,mi;
+	% where zi and mi may be empty. mi is the per-point meta
+	% information. It is used for per-coordinate marker
+	% modifications (like colormaps for scatter plots).
+	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}%
+}%
+\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@genericimpl
+
+% the counterpart for \pgfplotsplothandlerserializepointto.
+% It should restore the state as it was before the serialization.
+%
+% #1: the serialized information.
+\def\pgfplotsplothandlerdeserializepointfrom@genericimpl#1{%
+	\expandafter\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1\relax
+}%
+\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@genericimpl
+
+\def\pgfplotsplothandlerdeserializepointfrom@genericimpl@#1,#2,#3\relax{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+}%
+% \pgfplotsplothandlerserializestateto{<\macro>}
+% should save the state of the current plot handler such that it can
+% be de-serialized later.
+%
+% The state does usually NOT contain a coordinate stream, this is
+% accomplished by \pgfplotsplothandlerserializepointto.
+%
+% #1: a macro name. Can be filled with anything, including
+% non-expandable macro invocations.
+\def\pgfplotsplothandlerserializestateto@genericimpl#1{%
+	\def#1{}%
+}%
+\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@genericimpl
+
+%
+\def\pgfplotsplothandlerdeserializestatefrom@genericimpl#1{%
+	#1%
+}%
+\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@genericimpl
 
 
 
@@ -335,7 +424,7 @@
 		% 'every arrow' should provide a high level user interface.
 		% Use tikz instead of pgf. This is slower, but more powerfull.
 		\pgfplots@quiver@usetikztrue
-		\pgfplotsaxishaspointmeta{%
+		\pgfplotsaxisifhaspointmeta{%
 			% ASSERT(mapped color is available)
 			\if0\pgfplots@quiver@has@handled@point@meta%
 				% -> define mapped color
