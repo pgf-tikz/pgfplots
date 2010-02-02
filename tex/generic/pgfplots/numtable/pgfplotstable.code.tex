@@ -404,6 +404,7 @@
 	/pgfplots/table/skip coltypes/.is if=pgfplotstabletypesetskipcoltypes,
 	/pgfplots/table/skip coltypes/.default=true,
 	/pgfplots/table/debug/.is if=pgfplotstabletypesetdebug,
+	/pgfplots/table/debug level/.initial=0,%
 	%
 	% will be redefined by |assign cell content| for every cell:
 	/pgfplots/table/@cell content/.initial=,
@@ -428,6 +429,10 @@
 			\pgfmathprintnumberto{#1}\pgfmathresult%
 		\fi
 		\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	},
+	/pgfplots/table/numeric type/.code={%
+		\pgfkeysgetvalue{/pgfplots/table/assign cell content as number/.@cmd}\pgfplotstable@loc@TMPa%
+		\pgfkeyslet{/pgfplots/table/assign cell content/.@cmd}\pgfplotstable@loc@TMPa
 	},
 	/pgfplots/table/string type/.style={%
 		/pgfplots/table/assign cell content/.style={%
@@ -2583,12 +2588,15 @@
 	\def\pgfplotstablepartno{0}%
 	\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
 	\pgfkeyssetvalue{/pgfplots/table/@unprocessed cell content}{#1}%
+	\pgfplotstable@debug@notify@cellcontent%
 	\pgfkeysvalueof{/pgfplots/table/preproc cell content/.@cmd}#1\pgfeov
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\pgfkeyslet{/pgfplots/table/@preprocessed cell content}\pgfmathresult%
+	\pgfplotstable@debug@notify@cellcontent@preprocessed%
 	%
 	\pgfkeysgetvalue{/pgfplots/table/assign cell content/.@cmd}\pgfplotstable@assigncell
 	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
+	\pgfplotstable@debug@notify@cellcontent@assigned%
 	%
 	\pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent
 	\ifx\pgfplotstable@postproccellcontent\pgfplotstable@postproccellcontent@EMPTY
@@ -2608,10 +2616,82 @@
 			\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
 		\fi
 	\fi
+	\pgfplotstable@debug@notify@cellcontent@postprocessed%
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 	\let#2=\pgfmathresult
+}%
+
+\def\pgfplotstable@debug@notify@cellcontent{}%
+\def\pgfplotstable@debug@notify@cellcontent@preprocessed{}%
+\def\pgfplotstable@debug@notify@cellcontent@assigned{}%
+\def\pgfplotstable@debug@notify@cellcontent@postprocessed{}%
+\def\pgfplotstable@debug@notify@preprocess@incol#1{}%
+\def\pgfplotstable@debug@notify@preprocess@col#1{}%
+\def\pgfplotstable@debug@notify@preprocessed@col#1{}%
+\def\pgfplotstable@debug@notify@balancingcell{}%
+
+\def\pgfplotstable@debug@notify@cellcontent@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: Before cell content processing: `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After '@preproc cell content  : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After 'assign cell content    : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After 'postproc cell content  : `\the\toks0'}%
+	\endgroup
+}
+\def\pgfplotstable@debug@notify@balancingcell@ACTIVE{%
+	\immediate\write16{Row --/out \the\c@pgfplotstable@counta: Inserting empty cell to balance rows}%
+}%
+\def\pgfplotstable@debug@notify@preprocess@incol@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== Loading input column `\the\toks0' <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@preprocess@col@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== Preprocessing output column `\the\toks0' <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@preprocessed@col@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== output column `\the\toks0' prepared, ok. <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@activate{%
+	\ifnum\pgfkeysvalueof{/pgfplots/table/debug level}>0
+		\let\pgfplotstable@debug@notify@preprocess@incol=\pgfplotstable@debug@notify@preprocess@incol@ACTIVE
+		\let\pgfplotstable@debug@notify@preprocess@col=\pgfplotstable@debug@notify@preprocess@col@ACTIVE
+		\let\pgfplotstable@debug@notify@preprocessed@col=\pgfplotstable@debug@notify@preprocessed@col@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent=\pgfplotstable@debug@notify@cellcontent@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@preprocessed=\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@assigned=\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@postprocessed=\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@balancingcell=\pgfplotstable@debug@notify@balancingcell@ACTIVE
+	\fi
 }%
 
 % This routine invokes 'postproc cell content' for columns which
@@ -2664,6 +2744,7 @@
 \def\pgfplotstable@insertemptycells@forbalance{%
 	\pgfutil@loop
 	\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
+		\pgfplotstable@debug@notify@balancingcell
 		% let's hope @getfinalentry handles empty strings!
 		\pgfplotstabletypeset@getfinalentry{}{\pgfplotstable@entry}%
 		\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
@@ -2740,6 +2821,7 @@
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 			\immediate\write16{\the\t@pgfplots@toka\pgfplots@TeX@comment}%
 		}%
+		\pgfplotstable@debug@activate
 	\fi
 	\ifx\pgfplotstable@outfilename\pgfutil@empty
 	\else
@@ -2770,6 +2852,8 @@
 	\c@pgfplotstable@colindex=0\relax
 	% FOREACH COLUMN:
 	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
+		\pgfplotstable@debug@notify@preprocess@incol\pgfplotstable@colname
+		%
 		\c@pgfplotstable@rowindex=0\relax
 		\pgfplotstable@is@colname\pgfplotstable@colname
 		\ifpgfplotstableread@foundcolnames
@@ -2832,6 +2916,9 @@
 			\let\pgfplotstable@colname@out=\pgfplotstable@colname
 		\fi
 		\expandafter\pgfplotstabletypeset@assign@final@colname\expandafter{\pgfplotstable@colname@out}\pgfplotstable@colname@out
+		%
+		\pgfplotstable@debug@notify@preprocess@col\pgfplotstable@colname@out
+		%
 		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@colname@out\to\pgfplotstabletypeset@final@colnames
 		\pgfkeysgetvalue{/pgfplots/table/column type}{\pgfplotstable@coltype}%
 		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@coltype\to\pgfplotstabletypeset@final@coltypes
@@ -2867,6 +2954,9 @@
 			% balance columns:
 			\pgfplotstable@insertemptycells@forbalance
 		\fi
+		%
+		\pgfplotstable@debug@notify@preprocessed@col\pgfplotstable@colname@out
+		%
 		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
 		\global\advance\c@pgfplotstable@colindex by1\relax
 	}%
