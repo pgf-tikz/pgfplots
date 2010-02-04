@@ -2527,6 +2527,8 @@
 	\pgfkeyssetvalue{/pgf/data point/z}{\pgfplots@current@point@z}%
 	\pgfkeyssetvalue{/pgf/data point/meta}{\pgfplots@current@point@meta}%
 	%
+	\pgfplots@prepare@visualization@dependencies
+	%
 	\ifpgfplots@errorbars@enabled
 		% prepare error bar processing.
 		%
@@ -2611,10 +2613,17 @@
 				\the\t@pgfplots@tokb
 			\noexpand\fi
 		}%
+		\edef\pgfplotsaxisupdatelimitsforpointmeta##1{%
+			\noexpand\begingroup
+			\noexpand\def\noexpand\pgfplots@current@point@meta{##1}%
+			\the\t@pgfplots@tokb
+			\noexpand\endgroup
+		}%
 	\else
 		% there is no point meta:
 		\global\let\pgfplots@metamin=\pgfutil@empty
 		\global\let\pgfplots@metamax=\pgfutil@empty
+		\def\pgfplotsaxisupdatelimitsforpointmeta##1{}%
 	\fi
 }%
 % This is the \pgfplots@coord@stream@end@ routine which is invoked by
@@ -2777,18 +2786,157 @@
 	\pgfplots@end@plot
 }%
 
-
 \def\pgfplotsaxisserializedatapoint{%
-	\pgfplotsplothandlerserializepointto\pgfplots@loc@TMPa
-	\edef\pgfplots@loc@TMPa{\pgfplots@current@point@meta;\pgfplots@loc@TMPa}%
-	\expandafter\pgfplotsapplistXXpushback\expandafter{\expandafter{\pgfplots@loc@TMPa}}%
+	\pgfplotsplothandlerserializepointto\pgfplotsaxisserializedatapoint@val
+	\pgfplotsaxisserializedatapoint@private
+	\t@pgfplots@toka=\expandafter{\pgfplotsaxisserializedatapoint@val}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+	\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb;\the\t@pgfplots@toka}}%
+	\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplots@loc@TMPa}%
 }%
+\def\pgfplotsaxisserializedatapoint@private{%
+	\let\pgfplotsretval=\pgfplots@current@point@meta
+}%
+\def\pgfplotsaxisdeserializedatapointfrom@private#1{%
+	\def\pgfplots@current@point@meta{#1}%
+}%
+% Restores the variables serialized in '#1'.
+%
+% As a side--effect, the macro
+% \pgfplotsaxisdeserializedatapointfrom@private@lastvalue will contain
+% the serialized part which is specific to pgfplots (i.e. the private
+% parts which can be read with
+% \pgfplotsaxisdeserializedatapointfrom@private)
 \def\pgfplotsaxisdeserializedatapointfrom#1{%
 	\expandafter\pgfplotsaxisdeserializedatapointfrom@#1\pgfplots@EOI
 }%
 \def\pgfplotsaxisdeserializedatapointfrom@#1;#2\pgfplots@EOI{%
-	\def\pgfplots@current@point@meta{#1}%
+	\def\pgfplotsaxisdeserializedatapointfrom@private@lastvalue{#1}%
+	\pgfplotsaxisdeserializedatapointfrom@private{#1}%
 	\pgfplotsplothandlerdeserializepointfrom{#2}%
+}%
+
+% Handle User-defined parts which should be serialized as well.
+% This preparation tool should be called at the start of both, survey
+% and visualization phase.
+% 
+% @PRECONDITION
+% 	- the macros 
+% 	\pgfplotsaxisserializedatapoint@private
+% 	\pgfplotsaxisdeserializedatapointfrom@private
+% 	are known and valid.
+% 	- '/pgfplots/visualization depends on' contains its correct value.
+%
+% @POSTCONDITION
+% 	Both,
+% 	\pgfplotsaxisserializedatapoint@private
+% 	and
+% 	\pgfplotsaxisdeserializedatapointfrom@private
+% 	have been patched to incorporate the '/pgfplots/visualization
+% 	depends on' feature.
+% 	
+\def\pgfplots@prepare@visualization@dependencies{%
+	\pgfkeysgetvalue{/pgfplots/visualization depends on}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		% SERIALIZATION format:
+		% visualization depends on={{value1}\as \macro1, {<value2>}\as \macro2,...}
+		% ->
+		% {<original private data>}<\macro1>{<value1>}<\macro2>{<value2>}...<\macroN>{<valueN>}
+		%
+		% prepare
+		% \t@pgfplots@tokb={<\macro1>{<value1>}<\macro2>{<value2>}...<\macroN>{<valueN>}}
+		\t@pgfplots@tokb={}%
+		%
+		% prepare
+		% \t@pgfplots@tokc={<\macro1><\macro2><\macro3>...}
+		\t@pgfplots@tokc={}% 
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPa}\as\pgfplots@loc@TMPa{%
+			\expandafter\pgfplots@prepare@visualization@depends@on\pgfplots@loc@TMPa\pgfplots@EOI%
+		}%
+		% Step 1: modify the SERIALIZATION method:
+		\t@pgfplots@toka=\expandafter{\pgfplotsaxisserializedatapoint@private}%
+		\edef\pgfplotsaxisserializedatapoint@private{%
+			\the\t@pgfplots@tokc
+			\the\t@pgfplots@toka
+			% nothing is expanded here, only \t@pgfplots@tokb
+			\noexpand\t@pgfplots@toka=\noexpand\expandafter{\noexpand\pgfplotsretval}%
+			\noexpand\edef\noexpand\pgfplotsretval{{\noexpand\the\t@pgfplots@toka},\the\t@pgfplots@tokb}%
+		}%
+		% Step 2: modify the DESERIALIZATION method:
+		\let\pgfplotsaxisdeserializedatapointfrom@private@orig=\pgfplotsaxisdeserializedatapointfrom@private
+		\let\pgfplotsaxisdeserializedatapointfrom@private=\pgfplotsaxisdeserializedatapointfrom@private@withdeplist
+	\fi
+}%
+\def\pgfplots@prepare@visualization@depends@on#1\as#2\pgfplots@EOI{%
+	\pgfplots@prepare@visualization@depends@on@preparetype{#2}#1\pgfplots@EOI
+	% prepare the serialization:
+	\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\noexpand#2{\csname\string#2@value\endcsname}}%
+	\t@pgfplots@tokc=\expandafter{\the\t@pgfplots@tokc#2}%
+}%
+\def\pgfplots@prepare@visualization@depends@on@preparetype#1{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplots@prepare@visualization@depends@on@preparetype@expr{#1}expr%
+	}{%
+		\pgfutil@ifnextchar v{%
+			\pgfplots@prepare@visualization@depends@on@preparetype@value{#1}%
+		}{%
+			\pgfutil@ifnextchar e{%
+				\pgfplots@prepare@visualization@depends@on@preparetype@expr{#1}%
+			}{%
+				\pgfplots@prepare@visualization@depends@on@preparetype@error{#1}%
+			}%
+		}%
+	}%
+}%
+\def\pgfplots@prepare@visualization@depends@on@preparetype@error#1#2\pgfplots@EOI{%
+	\t@pgfplots@tokc={#2 \as #1}%
+	\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, but `visualization depends on=\{\the\t@pgfplots@tokc\}' is not what I expected. I expected something like 'expr\{<math stuff>\}\string\as\string#1 or value\{<fixed value>\}\string\as\string#1}\pgfeov%
+}
+\def\pgfplots@prepare@visualization@depends@on@preparetype@expr#1expr#2{%
+	\pgflibraryfpuifactive{%
+		\def#1{%
+			\pgfmathparse{#2}%
+			\pgfmathfloattofixed{\pgfmathresult}%
+			\expandafter\let\csname \string#1@value\endcsname=\pgfmathresult
+		}%
+	}{%
+		\def#1{%
+			\pgfmathparse{#2}%
+			\expandafter\let\csname \string#1@value\endcsname=\pgfmathresult
+		}%
+	}%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfutil@gobble
+	}{%
+		\pgfplots@prepare@visualization@depends@on@preparetype@error{#1}expr#2\pgfplots@EOI
+	}%
+}
+\def\pgfplots@prepare@visualization@depends@on@preparetype@value#1value#2{%
+	\def#1{%
+		\expandafter\def\csname \string#1@value\endcsname{#2}%
+	}%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfutil@gobble
+	}{%
+		\pgfplots@prepare@visualization@depends@on@preparetype@error{#1}value#2\pgfplots@EOI
+	}%
+}
+
+\def\pgfplotsaxisdeserializedatapointfrom@private@withdeplist#1{%
+	\pgfplotsaxisdeserializedatapointfrom@private@withdeplist@#1\pgfplots@EOI
+}%
+\def\pgfplotsaxisdeserializedatapointfrom@private@withdeplist@#1,{%
+	\pgfplotsaxisdeserializedatapointfrom@private@orig{#1}%
+	\pgfplotsaxisdeserializedatapointfrom@private@withdeplist@@
+}%
+\def\pgfplotsaxisdeserializedatapointfrom@private@withdeplist@@#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		\afterassignment\pgfplotsaxisdeserializedatapointfrom@private@withdeplist@@
+		\expandafter\def\expandafter#1%
+	\fi
 }%
 
 % PRECONDITION: must be called inside of
@@ -5404,6 +5552,12 @@
 \def\pgfplots@stream@withmeta#1#2#3{\def\pgfplots@current@point@meta{#3}\pgfplotstreampoint{\pgfqpoint{#1}{#2}}}
 \def\pgfplots@stream@withmeta@#1#2#3#4{\def\pgfplots@current@point@coordindex{#1}\pgfplots@stream@withmeta{#2}{#3}{#4}}
 
+\def\pgfplots@stream@decode@and@apply#1#2#3#4{%
+	\def\pgfplots@current@point@coordindex{#1}%
+	\pgfplotsaxisdeserializedatapointfrom@private{#2}%
+	\pgfplotstreampoint{\pgfqpoint{#3}{#4}}%
+}
+
 \newif\ifpgfplots@record@marker@stream
 % Takes a sequence of PREPARED coordinates which are given in floating
 % point representation and applies the data scaling trafo (if
@@ -5431,6 +5585,8 @@
 	\fi
 	%
 	\pgfplots@perpointmeta@preparetrafo
+	%
+	\pgfplots@prepare@visualization@dependencies
 	%
 	\if\pgfplots@loc@TMPa0%
 		% mark=none : no need to waste time collecting marker
@@ -5494,6 +5650,16 @@
 			%\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
 		\fi
 	}%
+	\def\pgfplots@visualize@performserialization{%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsaxisdeserializedatapointfrom@private@lastvalue}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplots@stream@decode@and@apply
+				{\the\c@pgfplots@coordindex}
+				{\the\t@pgfplots@tokb}%
+				{\the\pgf@x}{\the\pgf@y}
+		}%
+		\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplots@loc@TMPa}%
+	}%
 	\begingroup
 	\let\E=\noexpand
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -5501,18 +5667,6 @@
 	%
 	% Will be inserted in one of two possible places below (to collect
 	% marker positions)
-	\def\pgfplots@visualize@performserizalization{%
-		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
-			% we don't have per-point meta data. Nothing special to
-			% do:
-			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
-			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
-		\else
-			% Ok, then we need to process the meta data as well:
-			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@withmeta@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}{\E\pgfplots@current@point@meta}}%
-			\E\expandafter\E\pgfplotsapplistXXpushback\E\expandafter{\E\pgfmathresult}%
-		\fi
-	}%
 	% This finalize command maps the logical coordinate into PGF's
 	% point space. Furthermore, it collects marker coordinates
 	% (properly clipped by position) if markers are required (see
@@ -5548,11 +5702,11 @@
 								\E\else
 									\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
 									\E\else
-										\pgfplots@visualize@performserizalization
+										\E\pgfplots@visualize@performserialization
 									\E\fi
 								\E\fi
 							\else
-								\pgfplots@visualize@performserizalization
+								\E\pgfplots@visualize@performserialization
 							\fi
 						\E\fi
 					\E\fi
@@ -5789,6 +5943,9 @@
 	% \fi
 	%-------------------------------------------------- 
 	\pgfplots@perpointmeta@preparetrafo
+	%
+	\pgfplots@prepare@visualization@dependencies
+	%
 	% this here is the MAIN marker code.
 	% It may be modified if scatter plot is enabled, see below.
 	\def\pgfplots@loc@TMPa{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}
