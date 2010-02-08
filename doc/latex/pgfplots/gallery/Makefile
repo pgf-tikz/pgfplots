@@ -20,7 +20,7 @@ prepare: $(DOC_SRC)
 	touch $@
 
 clean:
-	rm ./example* 
+	rm ./example* prepare index.html
 
 
 prepared: $(PREPARED_SRC:%.tex=%.pdf)
@@ -30,7 +30,10 @@ images: $(PREPARED_SRC:%.tex=%.png)
 %.png: %.pdf
 	convert -transparent white -depth 150 $< $@
 
-%.pdf: %.tex
-	pdflatex -interaction batchmode -halt-on-error -shell-escape $< 2>/dev/null 1>/dev/null
+# eliminate the %.tex dependency to simplify remakes:
+# %.pdf: %.tex
+
+%.pdf:
+	export TEXINPUTS="$(TEXINPUTS)..:../figures:" && pdflatex -interaction batchmode -halt-on-error -shell-escape $(@:.pdf=) 2>/dev/null 1>/dev/null
 	pdfcrop $@ $@ 2>/dev/null 1>/dev/null
 	@rm $(@:.pdf=.log) $(@:.pdf=.aux)

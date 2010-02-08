@@ -1,11 +1,178 @@
-\section{Basic Level Commands}
+\section{Utilities and Basic Level Commands}
 \label{sec:pgfplots:lowlevel}
-This section documents commands which provide access to more basic elements of \PGFPlots. Most of them are closely related to the basic level of \pgfname, especially various point commands which are specific to an axis.
+This section documents commands which provide access to more basic elements of \PGFPlots. Most of them are closely related to the basic level of \pgfname, especially various point commands which are specific to an axis. Some of them are general purpose utilities like loops.
 
 However, most elements in this section are only interesting for advanced users -- and perhaps only for special cases.
 
-\begin{command}{\pgfplotsextra\marg{low-level commands}}
-	A command to execute \marg{low-level commands} in \PGFPlots. Since any drawing commands inside of an axis need to be postponed until the axis is complete and the scaling has been initialised, it is not possible to simply draw any paths.
+\subsection{Utitity Commands}
+
+\begin{command}{\foreach \meta{variables} |in| \meta{list} \marg{commands}}
+	A powerful loop command provided by \Tikz, see~\cite[Section Utilities]{tikz}.
+\begin{codeexample}[]
+\foreach \x in {1,2,...,4} {Iterating \x. }%
+\end{codeexample}
+
+	A \PGFPlots\ related example could be
+\begin{codeexample}[code only]
+\foreach \i in {1,2,...,10} {\addplot table {datafile\i}; }%
+\end{codeexample}
+\end{command}
+
+\begin{command}{\pgfplotsforeachungrouped \meta{variable} |in| \meta{list} \marg{command}}
+	A specialised variant of |\foreach| which can do two things: it does not introduce extra groups while executing \meta{command} and it allows to invoke the math parser for (simple!) \meta{$x_0$}|,|\meta{$x_1$}|,...,|\meta{$x_n$} expressions.
+
+\begin{codeexample}[]
+\def\allcollected{}
+\pgfplotsforeachungrouped \x in {1,2,...,4} {Iterating \x. \edef\allcollected{\allcollected, \x}}%
+All collected = \allcollected.
+\end{codeexample}
+
+	A more useful example might be to work with tables. The following example is taken from \PGFPlotstable:
+
+\begin{codeexample}[code only]
+\pgfplotsforeachungrouped \i in {1,2,...,10} {%
+	\pgfplotstablevertcat{\output}{datafile\i} % appends `datafile\i' -> `\output'
+}%
+% since it was ungrouped, \output is still defined (would not work
+% with \foreach)
+\end{codeexample}
+
+	\paragraph{Remark: } The special syntax \meta{list}=\meta{$x_0$}|,|\meta{$x_1$}|,...,|\meta{$x_n$}, i.e.\ with two leading elements, followed by dots and a final element, invokes the math parser for the loop. Thus, it allows larger number ranges than any other syntax if |/pgf/fpu| is active.  In all other cases, |\pgfplotsforeachungrouped| invokes |\foreach| and provides the results without \TeX\ groups.
+	
+\end{command}
+
+\begin{command}{\pgfplotsinvokeforeach\marg{list} \marg{command}}
+	A variant of |\pgfplotsforeachungrouped| (and such also of |\foreach|) which replaces any occurence of |#1| inside of \meta{command} once for every element in \meta{list}. Thus, it actually assumes that \marg{command} is like a |\newcommand| body.
+
+	In other words, \marg{command} is invoked for every element of \marg{list}. The actual element of \marg{list} is available as |#1|.
+
+	As |\pgfplotsforeachungrouped|, this command does \emph{not} introduce extra scopes (i.e.\ it is ungrouped as well).
+
+	The difference to |\foreach \x in |\meta{list}\marg{command} is subtle: the |\x| would \emph{not} be expanded whereas |#1| is. 
+\begin{codeexample}[]
+\pgfkeys{
+  otherstyle a/.code={[a]},
+  otherstyle b/.code={[b]},
+  otherstyle c/.code={[c]},
+  otherstyle d/.code={[d]}}
+\pgfplotsinvokeforeach{a,b,c,d}        	
+	{\pgfkeys{key #1/.style={otherstyle #1}}}
+Invoke them: 
+\pgfkeys{key a} \pgfkeys{key b} 
+\pgfkeys{key c} \pgfkeys{key d}
+\end{codeexample}
+The counter example would use a macro (here |\x|) as loop argument:
+\begin{codeexample}[]
+\pgfkeys{
+  otherstyle a/.code={[a]},
+  otherstyle b/.code={[b]},
+  otherstyle c/.code={[c]},
+  otherstyle d/.code={[d]}}
+\pgfplotsforeachungrouped \x in {a,b,c,d}        	
+	{\pgfkeys{key \x/.style={otherstyle \x}}}
+Invoke them: 
+\pgfkeys{key a} \pgfkeys{key b}
+\pgfkeys{key c} \pgfkeys{key d}
+\end{codeexample}
+
+	\paragraph{Restrictions:} you can't nest this command yet (since it does not introduce protection by scopes).
+\end{command}
+
+\begin{command}{\pgfmathparse\marg{expression}}
+	Invokes the \pgfname\ math parser for \meta{expression} and defines \declareandlabel{\pgfmathresult} to be the result.
+\begin{codeexample}[]
+\pgfmathparse{1+41}
+
+The result is `\pgfmathresult'.
+\end{codeexample}
+	Please refer to \cite{tikz} for more details.
+\end{command}
+
+
+\begin{command}{\pgfplotstableread\marg{file}}
+	Please refer to the manual of \PGFPlotstable, |pgfplotstable.pdf|, which is part of the \PGFPlots-bundle.
+\end{command}
+\begin{command}{\pgfplotstabletypeset\marg{\textbackslash macro}}
+	Please refer to the manual of \PGFPlotstable, |pgfplotstable.pdf|, which is part of the \PGFPlots-bundle.
+\end{command}
+
+\begin{command}{\pgfplotsiffileexists\marg{filename}\marg{true code}\marg{false code}}
+	Invokes \marg{true code} if \marg{filename} exists and \marg{false code} if not. Can be used in looping macros, for example to plot every data file until there are no more of them.
+\end{command}
+\begin{command}{\pgfplotsutilifstringequal\marg{first}\marg{second}\marg{true code}\marg{false code}}
+	A simple ``strcmp'' tool which invokes \marg{true code} if \marg{first} $=$\marg{second} and \marg{false code} otherwise. This does not expand macros.
+\end{command}
+
+
+\begin{commandlist}{\pgfkeys,\pgfeov,\pgfkeysvalueof,\pgfkeysgetvalue}
+	These commands are part of the \Tikz\ way of specifying options, its sub-package |pgfkeys|. The |\pgfplotsset| command is actually nothing but a wrapper around |\pgfkeys|.
+
+	A short introduction into |\pgfkeys| can be found in~\cite{keyvalintro} whereas the complete reference is, of course, the \Tikz\ manual~\cite{tikz}.
+
+	The key |\pgfkeysvalueof|\marg{key name} expands to the value of a key; |\pgfkeysgetvalue|\marg{key name}\marg{\textbackslash macro} stores the value of \meta{key name} into \meta{\textbackslash macro}. The |\pgfeov| macro is used to delimit arguments for code keys in |\pgfkeys|, please refer to the references mentioned above.
+\end{commandlist}
+
+\subsection[Commands Inside Of PGFPlots Axes]{Commands Inside Of {\normalfont\PGFPlots} Axes}
+\begin{command}{\autoplotspeclist}
+This command should no longer be used, although it will be kept as technical implementation detail. Please use the `|cycle list|' option, section~\ref{sec:cycle:list}.
+\end{command}
+
+\begin{command}{\logten}
+Expands to the constant $\log(10)$. Useful for logplots because $\log(10^i) = i\log(10)$. This command is only available inside of an \Tikz-picture.
+\end{command}
+
+\begin{command}{\pgfmathprintnumber\marg{number}}
+Generates pretty--printed output\footnote{This method was previously \texttt{\textbackslash prettyprintnumber}. It's functionality has been included into \PGF\ and the old command is now deprecated.} for \marg{number}. This method is used for every tick label.
+
+The number is printed using the current number printing options, see the manual of \PGFPlotstable\ which comes with this package for the different number styles, rounding precision and rounding methods.
+\end{command}
+
+\begin{command}{\plotnum}
+	Inside of |\addplot| or any associated style, option or command, |\plotnum| expands to the current plot's number, starting with~$0$.
+\end{command}
+
+\begin{command}{\numplots}
+	Inside of any of the axis environments, associated style, option or command, |\numplots| expands to the total number of  plots.
+\end{command}
+
+\begin{command}{\coordindex}
+	Inside of an |\addplot| command, this macro expands to the number of the actual coordinate (starting with~$0$).
+
+	It is useful together with |x filter| or |y filter| to (de-)select coordinates.
+\end{command}
+
+\subsection{Path Operations}
+
+\begin{commandlist}{\path,\draw,\fill,\node,\matrix}
+	These commands are \Tikz\ drawing commands all of which are documented in~\cite{tikz}. They are used to draw or fill paths, generate text nodes or aligned text matrizes. They are equivalent to 
+	\pgfmanualpdflabel{/tikz/draw}{}|\path[draw]|, 
+	\pgfmanualpdflabel{/tikz/fill}{}|\path[fill]|, 
+	\pgfmanualpdflabel{/tikz/node}{}|\path[node]|, 
+	\pgfmanualpdflabel{/tikz/matrix}{}|\path[matrix]|, 
+	respectively.
+\end{commandlist}
+\begin{pathoperation}{--}{\meta{coordinate}}
+	A \Tikz\ path operation which connects the current point (the last one before |--|) and \meta{coordinate} with a straight line.
+\end{pathoperation}
+{\catcode`\|=12
+\begin{pathoperation}[noindex]{|-}{\meta{coordinate}}
+\pgfmanualpdflabel[\catcode`\|=12 ]{|-}{}%
+	A \Tikz\ path operation which connects the current point and \meta{coordinate} with \emph{two} straight lines: first vertical, then horizontal.
+\end{pathoperation}
+
+\begin{pathoperation}[noindex]{-|}{\meta{coordinate}}
+\pgfmanualpdflabel[\catcode`\|=12 ]{-|}{}%
+	A \Tikz\ path operation which connects the current point and \meta{coordinate} with \emph{two} straight lines: first horizontal, then vertical.
+\end{pathoperation}
+}
+
+\begin{keylist}{/tikz/xshift=\marg{dimension},/tikz/yshift=\marg{dimension}}
+	These \Tikz\ keys allow to shift something by \marg{dimension} which is any \TeX\ size (or expression).
+\end{keylist}
+
+
+\begin{command}{\pgfplotsextra\marg{low-level path commands}}
+	A command to execute \marg{low-level path commands} in a \PGFPlots\ axis. Since any drawing commands inside of an axis need to be postponed until the axis is complete and the scaling has been initialised, it is not possible to simply draw any paths.
 	Instead, it is necessary to draw them as soon as the axis is finished. This is done automatically for every \Tikz\ path -- and it is also done manually if you write |\pgfplotsextra|\marg{commands}.
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -20,6 +187,8 @@ However, most elements in this section are only interesting for advanced users -
 \end{codeexample}
 	The example above initialises an axis and executes the basic level path commands as soon as the axis is ready. The execution of multiple |\path|, |\addplot| and |\pgfplotsextra| commands is in the same sequence as they occur in the environment\footnote{Except for stacked plots where the sequence may be reverse, see the key \texttt{reverse stack plots}.}.%
 \end{command}
+
+\subsection{Specifying Basic Coordinates}
 
 \begin{commandlist}{%
 	\pgfplotspointaxisxy\marg{x coordinate}\marg{y coordinate},%
@@ -154,6 +323,17 @@ However, most elements in this section are only interesting for advanced users -
 \pgfqpointxyz{\pgfmathresult}{4}{3}
 \end{codeexample}
 \end{command}
+
+\begin{commandlist}{\pgfplotsmathfloatviewdepthxyz\marg{x}\marg{y}\marg{z},
+	\pgfplotsmathviewdepthxyz\marg{x}\marg{y}\marg{z}}
+	Both macros define |\pgfmathresult| to be the ``depth'' of a three dimensional point $\bar x = (x,y,z)$. The depth is defined to be the scalar product of $\bar x$ with $\vec d$, the view direction of the current axis.
+
+	For |\pgfplotsmathfloatviewdepthxyz|, the arguments are parsed as floating point numbers and the result is encoded in floating point. A fixed point representation can be generated with |\pgfmathfloattofixed{\pgfmathresult}|.
+
+	For |\pgfplotsmathviewdepthxyz|, \TeX\ arithmetics is employed for the inner product and the result is assigned in fixed point. This is slightly faster, but has considerably smaller data range.
+
+	Both commands can only be used \emph{inside} of a three dimensional \PGFPlots\ axis (as soon as the axis is initialised, see |\pgfplotsextra|). 
+\end{commandlist}
 
 \begin{texif}{pgfplotsthreedim}
 	A \TeX\ |\if| which evaluates the \meta{true code} if the axis is three dimensional and the \meta{else code} if not.

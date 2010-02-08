@@ -50,6 +50,7 @@
 	% anchor of the axis and (1,1) the 'north east'.
 	% It is used inside of descriptions.
 	\def\pgfplots@install@description@xyzvec{%
+		% this here is also used in color bars!
 		\ifpgfplots@deprecated@anchors
 			\pgfpointadd{\pgfplotspointxaxis}{\pgfplotspointyaxis}%
 		\else
@@ -442,12 +443,12 @@
 % \pgfplotspointonorientedsurfaceabsetupforsetz{<lower z limit>}{0}
 % -> the oriented surface is 'ab0'
 %  ...
-% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{0}\pgfplotslocretval
-% -> \pgfplotslocretval = 'v00'
-% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{1}\pgfplotslocretval
-% -> \pgfplotslocretval = 'v10'
-% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{2}\pgfplotslocretval
-% -> \pgfplotslocretval = 'v20'
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{0}\pgfplotsretval
+% -> \pgfplotsretval = 'v00'
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{1}\pgfplotsretval
+% -> \pgfplotsretval = 'v10'
+% \pgfplotspointonorientedsurfaceabgetcontainedaxisline{2}\pgfplotsretval
+% -> \pgfplotsretval = 'v20'
 \def\pgfplotspointonorientedsurfaceabgetcontainedaxisline#1#2{%
 	\expandafter\pgfplotspointonorientedsurfaceabgetcontainedaxisline@\pgfplotspointonorientedsurfacespec\relax{#1}%
 	\let#2=\pgfplots@loc@TMPa
@@ -1130,6 +1131,7 @@
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
 }
 
+
 % Adds a further, temporary anchor to every node which will be
 % processed. The anchor will be named '#3'. It is placed such that
 % 1. the node's center is on a line in direction of the inwards normal
@@ -1146,143 +1148,7 @@
 \def\pgfplotsdeclareborderanchorforaxis#1#2#3{%
 	%
 	%
-	\pgfdeclaregenericanchor{#3}{%
-		\begingroup
-		\pgfutil@ifundefined{pgfreferencednodename}{%
-			% use given transformation matrix.
-		}{%
-			\ifx\pgfreferencednodename\pgfutil@empty
-				% just use the given transformation matrix - we are
-				% typesetting an unlabeled node.
-			\else
-				\pgfsettransform{\csname pgf@sh@nt@\pgfreferencednodename\endcsname}%
-			\fi
-		}%
-		% I only need to apply the trafo matrix to direction vectors. Eliminate
-		% shifts.
-		\pgf@pt@x=0pt
-		\pgf@pt@y=0pt
-		%
-		% I'll apply the inverse transformation matrix to direction
-		% vectors. To ensure the relative position of these vectors
-		% and the anchors of the node, I have to invert the matrix:
-		\pgftransforminvert
-		%
-		%
-		% This here is the normal direction (points to the axis)
-		\pgfqpointscale{-1}{\pgfplotspointouternormalvectorofaxis{#2}}%
-		%
-		% we apply the inverse CM onto it here:
-		\pgf@pos@transform\pgf@x\pgf@y
-		\edef\pgfplots@tmp@normaldir{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
-		% 
-		% Now:
-		% auto-determine the canonical (north, north east etc) anchor
-		% at which the node touches the axis (remember: the axis is to
-		% be found in direction of the normal vector).  If we choose
-		% this anchor, we *won't* penetrate the axis!
-		%
-		% This is a heuristicial procedure.
-		%
-		\def\pgfplots@thresh{0.17pt }% 80 degrees
-		%\def\pgfplots@thresh{0.3pt }%
-		%\def\pgfplots@thresh{0.707pt }% 45 degrees
-		\ifdim\pgf@y>0pt
-			\ifdim\pgf@y>\pgfplots@thresh
-				% only north anchor
-				\def\pgfplots@ycomp{north}%
-			\else
-				\def\pgfplots@ycomp{}%
-			\fi
-		\else
-			\ifdim\pgf@y<-\pgfplots@thresh
-				\def\pgfplots@ycomp{south}%
-				% south anchor
-			\else
-				\def\pgfplots@ycomp{}%
-			\fi
-		\fi
-		\ifdim\pgf@x>0pt
-			\ifdim\pgf@x>\pgfplots@thresh
-				\def\pgfplots@xcomp{east}%
-			\else
-				\def\pgfplots@xcomp{}%
-			\fi
-		\else
-			\ifdim\pgf@x<-\pgfplots@thresh
-				\def\pgfplots@xcomp{west}%
-			\else
-				\def\pgfplots@xcomp{}%
-			\fi
-		\fi
-		\edef\pgfplots@anchor{%
-			\pgfplots@ycomp
-			\ifx\pgfplots@ycomp\pgfutil@empty
-			\else
-				\ifx\pgfplots@xcomp\pgfutil@empty
-				\else
-					\space
-				\fi
-			\fi
-			\pgfplots@xcomp}%
-		%
-		%
-		% Now, I'd like the 'center' of the node on one line with the
-		% 'at={}' coordinate at which it shall be placed!
-		% This can be done as follows:
-		%
-		% Now, compute two lines:
-		% 1. a line parallel to the #1 axis which goes
-		% through our recently identified anchor,
-		%   { x = x_a + r_1 * (#1 axis direction)
-		% 2. a line from center in direction of the normal,
-		% 	{ x = x_c + r_2 n, r in R }
-		%
-		% Calculate the intersection point and return it! This
-		% involves a lot of arithmetics :-(
-		%
-		% compute (unit#1 - normal):
-		\pgfplots@tmp@normaldir
-		\pgf@xb=\pgf@x
-		\pgf@yb=\pgf@y
-		%
-		% and the axis direction (in fact, I use -axis dir. But that
-		% doesn't matter).
-		% Scale unit vector to length 1 to improve conditioning:
-		\pgfqpointscale
-			{\csname pgfplotsunit#1invlength\endcsname}
-			{\csname pgfplotspointunit#1\endcsname}%
-		\pgf@pos@transform\pgf@x\pgf@y
-		%
-		\edef\pgfplots@LEQ{%
-		% solve linear system
-			{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@x}%
-			{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@y}%
-		}%
-		% 
-		% apply inverse matrix to right-hand-side (and compute RHS):
-		\pgf@sh@reanchor{##1}{center}%
-		\edef\pgfplots@loc@center{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
-		\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
-			{\pgfplots@loc@center}%
-			{\pgf@sh@reanchor{##1}{\pgfplots@anchor}}%
-		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
-		%
-		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
-		\def\pgfplots@extract####1####2{%
-			\def\pgfplots@r{####1}%
-		}%
-		\expandafter\pgfplots@extract\pgfmathresult
-		% GOT IT!
-		%
-		% compute x_c + r*n:
-		\pgfpointadd
-			{\pgfplots@loc@center}%
-			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
-%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
-		\pgf@process{}% <- transport outside of group
-		\endgroup
-	}%
+	\pgfdeclaregenericanchor{#3}{\pgfplots@borderanchor@for@axis{#1}{#2}{##1}}
 	% 
 	% This variant will ALWAYS be placed on the boundary of the node.
 	% It is deprecated, I am keeping it for some time....
@@ -1318,6 +1184,151 @@
 			}%
 		}%
 	}%
+}%
+
+% this does the work for \pgfplotsdeclareborderanchorforaxis.
+% #1: either x,y or z the direction which varies
+% #2: a three-char-string uniquely identifying the axis line.
+%   The parameter '#1' is redundand: it is the same as the 'v'
+%   character in '#2'.
+% #3: the shape, provided as argument by the pgf routine invoking the
+% anchor.
+\def\pgfplots@borderanchor@for@axis#1#2#3{%
+	\begingroup
+	\pgfutil@ifundefined{pgfreferencednodename}{%
+		% use given transformation matrix.
+	}{%
+		\ifx\pgfreferencednodename\pgfutil@empty
+			% just use the given transformation matrix - we are
+			% typesetting an unlabeled node.
+		\else
+			\pgfsettransform{\csname pgf@sh@nt@\pgfreferencednodename\endcsname}%
+		\fi
+	}%
+	% I only need to apply the trafo matrix to direction vectors. Eliminate
+	% shifts.
+	\pgf@pt@x=0pt
+	\pgf@pt@y=0pt
+	%
+	% I'll apply the inverse transformation matrix to direction
+	% vectors. To ensure the relative position of these vectors
+	% and the anchors of the node, I have to invert the matrix:
+	\pgftransforminvert
+	%
+	%
+	% This here is the normal direction (points to the axis)
+	\pgfqpointscale{-1}{\pgfplotspointouternormalvectorofaxis{#2}}%
+	%
+	% we apply the inverse CM onto it here:
+	\pgf@pos@transform\pgf@x\pgf@y
+	\edef\pgfplots@tmp@normaldir{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	% 
+	% Now:
+	% auto-determine the canonical (north, north east etc) anchor
+	% at which the node touches the axis (remember: the axis is to
+	% be found in direction of the normal vector).  If we choose
+	% this anchor, we *won't* penetrate the axis!
+	%
+	% This is a heuristicial procedure.
+	%
+	\def\pgfplots@thresh{0.17pt }% 80 degrees
+	%\def\pgfplots@thresh{0.3pt }%
+	%\def\pgfplots@thresh{0.707pt }% 45 degrees
+	\ifdim\pgf@y>0pt
+		\ifdim\pgf@y>\pgfplots@thresh
+			% only north anchor
+			\def\pgfplots@ycomp{north}%
+		\else
+			\def\pgfplots@ycomp{}%
+		\fi
+	\else
+		\ifdim\pgf@y<-\pgfplots@thresh
+			\def\pgfplots@ycomp{south}%
+			% south anchor
+		\else
+			\def\pgfplots@ycomp{}%
+		\fi
+	\fi
+	\ifdim\pgf@x>0pt
+		\ifdim\pgf@x>\pgfplots@thresh
+			\def\pgfplots@xcomp{east}%
+		\else
+			\def\pgfplots@xcomp{}%
+		\fi
+	\else
+		\ifdim\pgf@x<-\pgfplots@thresh
+			\def\pgfplots@xcomp{west}%
+		\else
+			\def\pgfplots@xcomp{}%
+		\fi
+	\fi
+	\edef\pgfplots@anchor{%
+		\pgfplots@ycomp
+		\ifx\pgfplots@ycomp\pgfutil@empty
+		\else
+			\ifx\pgfplots@xcomp\pgfutil@empty
+			\else
+				\space
+			\fi
+		\fi
+		\pgfplots@xcomp}%
+	%
+	%
+	% Now, I'd like the 'center' of the node on one line with the
+	% 'at={}' coordinate at which it shall be placed!
+	% This can be done as follows:
+	%
+	% Now, compute two lines:
+	% 1. a line parallel to the #1 axis which goes
+	% through our recently identified anchor,
+	%   { x = x_a + r_1 * (#1 axis direction)
+	% 2. a line from center in direction of the normal,
+	% 	{ x = x_c + r_2 n, r in R }
+	%
+	% Calculate the intersection point and return it! This
+	% involves a lot of arithmetics :-(
+	%
+	% compute (unit#1 - normal):
+	\pgfplots@tmp@normaldir
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	%
+	% and the axis direction (in fact, I use -axis dir. But that
+	% doesn't matter).
+	% Scale unit vector to length 1 to improve conditioning:
+	\pgfqpointscale
+		{\csname pgfplotsunit#1invlength\endcsname}
+		{\csname pgfplotspointunit#1\endcsname}%
+	\pgf@pos@transform\pgf@x\pgf@y
+	%
+	\edef\pgfplots@LEQ{%
+	% solve linear system
+		{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@x}%
+		{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@y}%
+	}%
+	% 
+	% apply inverse matrix to right-hand-side (and compute RHS):
+	\pgf@sh@reanchor{#3}{center}%
+	\edef\pgfplots@loc@center{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
+		{\pgfplots@loc@center}%
+		{\pgf@sh@reanchor{#3}{\pgfplots@anchor}}%
+	\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+	%
+	\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
+	\def\pgfplots@extract##1##2{%
+		\def\pgfplots@r{##1}%
+	}%
+	\expandafter\pgfplots@extract\pgfmathresult
+	% GOT IT!
+	%
+	% compute x_c + r*n:
+	\pgfpointadd
+		{\pgfplots@loc@center}%
+		{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
+%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
+	\pgf@process{}% <- transport outside of group
+	\endgroup
 }%
 
 % Takes azimuth (horizontal angle) '#1' and elongation (vertical
@@ -1606,6 +1617,184 @@
 	\fi
 }%
 
+
+% #1  the name of an input method for point meta. It must have been
+% declared by \pgfplotsdeclarepointmetasource first.
+% #2  any arguments supplied by the user (maybe empty).
+\def\pgfplotssetpointmetainput#1#2{%
+	\csname pgfpmeta@#1@initfor\endcsname{#2}%
+	%
+	\edef\pgfplotspointmetainputhandler{#1}%
+}%
+
+% Expands to the current value of 'point meta'.
+\def\pgfplotspointmetainputhandler{}
+
+% Declares a routine which can be used to get point meta input.
+%
+% Such a routine is invoked in a context where point coordinates are
+% processed, i.e. during 'plot coordinates', 'plot table' or the like.
+%
+% The routine is called `#1'. It consists of several methods:
+% - \csname pgfpmeta@#1@assign\endcsname{}
+% 	During the survey phase, this macro is expected to assign
+% 	\pgfplots@current@point@meta
+%	if it is a numeric input method, it should return a
+%	floating point number.
+%	It is allowed to return an empty string to say "there is no point
+%	meta".
+%	PRECONDITION for '@assign':
+%		- the coordinate input method has already assigned its
+%		'\pgfplots@current@point@meta' (probably as raw input string).
+%		- the other input coordinates are already read.
+%	POSTCONDITION for '@assign':
+%		- \pgfplots@current@point@meta is ready for use:
+%		- EITHER a parsed floating point number 
+%		- OR an empty string,
+%		- OR a symbolic string (if the issymbolic boolean is true)
+%	The default implementation is
+%	\let\pgfplots@current@point@meta=\pgfutil@empty
+%
+% - \csname pgfpmeta@#1@issymbolic\endcsname -> expands to either '1' or '0'
+% 		A numeric source will be processed numerically in float
+% 		arithmetics. Thus, the output of the @assign routine should be
+% 		a macro \pgfplots@current@point@meta in float format.
+%
+%		The output of a numeric point meta source will result in meta
+%		limit updates and the final map to [0,1000] will be
+%		initialised automatically.
+%
+% 		A symbolic input routine won't be processed.
+% 	Default is '0'
+%
+% - \csname pgfpmeta@#1@explicitinput\endcsname -> expands to either
+%   '1' or '0'. In case '1', it expects explicit input from the
+%   coordinate input routines. For example, 'plot file' will look for
+%   further input after the x,y,z coordinates.
+%   Default is '0'
+%
+% - \csname pgfpmeta@#1@initfor\endcsname##1{....}
+% 		a macro used to initialise the point meta source when it is
+% 		selected.
+% 		This macro body is invoked by pgfplots when someone types 
+%		'point meta=x' -> will invoke 'pgfpmeta@x@initfor{}'.
+%		The first argument to initfor can be supplied by the user.
+%		PRECONDITION for 'initfor':
+%			- it will be invoked just before
+%			'\pgfplotspointmetainputhandler' will be changed.
+%	Default is to do nothing.
+%
+% #1: the name of the input routine.
+% #2: a sequence of key-value pairs which can be used to overwrite
+% 'assign', 'initfor' or the other components.
+% 	See the definitions below for examples.
+\def\pgfplotsdeclarepointmetasource#1#2{%
+	\expandafter\def\csname pgfpmeta@#1@assign\endcsname{\let\pgfplots@current@point@meta=\pgfutil@empty}%
+	\expandafter\def\csname pgfpmeta@#1@initfor\endcsname##1{}%
+	\expandafter\def\csname pgfpmeta@#1@issymbolic\endcsname{0}%
+	\expandafter\def\csname pgfpmeta@#1@explicitinput\endcsname{0}%
+	\edef\pgfplotsdeclarepointmetasource@{#1}%
+	\pgfqkeys{/pgfplots/@declare point meta src}{#2}%
+}%
+\pgfqkeys{/pgfplots/@declare point meta src}{%
+	assign/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @assign\endcsname{#1}},%
+	initfor/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @initfor\endcsname##1{#1}},%
+	issymbolic/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @issymbolic\endcsname{#1}},%
+	explicitinput/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @explicitinput\endcsname{#1}},%
+}%
+
+% An empty one. This is simple to check with
+% \ifx\pgfplotspointmetainputhandler\pgfutil@empty:
+\pgfplotsdeclarepointmetasource{}{}
+\pgfplotsdeclarepointmetasource{x}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@x
+		\ifpgfplots@xislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+\pgfplotsdeclarepointmetasource{y}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@y
+		\ifpgfplots@yislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+\pgfplotsdeclarepointmetasource{z}{assign={%
+		\let\pgfplots@current@point@meta=\pgfplots@current@point@z
+		\ifpgfplots@zislinear
+		\else	
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi}}
+
+\pgfplotsdeclarepointmetasource{explicit}{%
+	assign={%
+		\ifx\pgfplots@current@point@meta\pgfutil@empty
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi
+	},
+	explicitinput=1%
+}%
+\pgfplotsdeclarepointmetasource{explicit symbolic}{%
+	assign={},% no math, simply collect.
+	explicitinput=1,%
+	issymbolic=1%
+}%
+
+\pgfplotsdeclarepointmetasource{expr}{%
+	assign={%
+		\csname pgfpmeta@\pgfpmeta@expr@origchoice @assign\endcsname
+		%
+		\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfmathparse{\pgfplots@loc@TMPa}%
+			\let\pgfplots@current@point@meta=\pgfmathresult
+		\fi
+	},%
+	initfor={%
+		\pgfkeyssetvalue{/pgfplots/point meta/expr}{#1}%
+		\let\pgfpmeta@expr@origchoice\pgfplotspointmetainputhandler
+	},
+}%
+\pgfkeyssetvalue{/pgfplots/point meta/expr}{}%
+
+\pgfplotsdeclarepointmetasource{TeX code}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\pgfmathfloatparsenumber{\pgfplotspointmeta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+}%
+\pgfplotsdeclarepointmetasource{TeX code symbolic}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\let\pgfplots@current@point@meta=\pgfplotspointmeta
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+	issymbolic=1%
+}%
+\pgfkeysdef{/pgfplots/point meta/code}{}%
 
 % Internal stream methods.
 %
@@ -2256,9 +2445,9 @@
 						NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi)
 						has been dropped because 
 						\E\ifx\E\pgfplots@unbounded@dir\E\pgfutil@empty
-							of the \E\pgfplots@unbounded@dir-coordinate filter.
+							of a coordinate filter.
 						\E\else
-							it is unbounded.
+							it is unbounded (in \E\pgfplots@unbounded@dir).
 						\E\fi
 					}%
 				\fi
@@ -2347,90 +2536,10 @@
 	% %%%%%%%%%%%%%%
 	%
 	% Define \pgfplots@set@perpointmeta properly:
-	\ifcase\pgfplots@perpointmeta@choice
-		% point meta/none: disabled.
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfutil@empty
-		}%
-	\or
-		% point meta/x
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@x
-		}%
-		\ifpgfplots@xislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/y
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@y
-		}%
-		\ifpgfplots@yislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/z
-		\def\pgfplots@set@perpointmeta{%	
-			\let\pgfplots@current@point@meta=\pgfplots@current@point@z
-		}%
-		\ifpgfplots@zislinear
-		\else	
-			\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-				\pgfplots@set@perpointmeta
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-				\let\pgfplots@current@point@meta=\pgfmathresult
-			}%
-		\fi
-	\or
-		% point meta/explicit : parse the information found
-		% somewhere:
-		\def\pgfplots@set@perpointmeta{%	
-			\ifx\pgfplots@current@point@meta\pgfutil@empty
-			\else
-				\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\fi
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		}%
-	\or
-		% point meta/explicit symbolic : simply collect the
-		% information, no math.
-		\def\pgfplots@set@perpointmeta{}%
-	% the 'point meta/expr cases is handled below.
-	\fi
-	% check 
-	%   if( we have point meta )...
-	\pgfplots@loc@tmptrue
-	\if\pgfplots@perpointmeta@choice0%
-		\pgfplots@loc@tmpfalse
-	\else
-		\if\b@pgfplots@perpointmeta@issymbolic1%
-			\pgfplots@loc@tmpfalse
-		\fi
-	\fi
-	\pgfkeysgetvalue{/pgfplots/point meta/expr}\pgfplots@loc@TMPa
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\expandafter\def\expandafter\pgfplots@set@perpointmeta\expandafter{%	
-			\pgfplots@set@perpointmeta
-			\pgfmathparse{\pgfkeysvalueof{/pgfplots/point meta/expr}}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		}%
-		% update limits in this case:
-		\pgfplots@loc@tmptrue
-		% make sure it is not 'none':
-		\def\pgfplots@perpointmeta@choice{4}%
-	\fi
-	\ifpgfplots@loc@tmp
+	\def\pgfplots@set@perpointmeta{%
+		\csname pgfpmeta@\pgfplotspointmetainputhandler @assign\endcsname
+	}%
+	\if0\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 		% We need to work with per point meta data.
 		% So, also compute the data range on a per-plot basis!
 		% These limits are important later.
@@ -2581,8 +2690,7 @@
 				% this plot:
 				\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 				\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-				\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-				\noexpand\def\noexpand\b@pgfplots@perpointmeta@issymbolic{\b@pgfplots@perpointmeta@issymbolic}%
+				\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
 			}%
 			{% draw command:
 				\noexpand\draw%
@@ -2753,7 +2861,7 @@
 							\c@pgf@counta=\pgfmathresult\relax
 							\c@pgf@countb=\c@pgf@counta
 							\multiply\c@pgf@counta by\c@pgf@counta
-							\def\pgfplotslocretval{1}%
+							\def\pgfplotsretval{1}%
 							\ifnum\c@pgf@counta=\pgfplotsplothandlermesh@numpoints\relax
 								% ok, rows*rows = numpoints.
 								\xdef\pgfplots@glob@TMPa{\the\c@pgf@countb}%
@@ -2769,11 +2877,11 @@
 								\else
 									% no... did not work. num points doesn't
 									% appear to be a squared number.
-									\def\pgfplotslocretval{0}%
+									\def\pgfplotsretval{0}%
 									\xdef\pgfplots@glob@TMPa{5}%
 								\fi
 							\fi
-							\if\pgfplotslocretval1
+							\if\pgfplotsretval1
 								\pgfplots@warning{%
 									'plot mesh' did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
 									Assuming [mesh/rows=\pgfplots@glob@TMPa,mesh/cols=\pgfplots@glob@TMPa] 
@@ -3297,8 +3405,7 @@
 		\def\pgfplotspointmetatransformed{1.0}%
 	\else
 		% prepare arguments:
-		\if\b@pgfplots@perpointmeta@issymbolic1%
-			%point meta=explicit symbolic
+		\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 			\let\pgfplotspointmeta=\pgfplots@current@point@meta
 			\let\pgfplotspointmetatransformed=\pgfplotspointmeta
 		\else
@@ -3685,10 +3792,10 @@
 % 	\pgfplots@plot@ydomain (will be set to \pgfplots@plot@domain if empty)
 % 	\pgfplots@plot@samples@at
 % 	\pgfplots@plot@samples@y (will be set to the x variant if empty)
-% 	\tikz@plot@var
-% 	\pgfplots@plot@var@nonmacro
-% 	\pgfplots@plot@var@y
-% 	\pgfplots@plot@var@y@nonmacro
+% 	\tikz@plot@var (will become a macro like '\x')
+% 	\pgfplots@plot@var@nonmacro (the same as \tikz@plot@var, but without backslash)
+% 	\pgfplots@plot@var@y (like \tikz@plot@var, but for y)
+% 	\pgfplots@plot@var@y@nonmacro (like \pgfplots@plot@var@nonmacro, but for y)
 % 	2. the following key-value things are set:
 % 		/pgfplots/mesh/rows
 % 		/pgfplots/mesh/cols
@@ -3700,7 +3807,7 @@
 % 		if the expression plotter should sample a line
 % 		and
 % 		\def\b@pgfplots@should@sample@LINE{0}
-% 		if it should samples a mesh.
+% 		if it should sample a mesh.
 \def\pgfplots@plot@expression@preparekeys{%
 	\pgfkeysgetvalue{/pgfplots/domain}\pgfplots@plot@domain
 	\pgfkeysgetvalue{/pgfplots/samples y}\pgfplots@plot@samples@y
@@ -3719,6 +3826,15 @@
 	% without the '\', i.e. 'x' by default:
 	\let\pgfplots@plot@var@nonmacro=\pgfplots@glob@TMPa
 	\let\pgfplots@plot@var@y@nonmacro=\pgfplots@glob@TMPb
+	%
+	% make sure the 'plot vars' have a backslash (as it was in tikz
+	% plot expression):
+	\ifx\pgfplots@plot@var@nonmacro\tikz@plot@var
+		\edef\tikz@plot@var{\expandafter\noexpand\csname \tikz@plot@var\endcsname}%
+	\fi
+	\ifx\pgfplots@plot@var@y@nonmacro\pgfplots@plot@var@y
+		\edef\pgfplots@plot@var@y{\expandafter\noexpand\csname \pgfplots@plot@var@y\endcsname}%
+	\fi
 	%
 	% Check if we have to sample a line.
 	\def\b@pgfplots@should@sample@LINE{0}%
@@ -3812,12 +3928,12 @@
 		%
 		% we don't have 'samples at' for 3D plots -> use domain!
 		\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
-		\let\pgfplots@expression@xdomain=\pgfplotslocretval
+		\let\pgfplots@expression@xdomain=\pgfplotsretval
 		%
 		\if0\b@pgfplots@should@sample@LINE
 			% Samples twodimensionally (a lattice):
 			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@ydomain\relax{\pgfplots@plot@samples@y}%
-			\let\pgfplots@expression@ydomain=\pgfplotslocretval
+			\let\pgfplots@expression@ydomain=\pgfplotsretval
 			%
 			% Assemble a 
 			% \pgfplots@plot@data##1 -> 
@@ -3830,9 +3946,16 @@
 		\else
 			% sample a line:
 			\def\pgfplots@plot@ydomain{0:0}%
-			\expandafter\edef\pgfplots@plot@var@y{\pgfplots@plot@var@y@nonmacro}% this provides an error message, see above.
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}%
+			%
+			% If we have (\x,\y,f(x)), use (\x,0,f(x)) instead and
+			% suppress the error message which would occur for \y.
+			\expandafter\pgfplotsutilifstringequal\expandafter{\pgfplots@addplotimpl@expression@yEXPR}{\pgfplots@plot@var@y}{%
+				\def\pgfplots@addplotimpl@expression@yEXPR{0}%
+			}{%
+				\expandafter\edef\pgfplots@plot@var@y{\pgfplots@plot@var@y@nonmacro}% this provides an error message, see above.
+			}%
 		\fi
 	\else
 		% Assemble a 
@@ -3884,7 +4007,7 @@
 			\ifx\pgfplots@plot@samples@at\pgfutil@empty
 				% we don't have 'samples at' -> use domain!
 				\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
-				\let\pgfplots@loc@TMPa=\pgfplotslocretval
+				\let\pgfplots@loc@TMPa=\pgfplotsretval
 			\else
 				% use 'samples at':
 				\let\pgfplots@loc@TMPa=\pgfplots@plot@samples@at
@@ -3909,7 +4032,7 @@
 	%
 	% Prepare 'x' and 'y' as pseudo constants in expressions:
 	\gdef\pgfplots@noy@error{%
-		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain.}%
+		\pgfplots@error{Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain}%
 		\global\let\pgfplots@noy@error=\relax
 	}%
 	% Define a "function" x which sets \pgfmathresult := \x :
@@ -3952,6 +4075,10 @@
 	\ifpgfplots@curplot@threedim
 		\t@pgfplots@toka={,#3}%
 		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
+		% the \pgfplots@plot@var@y will expand to the current value of
+		% '/pgfplots/variable y'.
+		% Keep it this way, \pgfplots@addplotimpl@expression@ checks
+		% for that special string.
 		\edef\pgfplots@loc@TMPb{%
 			{\expandafter\noexpand\tikz@plot@var}%
 			{\noexpand\pgfplots@plot@var@y\the\t@pgfplots@toka}%
@@ -4021,6 +4148,26 @@
 	\pgfplots@gettikzinternal@keyval{raw gnuplot}{iftikz@plot@raw@gnuplot}{\iffalse}%
 	\pgfplots@gettikzinternal@keyval{parametric}{iftikz@plot@parametric}{\iffalse}%
 	%
+	% determine dummy variables:
+	\iftikz@plot@parametric
+		\ifpgfplots@curplot@threedim
+			\pgfkeysgetvalue{/pgfplots/parametric/var 2d}\pgfplots@gnuplot@dummy%
+		\else
+			\pgfkeysgetvalue{/pgfplots/parametric/var 1d}\pgfplots@gnuplot@dummy%
+		\fi
+		\ifx\pgfplots@gnuplot@dummy\pgfutil@empty
+		\else
+			\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@gnuplot@dummy}%
+			\ifpgfutil@in@	
+				\def\pgfplots@loc@TMPa##1,##2\pgfeov{\pgfplotsset{variable={##1},variable y={##2}}}%
+			\else
+				\def\pgfplots@loc@TMPa##1\pgfeov{\pgfplotsset{variable={##1}}}%
+			\fi
+			\expandafter\pgfplots@loc@TMPa\pgfplots@gnuplot@dummy\pgfeov
+		\fi
+	\fi
+	%
+	% prepare domain and samples, normalize dummy variables:
 	\pgfplots@plot@expression@preparekeys
 	%
 	% FIXME: what with 'samples at'!?
@@ -4063,9 +4210,12 @@
 				\pgfplots@error{Sorry, I do not know how to sample 3D LINE plots with gnuplot... I only know 2D line and 3D mesh. You may want to help the author of pgfplots to improve this feature.}%
 			\fi
 		\fi
+		\def\pgfplots@gnuplot@x{\pgfplots@plot@var@nonmacro}%
+		\def\pgfplots@gnuplot@y{\pgfplots@plot@var@y@nonmacro}%
 		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{%
 			\pgfplots@gnuplot@format;
 			set samples \pgfkeysvalueof{/pgfplots/samples}\if0\b@pgfplots@should@sample@LINE, \pgfkeysvalueof{/pgfplots/samples y}\fi;
+			set dummy \pgfplots@gnuplot@x,\pgfplots@gnuplot@y;
 			\ifx\pgfplots@gnuplot@logdirs\pgfutil@empty
 			\else
 				set logscale \pgfplots@gnuplot@logdirs\space 2.71828182845905; 
@@ -4076,13 +4226,13 @@
 					% Samples twodimensionally (a lattice):
 					% and the isosamples thing confuses me.
 					set isosamples \pgfkeysvalueof{/pgfplots/samples}\if0\b@pgfplots@should@sample@LINE, \pgfkeysvalueof{/pgfplots/samples y}\fi;
-					splot [x=\pgfplots@plot@domain] [y=\pgfplots@plot@ydomain] \pgfplots@gnuplotcode;%
+					splot [\pgfplots@gnuplot@x=\pgfplots@plot@domain] [\pgfplots@gnuplot@y=\pgfplots@plot@ydomain] \pgfplots@gnuplotcode;%
 				\else
 					% *should* sample a line, but I don't know how.
-					splot [x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
+					splot [\pgfplots@gnuplot@x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
 				\fi
 			\else
-				plot [x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
+				plot [\pgfplots@gnuplot@x=\pgfplots@plot@domain] \pgfplots@gnuplotcode;%
 			\fi
 			}}%
 	\fi%
@@ -4197,23 +4347,16 @@
 		\let\pgfplots@current@point@meta=\pgfutil@empty
 		\ifpgfplots@curplot@threedim
 			\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim
-			\ifnum\pgfplots@perpointmeta@choice=4
+			\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @explicitinput\endcsname
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim@andmeta
-			\else
-				\ifnum\pgfplots@perpointmeta@choice=5
-					\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@threedim@andmeta
-				\fi
 			\fi
 		\else
 			\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim
-			\ifnum\pgfplots@perpointmeta@choice=4
+			\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @explicitinput\endcsname
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
-			\else
-				\ifnum\pgfplots@perpointmeta@choice=5
-					\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
-				\fi
 			\fi
 		\fi
+		\pgfplotstableinstallignorechars%
 		\pgfplots@addplotimpl@file@readall
 	\fi
 	\pgfplotsscanlinelengthcleanup
@@ -4446,7 +4589,6 @@
 	%
 	%
 	% high level user interface functions:
-	\def\coordindex{\pgfplotstablerow}%
 	\let\lineno=\coordindex% is the same here
 	%
 	% modify \pgfplots@plot@tbl@{x,y,z,meta} if there are
@@ -4648,20 +4790,9 @@
 	% They may contain behavior options.
 	\pgfplots@addplotimpl@table@installkeypath
 	\pgfplotstableset{#2}%
-	%--------------------------------------------------
-	% \begingroup
-	% \pgfplotstableset{#2}%
-	% \pgfplotstableread{#3}\pgfplots@table
-	% \pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
-	% \endgroup
-	%-------------------------------------------------- 
-	%\begingroup
 	\ifpgfplots@addplotimpl@readcompletely
 		\pgfplotstableread{#3}\pgfplots@table
 		\pgfplots@addplotimpl@table@fromstructure@{#1}{}{\pgfplots@table}{#4}%
-	%	\pgfmath@smuggleone\pgfplotsscanlinelength
-	%	\endgroup
-	%	\pgfplotsscanlinedisablechanges
 	\else
 		\pgfplotsapplistXXglobalnewempty
 		%
@@ -4710,41 +4841,11 @@
 			\pgfplotstableread*{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 		\fi
 		\pgfplots@coord@stream@end
-		% FIXME : i'd be glad if I could save this group: check why not
-		% perhaps because \pgfplotstableread uses several pgf
-		% variables?
-		%\pgfmath@smuggleone\pgfplotsscanlinelength
-		%\endgroup
-		%\pgfplotsscanlinedisablechanges
-		%
-		%\pgfplots@PREPARE@COORD@STREAM{#4}%
-		%\pgfplotsapplistXXgloballet\pgfplots@coordlist
-		%\pgfplotsapplistXXglobalclear
-		%\ifpgfplots@errorbars@enabled
-		%	\pgfplots@plot@coords@mathparserfalse
-		%	\ifpgfplots@curplot@threedim
-		%		\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@coordlist}%%
-		%	\else
-		%		\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
-		%	\fi
-		%\else
-			% this here is the usual case; it is faster than the error bar
-			% stuff.
-		%	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coordlist}%
-		%\fi
 	\fi
 }
 \def\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	\pgfplots@coord@stream@coord
-	%\edef\pgfplots@current@point{%
-	%	\pgfplots@current@point@x,%
-	%	\pgfplots@current@point@y,%
-	%	\pgfplots@current@point@z,%
-	%	\pgfplots@current@point@meta%
-	%	;%
-	%}%
-	%\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@current@point}%
 }
 \def\pgfplots@addplotimpl@table@fromfile@listener@PREPARE{%
 	% this here is only evaluated ONCE.
@@ -5310,7 +5411,7 @@
 	% Will be inserted in one of two possible places below (to collect
 	% marker positions)
 	\def\pgfplots@visualize@performserizalization{%
-		\ifnum\pgfplots@perpointmeta@choice=0
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
 			% we don't have per-point meta data. Nothing special to
 			% do:
 			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
@@ -5473,7 +5574,8 @@
 \long\def\pgfplots@coord@stream@finalize@storedcoords@START normalized coordinates #1#2;\pgfplots@EOI{%
 	\ifpgfplots@threedim
 		\pgfplots@apply@zbuffer{#1}%
-		\let\pgfplots@coord@stream@finalize@storedcoords@START@coords=\pgfplotsretval
+		\let\pgfplots@coord@stream@finalize@storedcoords@START@coords=\pgfplotsglobalretval
+		\global\let\pgfplotsglobalretval=\relax
 	\else
 		\def\pgfplots@coord@stream@finalize@storedcoords@START@coords{#1}%
 	\fi
@@ -5528,8 +5630,7 @@
 		%
 		\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
 		\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-		\noexpand\def\noexpand\pgfplots@perpointmeta@choice{\pgfplots@perpointmeta@choice}%
-		\noexpand\def\noexpand\b@pgfplots@perpointmeta@issymbolic{\b@pgfplots@perpointmeta@issymbolic}%
+		\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
 		%
 		\the\t@pgfplots@tokb
 		\noexpand\pgfextra
@@ -6019,7 +6120,7 @@
 		%
 		%
 		% Prepare color data source:
-		\if\pgfplots@perpointmeta@choice0%
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
 			% oh. There is no color data!? Well... then use a constant
 			% color.
 			% 
@@ -6547,16 +6648,16 @@
 
 % #1: a normalized coordinate stream.
 %
-% Output: a normalized coordinate stream in \pgfplotsretval.
+% Output: a normalized coordinate stream in \pgfplotsglobalretval.
 \def\pgfplots@apply@zbuffer#1{%
 	\ifcase\pgfplotsplothandlermesh@zbuffer@choice\relax
 		% none.
-		\gdef\pgfplotsretval{#1}%
+		\gdef\pgfplotsglobalretval{#1}%
 	\or
 		% reverse x seq: only for 'mesh'
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse x seq' can only be used for mesh/surf plots.}%
-			\gdef\pgfplotsretval{#1}%
+			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			\pgfplotsautocompletemeshkeys
 			\if\pgfplots@plot@mesh@ordering0%
@@ -6573,7 +6674,7 @@
 		% reverse y seq: only for 'mesh'
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse y seq' can only be used for mesh/surf plots.}%
-			\gdef\pgfplotsretval{#1}%
+			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			\pgfplotsautocompletemeshkeys
 			\if\pgfplots@plot@mesh@ordering0%
@@ -6599,7 +6700,7 @@
 		\def\pgfplots@coord@stream@end{%
 			\pgfplotsprependlistXlet\pgfplots@loc@TMPa={reversed}%
 			\pgfplotsprependlistXnewempty{reversed}% clear it
-			\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+			\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 		}%
 		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
 		\endgroup
@@ -6632,7 +6733,7 @@
 						\expandafter\pgfplotsapplistXpushback\curelem\to{\pgfp@sortedlist}%
 					}%
 					\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
-					\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+					\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 				}%
 				\pgfkeysdef{/pgfplots/array/unscope post}{}%
 				\pgfplotsarraysort\pgfplots@zbuffer@local
@@ -6641,7 +6742,7 @@
 			\endgroup
 		\else
 			% meshmode handles sort separately!
-			\gdef\pgfplotsretval{#1}%
+			\gdef\pgfplotsglobalretval{#1}%
 		\fi
 	\or
 		% z buffer=auto
@@ -6695,7 +6796,7 @@
 		% z buffer=default.
 		\if\pgfplots@meshmode n%
 			% mesh mode deactivated!
-			\gdef\pgfplotsretval{#1}%
+			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			% mesh=true
 			\begingroup
@@ -6706,12 +6807,12 @@
 	\fi
 }%
 
-% Defines \pgfplotsretval (globally) to be a partial reversion of the
+% Defines \pgfplotsglobalretval (globally) to be a partial reversion of the
 % (normalized) 2d coordinate sequence '#1'.
 %
 % In other words, the normalized coordinate sequence '#1' is visited
 % linearly and while we go, each scanline is reversed. The result is
-% collected into \pgfplotsretval.
+% collected into \pgfplotsglobalretval.
 %
 % This implements the 'z buffer=reverse x seq' feature for
 % ordering=y varies.
@@ -6719,7 +6820,7 @@
 % PRECONDITION:
 % 	\pgfplotsscanlinelength contains the scanline length
 % POSTCONDITION:
-% 	\pgfplotsretval contains the partial reversion.
+% 	\pgfplotsglobalretval contains the partial reversion.
 \def\pgfplots@apply@zbuffer@reversescanline#1{%
 	\begingroup
 	\def\pgfplots@coord@stream@start{%
@@ -6745,10 +6846,10 @@
 			\pgfplots@zbuffer@error
 		\fi
 		\pgfplotsapplistXlet\pgfplots@loc@TMPa={\resultlist}%
-		\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+		\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 	}%
 	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
-%\message{I have performed partial reversion of '#1' and got     '\pgfplotsretval'!}%
+%\message{I have performed partial reversion of '#1' and got     '\pgfplotsglobalretval'!}%
 	\endgroup
 }%
 
@@ -6781,10 +6882,10 @@
 			\pgfplots@zbuffer@error
 		\fi
 		\pgfplotsprependlistXlet\pgfplots@loc@TMPa={resultlist}%
-		\global\let\pgfplotsretval=\pgfplots@loc@TMPa
+		\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 	}%
 	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
-%\message{I have performed partial reversion of '#1' and got     '\pgfplotsretval'!}%
+%\message{I have performed partial reversion of '#1' and got     '\pgfplotsglobalretval'!}%
 	\endgroup
 }%
 \def\pgfplots@zbuffer@error{%
@@ -6849,7 +6950,7 @@
 		\pgfmathfloatadd@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
 		\let\pgfplots@loc@TMPb=\pgfmathresult
 	\fi
-	\let\pgfplotslocretval=\pgfplots@loc@TMPb
+	\let\pgfmathresult=\pgfplots@loc@TMPb
 }%
 
 % Similar to \pgfplotsmathfloatviewdepthxyz, but this always relies on
@@ -6871,7 +6972,7 @@
 		\pgfmath@basic@add@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
 		\let\pgfplots@loc@TMPb=\pgfmathresult
 	\fi
-	\let\pgfplotslocretval=\pgfplots@loc@TMPb
+	\let\pgfmathresult=\pgfplots@loc@TMPb
 }%
 
 
@@ -6937,7 +7038,7 @@
 		% ups - no styles available? Maybe something went
 		% wrong with the 'scatter src' key. Check whether it
 		% was accidentally a numerical style:
-		\if\b@pgfplots@perpointmeta@issymbolic1%
+		\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 		\else
 			% ok, be fault tolerant and round to an integer:
 			\pgfmathfloattofixed{\pgfplotspointmeta}%

@@ -2,7 +2,7 @@
 %
 % Package pgfplots.sty documentation. 
 %
-% Copyright 2007/2008 by Christian Feuersaenger.
+% Copyright 2007-2009 by Christian Feuersaenger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -35,6 +35,8 @@
 	narrow/.style={width=7cm},
 	tabsize=4,
 }
+
+\pgfkeys{/pgfmanual/gray key prefixes/.add={/pgfplots/table/,}{}}
 
 \makeatletter
 \pgfkeys{%
@@ -201,6 +203,7 @@ Technical note: every opened file will be protocolled into your log file.
 \hspace{2cm}
 \pgfplotstabletypeset[columns={dof,error2}]\table
 \end{codeexample}
+	There are variants of this command which do not really built up a struct but which report every line to a ``listener''. There is also a struct which avoids protection by \TeX\ scopes. In case you need such things, consider reading the source code comments.
 
 Technical note: every opened file will be protocolled into your log file.
 \end{command}
@@ -251,6 +254,38 @@ level,dof,error1,error2,info,{grad(log(dof),log(error2))},quot(error1)
 	The choice \declaretext{false} is identical to this last case, i.e.\ even if the first line contains strings, they won't be recognised as column names.
 
 	Finally, the choice \declaretext{has colnames} is the opposite of |false|: it assumes that the first non--comment line \emph{contains} column names. In other words: even if only numbers are contained in the first line, they are considered to be column \emph{names}.
+\end{key}
+
+\begin{key}{/pgfplots/table/ignore chars=\marg{comma-separated-list} (initially empty)}
+	Allows to define an ``ignore list'' for single characters. Any characters found in an input file which occur also in \meta{comma-separated-list} will silently by thrown away. The processing is exactly the same as if you did not write them at all in the first place.
+
+	For example, suppose we are given |pgfplotstable.example5.dat| with
+\lstinputlisting[basicstyle=\ttfamily\footnotesize]{pgfplotstable.example5.dat}
+
+	\noindent then, we can ignore several of the characters by writing
+\begin{codeexample}[]
+\pgfplotstabletypeset
+	[col sep=comma,ignore chars={(,),\ ,\#}]
+	{pgfplotstable.example5.dat}
+\end{codeexample}
+
+	The \meta{comma-separated-list} should contain exactly one character in each list element, and the single characters should be separated by commas. Some special characters like commas, white spaces, hashes, percents or backslashes need to be escaped by prefixing them with a backslash. 
+
+	Besides normal characters, it is also supported to eliminate any binary code from your input files. For example, suppose you have binary characters of code |0x01| (hex notation) in your files. Then, use
+\begin{codeexample}[code only]
+\pgfplotsset{ignore chars={\^^01}}
+\end{codeexample}
+	\noindent to eliminate them silently. The |^^|\meta{digit}\meta{digit} notation is a \TeX\ feature to provide characters in hexadecimal encoding where \meta{digit} is one of |0123456789abcdef|. I don't know if the backslash in |\^^01| is always necessary, try it out. There are more ways to provide special characters, see~\cite{texbook}.
+
+	Note that after stripping all these characters, the input table must be valid -- it should still contain column separators and balanced columns.
+
+	This setting applies to |\addplot table| and |\addplot file| for \PGFPlots\ as well.
+\end{key}
+
+\begin{key}{/pgfplots/table/white space chars=\marg{comma-separated-list} (initially empty)}
+	Allows to define a list of single characters which are actually treated like white spaces (in addition to tabs and spaces). It might be useful in order to get more than one column separator character.
+
+	The |white space chars| list is used in exactly the same way as |ignore chars|, and the same remarks as above apply as well.
 \end{key}
 
 \subsection{Selecting Columns}
@@ -432,7 +467,8 @@ level,dof,error1,error2,info,{grad(log(dof),log(error2))},quot(error1)
 % 	Changes the internal processing of |dec sep align| such that unbounded values like $NaN$ and $\pm \infty$ will be aligned in exactly the same way as the column name.
 % 
 % 	This avoids funny spacing around unbounded coordinates when used with |dec sep align|.
-% 
+ 
+% NO GALLERY
 % \begin{codeexample}[]
 % \pgfplotstabletypeset{pgfplotstable.example4.dat}
 % \vrule
@@ -691,7 +727,7 @@ The following styles allow to configure the final table code \emph{after any cel
 	\pgfkeyssetvalue{/pgfplots/table/cell content}{#1&}%
 \fi
 \end{codeexample}
-	\paragraph{Attention:} The value of |\pgfplotstablecol| is now in the range $1,\dotsc,n$ where $n=$ |\pgfplotstablecols|. This simplifies checks whether we have the last column.
+	\paragraph{Attention:} The value of |\pgfplotstablecol| starts with $1$ in this context, i.e.\ it is in the range $1,\dotsc,n$ where $n=$ |\pgfplotstablecols|. This simplifies checks whether we have the last column.
 \end{codekey}
 
 \begin{key}{/pgfplots/table/end table=\marg{code} (initially \textbackslash end\{tabular\})}
@@ -943,6 +979,18 @@ Configures |\pgfmathprintnumber| to detect integers automatically. If the input 
 \pgfmathprintnumber{0}
 \end{codeexample}
 \end{key}
+
+\begin{command}{\pgfmathifisint\marg{number constant}\marg{true code}\marg{false code}}
+	A command which does the same check as |int detect|, but it invokes \meta{true code} if the \meta{number constant} actually is an integer and the \meta{false code} if not.
+
+	As a side--effect, |\pgfretval| will contain the parsed number, either in integer format or as parsed floating point number.
+
+	The argument \meta{number constant} will be parsed with |\pgfmathfloatparsenumber|. 
+\begin{codeexample}[]
+15 \pgfmathifisint{15}{is an int: \pgfretval.}{is no int}\hspace{1em}
+15.5 \pgfmathifisint{15.5}{is an int: \pgfretval.}{is no int}
+\end{codeexample}
+\end{command}
 
 \begin{key}{/pgf/number format/int trunc}
 Truncates every number to integers (discards any digit after the period).
@@ -1215,14 +1263,18 @@ Typesetting cells means to take their value and ``do something''. In many cases,
 	This key is evaluated inside of a local \TeX\ group, so any local macro assignments will be cleared afterwards.
 \end{codekey}
 
-\begin{key}{/pgfplots/table/assign cell content as number}
-	This here is the default implementation of |assign cell content|. 
-	
+\begin{stylekey}{/pgfplots/table/numeric type}
+	A style which (re)-defines |assign cell content| back to its original value which assumes numerical data.
+
 	It invokes |\pgfmathprintnumberto| and writes the result into |@cell content|.
-\end{key}
+\end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/string type}
 	A style which redefines |assign cell content| to simply return the ``raw'' input data, that means as text column. This assumes input tables with valid \LaTeX\ content (verbatim printing is not supported).
+\end{stylekey}
+
+\begin{stylekey}{/pgfplots/table/numeric as string type}
+	A style which redefines |assign cell content| such that it assumes numerical input data. It returns a string literal describing the input number either as integer or in scientific (exponential) notation. In contrast to |numeric type|, it does not apply number formatting.
 \end{stylekey}
 
 \begin{stylekey}{/pgfplots/table/date type=\marg{date format}}% (initially \year-\month-\day)}
@@ -2080,7 +2132,9 @@ The example creates two columns: the |new| column is just the sum of each value 
 
 	This command simply invokes |\pgfplotstabletypeset| with cleared output parameters. That means any of the column creation methods apply here as well, including any postprocessing steps (without the final typesetting).
 
-	|\pgfplotstablesave| uses the keys |reset styles| and |disable rowcol styles| to clear any typesetting related options. Furthermore, it sets |string type| to allow verbatim output.
+	|\pgfplotstablesave| uses the keys |reset styles| and |disable rowcol styles| to clear any typesetting related options.
+	
+	Furthermore, it sets |string type| to allow verbatim output. You may want to use |numeric as string type| instead in case you only have numerical data -- this will display integers resulting from arithmetics not in scientific notation\footnote{Note however, that |string type| doesn't round or truncate integers as well, even though they are displayed as floats.}.
 \begin{codeexample}[]
 \pgfplotstablesave[
 	create on use/postproc1/.style={create col/dyadic refinement rate=error1},
@@ -2188,10 +2242,10 @@ Tables are always stored as a sequence of column vectors. Therefore, iteration o
 \begin{command}{\pgfplotstableforeachcolumn\meta{table}\textbackslash as\marg{\textbackslash macro}\marg{code}}
 	Iterates over every column name of \meta{table}. The \meta{\textbackslash macro} will be set to the currently visited column name. Then, \marg{code} will be executed. During \marg{code}, |\pgfplotstablecol| denotes the current column index (starting with 0).
 \begin{codeexample}[]
-\begin{minipage}{\linewidth}
+\begin{minipage}{0.8\linewidth}
 \pgfplotstableread{pgfplotstable.example1.dat}\table
 \pgfplotstableforeachcolumn\table\as\col{%
-	The column name is `\col'; its index \pgfplotstablecol;\par
+	column name is `\col'; index is\pgfplotstablecol;\par
 }
 \end{minipage}
 \end{codeexample}
@@ -2204,7 +2258,7 @@ Tables are always stored as a sequence of column vectors. Therefore, iteration o
 
 	For every cell in the column named \meta{column name}, \marg{code} will be executed. During this invocation, the macro \meta{\textbackslash cellcontent} will contain the cell's content and |\pgfplotstablerow| will contain the current row's index.
 \begin{codeexample}[]
-\begin{minipage}{\linewidth}
+\begin{minipage}{0.8\linewidth}
 \pgfplotstableread{pgfplotstable.example1.dat}\table
 \pgfplotstableforeachcolumnelement{error1}\of\table\as\cell{%
 	I have now cell element `\cell' at row index `\pgfplotstablerow';\par
@@ -2248,7 +2302,7 @@ The value (2,0) is `\pgfplotsretval'.
 \end{command}
 
 \begin{command}{\pgfplotstablegetrowsof\marg{file name or \textbackslash loadedtable}}
-	Defines |\pgfmathresult| to be the number of rows in a table. The argument may be either a file name or an already loaded table (the \meta{\textbackslash macro} of |\pgfplotstableread|).
+	Defines |\pgfplotsretval| to be the number of rows in a table\footnote{It will also assign \texttt{\textbackslash pgfmathresult} to the same value.}. The argument may be either a file name or an already loaded table (the \meta{\textbackslash macro} of |\pgfplotstableread|).
 \end{command}
 
 
@@ -2359,7 +2413,7 @@ All collected = \allcollected.
 % with \foreach)
 \end{codeexample}
 
-	\paragraph{Remark: } If \meta{list} doesn't have the form \meta{$x_0$}|,|\meta{$x_1$}|,...,|\meta{$x_n$},  the implementation of |\pgfplotsforeachungrouped| invokes |\foreach| and provides the results without \TeX\ groups. If the special form of \meta{list} is given, it does also employ the math parser for its task, allowing larger number ranges than |\foreach|.
+	\paragraph{Remark: } The special syntax \meta{list}=\meta{$x_0$}|,|\meta{$x_1$}|,...,|\meta{$x_n$}, i.e.\ with two leading elements, followed by dots and a final element, invokes the math parser for the loop. Thus, it allows larger number ranges than any other syntax if |/pgf/fpu| is active.  In all other cases, |\pgfplotsforeachungrouped| invokes |\foreach| and provides the results without \TeX\ groups.
 	
 \end{command}
 

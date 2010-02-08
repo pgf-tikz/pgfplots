@@ -51,6 +51,7 @@ $header =
 % http://www.ctan.org/tex-archive/graphics/pgf/contrib/pgfplots/doc/latex/plotdata/
 
 \usepackage{pgfplots}
+\pgfplotsset{compat=newest}
 
 \pagestyle{empty}
 ';
@@ -116,7 +117,7 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 	$autoheaders = '';
 	$largegraphics = 0;
 
-	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[[^\n]*\])\n(.*?)[\n \t]*\\end{codeexample}/gs );
+	@matches = ( $content =~ m/(% [^\n]*\n)*([^\n]*)\\begin{codeexample}(\[[^\n]*\])\n(.*?)[\n \t]*\\end{codeexample}/gs );
 	#	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[\])\n(\\begin{tikzpicture}.*?\\end{tikzpicture})/gs );
 
 	if( $ARGV[$j] =~ m/pgfplotstable.tex/ ) {
@@ -130,13 +131,18 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 ';
 	}
 
-	for( $q=0; $q<=$#matches/3; $q++ ) {
-		$prefix = $matches[3*$q];
+	for( $q=0; $q<=$#matches/4; $q++ ) {
+		$prefix = $matches[4*$q];
 		$prefix = "" if not defined($prefix);
 		next if ($prefix =~ m/NO GALLERY/);
 		$prefix =~ s/% //;
-		$codeexamplearg= $matches[3*$q+1];
-		$match = $matches[3*$q+2];
+
+		$possiblecomment = $matches[4*$q+1];
+		$possiblecomment = "" if not defined($possiblecomment);
+		next if ($possiblecomment =~ m/%/);
+
+		$codeexamplearg= $matches[4*$q+2];
+		$match = $matches[4*$q+3];
 
 		# Make sure we have only "relevant" pictures:
 		next if not ($match =~ m/tikzpicture.*(axis|semilogxaxis|semilogyaxis|loglogaxis).*\\addplot|pgfplotstabletypeset/s);
@@ -153,9 +159,9 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 
 		} else {
 			$outfile = $OUTPREFIX."_".($i++).".tex";
-	#print "$i PREFIX: ".$prefix."\n";
-	#print "$i : ".$match."\n\n";
-	#next;
+	# print "$i PREFIX: ".$prefix."\n";
+	# print "$i : ".$match."\n\n";
+	# next;
 			open(OUTFILE,">",$outfile) or die( "could not open $outfile for writing");
 			print OUTFILE $header;
 			print OUTFILE $autoheaders;
