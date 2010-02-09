@@ -195,20 +195,49 @@ Technical note: every opened file will be protocolled into your log file.
 \end{command}
 
 
-\begin{command}{\pgfplotstableread\marg{file name}\marg{\textbackslash macro}}
-	Loads the table \marg{file name} into a \TeX-macro \meta{\textbackslash macro}. This macro can then be used several times.
+\begin{commandlist}{%
+	\pgfplotstableread\marg{file name}\marg{\textbackslash macro},
+	\pgfplotstableread\marg{inline table}\marg{\textbackslash macro}}
+	Loads a table into the \TeX-macro \meta{\textbackslash macro}. This macro will store the table as internal structure and can be used several times.
 \begin{codeexample}[]
 \pgfplotstableread{pgfplotstable.example1.dat}\loadedtable
 \pgfplotstabletypeset[columns={dof,error1}]\loadedtable
 \hspace{2cm}
 \pgfplotstabletypeset[columns={dof,error2}]\loadedtable
 \end{codeexample}
-	There are variants of this command which do not really built up a struct but which report every line to a ``listener''. There is also a struct which avoids protection by \TeX\ scopes. In case you need such things, consider reading the source code comments.
+	The first argument can be either a \meta{file name} as in the example here. It is also possible to provide the table data directly:
+\begin{codeexample}[code only]
+% Alternative: inline table data:
+\pgfplotstableread{
+level   dof     error1  error2  info    grad(log(dof),log(error2))      quot(error1)    
+1       4       2.50000000e-01  7.57858283e-01  48      0                   0   
+2       16      6.25000000e-02  5.00000000e-01  25      -3.00000000e-01 4       
+3       64      1.56250000e-02  2.87174589e-01  41      -3.99999999e-01 4       
+4       256     3.90625000e-03  1.43587294e-01  8       -5.00000003e-01 4       
+5       1024    9.76562500e-04  4.41941738e-02  22      -8.49999999e-01 4       
+6       4096    2.44140625e-04  1.69802322e-02  46      -6.90000001e-01 4       
+7       16384   6.10351562e-05  8.20091159e-03  40      -5.24999999e-01 4       
+8       65536   1.52587891e-05  3.90625000e-03  48      -5.35000000e-01 3.99999999e+00  
+9       262144  3.81469727e-06  1.95312500e-03  33      -5.00000000e-01 4.00000001e+00  
+10      1048576 9.53674316e-07  9.76562500e-04  2       -5.00000000e-01 4.00000001e+00  
+}\loadedtable
+% can be used as above:
+\pgfplotstabletypeset[columns={dof,error1}]\loadedtable
+\hspace{2cm}
+\pgfplotstabletypeset[columns={dof,error2}]\loadedtable
+\end{codeexample}
+	It is checked automatically whether the first argument contains inline data or a file name.
 
-Technical note: every opened file will be protocolled into your log file.
+	The check whether the first argument is inline data or a file name works as follows: if |format=auto|, the first argument is considered to be a file name unless it contains the |row sep| character (see |row sep|). If |format=inline|, it is always considered to be inline data. If |format=file|, it is a file name.
 
-	Note: avoid using `|\table|' as name, it conflicts with |\begin{table}| of \LaTeX.
-\end{command}
+	\paragraph{Special cases and more details:}
+	\begin{itemize}
+		\item The inline data format is ``fragile''. If you experience problems, terminate your tables with `|\\|' combined with |row sep=crcr| (the docs for |row sep| contain alternative ways and more explanation).
+		\item There are variants of this command which do not really built up a struct but which report every line to a ``listener''. There is also a struct which avoids protection by \TeX\ scopes. In case you need such things, consider reading the source code comments.
+		\item Technical note: every opened file will be protocolled into your log file.
+		\item Note: avoid using `|\table|' as name, it conflicts with |\begin{table}| of \LaTeX.
+	\end{itemize}
+\end{commandlist}
 
 \begin{key}{/pgfplots/table/col sep=\mchoice{space,tab,comma,semicolon,colon,braces} (initially space)}
 	Specifies the column separation character for table reading. The initial choice, |space| means ``at least one white space''. White spaces are tab stops or spaces (newlines always delimit lines).
@@ -258,6 +287,32 @@ level,dof,error1,error2,info,{grad(log(dof),log(error2))},quot(error1)
 	Finally, the choice \declaretext{has colnames} is the opposite of |false|: it assumes that the first non--comment line \emph{contains} column names. In other words: even if only numbers are contained in the first line, they are considered to be column \emph{names}.
 \end{key}
 
+\begin{pgfplotskey}{table/format=\mchoice{auto,inline,file} (initially auto)}
+	Configures the format expected as first argument for |\pgfplotstableread|\marg{input}.
+	
+	The choice \declaretext{inline} expects the table data directly as argument where rows are separated by |row sep|. Inline data is ``fragile'', because \TeX\ may consume end--of--line characters (or |col sep| characters). See |row sep| for details.
+
+	The choice \declaretext{file} expects a file name.
+
+	The choice \declaretext{auto} searches for a |row sep| in the first argument supplied to |\pgfplotstableread|. If a |row sep| has been found, it is inline data, otherwise it is a file name.
+\end{pgfplotskey}
+\begin{pgfplotskey}{table/row sep=\mchoice{newline,crcr} (initially newline)}
+	Configures the character to separate rows of the inline table data format (see |format=inline|).
+
+	The choice \declaretext{newline} uses the end of line as it appears in the \TeX\ file.
+
+	The choice \declaretext{crcr} uses `|\\|' to indicate the end of a row.
+
+	Note that \declaretext{newline} is ``fragile'': you can't provide such data inside of \TeX\ macros. Whenever you experience problems, proceed as follows:
+	\begin{enumerate}
+		\item First possibility: call |\pgfplotstableread|\marg{data}|\yourmacro| \emph{outside} of any macro declaration.
+		\item Use |row sep=crcr|.
+	\end{enumerate}
+	The same applies if you experience problems with inline data and special |col sep| choices (like |col sep=tab|).
+
+	The reasons for such problems is that \TeX\ scans the macro bodies and replaces newlines by white spaces. It does other substitutions of this sort as well, and these substitutions can't be undone (maybe not even found).
+\end{pgfplotskey}
+
 \begin{key}{/pgfplots/table/ignore chars=\marg{comma-separated-list} (initially empty)}
 	Allows to define an ``ignore list'' for single characters. Any characters found in an input file which occur also in \meta{comma-separated-list} will silently by thrown away. The processing is exactly the same as if you did not write them at all in the first place.
 
@@ -275,7 +330,7 @@ level,dof,error1,error2,info,{grad(log(dof),log(error2))},quot(error1)
 
 	Besides normal characters, it is also supported to eliminate any binary code from your input files. For example, suppose you have binary characters of code |0x01| (hex notation) in your files. Then, use
 \begin{codeexample}[code only]
-\pgfplotsset{ignore chars={\^^01}}
+\pgfplotstableset{ignore chars={\^^01}}
 \end{codeexample}
 	\noindent to eliminate them silently. The |^^|\meta{digit}\meta{digit} notation is a \TeX\ feature to provide characters in hexadecimal encoding where \meta{digit} is one of |0123456789abcdef|. I don't know if the backslash in |\^^01| is always necessary, try it out. There are more ways to provide special characters, see~\cite{texbook}.
 

@@ -224,6 +224,15 @@
 	/pgfplots/table/col sep/braces/.code	= {\def\pgfplotstableread@COLSEP@CASE{4}},
 	/pgfplots/table/col sep/tab/.code	= {\def\pgfplotstableread@COLSEP@CASE{5}},
 	/pgfplots/table/col sep=space,
+	/pgfplots/table/format/.is choice,
+	/pgfplots/table/format/auto/.code		= {\def\pgfplotstableread@FORMAT@CASE{0}},
+	/pgfplots/table/format/inline/.code		= {\def\pgfplotstableread@FORMAT@CASE{1}},
+	/pgfplots/table/format/file/.code		= {\def\pgfplotstableread@FORMAT@CASE{2}},
+	/pgfplots/table/format=auto,
+	/pgfplots/table/row sep/.is choice,
+	/pgfplots/table/row sep/newline/.code	= {\def\pgfplotstableread@ROWSEP@CASE{0}},
+	/pgfplots/table/row sep/crcr/.code		= {\def\pgfplotstableread@ROWSEP@CASE{1}},
+	/pgfplots/table/row sep=newline,
 	% columns={name1,name2}
 	% or
 	% columns={[index]2,name2,name3,[index]5}
@@ -1036,6 +1045,11 @@
 %
 % \pgfplotstableread[<options>]{<file>}{<\macro>}
 % \pgfplotstableread[<options>]{<file>} to listener{<\macro>}
+% \pgfplotstableread* ...
+%
+% The '*' does not protect its local variables with TeX groups,
+% everything is added to the current scope (useful to the 'to
+% listener' thing.
 %
 % The 'to listener' variant does NOT assemble a table data structure.
 % Instead, it processes the input table row-wise and invokes <\macro>
@@ -1101,7 +1115,7 @@
 %
 % #1 may be either a loaded table structure (a macro name) or a table
 % file name. In the latter case, the file will be loaded temporarily.
-\def\pgfplotstablegetrowsof#1{%
+\long\def\pgfplotstablegetrowsof#1{%
 	\pgfplotstable@isloadedtable{#1}{%
 		% ah - it is an already loaded table!
 		\begingroup
@@ -1285,7 +1299,7 @@
 %
 % #1 a table macro.
 % #2 either a file name or a table macro.
-\def\pgfplotstablevertcat#1#2{%
+\long\def\pgfplotstablevertcat#1#2{%
 	\pgfplotstable@isloadedtable{#2}{%
 		\pgfplotstable@isloadedtable{#1}{%
 			% for each column in '#1':
@@ -1329,7 +1343,7 @@
 	}%
 }
 \def\pgfplotstabletranspose@star*{\pgfutil@ifnextchar[{\pgfplotstabletranspose@opt}{\pgfplotstabletranspose@opt[]}}%
-\def\pgfplotstabletranspose@opt[#1]#2#3{%
+\long\def\pgfplotstabletranspose@opt[#1]#2#3{%
 	\pgfplotstable@isloadedtable{#3}{%
 		\pgfplotstabletranspose@[#1]{#2}{#3}%
 	}{%
@@ -1588,7 +1602,7 @@
 % #2: either a loaded table or a table macro.
 % #3: a macro name which will be filled with the column, in the format
 % accepted of \pgfplotslist...
-\def\pgfplotstablegetcolumn#1\of#2\to#3{%
+\long\def\pgfplotstablegetcolumn#1\of#2\to#3{%
 	\begingroup
 	\pgfplotstable@isloadedtable{#2}{%
 		\pgfplotstablegetcolumnfromstruct{#1}\of{#2}\to{#3}%
@@ -1718,7 +1732,7 @@
 % Like \pgfplotstabletypeset, but the first argument is a file name.
 % This is the same now; it will be recognised automatically.
 \let\pgfplotstabletypesetfile=\pgfplotstabletypeset
-\def\pgfplotstabletypesetfile@opt@[#1]#2{%
+\long\def\pgfplotstabletypesetfile@opt@[#1]#2{%
 	\begingroup
 	\ifpgfplots@table@options@areset
 	\else
@@ -1774,12 +1788,62 @@
 \newif\ifpgfplotstableread@foundcolnames
 \newif\ifpgfplotstableread@skipline
 
+\def\pgfplotstablereadpreparecatcodes{%
+	\ifcase\pgfplotstableread@FORMAT@CASE\relax
+		% format=auto
+		\pgfplotstablereadpreparecatcodes@
+	\or
+		% format=inline
+		\pgfplotstablereadpreparecatcodes@
+	\fi
+}
+\def\pgfplotstablereadpreparecatcodes@{%
+	\if0\pgfplotstableread@ROWSEP@CASE\relax
+		% row sep = newline
+		\catcode`\^^M=12
+	\fi
+	\ifcase\pgfplotstableread@COLSEP@CASE\relax
+		% col sep=space:
+		\catcode`\ =10
+	\or
+		% col sep=comma:
+	\or
+		% col sep=semicolon:
+		\catcode`\;=12
+	\or
+		% col sep=colon:
+		\catcode`\:=12
+	\or
+		% col sep=brace:
+	\or
+		% col sep=tab:
+		\catcode`\^^I=12
+	\fi
+}%
+
 % Accept one of
 % \pgfplotstableread[#1]{<file>}{<\macro>}
 % \pgfplotstableread[#1]{<file>} to listener{<\macro>}
 % or
 % \pgfplotstableread[#1]{<file>} to {<\macro>} (DEPRECATED)
-\def\pgfplotstableread@impl[#1]#2{%
+\long\def\pgfplotstableread@impl[#1]{%
+	\ifpgfplots@tableread@use@begingroup
+		\begingroup
+		\def\endgroup@@pgfplotstableread{\endgroup}%
+	\else
+		\let\endgroup@@pgfplotstableread=\relax%
+	\fi
+	% set options here, although we can't evaluate 'every table' yet
+	% (the file name is not yet known).
+	% But #1 may contain input format specifiers which are important
+	% for \catcodes, BEFORE we have read the second argument:
+	\pgfplotstableset{#1}%
+	%
+	\pgfplotstablereadpreparecatcodes
+	%
+	\pgfplotstableread@impl@collectfirstarg{#1}%
+}%
+\long\def\pgfplotstableread@impl@collectfirstarg#1#2{%
 	\pgfutil@ifnextchar t{%
 		\pgfplotstableread@impl@@{#1}{#2}%
 	}{%
@@ -1787,63 +1851,122 @@
 	}%
 }%
 
+
 % I don't know why; but I started with 
 % >> \pgfplotstableread[]{file} to \macro
 % That ' to ' is really ugly. This here is for backwards
 % compatibility:
-\def\pgfplotstableread@impl@@#1#2to {%
+\long\def\pgfplotstableread@impl@@#1#2to {%
 	\pgfutil@ifnextchar l{%
 		\pgfplotstableread@impl@@listener{#1}{#2}%
 	}{%
 		\pgfplotstableread@impl@{#1}{#2}%
 	}%
 }%
-\def\pgfplotstableread@impl@@listener#1#2listener#3{%
+\long\def\pgfplotstableread@impl@@listener#1#2listener#3{%
 	\pgfplots@tableread@to@listenertrue
 	\pgfplotstableread@impl@{#1}{#2}{#3}%
 	\pgfplots@tableread@to@listenerfalse
 }%
 
-\def\pgfplotstableread@impl@#1#2#3{%
-	\ifpgfplots@tableread@use@begingroup
-	\begingroup
-	\fi
-%\pgfplots@message{ATTEMPTING TO READ #2}%
-	\openin\r@pgfplots@reada=#2.tex
-	\ifeof\r@pgfplots@reada
-		\openin\r@pgfplots@reada=#2\relax
+\newif\ifpgfplotstableread@inline
+\long\def\pgfplotstableread@checkinlineformat@CRCR#1\\#2\pgfplotstable@EOI{%
+	\def\pgfplotstable@loc@TMPa{#2}%
+	\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\pgfplotstableread@inlinefalse
 	\else
-		\pgfplots@warning{%
-			You requested to open table '#2', but there is also a '#2.tex'. 
-			TeX will automatically append the suffix '.tex', so I will now open '#2.tex'.
-			Please make sure you don't accidentally load TeX files - this may produce unrecoverable errors.}%
-		\closein\r@pgfplots@reada
-		\openin\r@pgfplots@reada=#2\relax
+		\pgfplotstableread@inlinetrue
+		\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@CRCR
 	\fi
-	\pgfplots@logfileopen{#2}%
+}%
+\long\def\pgfplotstableread@loop@next@CRCR#1\\{%
+	\long\def\pgfplotstable@LINE{#1}%
+	\pgfplotstableread@loop@processnextline
+	\pgfplotstableread@loop@over@lines
+}%
+\begingroup
+\catcode`\^^M=12\relax%
+\long\gdef\pgfplotstableread@checkinlineformat@NL@#1^^M#2\pgfplotstable@EOI{%
+	\def\pgfplotstable@loc@TMPa{#2}%
+	\ifx\pgfplotstable@loc@TMPa\pgfutil@empty%
+		\pgfplotstableread@inlinefalse%
+	\else%
+		\pgfplotstableread@inlinetrue%
+		\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@NL%
+	\fi%
+}%
+\long\gdef\pgfplotstableread@checkinlineformat@NL#1{%
+	\pgfplotstableread@checkinlineformat@NL@ #1^^M\pgfplotstable@EOI%
+}%
+\long\gdef\pgfplotstableread@loop@next@NL#1^^M{%
+	\long\def\pgfplotstable@LINE{#1}%
+	\pgfplotstableread@loop@processnextline%
+	\pgfplotstableread@loop@over@lines%
+}%
+\endgroup
+
+\long\def\pgfplotstableread@impl@#1#2#3{%
+	\ifcase\pgfplotstableread@FORMAT@CASE\relax
+		% format=auto
+		\ifcase\pgfplotstableread@ROWSEP@CASE\relax
+			% row sep=newline
+			\pgfplotstableread@checkinlineformat@NL{#2}%
+		\or
+			% row sep=crcr
+			\pgfplotstableread@checkinlineformat@CRCR #2\\\pgfplotstable@EOI
+		\fi
+	\or
+		% format=inline
+		\pgfplotstableread@inlinetrue
+		\ifcase\pgfplotstableread@ROWSEP@CASE\relax
+			% row sep=newline
+			\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@NL
+		\or
+			% row sep=crcr
+			\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@CRCR
+		\fi
+	\or
+		\pgfplotstableread@inlinefalse
+	\fi
 	%
+	\ifpgfplotstableread@inline
+		\def\pgfplotstableread@impl@fCLOSE{}%
+		\let\pgfplotstableread@loop@over@lines=\pgfplotstableread@loop@over@lines@frominline%
+		\long\def\pgfplotstableread@start@loop{%
+			\pgfplotstableread@loop@over@lines #2\pgfplotstable@EOI
+		}%
+		\def\pgfplotstableread@ready{1}%
+		\def\pgfplotstableread@filename{<inline_table>}%
+	\else
+		\def\pgfplotstableread@ready{1}%
+		\def\pgfplotstableread@filename{#2}%
+		\pgfplotstableread@openfile
+		\def\pgfplotstableread@impl@fCLOSE{%
+			\closein\r@pgfplots@reada
+		}%
+		\let\pgfplotstableread@loop@over@lines=\pgfplotstableread@loop@over@lines@fromfile%
+		\def\pgfplotstableread@start@loop{\pgfplotstableread@loop@over@lines}%
+	\fi
 	\edef\pgfplotstableread@oldendlinechar{\the\endlinechar}%
-	\endlinechar=-1 % do not append a white space after each line
+	\endlinechar=-1 % do not append a white space after each line for file input
 	\pgfplotstableinstallignorechars
+%\pgfplots@message{ATTEMPTING TO READ \pgfplotstableread@filename}%
 	%
-	\pgfplotstableread@impl@prepare{#1}{#2}{#3}%
-	\ifeof\r@pgfplots@reada
-		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{#2}{Could not read table file '#2'.}\pgfeov%
-		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
-	\else
+	\def\pgfplots@loc@TMPa{\pgfplotstableread@impl@prepare{#1}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplotstableread@filename}{#3}%
+	%
+	\if1\pgfplotstableread@ready
+		\pgfplotstableread@start@loop
 		%
-		\pgfplotstableread@loop@over@lines
-		%
-		\closein\r@pgfplots@reada
+		\pgfplotstableread@impl@fCLOSE%
 		%
 		\pgfplotstableread@finish
+		%
 	\fi
 	\endlinechar=\pgfplotstableread@oldendlinechar
 	\pgfplotsscanlinelengthcleanup
-	\pgfplotstable@copy@to@globalbuffers@simple{#2}%
-	\ifpgfplots@tableread@use@begingroup
-	\endgroup
-	\fi
+	\expandafter\pgfplotstable@copy@to@globalbuffers@simple\expandafter{\pgfplotstableread@filename}%
+	\endgroup@@pgfplotstableread
 	\ifpgfplots@tableread@to@listener
 		% there are no data structures in this case.
 		\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
@@ -1851,6 +1974,28 @@
 		% Now, we can access the global variables!
 		% copy them to #3.
 		\pgfplotstable@copy@globalbuffers@to#3%
+	\fi
+}
+
+% Opens \pgfplotstableread@filename.
+\def\pgfplotstableread@openfile{%
+	\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
+	\ifeof\r@pgfplots@reada
+		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+	\else
+		\pgfplots@warning{%
+			You requested to open table '\pgfplotstableread@filename', but there is also a '\pgfplotstableread@filename.tex'. 
+			TeX will automatically append the suffix '.tex', so I will now open '\pgfplotstableread@filename.tex'.
+			Please make sure you don't accidentally load TeX files - this may produce unrecoverable errors.}%
+		\closein\r@pgfplots@reada
+		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+	\fi
+	\pgfplots@logfileopen{\pgfplotstableread@filename}%
+	%
+	\ifeof\r@pgfplots@reada
+		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename'.}\pgfeov%
+		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
+		\def\pgfplotstableread@ready{0}%
 	\fi
 }
 
@@ -1872,14 +2017,13 @@
 }%		
 
 % #1: any options to set (respect \ifpgfplots@table@options@areset )
-% #2: the file name
+% #2: the file name (if any)
 % #3: the output macro (or listener)
 \def\pgfplotstableread@impl@prepare#1#2#3{%
 	\ifpgfplots@table@options@areset
 	\else
 		\pgfplotstableset{/pgfplots/table/every table={#2},#1}%
 	\fi
-	\def\pgfplotstableread@filename{#2}%
 	%
 	% local counter definitions:
 	\ifpgfplots@tableread@use@begingroup
@@ -2008,7 +2152,7 @@
 	\fi
 }
 
-\def\pgfplotstableread@loop@over@lines{%
+\def\pgfplotstableread@loop@over@lines@fromfile{%
 	\ifeof\r@pgfplots@reada
 %\pgfplots@message{EOF}%
 	\else
@@ -2019,7 +2163,15 @@
 		\fi
 		\expandafter\pgfplotstableread@loop@over@lines
 	\fi
-}
+}%
+\def\pgfplotstableread@loop@over@lines@frominline{%
+	\pgfutil@ifnextchar\pgfplotstable@EOI{%
+		\pgfutil@gobble
+	}{%	
+		\pgfplotstableread@loop@next
+	}%
+}%
+
 % PRECONDITION: 
 % 	\pgfplotstable@LINE contains the current input line.
 \def\pgfplotstableread@loop@processnextline{%
