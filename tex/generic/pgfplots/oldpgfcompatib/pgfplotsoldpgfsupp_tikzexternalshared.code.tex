@@ -14,11 +14,11 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Di 29. Dez 22:11:16 CET 2009 %%%
+%%% Date of this copy: Di 9. Feb 23:24:04 CET 2010 %%%
 
 
 
-% Copyright 2008 by Christian Feuersaenger
+% Copyright 2008-2010 by Christian Feuersaenger
 %
 % This file may be distributed and/or modified
 %
@@ -96,8 +96,19 @@
 %
 \def\tikzifexternaljobnamematches#1#2#3{%
 	\edef\pgf@tempa{\expandafter\string\csname#1\endcsname}%
-	\edef\pgf@tempb{\expandafter\string\csname\jobname\endcsname}%
+	\edef\pgf@tempb{\expandafter\string\csname\pgfactualjobname\endcsname}%
 	\ifx\pgf@tempa\pgf@tempb #2\else#3 \fi%
+}%
+
+
+\pgfutil@ifundefined{pdfshellescape}{%
+	\def\tikzexternalcheckshellescape{}%
+}{%
+	\ifnum\pdfshellescape=1
+		\def\tikzexternalcheckshellescape{\pgfkeysvalueof{/tikz/external/shell escape}\space}%
+	\else
+		\def\tikzexternalcheckshellescape{}%
+	\fi
 }%
 
 \pgfqkeys{/tikz/external}{
@@ -114,7 +125,7 @@
 	mode/convert with system call/.code={\def\tikzexternal@opmode{4}\tikzexternal@genfigurelistfalse},
 	mode/list and make/.code	= {\def\tikzexternal@opmode{5}\tikzexternal@genfigurelisttrue},
 	mode=convert with system call,
-	system call/.initial={pdflatex -shell-escape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource"},
+	system call/.initial={pdflatex \tikzexternalcheckshellescape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource"},
 %	system call/.initial={pdflatex -interaction=batchmode -jobname '\image' '\texsource'; pdftops -eps \image.pdf},
 	force remake/.is if=tikzexternal@force@remake,
 	force remake/.default=true,
@@ -125,6 +136,7 @@
 	verbose IO/.is if=tikzexternal@verboseio,
 	verbose IO/.default=true,
 	verbose IO=true,
+	shell escape/.initial=-shell-escape,
 	verbose optimize/.is if=tikzexternal@verbose@optimize,
 	optimize/.is choice,
 	optimize/true/.code={%
@@ -222,22 +234,36 @@
 		\tikzexternalize@opt[]%
 	}%
 }%
-\def\tikzexternalize@hasbeencalled{0}%
 \def\tikzexternalize@opt[#1]#2{%
-	\pgfqkeys{/tikz/external}{#1}%
-	\def\tikzexternal@realjob{#2}%
-	\pgfrealjobname{#2}%
-	\def\tikzexternalize@hasbeencalled{1}%
-	\tikzexternalenable
-	\def\tikzexternal@determineimgextension##1:##2\relax{\gdef\tikzexternal@imgext{##1}}%
-	\xdef\pgf@tempa{\pgfsys@imagesuffixlist}%
-	\expandafter\tikzexternal@determineimgextension\pgf@tempa\relax
-	\pgfutil@ifundefined{includegraphics}{%
-		\let\tikzexternal@orig@includegraphics=\relax
-	}{%
-		\let\tikzexternal@orig@includegraphics=\includegraphics
-	}%
+	\if1\tikzexternalize@hasbeencalled
+	\else
+		\pgfqkeys{/tikz/external}{#1}%
+		\def\tikzexternal@realjob{#2}%
+		\pgfrealjobname{#2}%
+		\def\tikzexternalize@hasbeencalled{1}%
+		\tikzexternalenable
+		\def\tikzexternal@determineimgextension##1:##2\relax{\gdef\tikzexternalimgextension{##1}}%
+		\xdef\pgf@tempa{\pgfsys@imagesuffixlist}%
+		\expandafter\tikzexternal@determineimgextension\pgf@tempa\relax
+		\pgfutil@ifundefined{includegraphics}{%
+			\let\tikzexternal@orig@includegraphics=\relax
+		}{%
+			\let\tikzexternal@orig@includegraphics=\includegraphics
+		}%
+		\let\tikzexternalfiledependsonfile=\tikzexternalfiledependsonfile@INACTIVE
+		\let\tikzpicturedependsonfile=\tikzpicturedependsonfile@INACTIVE
+	\fi
 }
+\def\tikzexternalize@hasbeencalled{0}%
+
+% Expands to the default image extension (it is set by
+% \tikzexternalize).
+%
+% This image extension may not resemble the correct one; you may need
+% to overwrite this macro *after* \tikzexternalize in this case.
+%
+% The default setting uses the first registered image extension.
+\def\tikzexternalimgextension{}%
 
 % can be used to (temporarily) disable the externalization.
 \def\tikzexternaldisable{%
@@ -339,6 +365,7 @@
 \let\tikzexternal@origtikz=\tikz
 \let\tikzexternal@origpicture=\tikzpicture
 \let\tikzexternal@origendpicture=\endtikzpicture
+\let\tikzexternal@curfilename=\relax
 
 % Replacement for '\tikzpicture'.
 %
@@ -348,6 +375,7 @@
 %   externalize the picture selected by 'jobname' (and only this picture).
 \def\tikzexternal@tikzpicture@replacement{%
 	\leavevmode
+	\global\tikzexternal@file@isuptodatetrue% may be set to false during checks.
 	\tikzexternal@getnextfilename\tikzexternal@curfilename
 	\ifx\tikzexternal@curfilename\pgfutil@empty
 		\ifpgf@external@grabshipout
@@ -455,6 +483,7 @@
 \def\tikzexternalgetnextfilename#1{%
 	\begingroup
 	\let\tikzexternal@getnextfilename@advancecount\relax% NOP
+	\def\tikzexternal@protocol@to@file##1{}% NOP
 	\tikzexternal@getnextfilename#1%
 	\pgfmath@smuggleone#1%
 	\endgroup
@@ -506,36 +535,24 @@
 	\global\let\tikzexternal@nextfile=\pgfutil@empty
 	\global\tikzexternalexportnexttrue
 	%
-	% Handle verbose output:
+	\tikzexternal@protocol@to@file#1%
+}%
+
+% #1: the image file name which should be protocolled. (can be a
+% macro)
+\def\tikzexternal@protocol@to@file#1{%
 	\ifpgf@external@grabshipout%
 	\else
 		\iftikzexternal@genfigurelist
-			\ifx#1\pgfutil@empty
+			\edef\tikzexternal@temp{#1}%
+			\ifx\tikzexternal@temp\pgfutil@empty
 			\else
 				\pgfutil@ifundefined{tikzexternal@listmode@openedfile}{%
 					\message{Opening '\tikzexternal@realjob.figlist' for writing.}%
 					\immediate\openout\tikzexternal@outfile=\tikzexternal@realjob.figlist\relax
 					\gdef\tikzexternal@listmode@openedfile{1}%
 					\if\tikzexternal@opmode5% mode='list and make'
-						\iftikzexternal@verboseio
-							\immediate\write16{Opening '\tikzexternal@realjob.makefile' for writing.}%
-						\fi
-						\begingroup
-							% this makes \tikzexternal@outmakefile global:
-							\globaldefs=1
-							% this gets round '\outer\newwrite' in plain TeX:
-							\csname newwrite\endcsname\tikzexternal@outmakefile
-						\endgroup
-						\immediate\openout\tikzexternal@outmakefile=\tikzexternal@realjob.makefile\relax
-						\immediate\write\tikzexternal@outmakefile{ALL_FIGURE_NAMES=\tikzexternal@DOLLARchar(shell cat \tikzexternal@realjob.figlist)}%
-						\immediate\write\tikzexternal@outmakefile{ALL_FIGURES=\tikzexternal@DOLLARchar(ALL_FIGURE_NAMES:\tikzexternal@PERCENTchar=\tikzexternal@PERCENTchar\tikzexternal@imgext)}%
-						\immediate\write\tikzexternal@outmakefile{}%
-						\immediate\write\tikzexternal@outmakefile{allimages: \tikzexternal@DOLLARchar(ALL_FIGURES)}%
-						\immediate\write\tikzexternal@outmakefile{\tikzexternal@TABchar @echo All images exist now. Use make -B to re-generate them.}%
-						\immediate\write\tikzexternal@outmakefile{}%
-						\pgfutil@ifundefined{AtEndDocument}{}{%
-							\AtEndDocument{\immediate\write16{===== mode=`list and make': Use 'make -f \tikzexternal@realjob.makefile' to generate all images. Then, re-run (pdf)latex \tikzexternal@realjob. =====}}%
-						}%
+						\tikzexternal@list@and@make@prepare
 					\fi
 				}{}%
 				\iftikzexternal@verboseio
@@ -543,18 +560,149 @@
 				\fi
 				\immediate\write\tikzexternal@outfile{#1}%
 				\if\tikzexternal@opmode5% mode='list and make'
-					\tikzexternal@assemble@systemcall{\pgf@tempa}%
-					\iftikzexternal@verboseio
-						\immediate\write16{Writing '#1' to '\tikzexternal@realjob.makefile'.}%
-					\fi
-					\immediate\write\tikzexternal@outmakefile{#1\tikzexternal@imgext:}%
-					\immediate\write\tikzexternal@outmakefile{\tikzexternal@TABchar\pgf@tempa}%
-					\immediate\write\tikzexternal@outmakefile{}%
+					\tikzexternal@list@and@make@gentarget{#1}%
 				\fi
 			\fi
 		\fi
 	\fi
 }%
+
+\def\tikzexternal@list@and@make@gentarget#1{%
+	\tikzexternal@assemble@systemcall{#1}{\pgf@tempa}%
+	\iftikzexternal@verboseio
+		\immediate\write16{Writing '#1' to '\tikzexternal@realjob.makefile'.}%
+	\fi
+	\global\tikzexternal@file@isuptodatetrue% only check for force remake:
+	\tikzexternal@checkforceremake%
+	\immediate\write\tikzexternal@outmakefile{#1\tikzexternalimgextension: \iftikzexternal@file@isuptodate\else FORCEREMAKE\fi}%
+	\immediate\write\tikzexternal@outmakefile{\tikzexternal@TABchar\pgf@tempa}%
+	\immediate\write\tikzexternal@outmakefile{}%
+}
+
+\def\tikzexternal@list@and@make@prepare{%
+	\iftikzexternal@verboseio
+		\immediate\write16{Opening '\tikzexternal@realjob.makefile' for writing.}%
+	\fi
+	\begingroup
+		% this makes \tikzexternal@outmakefile global:
+		\globaldefs=1
+		% this gets round '\outer\newwrite' in plain TeX:
+		\csname newwrite\endcsname\tikzexternal@outmakefile
+	\endgroup
+	\immediate\openout\tikzexternal@outmakefile=\tikzexternal@realjob.makefile\relax
+	\immediate\write\tikzexternal@outmakefile{ALL_FIGURE_NAMES=\tikzexternal@DOLLARchar(shell cat \tikzexternal@realjob.figlist)}%
+	\immediate\write\tikzexternal@outmakefile{ALL_FIGURES=\tikzexternal@DOLLARchar(ALL_FIGURE_NAMES:\tikzexternal@PERCENTchar=\tikzexternal@PERCENTchar\tikzexternalimgextension)}%
+	\immediate\write\tikzexternal@outmakefile{}%
+	\immediate\write\tikzexternal@outmakefile{allimages: \tikzexternal@DOLLARchar(ALL_FIGURES)}%
+	\immediate\write\tikzexternal@outmakefile{\tikzexternal@TABchar @echo All images exist now. Use make -B to re-generate them.}%
+	\immediate\write\tikzexternal@outmakefile{}%
+	\immediate\write\tikzexternal@outmakefile{FORCEREMAKE:}%
+	\immediate\write\tikzexternal@outmakefile{}%
+	%
+	% support for .dep files and auto-dependencies:
+	\immediate\write\tikzexternal@outmakefile{include $(ALL_FIGURE_NAMES:\tikzexternal@PERCENTchar=\tikzexternal@PERCENTchar.\tikzexternaldepext)}%
+	\immediate\write\tikzexternal@outmakefile{}%
+	\tikzexternalmakefiledefaultdeprule
+	\immediate\write\tikzexternal@outmakefile{}%
+	\tikzexternal@outmakefile@pendingcommands
+	\pgfutil@ifundefined{AtEndDocument}{}{%
+		\AtEndDocument{\immediate\write16{===== mode=`list and make': Use 'make -f \tikzexternal@realjob.makefile' to generate all images. Then, re-run (pdf)latex \tikzexternal@realjob. =====}}%
+	}%
+}%
+\def\tikzexternaldepext{dep}
+
+\def\tikzexternalmakefiledefaultdeprule{%
+	\immediate\write\tikzexternal@outmakefile{\tikzexternal@PERCENTchar.\tikzexternaldepext:}%
+	\immediate\write\tikzexternal@outmakefile{\tikzexternal@TABchar touch $@ \tikzexternal@HASHchar\space will be filled later.}%
+}%
+
+% Invokes '#1' if a makefile is to be written and '#2' if not.
+\def\tikzexternalifwritesmakefile#1#2{%
+	\if5\tikzexternal@opmode #1\else #2\fi
+}%
+\def\tikzexternal@outmakefile@pendingcommands{}%
+
+% Will write something to the make file. If the makefile is not yet
+% opened, #1 will be written as soon as it *is* opened.
+\def\tikzexternalwritetomakefile#1{%
+	\pgfutil@ifundefined{tikzexternal@outmakefile}{%
+		\expandafter\gdef\expandafter\tikzexternal@outmakefile@pendingcommands\expandafter{%
+			\tikzexternal@outmakefile@pendingcommands
+			\immediate\write\tikzexternal@outmakefile{#1}%
+		}%
+	}{%
+		\immediate\write\tikzexternal@outmakefile{#1}%
+	}%
+}%
+
+\def\tikzexternal@dep@file@name{}
+
+% Adds a dependency for the externalized picture file name `#1',
+% namely another file `#2'.
+%
+% #1: the fully qualified path name (without image extension) of the
+% external graphics for which we are adding a dependency.
+% #2: a file name. If this file gets changed, #1 shall be remade.
+%
+% This command will be actived as soons as \tikzexternalize has been
+% called.
+\def\tikzexternalfiledependsonfile@INACTIVE#1#2{%
+	\begingroup
+	\def\tikzpicturedependsonfile@name{#1}%
+	\ifx\tikzpicturedependsonfile@name\pgfutil@empty
+		% could be auto-generated: empty file name means "picture
+		% won't be externalized". Skip it.
+	\else
+		\edef\tikzpicturedependsonfile@name{#1.\tikzexternaldepext}%
+		\ifx\tikzexternal@dep@file@name\tikzpicturedependsonfile@name
+			% file is open and ready.
+		\else
+			% create new output file.
+			\pgfutil@ifundefined{tikzexternal@dep@file}{%
+				\begingroup
+					% this makes \tikzexternal@dep@file global:
+					\globaldefs=1
+					% this gets round '\outer\newwrite' in plain TeX:
+					\csname newwrite\endcsname\tikzexternal@dep@file
+				\endgroup
+			}{}%
+			\ifx\tikzexternal@dep@file@name\pgfutil@empty
+			\else
+				% it is already open. Close it.
+				\immediate\closeout\tikzexternal@dep@file
+			\fi
+			\global\let\tikzexternal@dep@file@name=\tikzpicturedependsonfile@name
+			\immediate\openout\tikzexternal@dep@file=\tikzexternal@dep@file@name\relax
+		\fi
+		\immediate\write\tikzexternal@dep@file{#1\tikzexternalimgextension: #2}%
+	\fi
+	\endgroup
+}%
+\def\tikzexternalfiledependsonfile#1#2{}% NO-OP until \tikzexternalize has been called.
+
+% Adds a dependency for the NEXT picture which is about to be
+% externalized. If we are currently inside of a picture, the
+% dependency is added for this current picture.
+%
+% #1: a file name. If this file gets changed, the tikzpicture's
+% externalized graphics shall be remade.
+%
+% This command will be actived as soons as \tikzexternalize has been
+% called.
+\def\tikzpicturedependsonfile@INACTIVE#1{%
+	\begingroup
+	\ifx\tikzexternal@curfilename\relax
+		% we are *not* inside of the exported file.
+		% use next file name.
+		\tikzexternalgetnextfilename\tikzpicturedependsonfile@name
+	\else
+		\let\tikzpicturedependsonfile@name=\tikzexternal@curfilename
+	\fi
+	\expandafter\tikzexternalfiledependsonfile\expandafter{\tikzpicturedependsonfile@name}{#1}%
+	\endgroup
+}%
+\def\tikzpicturedependsonfile#1{}% NO-OP until \tikzexternalize has been called.
+
 
 % This command is invoked 
 %  if and only if ( (grab mode && --jobname matches) || 'mode=graphics if exists' )
@@ -616,29 +764,6 @@
 	\tikzpicture
 }%
 
-% FIXME : this does not respect catcode changes!
-%--------------------------------------------------
-% \long\def\tikzexternal@externalizefig@@#1{%
-% 	\let\tikzpicture=\tikzexternal@origpicture
-% 	\iftikzexternal@optimize
-% 		\ifpgf@external@grabshipout
-% 			\tikzexternal@optimize@RESTORE
-% 		\fi
-% 	\fi
-% 	\expandafter\beginpgfgraphicnamed\expandafter{\tikzexternal@curfilename}%
-% 	\tikzpicture
-% 	#1
-% 	\endtikzpicture
-% 	\endpgfgraphicnamed
-% 	\let\tikzpicture=\tikzexternal@tikzpicture@replacement
-% 	\iftikzexternal@optimize
-% 		\ifpgf@external@grabshipout
-% 			\tikzexternal@optimize@REPLACE
-% 		\fi
-% 	\fi
-% 	\tikzexternal@closeenvironments
-% }%
-%-------------------------------------------------- 
 
 % Used by the optimization code.
 % It will be called if GRAB mode is on.
@@ -753,6 +878,7 @@
 	\let\endtikzpicture=\relax
 	\tikzexternal@TEXDIALECT@endpicture
 	\let\endtikzpicture=\tikzexternal@origendpicture
+	\let\tikzexternal@curfilename=\relax
 }
 
 % Throws a tikzpicture away - without further notice.
@@ -921,20 +1047,26 @@
 \catcode`\^^I=12 
 \catcode`\$=12
 \catcode`\%=12
-\xdef\tikzexternal@TABchar{^^I}\xdef\tikzexternal@PERCENTchar{%}\xdef\tikzexternal@DOLLARchar{$}}
+\catcode`\#=12 
+\gdef\tikzexternal@HASHchar{#}
+\gdef\tikzexternal@TABchar{^^I}\gdef\tikzexternal@PERCENTchar{%}\xdef\tikzexternal@DOLLARchar{$}}
 
 % Creates the '/tikz/external/system call' command as string and
-% returns it into the (global!) macro #1.
-\def\tikzexternal@assemble@systemcall#1{%
+% returns it into the (global!) macro #2.
+% #1: the image file name (as returned by
+% \tikzexternalgetnextfilename)
+% #2: the global return value macro
+%
+\def\tikzexternal@assemble@systemcall#1#2{%
 	\begingroup
-		\let\image=\tikzexternal@curfilename
+		\def\image{#1}%
 		\let\texsource=\tikzexternal@realjob
 		\ifnum\the\catcode`\"=13 \tikzexternal@activate@normal@dq\fi
 		\ifnum\the\catcode`\'=13 \tikzexternal@activate@normal@sq\fi
 		\ifnum\the\catcode`\;=13 \tikzexternal@activate@normal@semic\fi
 		\ifnum\the\catcode`\-=13 \tikzexternal@activate@normal@dash\fi
 		\let\\=\tikzexternal@normal@backslash
-		\xdef#1{\pgfkeysvalueof{/tikz/external/system call}}%
+		\xdef#2{\pgfkeysvalueof{/tikz/external/system call}}%
 	\endgroup
 }%
 \long\def\tikzexternal@externalizefig@systemcall@@#1{%
@@ -947,7 +1079,7 @@
 	\else
 		\begingroup
 		% no such image. Generate it!
-		\tikzexternal@assemble@systemcall{\pgf@tempa}%
+		\tikzexternal@assemble@systemcall{\tikzexternal@curfilename}{\pgf@tempa}%
 		\iftikzexternal@verboseio
 			\immediate\write16{===== 'mode=convert with system call': Invoking '\pgf@tempa' ========}%
 		\fi
@@ -989,6 +1121,19 @@
 	\tikzexternal@externalizefig@systemcall@next
 }%
 
+% Sets \iftikzexternal@file@isuptodate to false if one of the "force
+% remake" things is active.
+\def\tikzexternal@checkforceremake{%
+	\iftikzexternal@force@remake
+		\global\tikzexternal@file@isuptodatefalse
+	\else
+		\iftikzexternalremakenext
+			\global\tikzexternal@file@isuptodatefalse
+			\global\tikzexternalremakenextfalse
+		\fi
+	\fi
+}
+
 % Checks whether the current picture needs to be externalized.
 % 
 % This is the case if 
@@ -997,23 +1142,15 @@
 %
 % It returns \iftikzexternal@file@isuptodate accordingly.
 \def\tikzexternal@externalizefig@systemcall@uptodatecheck{%
-	\iftikzexternal@force@remake
-		\global\tikzexternal@file@isuptodatefalse
-	\else
-		\iftikzexternalremakenext
+	\tikzexternal@checkforceremake
+	\iftikzexternal@file@isuptodate
+		% check if there is already a file.
+		% In that case, use it. If that is not the case, generate it and include it afterwards.
+		\gdef\pgf@filename{}%
+		\xdef\pgf@tempa{\noexpand\pgf@findfile\pgfsys@imagesuffixlist:+{\tikzexternal@curfilename}}%
+		\pgf@tempa
+		\ifx\pgf@filename\pgfutil@empty%
 			\global\tikzexternal@file@isuptodatefalse
-			\global\tikzexternalremakenextfalse
-		\else
-			% check if there is already a file.
-			% In that case, use it. If that is not the case, generate it and include it afterwards.
-			\gdef\pgf@filename{}%
-			\xdef\pgf@tempa{\noexpand\pgf@findfile\pgfsys@imagesuffixlist:+{\tikzexternal@curfilename}}%
-			\pgf@tempa
-			\ifx\pgf@filename\pgfutil@empty%
-				\global\tikzexternal@file@isuptodatefalse
-			\else
-				\global\tikzexternal@file@isuptodatetrue
-			\fi
 		\fi
 	\fi
 }%
