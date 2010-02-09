@@ -1789,6 +1789,9 @@
 \newif\ifpgfplotstableread@skipline
 
 \def\pgfplotstablereadpreparecatcodes{%
+	\edef\pgfplotstableread@restorecatcodes{%
+		\noexpand\catcode`\noexpand\^^M=\the\catcode`\^^M\space
+	}%
 	\ifcase\pgfplotstableread@FORMAT@CASE\relax
 		% format=auto
 		\pgfplotstablereadpreparecatcodes@
@@ -1796,6 +1799,7 @@
 		% format=inline
 		\pgfplotstablereadpreparecatcodes@
 	\fi
+	\pgfplotstableinstallignorechars
 }
 \def\pgfplotstablereadpreparecatcodes@{%
 	\if0\pgfplotstableread@ROWSEP@CASE\relax
@@ -1905,6 +1909,9 @@
 }%
 \endgroup
 
+% #1: options.
+% #2: the table content (file name or inline data)
+% #3: the result macro.
 \long\def\pgfplotstableread@impl@#1#2#3{%
 	\ifcase\pgfplotstableread@FORMAT@CASE\relax
 		% format=auto
@@ -1948,8 +1955,8 @@
 		\def\pgfplotstableread@start@loop{\pgfplotstableread@loop@over@lines}%
 	\fi
 	\edef\pgfplotstableread@oldendlinechar{\the\endlinechar}%
+	\pgfplotstableread@restorecatcodes
 	\endlinechar=-1 % do not append a white space after each line for file input
-	\pgfplotstableinstallignorechars
 %\pgfplots@message{ATTEMPTING TO READ \pgfplotstableread@filename}%
 	%
 	\def\pgfplots@loc@TMPa{\pgfplotstableread@impl@prepare{#1}}%
@@ -1977,8 +1984,16 @@
 	\fi
 }
 
+{\catcode`\"=12 \gdef\pgfplots@dquote{"}}
+
 % Opens \pgfplotstableread@filename.
 \def\pgfplotstableread@openfile{%
+	\def\pgfplotstable@loc@TMPa{\pgfutil@in@{ }}%
+	\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstableread@filename}%
+	\ifpgfutil@in@
+		\t@pgfplots@toka=\expandafter{\pgfplotstableread@filename}%
+		\edef\pgfplotstableread@filename{\pgfplots@dquote\the\t@pgfplots@toka\pgfplots@dquote}%
+	\fi
 	\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
 	\ifeof\r@pgfplots@reada
 		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
@@ -1993,7 +2008,7 @@
 	\pgfplots@logfileopen{\pgfplotstableread@filename}%
 	%
 	\ifeof\r@pgfplots@reada
-		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename'.}\pgfeov%
+		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename'. In case you intended to provide inline data: maybe TeX screwed up your end-of-lines? Try `row sep=crcr' and terminate your lines with `\string\\' (refer to the pgfplotstable manual for details)}\pgfeov%
 		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
 		\def\pgfplotstableread@ready{0}%
 	\fi
@@ -3123,213 +3138,218 @@
 		\global\advance\c@pgfplotstable@colindex by1\relax
 	}%
 	%
-	% Ok, I have now everything which will come into the final table.
-	%
-	% But I have it column-oriented; I need to transpose the storage.
-	%
-	% The following code assembles a
-	% \begin{tabular}{}
-	% ...
-	% \end{tabular}
-	% statement piece after piece.
-	%
-%\message{I have now \meaning\pgfplotstabletypeset@final@colnames, and \meaning\pgfplotstabletypeset@final@cols.}%
-	% Step 1: column names.
-	\c@pgfplotstable@colindex=0\relax
-	\c@pgfplotstable@rowindex=-1\relax
-	\let\pgfplotstable@result=\pgfutil@empty
-	%
-	\pgfkeysgetvalue{/pgfplots/table/font}{\pgfplotstable@font}%
-	\ifx\pgfplotstable@font\pgfutil@empty
+	\pgfplotslistcheckempty\pgfplotstabletypeset@final@colnames
+	\ifpgfplotslistempty
+		\let\pgfplotstable@result=\pgfutil@empty
 	\else
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@font}%
-		\edef\pgfplotstable@curline{\noexpand\begingroup\the\t@pgfplots@toka}%
-		\pgfplotstable@curline@FLUSH
-	\fi
-	%
-	\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
-	\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
-	%
-	\ifpgfplotstabletypesetskipcoltypes
-	\else
-		% STEP 1.1: collect column types:
-		\def\pgfplotstable@resulttypes{}%
-		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
-			\t@pgfplots@toka=\expandafter{\pgfplotstable@resulttypes}%
-			\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
-			\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-		}%
-		\ifx\pgfplotstable@resulttypes\pgfutil@empty
+		% Ok, I have now everything which will come into the final table.
+		%
+		% But I have it column-oriented; I need to transpose the storage.
+		%
+		% The following code assembles a
+		% \begin{tabular}{}
+		% ...
+		% \end{tabular}
+		% statement piece after piece.
+		%
+	%\message{I have now \meaning\pgfplotstabletypeset@final@colnames, and \meaning\pgfplotstabletypeset@final@cols.}%
+		% Step 1: column names.
+		\c@pgfplotstable@colindex=0\relax
+		\c@pgfplotstable@rowindex=-1\relax
+		\let\pgfplotstable@result=\pgfutil@empty
+		%
+		\pgfkeysgetvalue{/pgfplots/table/font}{\pgfplotstable@font}%
+		\ifx\pgfplotstable@font\pgfutil@empty
 		\else
-			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-			\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
-			\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@font}%
+			\edef\pgfplotstable@curline{\noexpand\begingroup\the\t@pgfplots@toka}%
+			\pgfplotstable@curline@FLUSH
 		\fi
-	\fi
-	\ifx\pgfplotstable@curline\pgfutil@empty
-	\else
-		\pgfplotstable@curline@FLUSH
-	\fi
-	%
-	% Step 1.2: Collect FIRST ROW (column names)
-	\begingroup
-	\pgfplotstableset{every head row}%
-	\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
-	\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-	\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-	\xdef\pgfplots@glob@TMPc{%
-		\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
-		\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
-	}%
-	\endgroup
-	\pgfplots@glob@TMPc
-	% insert 'before row' here:
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-	\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
-	\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
-	%
-	\def\pgfplotstablecolname{\pgfplotstable@colname@out}%
-	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
 		%
-		\advance\c@pgfplotstable@colindex by1\relax
-		% typeset the cell:
-		\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
-		\expandafter\pgfplots@loc@TMPa\pgfplotstable@colname@out\pgfeov
-		\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+		\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
 		%
-		% append this cell:
-		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
-		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-	}%
-	% insert 'after row' here:
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-	\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-	\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-	%
-	\pgfplotstable@curline@FLUSH
-	%
-%\message{I have now \meaning\pgfplotstable@result.}%
-	% Step 2: column contents.
-	% I will first convert \pgfplotstabletypeset@final@cols into an array.
-	\c@pgfplotstable@colindex=0\relax
-	\pgfplotsarraynewempty\pgfplotstabletypeset@final@cols@array
-	\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@cols\as\pgfplotstable@col@processed{%
-		\expandafter\pgfplotsarraypushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols@array
-	}%
-	% init numrows:
-	\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
-	\pgfplotslistsize\pgfplotstable@col@processed\to\c@pgfplotstable@numrows
-	%
-	% Now, we loop over every column as long as there are still rows
-	% left. We assemble rows while we go.
-	%
-	\c@pgfplotstable@rowindex=0\relax
-	\ifnum\c@pgfplotstable@colindex<\c@pgfplotstable@numcols
-		\pgfplots@loop@CONTINUEtrue
-	\else
-		\pgfplots@loop@CONTINUEfalse
-	\fi
-	\def\pgfplotstablecolname{\pgfplotstable@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
-	\pgfutil@loop
-	\ifpgfplots@loop@CONTINUE
-		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
-		\pgfplotslistcheckempty\pgfplotstable@col@processed
-		\ifpgfplotslistempty
-			% assume that each column has the same number of entries
-			% (normalised tables):
-			\pgfplots@loop@CONTINUEfalse
+		\ifpgfplotstabletypesetskipcoltypes
 		\else
-			\ifnum\c@pgfplotstable@colindex=0\relax
-				% Install styles for the next row.
-				\begingroup
-				\ifodd\c@pgfplotstable@rowindex
-					\t@pgfplots@toka={every odd row}%
-				\else
-					\t@pgfplots@toka={every even row}%
-				\fi
-				\ifnum\c@pgfplotstable@rowindex=0\relax
-					\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first row}%
-				\fi
-				\ifpgfplotstable@disable@rowcolstyles
-				\else
-					\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
-					\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
-				\fi
-				% misuse as temporary variable:
-				\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
-				\advance\c@pgfplotstable@colindex by1\relax
-				\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numrows
-					\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last row}%
-				\fi
-				\expandafter\pgfplotstableset\expandafter{\the\t@pgfplots@toka}%
-				\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
-				\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
-				\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-				\xdef\pgfplots@glob@TMPc{%
-					\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
-					\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
-				}%
-				\endgroup
-				\pgfplots@glob@TMPc
-				% insert 'before row' here:
-				\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
-				\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+			% STEP 1.1: collect column types:
+			\def\pgfplotstable@resulttypes{}%
+			\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@resulttypes}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
+				\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			}%
+			\ifx\pgfplotstable@resulttypes\pgfutil@empty
+			\else
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
 			\fi
+		\fi
+		\ifx\pgfplotstable@curline\pgfutil@empty
+		\else
+			\pgfplotstable@curline@FLUSH
+		\fi
+		%
+		% Step 1.2: Collect FIRST ROW (column names)
+		\begingroup
+		\pgfplotstableset{every head row}%
+		\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
+		\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+		\xdef\pgfplots@glob@TMPc{%
+			\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
+			\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
+		}%
+		\endgroup
+		\pgfplots@glob@TMPc
+		% insert 'before row' here:
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+		%
+		\def\pgfplotstablecolname{\pgfplotstable@colname@out}%
+		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
 			%
-			%
-			\pgfplotslistpopfront\pgfplotstable@col@processed\to\pgfplotstable@entry
-			\pgfplotsarrayletentry\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array=\pgfplotstable@col@processed
 			\advance\c@pgfplotstable@colindex by1\relax
 			% typeset the cell:
 			\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
-			\expandafter\pgfplots@loc@TMPa\pgfplotstable@entry\pgfeov
+			\expandafter\pgfplots@loc@TMPa\pgfplotstable@colname@out\pgfeov
 			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
 			%
 			% append this cell:
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
 			\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
 			\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-			%
-			\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
-				\c@pgfplotstable@colindex=0\relax
-				% insert 'after row' here:
-				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-				\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
-				\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-				\advance\c@pgfplotstable@rowindex by1\relax
-				\pgfplotstable@curline@FLUSH
-			\fi
-%\message{I have now \meaning\pgfplotstable@result.}%
+		}%
+		% insert 'after row' here:
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		%
+		\pgfplotstable@curline@FLUSH
+		%
+	%\message{I have now \meaning\pgfplotstable@result.}%
+		% Step 2: column contents.
+		% I will first convert \pgfplotstabletypeset@final@cols into an array.
+		\c@pgfplotstable@colindex=0\relax
+		\pgfplotsarraynewempty\pgfplotstabletypeset@final@cols@array
+		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@cols\as\pgfplotstable@col@processed{%
+			\expandafter\pgfplotsarraypushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols@array
+		}%
+		% init numrows:
+		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
+		\pgfplotslistsize\pgfplotstable@col@processed\to\c@pgfplotstable@numrows
+		%
+		% Now, we loop over every column as long as there are still rows
+		% left. We assemble rows while we go.
+		%
+		\c@pgfplotstable@rowindex=0\relax
+		\ifnum\c@pgfplotstable@colindex<\c@pgfplotstable@numcols
+			\pgfplots@loop@CONTINUEtrue
+		\else
+			\pgfplots@loop@CONTINUEfalse
 		\fi
-	\pgfutil@repeat
-	\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
-	\pgfkeysgetvalue{/pgfplots/table/end table}{\pgfplotstable@entry}%
-	\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry}%
-	\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-	\ifx\pgfplotstable@curline\pgfutil@empty
-	\else
-		\pgfplotstable@curline@FLUSH
-	\fi
-	%
-	\ifx\pgfplotstable@font\pgfutil@empty
-	\else
-		\edef\pgfplotstable@curline{\noexpand\endgroup}%
-		\pgfplotstable@curline@FLUSH
-	\fi
-	\ifx\pgfplotstable@outfilename\pgfutil@empty
-	\else
-		\immediate\closeout\pgfplotstable@outfile
-	\fi
-%\message{I have now \meaning\pgfplotstable@result.}%
-	\def\pgfplotstablecol{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
-	\def\pgfplotstablerow{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
-	\ifpgfplotstabletypesetresult
-		\pgfplotstable@result
+		\def\pgfplotstablecolname{\pgfplotstable@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
+		\pgfutil@loop
+		\ifpgfplots@loop@CONTINUE
+			\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
+			\pgfplotslistcheckempty\pgfplotstable@col@processed
+			\ifpgfplotslistempty
+				% assume that each column has the same number of entries
+				% (normalised tables):
+				\pgfplots@loop@CONTINUEfalse
+			\else
+				\ifnum\c@pgfplotstable@colindex=0\relax
+					% Install styles for the next row.
+					\begingroup
+					\ifodd\c@pgfplotstable@rowindex
+						\t@pgfplots@toka={every odd row}%
+					\else
+						\t@pgfplots@toka={every even row}%
+					\fi
+					\ifnum\c@pgfplotstable@rowindex=0\relax
+						\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first row}%
+					\fi
+					\ifpgfplotstable@disable@rowcolstyles
+					\else
+						\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
+						\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+					\fi
+					% misuse as temporary variable:
+					\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
+					\advance\c@pgfplotstable@colindex by1\relax
+					\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numrows
+						\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last row}%
+					\fi
+					\expandafter\pgfplotstableset\expandafter{\the\t@pgfplots@toka}%
+					\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
+					\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+					\xdef\pgfplots@glob@TMPc{%
+						\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
+						\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
+					}%
+					\endgroup
+					\pgfplots@glob@TMPc
+					% insert 'before row' here:
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+					\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+				\fi
+				%
+				%
+				\pgfplotslistpopfront\pgfplotstable@col@processed\to\pgfplotstable@entry
+				\pgfplotsarrayletentry\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array=\pgfplotstable@col@processed
+				\advance\c@pgfplotstable@colindex by1\relax
+				% typeset the cell:
+				\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
+				\expandafter\pgfplots@loc@TMPa\pgfplotstable@entry\pgfeov
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				%
+				% append this cell:
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+				\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+				%
+				\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
+					\c@pgfplotstable@colindex=0\relax
+					% insert 'after row' here:
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+					\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+					\advance\c@pgfplotstable@rowindex by1\relax
+					\pgfplotstable@curline@FLUSH
+				\fi
+	%\message{I have now \meaning\pgfplotstable@result.}%
+			\fi
+		\pgfutil@repeat
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+		\pgfkeysgetvalue{/pgfplots/table/end table}{\pgfplotstable@entry}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\ifx\pgfplotstable@curline\pgfutil@empty
+		\else
+			\pgfplotstable@curline@FLUSH
+		\fi
+		%
+		\ifx\pgfplotstable@font\pgfutil@empty
+		\else
+			\edef\pgfplotstable@curline{\noexpand\endgroup}%
+			\pgfplotstable@curline@FLUSH
+		\fi
+		\ifx\pgfplotstable@outfilename\pgfutil@empty
+		\else
+			\immediate\closeout\pgfplotstable@outfile
+		\fi
+	%\message{I have now \meaning\pgfplotstable@result.}%
+		\def\pgfplotstablecol{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
+		\def\pgfplotstablerow{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
+		\ifpgfplotstabletypesetresult
+			\pgfplotstable@result
+		\fi
 	\fi
 	\pgfkeysgetvalue{/pgfplots/table/write to macro}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
