@@ -229,9 +229,24 @@
 	/pgfplots/table/format/inline/.code		= {\def\pgfplotstableread@FORMAT@CASE{1}},
 	/pgfplots/table/format/file/.code		= {\def\pgfplotstableread@FORMAT@CASE{2}},
 	/pgfplots/table/format=auto,
-	/pgfplots/table/row sep/.is choice,
-	/pgfplots/table/row sep/newline/.code	= {\def\pgfplotstableread@ROWSEP@CASE{0}},
-	/pgfplots/table/row sep/crcr/.code		= {\def\pgfplotstableread@ROWSEP@CASE{1}},
+	/pgfplots/table/row sep/.code={%
+		\pgfplotsutilifstringequal{#1}{\\}{%
+			\def\pgfplotstableread@ROWSEP@CASE{1}%
+		}{%
+			\pgfplotsutilifstringequal{#1}{crcr}{%
+				\def\pgfplotstableread@ROWSEP@CASE{1}%
+			}{%
+				\pgfplotsutilifstringequal{#1}{newline}{%
+					\def\pgfplotstableread@ROWSEP@CASE{0}%
+				}{%
+					{%
+					\t@pgfplots@tokc={#1}%
+					\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the choice `row sep=\the\t@pgfplots@tokc' is not known. Maybe you misspelled it? Try `\string\\' or `newline'.}\pgfeov%
+					}%
+				}%
+			}%
+		}%
+	},%
 	/pgfplots/table/row sep=newline,
 	% columns={name1,name2}
 	% or
@@ -1723,7 +1738,16 @@
 		\pgfplotstabletypeset@opt[]%
 	}%
 }
-\long\def\pgfplotstabletypeset@opt[#1]#2{%
+\long\def\pgfplotstabletypeset@opt[#1]{%
+	\begingroup
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset{#1}%
+	\fi
+	\pgfplotstablereadpreparecatcodes
+	\pgfplotstabletypeset@opt@collectarg[#1]%
+}
+\long\def\pgfplotstabletypeset@opt@collectarg[#1]#2{%
 	\pgfplotstable@isloadedtable{#2}%
 		{\pgfplotstabletypeset@opt@[#1]{#2}}%
 		{\pgfplotstabletypesetfile@opt@[#1]{#2}}%
@@ -1741,10 +1765,9 @@
 %
 % #1: the table name (argument to 'every table')
 % #2: other options.
-\pgfplotstableset@every@table@BEFORE@other@options#1#2{%
+\long\def\pgfplotstableset@every@table@BEFORE@other@options#1#2{%
 	\pgfkeysgetvalue{/pgfplots/table/every table/.@cmd}\pgfplotstable@loc@TMPa
-	\ifx\pgfplotstable@loc@TMPa\pgfplots@empty@command@key
-		% FIXME!
+	\ifx\pgfplotstable@loc@TMPa\pgfplots@empty@style@key
 	\else
 		\pgfplotstableset{/pgfplots/table/every table={#1},#2}%
 	\fi
@@ -1754,7 +1777,7 @@
 % This is the same now; it will be recognised automatically.
 \let\pgfplotstabletypesetfile=\pgfplotstabletypeset
 \long\def\pgfplotstabletypesetfile@opt@[#1]#2{%
-	\begingroup
+	%\begingroup <--- is already opened!
 	\ifpgfplots@table@options@areset
 	\else
 		\pgfplotstableset@every@table@BEFORE@other@options{#2}{#1}%
@@ -1809,6 +1832,13 @@
 \newif\ifpgfplotstableread@foundcolnames
 \newif\ifpgfplotstableread@skipline
 
+% A method which is necessary to work with inline table data.
+%
+% It needs to be invoked BEFORE the inline table data has been
+% seen the first time. "Seen" means collected as argument!
+%
+% The macro changes \catcodes in order to implement the 'row sep=newline',
+% some special 'col sep' choices and the 'ignore chars' features.
 \def\pgfplotstablereadpreparecatcodes{%
 	\edef\pgfplotstableread@restorecatcodes{%
 		\noexpand\catcode`\noexpand\^^M=\the\catcode`\^^M\space
@@ -2015,6 +2045,8 @@
 		\t@pgfplots@toka=\expandafter{\pgfplotstableread@filename}%
 		\edef\pgfplotstableread@filename{\pgfplots@dquote\the\t@pgfplots@toka\pgfplots@dquote}%
 	\fi
+	\let\pgfplotstableread@old@crcr=\\%
+	\def\\{\string\\}% just to make sure we don't try to open inline table data...
 	\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
 	\ifeof\r@pgfplots@reada
 		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
@@ -2033,6 +2065,7 @@
 		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
 		\def\pgfplotstableread@ready{0}%
 	\fi
+	\let\\=\pgfplotstableread@old@crcr
 }
 
 \def\pgfplotstableinstallignorechars{%
@@ -2955,7 +2988,7 @@
 % - replace grouped list foreach by popfront-loop and use arrays
 %   directly -> group only the pgfkeys eval
 \long\def\pgfplotstabletypeset@opt@[#1]#2{%
-	\begingroup
+	%\begingroup <--- is already opened!
 	%--------------------------------------------------
 	% \pgfutil@ifundefined{#2}{%
 	% 	\pgfplots@error{There is no such table '\string#2' loaded into memory. Maybe you meant to use '\string\pgfplotstabletypesetfile{\string#2}' instead of '\string\pgfplotstabletypeset{\string#2}'?}%
