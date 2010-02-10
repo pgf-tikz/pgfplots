@@ -702,6 +702,15 @@
 			\fi
 		}%
 	},
+	/pgfplots/table/create col/linear regression/.code={%
+		\pgfplotstable@linear@regression#1\pgfplotstable@EOI
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfplotsretval}%
+	},
+	/pgfplots/table/create col/linear regression/variance/.initial=,%
+	/pgfplots/table/create col/linear regression/xmode/.initial=,%
+	/pgfplots/table/create col/linear regression/ymode/.initial=,%
+	/pgfplots/table/create col/linear regression/a/.initial=,%
+	/pgfplots/table/create col/linear regression/b/.initial=,%
 	/pgfplots/table/create col/quotient/.style={%
 		/pgfplots/table/columns={#1},
 		/pgfplots/table/create col/assign first/.style={%
@@ -3938,4 +3947,126 @@
 	\pgfplotstable@copy@globalbuffers@to{#2}%
 }%
 
+\def\pgfplotstable@linear@regression{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstable@linear@regression@
+	}{%
+		\pgfplotstable@linear@regression@[]%
+	}%
+}%
+% TODO : logs and variances.
+% for semilogy:
+% 	compute Y_i = a*x_i + b
+% 	y_i = exp(Y_i)
+% for loglog:
+% 	take x_i from input source (which is not log)
+% 	take y_i = exp( a* log(x_i) + b)
+%
+% OPEN: which log!?
+% -> is to be determined.
+%   
+%
+% #1: options
+% #2: table file name or struct
+% #3: x col
+% #4: y col
+\def\pgfplotstable@linear@regression@[#1]#2#3#4\pgfplotstable@EOI{%
+	\begingroup
+	\pgfqkeys{/pgfplots/table/create col/linear regression}{/pgf/fpu,#1}%
+	\pgfplotstablegetcolumn{#3}\of{#2}\to\pgfplotstable@X
+	\pgfplotstablegetcolumn{#4}\of{#2}\to\pgfplotstable@Y
+	\let\pgfplotstable@X@orig=\pgfplotstable@X
+	%
+	\pgfplotslistnewempty\pgfplotstable@VARIANCE
+	\pgfmathfloatcreate{0}{0.0}{0}%
+	\let\pgfplotstable@S=\pgfmathresult
+	\let\pgfplotstable@Sxx=\pgfmathresult
+	\let\pgfplotstable@Sx=\pgfmathresult
+	\let\pgfplotstable@Sy=\pgfmathresult
+	\let\pgfplotstable@Sxy=\pgfmathresult
+	\pgfutil@loop
+	\pgfplotslistcheckempty\pgfplotstable@X
+	\ifpgfplotslistempty
+		\pgfplots@loop@CONTINUEfalse
+	\else
+		\pgfplots@loop@CONTINUEtrue
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\pgfplotslistpopfront\pgfplotstable@X\to\pgfplotstable@x
+		\pgfplotslistpopfront\pgfplotstable@Y\to\pgfplotstable@y
+		%
+		\pgfmathfloatparsenumber{\pgfplotstable@x}%
+		\let\pgfplotstable@x=\pgfmathresult
+		\pgfmathfloatparsenumber{\pgfplotstable@y}%
+		\let\pgfplotstable@y=\pgfmathresult
+		%
+		\pgfplotslistcheckempty\pgfplotstable@VARIANCE
+		\ifpgfplotslistempty
+			\pgfmathfloatcreate{1}{1.0}{0}%
+			\let\pgfplotstable@invsqr=\pgfmathresult
+		\else
+			\pgfplotslistpopfront\pgfplotstable@VARIANCE\to\pgfplotstable@variance
+			\pgfmathfloatparsenumber{\pgfplotstable@variance}%
+			\let\pgfplotstable@variance=\pgfmathresult
+			\pgfmathfloatmultiply@{\pgfplotstable@variance}{\pgfplotstable@variance}%
+			\let\pgfplotstable@sqr=\pgfmathresult
+			\pgfmathfloatreciprocal@{\pgfplotstable@sqr}%
+			\let\pgfplotstable@invsqr=\pgfmathresult
+		\fi
+		%
+		\pgfmathfloatadd@{\pgfplotstable@S}{\pgfplotstable@invsqr}%
+		\let\pgfplotstable@S=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplotstable@invsqr}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sx}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sx=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplots@table@accum}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sxx}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sxx=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@y}{\pgfplotstable@invsqr}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sy}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sy=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplots@table@accum}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sxy}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sxy=\pgfmathresult
+	\pgfutil@repeat
+	%
+	\pgfmathparse{\pgfplotstable@S * \pgfplotstable@Sxx - \pgfplotstable@Sx *\pgfplotstable@Sx}%
+	\let\pgfplotstable@delta=\pgfmathresult
+	%
+	\pgfmathparse{(\pgfplotstable@S * \pgfplotstable@Sxy - \pgfplotstable@Sx * \pgfplotstable@Sy) / \pgfplotstable@delta}%
+	\let\pgfplotstable@a=\pgfmathresult
+	%
+	\pgfmathparse{(\pgfplotstable@Sxx * \pgfplotstable@Sy - \pgfplotstable@Sx * \pgfplotstable@Sxy) / \pgfplotstable@delta}%
+	\let\pgfplotstable@b=\pgfmathresult
+	%
+	\pgfplotslistnewempty\pgfplotstable@RESULT
+	\pgfplotslistforeachungrouped\pgfplotstable@X@orig\as\pgfplotstable@x{%
+		\pgfmathfloatparsenumber{\pgfplotstable@x}%
+		\let\pgfplotstable@x=\pgfmathresult
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplotstable@a}%
+		\let\pgfplotstable@tmp=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@tmp}{\pgfplotstable@b}%
+		\pgfmathfloattosci{\pgfmathresult}%
+		\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@RESULT
+	}%
+	\pgfmathfloattosci\pgfplotstable@a
+	\let\pgfplotstable@a=\pgfmathresult
+	%
+	\pgfmathfloattosci\pgfplotstable@b
+	\let\pgfplotstable@b=\pgfmathresult
+	%
+	\global\let\pgfplotstableregressiona\pgfplotstable@a%
+	\global\let\pgfplotstableregressionb\pgfplotstable@b%
+	\let\pgfplotsretval=\pgfplotstable@RESULT
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
 \endinput
