@@ -1761,8 +1761,9 @@
 	\else
 		\pgfplotstableset{#1}%
 	\fi
-	\pgfplotstablereadpreparecatcodes
-	\pgfplotstabletypeset@opt@collectarg[#1]%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstabletypeset@opt@collectarg[#1]%
+	}%
 }
 \long\def\pgfplotstabletypeset@opt@collectarg[#1]#2{%
 	\pgfplotstable@isloadedtable{#2}%
@@ -1856,10 +1857,19 @@
 %
 % The macro changes \catcodes in order to implement the 'row sep=newline',
 % some special 'col sep' choices and the 'ignore chars' features.
+%
+% ATTENTION: this changes the processing of ALL following newline
+% characters.
+% @see \pgfplotstablecollectoneargwithpreparecatcodes
 \def\pgfplotstablereadpreparecatcodes{%
-	\pgfutil@ifundefined{pgfplotstableread@restorecatcodes}{%
-		\edef\pgfplotstableread@restorecatcodes{%
+	\ifx\pgfplotstablereadrestorecatcodes\relax
+		\edef\pgfplotstablereadrestorecatcodes{%
 			\noexpand\catcode`\noexpand\^^M=\the\catcode`\^^M\space
+			\noexpand\catcode`\noexpand\ =\the\catcode`\ \space
+			\noexpand\catcode`\noexpand\;=\the\catcode`\;\space
+			\noexpand\catcode`\noexpand\:=\the\catcode`\:\space
+			\noexpand\catcode`\noexpand\^^I=\the\catcode`\^^I\space
+			\noexpand\let\noexpand\pgfplotstablereadrestorecatcodes=\noexpand\relax
 		}%
 		\ifcase\pgfplotstableread@FORMAT@CASE\relax
 			% format=auto
@@ -1869,8 +1879,9 @@
 			\pgfplotstablereadpreparecatcodes@
 		\fi
 		\pgfplotstableinstallignorechars
-	}{}%
+	\fi
 }
+\let\pgfplotstablereadrestorecatcodes=\relax
 \def\pgfplotstablereadpreparecatcodes@{%
 	\if0\pgfplotstableread@ROWSEP@CASE\relax
 		% row sep = newline
@@ -1895,6 +1906,55 @@
 	\fi
 }%
 
+% Logically, this routine does
+% \pgfplotstablereadpreparecatcodes
+% #1
+% and that's all. However, It makes sure that any white space
+% characters (especially newlines) between '#1' and the following
+% argument are gobbled!
+%
+% To show the problem, consider
+% \pgfplotstabletypeset[<options>]
+% 	\loadedtable
+% 
+% and we want to set the catcodes *before* \loadedtable is seen.
+% Well, there is a newline character after ']'! If we change the
+% catcodes, this newline will be considered as character and will make
+% up the first argument, the \loadedtable will be ignored.
+%
+% \pgfplotstablecollectoneargwithpreparecatcodes avoids this problem
+% by gobbling all space (newline) characters *before* collecting the
+% directly following argument token. Furthermore, it restores the
+% catcodes directly after the argument has been collected.
+%
+% @see \pgfplotstablecollectoneargwithpreparecatcodesnorestore
+\long\def\pgfplotstablecollectoneargwithpreparecatcodes#1{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplotstablereadpreparecatcodes
+		\pgfplotstablecollectoneargwithpreparecatcodes@end{#1}%
+	}{%
+		\pgfplotstablereadpreparecatcodes
+		\pgfplotstablecollectoneargwithpreparecatcodes@end{#1}%
+	}%
+}%
+\def\pgfplotstablecollectoneargwithpreparecatcodes@end#1#2{%
+	\pgfplotstablereadrestorecatcodes
+	#1{#2}%
+}%
+
+% An overloaded method of
+% \pgfplotstablecollectoneargwithpreparecatcodes which does not
+% restore the catcodes after collecting one arg.
+\long\def\pgfplotstablecollectoneargwithpreparecatcodesnorestore#1{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplotstablereadpreparecatcodes
+		#1%
+	}{%
+		\pgfplotstablereadpreparecatcodes
+		#1%
+	}%
+}%
+
 % Accept one of
 % \pgfplotstableread[#1]{<file>}{<\macro>}
 % \pgfplotstableread[#1]{<file>} to listener{<\macro>}
@@ -1913,9 +1973,9 @@
 	% for \catcodes, BEFORE we have read the second argument:
 	\pgfplotstableset{#1}%
 	%
-	\pgfplotstablereadpreparecatcodes
-	%
-	\pgfplotstableread@impl@collectfirstarg{#1}%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstableread@impl@collectfirstarg{#1}%
+	}%
 }%
 \long\def\pgfplotstableread@impl@collectfirstarg#1#2{%
 	\pgfutil@ifnextchar t{%
@@ -2024,7 +2084,7 @@
 		\let\pgfplotstableread@loop@over@lines=\pgfplotstableread@loop@over@lines@fromfile%
 		\def\pgfplotstableread@start@loop{\pgfplotstableread@loop@over@lines}%
 	\fi
-	\pgfplotstableread@restorecatcodes
+	\pgfplotstablereadrestorecatcodes
 	\edef\pgfplotstableread@oldendlinechar{\the\endlinechar}%
 	\endlinechar=-1 % do not append a white space after each line for file input
 %\pgfplots@message{ATTEMPTING TO READ \pgfplotstableread@filename}%
