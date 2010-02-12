@@ -889,40 +889,64 @@
 % Defines a macro which computes ln(x)/ln(#2) in float.
 %
 % #1: a macro name without backslash
-% #2: base
+% #2: the log base as fixed point number. Maybe the empty string in
+% which case the natural log is used.
 %
 % It will define the macros:
-% <macro>##1    -> currently, this is the same as the '@' variant:
+% <macro>##1    -> calls \pgfmathfloatparsenumber and then the '@' variant:
 % <macro>@##1   -> expects and returns result in float
 % <macro>@tofixed##1 -> expects result in float, returns it in fixed (or an empty string)
+% <macro>inv@##1   -> the inverse (exponential) function, expects float, returns float
+% %
 % <macro>logbase   -> the basis as number
-% <macro>logofbase -> log(#2)
-% <macro>invlogofbase -> 1/log(#2)
+% <macro>logofbasefixed -> log(#2)
+% <macro>invlogofbasefixed -> 1/log(#2)
+% <macro>logofbasefloat -> log(#2) in float
+% <macro>invlogofbasefloat -> 1/log(#2) in float
 \def\pgfplotsmathdefinemacrolnbase#1#2{%
 	\expandafter\edef\csname #1logbase\endcsname{#2}%
-	\pgfmathlog@{#2}%
-	\expandafter\edef\csname #1logofbase\endcsname{\pgfmathresult}%
-	\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-	\expandafter\edef\csname #1invlogofbase\endcsname{\pgfmathresult}%
+	\expandafter\ifx\csname #1logbase\endcsname\pgfutil@empty
+		\expandafter\edef\csname #1logbase\endcsname{2.718281828459}%
+		\expandafter\def\csname #1logofbasefixed\endcsname{1}%
+		\expandafter\def\csname #1invlogofbasefixed\endcsname{1}%
+	\else
+		\pgfmathlog@{\csname #1logbase\endcsname}%
+		\expandafter\let\csname #1logofbasefixed\endcsname\pgfmathresult%
+		\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname #1invlogofbasefixed\endcsname\pgfmathresult%
+	\fi
 	%
-	\expandafter\edef\csname #1@tofixed\endcsname##1{%
-		\noexpand\pgfmathlog@float{##1}%
-		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
-		\noexpand\else
-			\noexpand\expandafter\noexpand\pgfmath@basic@multiply@\noexpand\expandafter
-				{\noexpand\pgfmathresult}%
+	\pgfmathfloatparsenumber{\csname #1logofbasefixed\endcsname}%
+	\expandafter\let\csname #1logofbasefloat\endcsname\pgfmathresult%
+	\pgfmathfloatparsenumber{\csname #1invlogofbasefixed\endcsname}%
+	\expandafter\let\csname #1invlogofbasefloat\endcsname\pgfmathresult%
+	%
+	\expandafter\def\csname #1@tofixed\endcsname##1{%
+		\pgfmathlog@float{##1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\expandafter\pgfmath@basic@multiply@\expandafter
 				{\pgfmathresult}%
-		\noexpand\fi
+				{\csname #1invlogofbasefixed\endcsname}%
+		\fi
 	}%
-	\expandafter\edef\csname #1@\endcsname##1{%
-		\expandafter\noexpand\csname #1@tofixed{##1}%
-		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
-			\noexpand\pgfmathfloatcreate{3}{0.0}{0}%
-		\noexpand\else
-			\noexpand\pgfmathfloatparsenumber{\noexpand\pgfmathresult}%
-		\noexpand\fi
+	\expandafter\def\csname #1@\endcsname##1{%
+		\expandafter\csname #1@tofixed\endcsname{##1}%
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfmathfloatcreate{3}{0.0}{0}%
+		\else
+			\pgfmathfloatparsenumber{\pgfmathresult}%
+		\fi
 	}%
-	\pgfutil@namelet{#1}{#1@}%
+	\expandafter\def\csname #1\endcsname##1{%
+		\pgfmathfloatparsenumber{##1}%
+		\csname #1@\endcsname{\pgfmathresult}%
+	}%
+	%
+	\expandafter\def\csname #1inv@\endcsname##1{%
+		\expandafter\pgfmathfloatmultiply@\expandafter{##1}{\csname #1logofbasefloat\endcsname}%
+		\pgfmathfloatexp@{\pgfmathresult}%
+	}%
 }%
 
 % Usage:

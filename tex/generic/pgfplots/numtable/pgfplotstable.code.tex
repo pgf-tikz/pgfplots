@@ -704,9 +704,13 @@
 		}%
 	},
 	/pgfplots/table/create col/linear regression/.code={%
-		\pgfplotstable@linear@regression#1\pgfplotstable@EOI
+		\pgfplotstable@linear@regression{#1}%
 		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfplotsretval}%
 	},
+	/pgfplots/table/create col/linear regression/.default=,%
+	/pgfplots/table/create col/linear regression/x/.initial=[index]0,%
+	/pgfplots/table/create col/linear regression/y/.initial=[index]1,%
+	/pgfplots/table/create col/linear regression/table/.initial=,%
 	/pgfplots/table/create col/linear regression/variance/.initial=,%
 	/pgfplots/table/create col/linear regression/variance src/.initial=,%
 	/pgfplots/table/create col/linear regression/xmode/.initial=linear,%
@@ -4054,16 +4058,24 @@
 % #2: x col
 % #3: y col
 % #4: options (or empty)
-\def\pgfplotstable@linear@regression#1#2#3#4\pgfplotstable@EOI{%
+\def\pgfplotstable@linear@regression#1{%
 	\begingroup
-	\pgfqkeys{/pgfplots/table/create col/linear regression}{/pgf/fpu,#4}%
-	\pgfplotstablegetcolumn{#2}\of{#1}\to\pgfplotstable@X
-	\pgfplotstablegetcolumn{#3}\of{#1}\to\pgfplotstable@Y
+	\pgfqkeys{/pgfplots/table/create col/linear regression}{/pgf/fpu,#1}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/x}{\pgfplotstable@xsrc}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/y}{\pgfplotstable@ysrc}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/table}{\pgfplotstable@table}%
 	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/xmode}{\pgfplotstable@xmode}%
 	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/ymode}{\pgfplotstable@ymode}%
 	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/variance}{\pgfplotstable@variance@colname}%
 	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/variance src}{\pgfplotstable@variance@table}%
-	\let\pgfplotstable@X@orig=\pgfplotstable@X
+	%
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotstable@xsrc}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotstable@ysrc}%
+	\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+	\edef\pgfplots@loc@TMPb{{\the\t@pgfplots@tokc}\noexpand\of{\the\t@pgfplots@toka}}%
+	\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@X
+	\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPb\to\pgfplotstable@Y
 	%
 	\edef\pgfplotstable@xmode{\pgfplotstable@xmode}%
 	\expandafter\pgfplotstable@linear@regression@prepare@mode\expandafter{\pgfplotstable@xmode}{x}%%
@@ -4074,7 +4086,10 @@
 	\ifx\pgfplotstable@variance@colname\pgfutil@empty
 	\else
 		\ifx\pgfplotstable@variance@table\pgfutil@empty
-			\expandafter\pgfplotstablegetcolumn\expandafter{\pgfplotstable@variance@colname}\of{#1}\to\pgfplotstable@VARIANCE
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@variance@table}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+			\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@VARIANCE
 		\else
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@variance@colname}%
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@variance@table}%
@@ -4083,6 +4098,8 @@
 			\pgfplotstable@loc@TMPa
 		\fi
 	\fi
+	%
+	\pgfplotslistnewempty\pgfplotstable@Xparsed
 	%
 	\pgfmathfloatcreate{0}{0.0}{0}%
 	\let\pgfplotstable@S=\pgfmathresult
@@ -4103,6 +4120,7 @@
 		%
 		\pgfplotstableparsex{\pgfplotstable@x}%
 		\let\pgfplotstable@x=\pgfmathresult
+		\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@Xparsed
 		\pgfplotstableparsey{\pgfplotstable@y}%
 		\let\pgfplotstable@y=\pgfmathresult
 		%
@@ -4154,16 +4172,13 @@
 	\let\pgfplotstable@b=\pgfmathresult
 	%
 	\pgfplotslistnewempty\pgfplotstable@RESULT
-	\pgfplotslistforeachungrouped\pgfplotstable@X@orig\as\pgfplotstable@x{%
-		\pgfplotstableparsex{\pgfplotstable@x}%
-		\let\pgfplotstable@x=\pgfmathresult
+	\pgfplotslistforeachungrouped\pgfplotstable@Xparsed\as\pgfplotstable@x{%
 		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplotstable@a}%
 		\let\pgfplotstable@tmp=\pgfmathresult
 		\pgfmathfloatadd@{\pgfplotstable@tmp}{\pgfplotstable@b}%
-		\ifx\pgfplotstablelogbasisy\pgfutil@empty
+		\ifx\pgfplotstableparseylogbase\pgfutil@empty
 		\else
-			\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplotstableparseylogofbase}%
-			\pgfmathfloatexp@{\pgfmathresult}%
+			\pgfplotstableparseyinv@{\pgfmathresult}%
 		\fi
 		\pgfmathfloattosci{\pgfmathresult}%
 		\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@RESULT
@@ -4182,21 +4197,11 @@
 }%
 \def\pgfplotstable@linear@regression@prepare@mode#1#2{%
 	\expandafter\def\csname pgfplotstableparse#2\endcsname##1{\pgfmathfloatparsenumber{##1}}%
-	\expandafter\def\csname pgfplotstablelogbasis#2\endcsname{}%
+	\expandafter\def\csname pgfplotstableparse#2logbase\endcsname{}%
 	\pgfplotsutilifstringequal{linear}{#1}{%
 	}{%
 		\pgfplotsutilifstringequal{log}{#1}{%
-			\pgfkeysgetvalue{/pgfplots/log basis #2}\pgfplots@loc@TMPa
-			\ifx\pgfplots@loc@TMPa\pgfutil@empty
-				\def\pgfplots@loc@TMPa{2.718281828459}%
-			\fi
-			\expandafter\edef\csname pgfplotstablelogbasis#2\endcsname{\pgfplots@loc@TMPa}%
-			\pgfplotsmathdefinemacrolnbase{pgfplotstableparse#2}{\pgfplots@loc@TMPa}%
-			\expandafter\def\csname pgfplotstableparse#2\endcsname##1{%
-				\pgfmathfloatparsenumber{##1}%
-				\let\pgfmathresultparsed=\pgfmathresult
-				\csname pgfplotstableparse#2@\endcsname{\pgfmathresultparsed}%
-			}%
+			\pgfplotsmathdefinemacrolnbase{pgfplotstableparse#2}{\pgfkeysvalueof{/pgfplots/log basis #2}}%
 		}{%
 			\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the value '#1' is unexpected for 'linear regression/#2mode'}\pgfeov%
 		}%
