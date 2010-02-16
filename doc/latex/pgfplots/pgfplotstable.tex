@@ -2164,12 +2164,13 @@ The example creates two columns: the |new| column is just the sum of each value 
 	6 36\\
 }\loadedtbl
 
-% create the 'regression' column:
+% create the `regression' column:
 \pgfplotstablecreatecol[
 	linear regression={table=\loadedtbl}
 ]
 	{regression}
 	{\loadedtbl}
+%\xdef\slope{\pgfplotstableregressiona} %<-- might be handy occasionally
 
 \pgfplotstabletypeset\loadedtbl
 
@@ -2179,15 +2180,20 @@ The example creates two columns: the |new| column is just the sum of each value 
 	\addplot table[y=regression] \loadedtbl;
 	\addlegendentry{$y(x)$}
 	\addlegendentry{% 
-		$\pgfmathprintnumber{\pgfplotstableregressiona} \cdot x + 
-		\pgfmathprintnumber{\pgfplotstableregressionb}$}
+		$\pgfmathprintnumber{\pgfplotstableregressiona} \cdot x  
+		\pgfmathprintnumber[print sign]{\pgfplotstableregressionb}$}
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
 
+	\noindent The example above loads a table from inline data, appends a column named `|regression|' and typesets it. Afterwards, it plots the associated data. The (uncommented) |\xdef\slope{...}| line defines |\slope| to be the (expanded) result of its argument. Thus, it can be used to remember the slope (useful if you have multiple |linear regression| columns).
+
 	The following \meta{key-value-config} keys are accepted as comma--separated list:
 
-\pgfkeys{/pgfmanual/gray key prefixes={/pgfplots/table/create col/linear regression}}
+\pgfkeys{
+	/pgfmanual/gray key prefixes={/pgfplots/table/create col/linear regression/},
+	/pdflinks/search key prefixes in/.add={/pgfplots/table/create col/linear regression/,}{},
+}
 	\begin{key}{%
 		/pgfplots/table/create col/linear regression/table=\marg{\textbackslash macro {\normalfont or} file name} (initially empty)}
 		Provides the table from where to load the |x| and |y| columns.
@@ -2219,16 +2225,56 @@ The example creates two columns: the |new| column is just the sum of each value 
 	\begin{loglogaxis}
 	\addplot table[x=dof,y=error2] 
 		{pgfplotstable.example1.dat};	
+	\addlegendentry{$y(x)$}
+
 	\addplot table[x=dof,y=regression,read completely] 
 		{pgfplotstable.example1.dat};	
+	%\xdef\slope{\pgfplotstableregressiona} %<-- might be handy occasionally
+	\addlegendentry{slope $\pgfmathprintnumber{\pgfplotstableregressiona}$}
 	\end{loglogaxis}
 \end{tikzpicture}
 \end{codeexample}
+	The example above defines a |create on use| style for a column named `|regression|'. This style will evaluate a |linear regression|. Furthermore, it plots |dof| versus |regression|. Since |regression| does not exist in the input table, the |create on use| clause is evaluated on--the--fly. The |read completely| is necessary for this sort of lazy evaluation.
+
+	The (uncommented) line containing |\slope| is explained above; it allows to remember different regression slopes in our example.
 	\end{keylist}
 
-	\begin{key}{/pgfplots/table/create col/linear regression/variance=\marg{column name} (initially empty)}
-	Associates variances loaded from \meta{column name} to each data point. High (relative) variance means an unreliable data point. The \meta{column name} may also be a |create on use| name.
-	\end{key}
+	\begin{keylist}{%
+		/pgfplots/table/create col/linear regression/variance list=\marg{list} (initially empty),%
+		/pgfplots/table/create col/linear regression/variance=\marg{column name} (initially empty)%
+	}
+	Both keys allow to provide uncertainties (variances) to single data points. 
+	A high (relative) variance indicates an unreliable data point, a value of $1$ is standard.
+
+	The |variance list| key allows to provide variances directly as comma--separated list, for example
+
+	|variance list={1000,1000,500,200,1,1}|.
+
+	The |variance| key allows to load values from a table \meta{column name} name. Such a column name is (initially, see below) loaded from the same table where data points have been found. The \meta{column name} may also be a |create on use| name.
+\begin{codeexample}[]
+\pgfplotstableset{
+	% same example as above, but with variance list:
+	create on use/regression/.style={
+		create col/linear regression={
+			table=pgfplotstable.example1.dat,
+			x=dof,y=error2,
+			xmode=log,ymode=log,
+			variance list={1000,800,600,500,400}
+		}}}
+\begin{tikzpicture}
+	\begin{loglogaxis}
+	\addplot table[x=dof,y=error2] 
+		{pgfplotstable.example1.dat};	
+	\addplot table[x=dof,y=regression,read completely] 
+		{pgfplotstable.example1.dat};	
+	\addlegendentry{$y(x)$}
+	\addlegendentry{slope $\pgfmathprintnumber{\pgfplotstableregressiona}$}
+	\end{loglogaxis}
+\end{tikzpicture}
+\end{codeexample}
+
+	If both, |variance list| and |variance| are given, the first one will be preferred. Note that it is not necessary to provide variances for every data point.
+	\end{keylist}
 
 	\begin{key}{/pgfplots/table/create col/linear regression/variance src=\marg{\textbackslash table {\normalfont or} file name} (initially empty)}
 	Allows to load the |variance| from another table. The initial setting is empty. It is acceptable if the |variance| column in the external table has fewer entries than expected, in this case, only the first ones will be used.
