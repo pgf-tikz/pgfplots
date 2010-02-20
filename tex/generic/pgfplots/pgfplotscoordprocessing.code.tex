@@ -1643,10 +1643,7 @@
 % - \csname pgfpmeta@#1@assign\endcsname{}
 % 	During the survey phase, this macro is expected to assign
 % 	\pgfplots@current@point@meta
-%	This method should prepare everything which is needed to invoke
-%	the postprocessors, i.e. it prepares the input for point meta
-%	transformations to [0,1000] or the scatter plot things. In other
-%	words: if it is a numeric input method, it should return a
+%	if it is a numeric input method, it should return a
 %	floating point number.
 %	It is allowed to return an empty string to say "there is no point
 %	meta".
@@ -1658,13 +1655,19 @@
 %		- \pgfplots@current@point@meta is ready for use:
 %		- EITHER a parsed floating point number 
 %		- OR an empty string,
-%		- OR a symbolic string (if #3=symbolic)
+%		- OR a symbolic string (if the issymbolic boolean is true)
 %	The default implementation is
 %	\let\pgfplots@current@point@meta=\pgfutil@empty
 %
 % - \csname pgfpmeta@#1@issymbolic\endcsname -> expands to either '1' or '0'
-% 		A numeric source will be processed numerically, i.e. the final map
-% 		to [0,1000] will be initialised and meta limits will be updated.
+% 		A numeric source will be processed numerically in float
+% 		arithmetics. Thus, the output of the @assign routine should be
+% 		a macro \pgfplots@current@point@meta in float format.
+%
+%		The output of a numeric point meta source will result in meta
+%		limit updates and the final map to [0,1000] will be
+%		initialised automatically.
+%
 % 		A symbolic input routine won't be processed.
 % 	Default is '0'
 %
@@ -1766,6 +1769,36 @@
 	},
 }%
 \pgfkeyssetvalue{/pgfplots/point meta/expr}{}%
+
+\pgfplotsdeclarepointmetasource{TeX code}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\pgfmathfloatparsenumber{\pgfplotspointmeta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+}%
+\pgfplotsdeclarepointmetasource{TeX code symbolic}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\let\pgfplots@current@point@meta=\pgfplotspointmeta
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+	issymbolic=1%
+}%
+\pgfkeysdef{/pgfplots/point meta/code}{}%
 
 % Internal stream methods.
 %
@@ -4105,7 +4138,7 @@
 	%
 	%
 	\iftikz@plot@raw@gnuplot%
-		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{\pgfplots@gnuplotcode}}%
+		\def\pgfplots@plot@data{\pgfplotgnuplot[\pgfplots@plot@filename]{\pgfplots@gnuplot@format;\pgfplots@gnuplotcode}}%
 	\else%
 		% collect logs:
 		\def\pgfplots@gnuplot@logdirs{}%
@@ -4437,13 +4470,18 @@
 }%
 
 \def\pgfplots@addplotimpl@table@getopts#1[#2]{%
+	% set options outside of the following group.
+	% They may contain behavior options.
+	\pgfplots@addplotimpl@table@installkeypath
+	\pgfplotstableset{#2}%
+	%
 	\pgfutil@ifnextchar s{%
 		\pgfplots@addplotimpl@table@fromshell{#1}{#2}%
 	}{%
 		\pgfutil@ifnextchar f{%
-			\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
+			\pgfplots@addplotimpl@table@fromstructure@gobble@space{#1}{#2}%
 		}{%
-			\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+			\pgfplots@addplotimpl@table@fromfile@gobble@space{#1}{#2}%
 		}%
 	}%
 }
@@ -4464,15 +4502,17 @@
 % \addplot[#1] table[#2] from {#3} #4;
 %
 % #1: arguments to \addplot[...]
-% #2: arguments to table[...]
+% #2: arguments to table[...] (already processed!)
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
+\long\def\pgfplots@addplotimpl@table@fromstructure@gobble@space#1#2from{%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplots@addplotimpl@table@fromstructure{#1}{#2}from%
+	}%
+}%
 \long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{\pgfplots@addplotimpl@table@startprocessing{#1}{#2}{#3}{#4}}%
 % \addplot[#1] table[#2] from {#3} #4 ;
 \long\def\pgfplots@addplotimpl@table@fromstructure@#1#2#3#4{%
-	% set options here. They may contain behavior options!
-	\pgfplots@addplotimpl@table@installkeypath
-	\pgfplotstableset{#2}%
 	\begingroup
 	\pgfplotstablegetscanlinelength{#3}{\pgfplotsscanlinelength}%
 	% FIXME : this thing here has runtime O(N^2) !
@@ -4700,17 +4740,18 @@
 % number of rows is less than about 110000).
 %
 % #1: arguments to \addplot[...]
-% #2: arguments to table[...]
+% #2: arguments to table[...] (already processed!)
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
 %
+\long\def\pgfplots@addplotimpl@table@fromfile@gobble@space#1#2{%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+	}%
+}%
 \long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{\pgfplots@addplotimpl@table@startprocessing{#1}{#2}{#3}{#4}}%
 % \addplot[#1] table[#2] {#3} {#4};
 \long\def\pgfplots@addplotimpl@table@fromfile@#1#2#3#4{%
-	% set options outside of the following group.
-	% They may contain behavior options.
-	\pgfplots@addplotimpl@table@installkeypath
-	\pgfplotstableset{#2}%
 	\ifpgfplots@addplotimpl@readcompletely
 		\pgfplotstableread{#3}\pgfplots@table
 		\pgfplots@addplotimpl@table@fromstructure@{#1}{}{\pgfplots@table}{#4}%
