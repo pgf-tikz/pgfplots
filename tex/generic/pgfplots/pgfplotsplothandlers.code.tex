@@ -594,6 +594,7 @@
 			\fi
 		\fi
 %\E\pgfplots@message{Updated limits: (\E\pgfplots@xmin,\E\pgfplots@ymin) rectangle  (\E\pgfplots@xmax,\E\pgfplots@ymax).}%
+%
 %\E\tracingmacros=0\E\tracingcommands=0
 	}%
 	%
@@ -756,16 +757,17 @@
 \newif\ifpgfplots@quiver@usetikz
 \newif\ifpgfplots@quiver@updatelimits
 
-% The 'quiver' plot handler for two- and three dimensional plots.
-%
-% User Interface:
-% use /pgfplots/quiver to enable the plot handler.
-% Then, provide `quiver/u value' or `quiver/u' to 
-% tell where to find the 'x' coordinates of the vectors, and similarly
-% for 'v' and 'w' instead of 'u'.
 \pgfplotsset{
+	% The 'quiver' plot handler for two- and three dimensional plots.
+	%
+	% User Interface:
+	% use /pgfplots/quiver to enable the plot handler.
+	% Then, provide `quiver/u value' or `quiver/u' to 
+	% tell where to find the 'x' coordinates of the vectors, and similarly
+	% for 'v' and 'w' instead of 'u'.
 	quiver/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerquiver
+		\pgfqkeys{/pgfplots/quiver}{#1}%
 	},%
 	quiver/u value*/.initial=,
 	quiver/v value*/.initial=,
@@ -773,12 +775,12 @@
 	quiver/u value is expr/.initial=0,
 	quiver/v value is expr/.initial=0,
 	quiver/w value is expr/.initial=0,
-	quiver/u value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{u}{0},%
-	quiver/u/.code			=\pgfplots@quiver@pgfkeys@src{#1}{u}{1},%
-	quiver/v value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{v}{0},%
-	quiver/v/.code			=\pgfplots@quiver@pgfkeys@src{#1}{v}{1},%
-	quiver/w value/.code	=\pgfplots@quiver@pgfkeys@src{#1}{w}{0},%
-	quiver/w/.code			=\pgfplots@quiver@pgfkeys@src{#1}{w}{1},%
+	quiver/u value/.code	=\pgfplots@set@source@for{quiver/u}{#1}{0},%
+	quiver/u/.code			=\pgfplots@set@source@for{quiver/u}{#1}{1},%
+	quiver/v value/.code	=\pgfplots@set@source@for{quiver/v}{#1}{0},%
+	quiver/v/.code			=\pgfplots@set@source@for{quiver/v}{#1}{1},%
+	quiver/w value/.code	=\pgfplots@set@source@for{quiver/w}{#1}{0},%
+	quiver/w/.code			=\pgfplots@set@source@for{quiver/w}{#1}{1},%
 	quiver/before arrow/.code=,
 	quiver/after arrow/.code=,
 	quiver/every arrow/.style={},
@@ -797,9 +799,50 @@
 	quiver/colored/.default=mapped color,
 }%
 
-\def\pgfplots@quiver@pgfkeys@src#1#2#3{%
-	\pgfkeyssetvalue{/pgfplots/quiver/#2 value*}{#1}%
-	\pgfkeyssetvalue{/pgfplots/quiver/#2 is expr}{#3}%
+\def\pgfplots@set@source@for#1#2#3{%
+	\pgfkeyssetvalue{/pgfplots/#1 value*}{#2}%
+	\pgfkeyssetvalue{/pgfplots/#1 is expr}{#3}%
+}%
+% To be used to create a simple parser for keys initialised by
+% \pgfplots@set@source@for:
+%
+% #1: the key path (relative to /pgfplots/) of the data
+% #2: the key name of the data
+% #3: a macro name which be will defined to be a parser for the data.
+%
+% The parser will check whether the '#2 is expr' key is set.
+% Furthermore, it defines /data point/#2 to be the result.
+%
+% Example:
+% \pgfplots@set@source@for{hist/data}{...}
+%
+% ->
+%  \pgfplots@prepare@source@parser@for{hist}{data}\parser
+%
+%  then, invoking \parser
+%  will define \pgfmathresult to be the argument provided to
+%  \pgfplots@set@source@for.
+\def\pgfplots@prepare@source@parser@for#1#2#3{%
+	\pgfkeyslet{/data point/#2}\pgfutil@empty%
+	%
+	\pgfkeysgetvalue{/pgfplots/#1/#2 value*}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% assume the '/data point/#1' is set by some input
+		% routine.
+		% Invoke math parser in this case.
+		\pgfkeyssetvalue{/pgfplots/#1/#2 is expr}{1}%
+	\else
+		\pgfkeyslet{/data point/#2}\pgfplots@loc@TMPa
+	\fi
+	\if1\pgfkeysvalueof{/pgfplots/#1/#2 is expr}%
+		\def#3{%
+			\pgfmathparse{\pgfkeysvalueof{/data point/#2}}%
+		}%
+	\else
+		\def#3{%
+			\pgfmathfloatparsenumber{\pgfkeysvalueof{/data point/#2}}%
+		}%
+	\fi
 }%
 
 \def\pgfplotsplothandlerquiver{%
@@ -877,34 +920,16 @@
 		\fi
 	\fi
 	%
-	\pgfkeyslet{/data point/u}\pgfutil@empty%
-	\pgfkeyslet{/data point/v}\pgfutil@empty%
-	\pgfkeyslet{/data point/w}\pgfutil@empty%
-	\pgfplots@quiver@prepare@src u%
-	\pgfplots@quiver@prepare@src v%
-	\pgfplots@quiver@prepare@src w%
+	\pgfplots@prepare@source@parser@for@quiver u\pgfplots@quiver@prepare@u%
+	\pgfplots@prepare@source@parser@for@quiver v\pgfplots@quiver@prepare@v%
+	\pgfplots@prepare@source@parser@for@quiver w\pgfplots@quiver@prepare@w%
 }%
-\def\pgfplots@quiver@prepare@src#1{%
-	\pgfkeysgetvalue{/pgfplots/quiver/#1 value*}\pgfplots@loc@TMPa
+
+\def\pgfplots@prepare@source@parser@for@quiver#1#2{%
+	\pgfplots@prepare@source@parser@for{quiver}{#1}{#2}%
+	\t@pgfplots@toka=\expandafter{#2}%
 	\t@pgfplots@tokb=\expandafter{\csname pgfplots@quiver@#1\endcsname}%
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		% assume the '/data point/#1' is set by some input
-		% routine.
-		% Invoke math parser in this case.
-		\pgfkeyssetvalue{/pgfplots/quiver/#1 is expr}{1}%
-	\else
-		\pgfkeyslet{/data point/#1}\pgfplots@loc@TMPa
-	\fi
-	\if1\pgfkeysvalueof{/pgfplots/quiver/#1 is expr}%
-		\t@pgfplots@toka={%
-			\pgfmathparse{\pgfkeysvalueof{/data point/#1}}%
-		}%
-	\else
-		\t@pgfplots@toka={%
-			\pgfmathfloatparsenumber{\pgfkeysvalueof{/data point/#1}}%
-		}%
-	\fi
-	\expandafter\edef\csname pgfplots@quiver@prepare@#1\endcsname{%
+	\edef#2{%
 		\the\t@pgfplots@toka
 		\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
 		\ifx\pgfplots@quiver@scale\pgfutil@empty
@@ -978,3 +1003,145 @@
 		}%
 	}%
 }%
+
+\newif\ifpgfplotsplothandlerhistogram@intervals
+\pgfplotsset{
+	hist/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlerhistogram
+		\pgfqkeys{/pgfplots/hist}{#1}%
+	},
+	hist/data value/.code	=\pgfplots@set@source@for{hist/data}{#1}{0},%
+	hist/data/.code			=\pgfplots@set@source@for{hist/data}{#1}{1},%
+	hist/data={y},
+	hist/bins/.initial=10,
+	hist/intervals/.is if=pgfplotsplothandlerhistogram@intervals,
+	hist/intervals/.default=true,
+	hist/intervals=true,
+	hist/handler/.style={/tikz/ybar interval},
+}%
+\def\pgfplotsplothandlerhistogram{%
+	\def\pgf@plotstreamstart{%
+		\pgfplotsset{/pgfplots/hist/handler}%
+		\tikz@plot@handler
+		\pgf@plotstreamstart
+	}%
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@hist
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@hist
+	%
+	\pgfplots@prepare@source@parser@for{hist}{data}{\pgfplotsplothandlerhistogram@parse}%
+	%
+	\pgfmathfloatcreate{1}{1.0}{2147483645}%
+	\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+	\pgfmathfloatcreate{2}{1.0}{2147483645}%
+	\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+	%
+	\edef\pgfplotsplothandlerhistogram@Nfixed{\pgfkeysvalueof{/pgfplots/hist/bins}}%
+	\c@pgf@counta=\pgfplotsplothandlerhistogram@Nfixed\relax
+	\advance\c@pgf@counta by-1
+	\edef\pgfplotsplothandlerhistogram@Nmax{\the\c@pgf@counta}%
+	%
+	\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@Nfixed}%
+	\let\pgfplotsplothandlerhistogram@N=\pgfmathresult
+	%
+	\pgfplotsapplistXnewempty\pgfp@hist@@
+	\def\c@pgfplotsplothandlerhistogram@num{0}%
+}%
+\def\pgfplotsplothandlersurveypoint@hist{%
+	\pgfplotsplothandlerhistogram@parse
+	\let\pgfplots@current@point@data=\pgfmathresult
+	%
+	\pgfmathfloatiffinite\pgfplots@current@point@data{%
+		\pgfplotsmathfloatmin{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamin}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+		%
+		\pgfplotsmathfloatmax{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamax}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		%
+		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlerhistogram@num
+		%
+		% store parsed result.
+		\edef\pgfmathresult{{\pgfplots@current@point@data}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfp@hist@@
+	}{%
+	}%
+}%
+\def\pgfplotsplothandlersurveyend@hist{%
+	\ifnum\c@pgfplotsplothandlerhistogram@num>0
+		\expandafter\pgfplotsplothandlersurveyend@hist@
+	\fi
+}%
+\def\pgfplotsplothandlersurveyend@hist@{%
+	\pgfmathfloatsubtract@{\pgfplotsplothandlerhistogram@datamax}{\pgfplotsplothandlerhistogram@datamin}%
+	\let\pgfplotsplothandlerhistogram@range=\pgfmathresult
+	\pgfmathfloatdivide@{\pgfplotsplothandlerhistogram@range}{\pgfplotsplothandlerhistogram@N}%
+	\let\pgfplotsplothandlerhistogram@h=\pgfmathresult
+	\pgfmathfloatreciprocal@{\pgfplotsplothandlerhistogram@h}%
+	\let\pgfplotsplothandlerhistogram@invh=\pgfmathresult
+	%
+	\pgfplotsarraynewempty{pgfp@hist}%
+	\pgfplotsarrayresize{pgfp@hist}{\pgfplotsplothandlerhistogram@Nfixed}%
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to{0}%
+	}%
+	%
+	\pgfplotsapplistXlet\pgfplots@hist@data=\pgfp@hist@@
+	\pgfplotsapplistXnewempty\pgfp@hist@@
+	\expandafter\pgfplotsplothandlersurveyend@hist@loop\pgfplots@hist@data\pgfplots@EOI
+	\let\pgfplots@hist@data=\relax
+	%
+	\let\pgfplots@current@point@z=\pgfutil@empty
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\pgfplotsplothandlerhistgetintervalstartfor\pgfplotsarrayforeachindex
+		\let\pgfplots@current@point@x\pgfmathresult%
+		\let\pgfplots@current@point@y\pgfplots@hist@count%
+		\pgfplotsplothandlersurveypoint@genericimpl
+	}%
+	\ifpgfplotsplothandlerhistogram@intervals
+		% replicate last count.
+		\let\pgfplots@current@point@x\pgfplotsplothandlerhistogram@datamax%
+		\let\pgfplots@current@point@y\pgfplots@hist@count%
+		\pgfplotsplothandlersurveypoint@genericimpl
+	\fi
+}
+\def\pgfplotsplothandlersurveyend@hist@loop#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		\pgfplotsplothandlerhistgetbinfor@{#1}%
+		\expandafter\pgfplotsplothandlerhistadvancebin\expandafter{\pgfmathresult}%
+		%
+		\expandafter\pgfplotsplothandlersurveyend@hist@loop
+	\fi
+}%
+\def\pgfplotsplothandlerhistadvancebin#1{%
+	\pgfplotsarrayselect{#1}\of{pgfp@hist}\to\pgfplots@loc@TMPa%
+	\pgfplotsutil@advancestringcounter\pgfplots@loc@TMPa
+	\pgfplotsarrayletentry{#1}\of{pgfp@hist}=\pgfplots@loc@TMPa
+}%
+\def\pgfplotsplothandlerhistgetintervalstartfor#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplotsplothandlerhistgetintervalstartfor@\expandafter{\pgfmathresult}%
+}%
+\def\pgfplotsplothandlerhistgetintervalstartfor@#1{%
+	\pgfmathfloatmultiply@{\pgfplotsplothandlerhistogram@h}{#1}%
+	\expandafter\pgfmathfloatadd@\expandafter{\pgfmathresult}{\pgfplotsplothandlerhistogram@datamin}%
+}%
+\def\pgfplotsplothandlerhistgetbinfor#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplotsplothandlerhistgetbinfor@\expandafter{\pgfmathresult}%
+}%
+\def\pgfplotsplothandlerhistgetbinfor@#1{%
+	\pgfmathfloatsubtract@{#1}{\pgfplotsplothandlerhistogram@datamin}%
+	\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplotsplothandlerhistogram@invh}%
+	\pgfmathfloattofixed{\pgfmathresult}%
+	\afterassignment\pgfplots@gobble@until@relax
+	\c@pgf@counta=\pgfmathresult\relax
+	\ifnum\pgfplotsplothandlerhistogram@Nfixed>\c@pgf@counta
+		\ifnum\c@pgf@counta<0
+			\def\pgfmathresult{0}%
+		\fi
+	\else
+		\let\pgfmathresult=\pgfplotsplothandlerhistogram@Nmax
+	\fi
+}%
+
