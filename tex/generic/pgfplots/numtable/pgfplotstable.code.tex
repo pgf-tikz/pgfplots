@@ -882,6 +882,11 @@
 	},
 	/pgfplots/table/colnames from/.initial=,% for \pgfplotstabletranspose
 	/pgfplots/table/input colnames to/.initial=colnames,% for \pgfplotstabletranspose
+	/pgfplots/table/sort key/.initial=,%
+	/pgfplots/table/sort asc/.code={\def\pgfplotstable@sort@asc{1}},
+	/pgfplots/table/sort desc/.code={\def\pgfplotstable@sort@asc{0}},
+	/pgfplots/table/sort asc,
+	/pgfplots/table/sort key from/.initial=,
 }
 % 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
 %
@@ -2740,5 +2745,95 @@
 			\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the value '#1' is unexpected for 'linear regression/#2mode'}\pgfeov%
 		}%
 	}%
+}%
+
+
+% Sorts table #2 according to options defined in #1.
+%
+% \pgfplotstablesort[sort key=<colname>]\loadedtable
+% \pgfplotstablesort[sort key=<colname>,sort key
+% source=<\table>]\loadedtable
+\def\pgfplotstablesort[#1]{%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstablesort@[#1]%
+	}%
+}
+\def\pgfplotstablesort@[#1]#2#3{%
+	\begingroup
+	\pgfplotstableset{#1}%
+	\pgfkeysgetvalue{/pgfplots/table/sort key}\pgfplotstable@sort@key@colname
+	\pgfkeysgetvalue{/pgfplots/table/sort key from}\pgfplotstable@sort@key@table
+	%
+	%
+	\pgfplotstable@isloadedtable{#3}{%
+		\pgfplotstablegetrowsof{#3}%
+		\let\pgfplotstable@numrows=\pgfplotsretval
+		%
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp{#3}%
+		\def\pgfplotstable@table{#3}%
+		\let\pgfplotstable@input@colnames=#3\relax
+	}{%
+		\pgfplotstableread{#3}\pgfp@tmp@in
+		\pgfplotstablegetrowsof\pgfp@tmp@in
+		\let\pgfplotstable@numrows=\pgfplotsretval
+		\def\pgfplotstable@table{\pgfp@tmp@in}%
+		\let\pgfplotstable@input@colnames=\pgfp@tmp@in
+		%
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp\pgfp@tmp@in
+	}%
+	%
+	\ifx\pgfplotstable@sort@key@colname\pgfutil@empty
+	\else
+		\ifx\pgfplotstable@sort@key@table\pgfutil@empty
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@sort@key@colname}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+			\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@sort@key
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@sort@key@colname}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@sort@key@table}%
+			\edef\pgfplotstable@loc@TMPa{%
+				\noexpand\pgfplotstablegetcolumn{\the\t@pgfplots@toka}\noexpand\of{\the\t@pgfplots@tokb}\noexpand\to\noexpand\pgfplotstable@sort@key}%
+			\pgfplotstable@loc@TMPa
+		\fi
+	\fi
+	\pgfplotsarraynewempty\pgfplotstable@sort@key@array
+	\pgfplotslistforeachungrouped{\pgfplotstable@sort@key}\as\pgfplotstable@loc@TMPa{%
+		\expandafter\pgfplotsarraypushback\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@sort@key@array
+	}%
+	%
+	%
+	% use a side effect: columns are integers, they are stored as
+	% 'pgfp@tmp@<index>'. So, we can interprete them as arrays!
+	\pgfplotsarrayresize{\pgfp@tmp}{\pgfplotstable@numrows}%
+	%
+	\pgfkeysdefargs{/pgfplots/array/iflessthan}{##1##2##3##4}{%
+		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexa}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
+		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexb}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
+		\pgfmathfloatparsenumber{\pgfplotstable@arga}%
+		\let\pgfplotstable@arga=\pgfmathresult
+		%
+		\pgfmathfloatparsenumber{\pgfplotstable@argb}%
+		\let\pgfplotstable@argb=\pgfmathresult
+		%
+		\if1\pgfplotstable@sort@asc
+			\pgfmathfloatlessthan@{\pgfplotstable@arga}{\pgfplotstable@argb}%
+		\else
+			\pgfmathfloatgreaterthan@{\pgfplotstable@arga}{\pgfplotstable@argb}%
+		\fi
+		\ifpgfmathfloatcomparison
+			##3%
+		\else
+			##4%
+		\fi
+	}%
+	\pgfkeysdef{/pgfplots/array/unscope pre}{%
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp@result\pgfp@tmp
+		\pgfplotstable@copy@to@globalbuffers\pgfp@tmp@result{\pgfplotstablenameof\pgfp@tmp}%
+	}%
+	\pgfkeysdef{/pgfplots/array/unscope post}{}%
+	\pgfplotsarraysort{\pgfp@tmp}%
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to{#2}%
 }%
 \endinput
