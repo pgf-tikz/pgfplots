@@ -2807,8 +2807,24 @@
 	%
 	%
 	% use a side effect: columns are integers, they are stored as
-	% 'pgfp@tmp@<index>'. So, we can interprete them as arrays!
+	% '\pgfp@tmp@<index>'. Thus, column names and array indices are
+	% essentially the same! That simplifies the operation and explains
+	% why we transposed the table. 
+	% We simply interprete the transposed table as array. We don't
+	% even need to copy anything.
 	\pgfplotsarrayresize{\pgfp@tmp}{\pgfplotstable@numrows}%
+	% Oh, we also need the index to access the sort key. Well, then we
+	% did not win anything.
+	\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+		\edef\pgfplotstable@loc@TMPa{\pgfplotsarrayforeachindex:{\the\t@pgfplots@toka}}%
+		\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@loc@TMPa
+	}%
+	% extract current row index and row content:
+	\def\pgfplotstable@sort@extractindex##1:##2{%
+		\def\pgfmathresult{##1}%
+		\def\pgfplotstable@row{##2}%
+	}%
 	%
 	\def\pgfplotstable@loc@TMPa{\pgfqkeys{/pgfplots/array}}%
 	\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstable@sort@cmp}%
@@ -2816,13 +2832,23 @@
 	\def\pgfplotstable@sort@iflt##1##2##3##4{\pgfplotstable@sort@cmp@routine{##1}{##2}{##3}{##4}\pgfeov}%
 	%
 	\pgfkeysdefargs{/pgfplots/array/iflessthan}{##1##2##3##4}{%
-		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexa}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
-		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexb}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
+		\expandafter\pgfplotstable@sort@extractindex##1%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
+		\expandafter\pgfplotstable@sort@extractindex##2%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
 		\pgfplotstable@sort@iflt{\pgfplotstable@arga}{\pgfplotstable@argb}{##3}{##4}%
 	}%
 	\pgfkeysdef{/pgfplots/array/unscope pre}{%
+		% remove the row index:
+		\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+			\expandafter\pgfplotstable@sort@extractindex\pgfplotstable@loc@TMPa%
+			\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@row
+		}%
+		% restore original form:
 		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp@result\pgfp@tmp
+		% technical, transport result out of the current scope ...
 		\pgfplotstable@copy@to@globalbuffers\pgfp@tmp@result{\pgfplotstablenameof\pgfp@tmp}%
+		% ... and use this lowlevel thing to transport the original column names.
 		\global\let\pgfplotstable@colnames@glob=\pgfplotstable@input@colnames
 	}%
 	\pgfkeysdef{/pgfplots/array/unscope post}{}%
