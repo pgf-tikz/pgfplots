@@ -398,7 +398,7 @@
 			\pgfkeyslet{/pgfplots/table/@cell content}\pgfplots@glob@TMPa%
 		}%
 	},%
-	/pgfplots/table/date type/.default={\year/\month/\day}%
+	/pgfplots/table/date type/.default={\year/\month/\day},%
 	/pgfplots/table/set content/.style={%
 		/pgfplots/table/postproc cell content/.style={%
 			/pgfplots/table/@cell content={#1}%
@@ -882,10 +882,11 @@
 	},
 	/pgfplots/table/colnames from/.initial=,% for \pgfplotstabletranspose
 	/pgfplots/table/input colnames to/.initial=colnames,% for \pgfplotstabletranspose
-	/pgfplots/table/sort key/.initial=,%
-	/pgfplots/table/sort asc/.code={\def\pgfplotstable@sort@asc{1}},
-	/pgfplots/table/sort desc/.code={\def\pgfplotstable@sort@asc{0}},
-	/pgfplots/table/sort asc,
+	/pgfplots/table/sort key/.initial=[index]0,%
+	% the argument of `sort cmp' will be evaluates as style in the key
+	% path /pgfplots/array. See pgfplotsarray.code.tex for available
+	% styles.
+	/pgfplots/table/sort cmp/.initial=iflessthan float,
 	/pgfplots/table/sort key from/.initial=,
 }
 % 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
@@ -2748,14 +2749,15 @@
 }%
 
 
-% Sorts table #2 according to options defined in #1.
+% Sorts table #3 according to options defined in #1 and writes result
+% to #2.
 %
-% \pgfplotstablesort[sort key=<colname>]\loadedtable
-% \pgfplotstablesort[sort key=<colname>,sort key
-% source=<\table>]\loadedtable
-\def\pgfplotstablesort[#1]{%
+% \pgfplotstablesort[sort key=<colname>]\result{<input table>}
+% \pgfplotstablesort[sort key=<colname>,sort key source=<\table>]\result{<input table>}
+\def\pgfplotstablesort{\pgfutil@ifnextchar[{\pgfplotstablesort@opt}{\pgfplotstablesort@opt[]}}
+\def\pgfplotstablesort@opt[#1]#2{%
 	\pgfplotstablecollectoneargwithpreparecatcodes{%
-		\pgfplotstablesort@[#1]%
+		\pgfplotstablesort@[#1]{#2}%
 	}%
 }
 \def\pgfplotstablesort@[#1]#2#3{%
@@ -2763,6 +2765,7 @@
 	\pgfplotstableset{#1}%
 	\pgfkeysgetvalue{/pgfplots/table/sort key}\pgfplotstable@sort@key@colname
 	\pgfkeysgetvalue{/pgfplots/table/sort key from}\pgfplotstable@sort@key@table
+	\pgfkeysgetvalue{/pgfplots/table/sort cmp}\pgfplotstable@sort@cmp
 	%
 	%
 	\pgfplotstable@isloadedtable{#3}{%
@@ -2804,36 +2807,57 @@
 	%
 	%
 	% use a side effect: columns are integers, they are stored as
-	% 'pgfp@tmp@<index>'. So, we can interprete them as arrays!
+	% '\pgfp@tmp@<index>'. Thus, column names and array indices are
+	% essentially the same! That simplifies the operation and explains
+	% why we transposed the table. 
+	% We simply interprete the transposed table as array. We don't
+	% even need to copy anything.
 	\pgfplotsarrayresize{\pgfp@tmp}{\pgfplotstable@numrows}%
+	% Oh, we also need the index to access the sort key. Well, then we
+	% did not win anything.
+	\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+		\edef\pgfplotstable@loc@TMPa{\pgfplotsarrayforeachindex:{\the\t@pgfplots@toka}}%
+		\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@loc@TMPa
+	}%
+	% extract current row index and row content:
+	\def\pgfplotstable@sort@extractindex##1:##2{%
+		\def\pgfmathresult{##1}%
+		\def\pgfplotstable@row{##2}%
+	}%
 	%
-	\pgfkeysdefargs{/pgfplots/array/iflessthan}{##1##2##3##4}{%
-		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexa}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
-		\pgfplotsarrayselect{\pgfplotsarraysortiflessthanindexb}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
-		\pgfmathfloatparsenumber{\pgfplotstable@arga}%
-		\let\pgfplotstable@arga=\pgfmathresult
-		%
-		\pgfmathfloatparsenumber{\pgfplotstable@argb}%
-		\let\pgfplotstable@argb=\pgfmathresult
-		%
-		\if1\pgfplotstable@sort@asc
-			\pgfmathfloatlessthan@{\pgfplotstable@arga}{\pgfplotstable@argb}%
-		\else
-			\pgfmathfloatgreaterthan@{\pgfplotstable@arga}{\pgfplotstable@argb}%
-		\fi
-		\ifpgfmathfloatcomparison
-			##3%
-		\else
-			##4%
-		\fi
+	\def\pgfplotstable@loc@TMPa{\pgfqkeys{/pgfplots/array}}%
+	\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstable@sort@cmp}%
+	\pgfkeysgetvalue{/pgfplots/iflessthan/.@cmd}\pgfplotstable@sort@cmp@routine
+	\def\pgfplotstable@sort@iflt##1##2##3##4{\pgfplotstable@sort@cmp@routine{##1}{##2}{##3}{##4}\pgfeov}%
+	%
+	\pgfkeysdefargs{/pgfplots/iflessthan}{##1##2##3##4}{%
+		\expandafter\pgfplotstable@sort@extractindex##1%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
+		\expandafter\pgfplotstable@sort@extractindex##2%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
+		\pgfplotstable@sort@iflt{\pgfplotstable@arga}{\pgfplotstable@argb}{##3}{##4}%
 	}%
 	\pgfkeysdef{/pgfplots/array/unscope pre}{%
+		% remove the row index:
+		\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+			\expandafter\pgfplotstable@sort@extractindex\pgfplotstable@loc@TMPa%
+			\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@row
+		}%
+		% restore original form:
 		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp@result\pgfp@tmp
+		% technical, transport result out of the current scope ...
 		\pgfplotstable@copy@to@globalbuffers\pgfp@tmp@result{\pgfplotstablenameof\pgfp@tmp}%
+		% ... and use this lowlevel thing to transport the original column names.
+		\global\let\pgfplotstable@colnames@glob=\pgfplotstable@input@colnames
 	}%
 	\pgfkeysdef{/pgfplots/array/unscope post}{}%
 	\pgfplotsarraysort{\pgfp@tmp}%
 	\endgroup
 	\pgfplotstable@copy@globalbuffers@to{#2}%
 }%
+
+\pgfutil@ifundefined{pgfcalendardatetojulian}{%
+	\def\pgfcalendardatetojulian#1#2{\pgfplots@error{Sorry, you need to use \string\usepackage{pgfcalendar} before using date specific methods}}%
+}{}%
 \endinput
