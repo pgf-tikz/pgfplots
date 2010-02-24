@@ -8,7 +8,7 @@ notes: TeX-programming-notes.pdf
 pgfplots: pgfplots.pdf
 pgfplotstable: pgfplotstable.pdf
 
-%.pdf: FORCE
+%.pdf: update-git-hooks FORCE
 	mkdir -p gnuplot
 	@export TEXMFCNF=.: && $(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
@@ -18,5 +18,8 @@ pgfplotstable: pgfplotstable.pdf
 	
 clean:
 	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
+
+update-git-hooks:
+	@
 
 FORCE:
