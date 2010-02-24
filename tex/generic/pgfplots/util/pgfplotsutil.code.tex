@@ -868,6 +868,74 @@
 	\fi
 }%
 
+% String comparison of '#1' and '#2'.
+% Defines 
+% \pgfplotsretval=0  if #1 == #2 
+% \pgfplotsretval=1  if #1 < #2
+% \pgfplotsretval=2  if #1 > #2
+\def\pgfplotsutilstrcmp#1#2{%
+	\begingroup
+	\def\pgfplots@strcmp@arga{#1}%
+	\pgfplots@command@to@string\pgfplots@strcmp@arga\pgfplots@strcmp@arga
+	\def\pgfplots@strcmp@argb{#2}%
+	\pgfplots@command@to@string\pgfplots@strcmp@argb\pgfplots@strcmp@argb
+	%
+	%
+	\def\pgfplotsretval{0}%
+	%
+	\pgfplotsloop{%
+		\if0\pgfplotsretval
+			% get next token of arga:
+			\expandafter\pgfplotsutilstrcmp@popfront\pgfplots@strcmp@arga\relax\relax
+			\let\pgfplots@strcmp@arga=\pgfplots@strcmp@rest
+			\let\pgfplots@strcmp@arga@=\pgfplots@strcmp@cur
+			%
+			% get next token of argb:
+			\expandafter\pgfplotsutilstrcmp@popfront\pgfplots@strcmp@argb\relax\relax
+			\let\pgfplots@strcmp@argb=\pgfplots@strcmp@rest
+			\let\pgfplots@strcmp@argb@=\pgfplots@strcmp@cur
+			%
+			% if one of them is empty: set retval and break loop.
+			\ifx\pgfplots@strcmp@arga@\pgfplotsutilstrcmp@relaxtext
+				\ifx\pgfplots@strcmp@argb@\pgfplotsutilstrcmp@relaxtext
+				\else
+					\def\pgfplotsretval{1}%
+				\fi
+				\pgfplotsloopcontinuefalse
+			\else
+				\ifx\pgfplots@strcmp@argb@\pgfplotsutilstrcmp@relaxtext
+					\def\pgfplotsretval{2}%
+					\pgfplotsloopcontinuefalse
+				\else
+					\pgfplotsloopcontinuetrue
+				\fi
+			\fi
+		\else
+			\pgfplotsloopcontinuefalse
+		\fi
+	}{%
+		%
+		\ifnum\expandafter`\pgfplots@strcmp@arga@<\expandafter`\pgfplots@strcmp@argb@
+			\def\pgfplotsretval{1}%
+			\let\pgfplots@strcmp@arga=\pgfutil@empty
+		\else
+			\ifnum\expandafter`\pgfplots@strcmp@arga@>\expandafter`\pgfplots@strcmp@argb@
+				\def\pgfplotsretval{2}%
+				\let\pgfplots@strcmp@arga=\pgfutil@empty
+			\fi
+		\fi
+	}%
+	%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+\def\pgfplotsutilstrcmp@relaxtext{\relax}%
+\def\pgfplotsutilstrcmp@popfront#1#2\relax{%
+	\def\pgfplots@strcmp@cur{#1}%
+	\def\pgfplots@strcmp@rest{#2}%
+}%
+
+
 \pgfutil@ifundefined{pgfmathdeclarefunction}{%
 	% BACKWARDS COMPATIBILITY: We have PGF 2.00 :
 	\def\pgfplotsmathdeclarepseudoconstant#1#2{%
@@ -1076,6 +1144,92 @@
 		\fi
 	\fi
 }%
+\pgfkeys{%
+	% /pgfplots/iflessthan{#1}{#2}{#3}{#4}:
+	% #1: arg1 (a macro containing the first argument)
+	% #2: arg2 (a macro containing the second argument)
+	% #3: code to invoke in case arg1<arg2
+	% #4: code to invoke in case arg1>=arg2
+	% the iflessthan method will be invoked within local scopes.
+	/pgfplots/fixed </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt<##2pt\relax##3\else##4\fi},%
+	},
+	/pgfplots/fixed <,
+	/pgfplots/fixed >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt>##2pt\relax##3\else##4\fi},%
+	},
+	/pgfplots/int </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1<##2\relax##3\else##4\fi},%
+	},
+	/pgfplots/int >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1>##2\relax##3\else##4\fi},%
+	},
+	/pgfplots/float </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\pgfmathfloatparsenumber{##1}%
+			\let\pgfplots@iflt@arga=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{##2}%
+			\let\pgfplots@iflt@argb=\pgfmathresult
+			%
+			\pgfmathfloatlessthan@{\pgfplots@iflt@arga}{\pgfplots@iflt@argb}%
+			\ifpgfmathfloatcomparison
+				##3%
+			\else
+				##4%
+			\fi
+		}%
+	},%
+	/pgfplots/float >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\pgfmathfloatparsenumber{##1}%
+			\let\pgfplots@iflt@arga=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{##2}%
+			\let\pgfplots@iflt@argb=\pgfmathresult
+			%
+			\pgfmathfloatgreaterthan@{\pgfplots@iflt@arga}{\pgfplots@iflt@argb}%
+			\ifpgfmathfloatcomparison
+				##3%
+			\else
+				##4%
+			\fi
+		}%
+	},%
+	% 
+	% compares YYYY-MM-DD < YYYY-MM-DD
+	/pgfplots/date </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\edef\pgfplotsarray@ltdate{##1\noexpand\cmp ##2}%
+			\expandafter\pgfplotsutilifdatelessthan\pgfplotsarray@ltdate\relax{##3}{##4}%
+		}%
+	},%
+	/pgfplots/date >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\edef\pgfplotsarray@ltdate{##1\noexpand\cmp ##2}%
+			\expandafter\pgfplotsutilifdategreaterthan\pgfplotsarray@ltdate\relax{##3}{##4}%
+		}%
+	},%
+	%
+	/pgfplots/string </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\t@pgfplots@toka=\expandafter{##1}%
+			\t@pgfplots@tokb=\expandafter{##2}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+			\expandafter\pgfplotsutilstrcmp\pgfplots@loc@TMPa
+			\if1\pgfplotsretval ##3\else ##4\fi
+		}%
+	},%
+	/pgfplots/string >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\t@pgfplots@toka=\expandafter{##1}%
+			\t@pgfplots@tokb=\expandafter{##2}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+			\expandafter\pgfplotsutilstrcmp\pgfplots@loc@TMPa
+			\if2\pgfplotsretval ##3\else ##4\fi
+		}%
+	},%
+}
 
 \input pgfplotsliststructure.code.tex
 \input pgfplotsliststructureext.code.tex
