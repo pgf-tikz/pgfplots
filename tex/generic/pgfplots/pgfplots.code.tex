@@ -1300,6 +1300,7 @@
 % legend options:
 	/pgfplots/legend entries/.initial={},
 	/pgfplots/legend entries/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend to macro/.initial=,%
 	/pgfplots/legend pos/.is choice,
 	/pgfplots/legend pos/south west/.style={/pgfplots/legend style={at={(0.03,0.03)},anchor=south west}},
 	/pgfplots/legend pos/south east/.style={/pgfplots/legend style={at={(0.97,0.03)},anchor=south east}},
@@ -3486,6 +3487,7 @@
 % or it creates a legend, stores the commands into the macro named
 % above and typesets it.
 \def\pgfplots@createlegend{%
+	\pgfkeysgetvalue{/pgfplots/legend to macro}\pgfplots@createlegend@tomacro
 	\ifx\pgfplots@already@computed@legend@node\pgfutil@empty
 		\pgfplotslistcheckempty\pgfplots@legend
 		\ifpgfplotslistempty
@@ -3503,11 +3505,23 @@
 		%
 		% 
 		\begingroup
-			\def\pgfplots@createlegend@prepareimage@to##1{%
-				\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
-				\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
-				\edef##1{\noexpand\pgfplots@show@small@legendplots{\the\t@pgfplots@tokb}{\the\t@pgfplots@tokc}}%
-			}%
+			\ifx\pgfplots@createlegend@tomacro\pgfutil@empty
+				% ok, draw legend.
+				\def\pgfplots@createlegend@prepareimage@to##1{%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
+					\edef##1{\noexpand\pgfplots@show@small@legendplots{\the\t@pgfplots@tokb}{\the\t@pgfplots@tokc}}%
+				}%
+			\else
+				% export legend instead of drawing it.
+				\def\pgfplots@createlegend@prepareimage@to##1{%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
+					\edef\pgfplots@loc@TMPa{\noexpand\pgfplots@export@legend@image@to@macro{\the\t@pgfplots@tokb,\the\t@pgfplots@tokc}{}}%
+					\pgfplots@loc@TMPa
+					\let##1=\pgfplotsretval
+				}%
+			\fi
 			% assemble a 
 			% \matrix {
 			% 	small plot  & legend1\\
@@ -3622,8 +3636,26 @@
 		\fi
 	\fi
 %\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node}%
-	\pgfplots@already@computed@legend@node
+	\ifx\pgfplots@createlegend@tomacro\pgfutil@empty
+		% DRAW:
+		\pgfplots@already@computed@legend@node
+	\else
+		% store:
+		\t@pgfplots@toka=\expandafter{\pgfplots@already@computed@legend@node}%
+		\pgfkeysgetvalue{/pgfplots/every axis legend/.@cmd}\pgfplots@loc@TMPa
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
+		\expandafter\xdef\pgfplots@createlegend@tomacro{%
+			\noexpand\begingroup
+			\noexpand\pgfkeysdef{/pgfplots/every axis legend}{\the\t@pgfplots@tokb}%
+			\noexpand\pgfplots@ifintikzpicture{\the\t@pgfplots@toka}{\noexpand\tikz{\the\t@pgfplots@toka}}%
+			\noexpand\endgroup
+		}%
+	\fi
 }
+
+\def\pgfplots@ifintikzpicture#1#2{%
+	\pgfutil@ifundefined{filldraw}{#2}{#1}%
+}%
 
 % DEPRECATED.
 \def\skipsuffixzero#1.#2|{
@@ -8131,6 +8163,10 @@
 % just before the exported \tikz statement is invoked, and \tikz[#2]
 % will be called. The code key should not rely on any arguments (it
 % won't be given any)
+%
+% The exported routine autodetects whether the result is used inside of
+% a picture. In that case, the '#2' style will be set inside of a
+% scope instead of \tikz[#2].
 % 
 % Assembles a macro \pgfplotsretval which, upon execution, draws the
 % plot style.
@@ -8175,7 +8211,21 @@
 		\else
 			\noexpand\pgfkeysdef{#2}{\the\toks4}%
 		\fi
-		\noexpand\tikz[#2]{\noexpand\pgfplots@show@small@legendplots{\the\toks1}{}}%
+		\noexpand\pgfplots@ifintikzpicture{%
+			\ifx\pgfplots@stylekey\pgfutil@empty
+			\else
+				\noexpand\scope[#2]%
+			\fi
+			%
+			\noexpand\pgfplots@show@small@legendplots{\the\toks1}{}%
+			%
+			\ifx\pgfplots@stylekey\pgfutil@empty
+			\else
+				\noexpand\endscope%
+			\fi
+		}{%
+			\noexpand\tikz[#2]{\noexpand\pgfplots@show@small@legendplots{\the\toks1}{}}%
+		}%
 		\noexpand\endgroup%
 	}%
 	\xdef\pgfplots@glob@TMPa{\the\toks1}%
