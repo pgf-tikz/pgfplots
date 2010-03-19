@@ -28,6 +28,7 @@ FILES=(\
 	$PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
 	$PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex \
 	$PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
+	$PGFDIR/generic/pgf/basiclayer/pgfcoreimage.code.tex \
 	$PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
 	$PGFDIR/latex/pgf/utilities/tikzexternal.sty \
 	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
