@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Di 9. Feb 23:24:04 CET 2010 %%%
+%%% Date of this copy: Do 25. Mär 20:53:25 CET 2010 %%%
 
 
 
@@ -87,7 +87,24 @@
 		\tikzexternalgetnextfilename\tikzexternal@temp
 		\tikzifexternaljobnamematches\tikzexternal@temp{#1}{#2}%
 	\else 
-		#2
+		#2%
+	\fi
+}%
+% Invokes '#1' if the external lib is currently externalizing the
+% current picture. It invokes '#2' if that is not the case.
+%
+% If the command is invoked outside of a picture, '#2' will be
+% invoked.
+\def\tikzifexternalizingcurrent#1#2{%
+	\ifpgf@external@grabshipout 
+		\tikzexternalgetcurrentfilename\tikzexternal@temp
+		\ifx\tikzexternal@temp\pgfutil@empty
+			#2%
+		\else
+			\tikzifexternaljobnamematches\tikzexternal@temp{#1}{#2}%
+		\fi
+	\else 
+		#2%
 	\fi
 }%
 
@@ -110,20 +127,33 @@
 		\def\tikzexternalcheckshellescape{}%
 	\fi
 }%
+\newif\iftikzexternal@auto@detect@jobname
 
 \pgfqkeys{/tikz/external}{
 	figure list/.is if=tikzexternal@genfigurelist,
-	figure list=true,
+	aux in dpth/.style={/pgf/images/aux in dpth=#1},%
 	% 'mode' applies only if \jobname==real job name.
 	mode/.is choice,
-	mode/only graphics/.code	= {\def\tikzexternal@opmode{0}},
+	mode/only graphics/.code	= {%
+		\def\tikzexternal@opmode{0}%
+		\pgfkeysalso{/pgf/images/aux in dpth=true}%
+	},
 	mode/no graphics/.code		= {\def\tikzexternal@opmode{1}},
 	% an alias for 'no graphics:'
 	mode/only pictures/.code	= {\def\tikzexternal@opmode{1}},
-	mode/graphics if exists/.code= {\def\tikzexternal@opmode{2}},
+	mode/graphics if exists/.code= {%
+		\def\tikzexternal@opmode{2}%
+		\pgfkeysalso{/pgf/images/aux in dpth=true}%
+	},
 	mode/list only/.code		= {\def\tikzexternal@opmode{3}\tikzexternal@genfigurelisttrue},
-	mode/convert with system call/.code={\def\tikzexternal@opmode{4}\tikzexternal@genfigurelistfalse},
-	mode/list and make/.code	= {\def\tikzexternal@opmode{5}\tikzexternal@genfigurelisttrue},
+	mode/convert with system call/.code={%
+		\def\tikzexternal@opmode{4}%
+		\pgfkeysalso{/tikz/external/figure list=false,/pgf/images/aux in dpth=false}%
+	},
+	mode/list and make/.code	= {%
+		\def\tikzexternal@opmode{5}%
+		\pgfkeysalso{/tikz/external/figure list=true,/pgf/images/aux in dpth=true}%
+	},
 	mode=convert with system call,
 	system call/.initial={pdflatex \tikzexternalcheckshellescape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource"},
 %	system call/.initial={pdflatex -interaction=batchmode -jobname '\image' '\texsource'; pdftops -eps \image.pdf},
@@ -138,6 +168,7 @@
 	verbose IO=true,
 	shell escape/.initial=-shell-escape,
 	verbose optimize/.is if=tikzexternal@verbose@optimize,
+	read main aux/.is if=pgfexternalreadmainaux,
 	optimize/.is choice,
 	optimize/true/.code={%
 		\tikzexternal@optimizetrue
@@ -219,11 +250,20 @@
 
 % This method initialises automatic externalization.
 % 
-% The first argument is the job's real name, without suffix.
+% The command does need any argument, but it has two optional ones:
 %
-% \tikzexternalize{myarticle}
+% 1. \tikzexternalize[<options>]
 %
-% Doing so will 
+% 2. \tikzexternalize{<real job's name>}
+%
+% 3. \tikzexternalize[<options>]{<real job's name>}
+%
+% The <real job's name> is the job's file name, without the suffix
+% .tex .
+% If the <real job's name> is omitted, it will be deduced
+% automatically.
+%
+% The effect is:
 % 1. automatically surround EVERY tikzpicture by \beginpgfgraphicnamed % sections.
 % 2. in case that the job's real name and the current \jobname differ,
 % it will process ONLY the matching tikzpicture.
@@ -234,11 +274,27 @@
 		\tikzexternalize@opt[]%
 	}%
 }%
-\def\tikzexternalize@opt[#1]#2{%
+\def\tikzexternalize@opt[#1]{%
+	\pgfutil@ifnextchar\bgroup{%
+		\tikzexternal@auto@detect@jobnamefalse
+		\tikzexternalize@opt@withname[#1]%
+	}{%
+		\tikzexternal@auto@detect@jobnametrue
+		\pgfutil@ifundefined{tikzexternalrealjob}{%
+			% ok, \tikzexternalrealjob is not known. 
+			% Assume we are currently *not* externalizing.
+			\let\tikzexternalrealjob=\jobname
+		}{}%
+		\def\pgf@tempa{\tikzexternalize@opt@withname[#1]}%
+		\expandafter\pgf@tempa\expandafter{\tikzexternalrealjob}%
+	}%
+}%
+\def\tikzexternalize@opt@withname[#1]#2{%
 	\if1\tikzexternalize@hasbeencalled
 	\else
 		\pgfqkeys{/tikz/external}{#1}%
 		\def\tikzexternal@realjob{#2}%
+		\tikzexternalauxlock@init
 		\pgfrealjobname{#2}%
 		\def\tikzexternalize@hasbeencalled{1}%
 		\tikzexternalenable
@@ -250,11 +306,95 @@
 		}{%
 			\let\tikzexternal@orig@includegraphics=\includegraphics
 		}%
-		\let\tikzexternalfiledependsonfile=\tikzexternalfiledependsonfile@INACTIVE
-		\let\tikzpicturedependsonfile=\tikzpicturedependsonfile@INACTIVE
+		\let\tikzexternalfiledependsonfile=\tikzexternalfiledependsonfile@ACTIVE
+		\let\tikzpicturedependsonfile=\tikzpicturedependsonfile@ACTIVE
 	\fi
 }
 \def\tikzexternalize@hasbeencalled{0}%
+
+% If mode=`convert with system call', the boolean \ifpgfexternalreadmainaux 
+% will be set depending on the current lock file.
+%
+% The idea is as follows: Suppose
+% pdflatex -shell-escape mainjob.tex 
+% is running.
+% 
+% While it runs, 
+% a) it modifies its mainjob.aux file,
+% b) it issues pdflatex -jobname mainjob-figure0 mainjob.tex .
+%
+% The call (b) will try to read mainjob.aux in order to resolve \ref
+% commands. This may fail since the aux
+% file is not complete; it may be subject to output buffering. To
+% avoid such failure, a locking mechanism is established.
+%
+% The locking mechanisms causes (a) to write a lock command into
+% mainjob.auxlock 
+% just before (b) is called. Then, (b) will check it. After (b) has
+% completed, the lock will be reset.
+%
+% Thus: mode=convert with system call does NOT support \ref commands
+% inside of images. You will need to call the externalization command
+% manually. In this case, it should work.
+%
+% @PRECONDITION : this command must be invoked AFTER
+% \tikzexternal@realjob has been defined but BEFORE \pgfrealjobname is
+% called.
+%
+% @POSTCONDITION : If \ifpgfexternalreadmainaux=\iffalse, we won't do
+% anything. Otherwise, it will be changed depending for 'mode=convert
+% with system call' if necessary.
+\def\tikzexternalauxlock@init{%
+	\if4\tikzexternal@opmode
+		\ifpgfexternalreadmainaux
+			% mode=convert with system call
+			\edef\pgf@tempa{\expandafter\string\csname\tikzexternal@realjob\endcsname}%
+			\edef\pgf@tempb{\expandafter\string\csname\jobname\endcsname}%
+			\ifx\pgf@tempa\pgf@tempb
+				% we are *not* externalizing. Set lock into its
+				% initial "unlocked" state.
+				\tikzexternalauxlock@setlock{0}%
+			\else
+				% we are externalizing. Query the lock's value:
+				\tikzexternalauxlock@getlockvalue
+				\if1\tikzexternallocked
+					\pgfexternalreadmainauxfalse
+				\else
+					\pgfexternalreadmainauxtrue
+				\fi
+			\fi
+		\else
+			% NO-OP. We won't read the main aux file anyway.
+			\def\tikzexternalauxlock@setlock##1{}%
+		\fi
+	\fi
+}
+% defines \tikzexternallocked to be either 0 or 1, depending on the
+% lock file.
+\def\tikzexternalauxlock@getlockvalue{%
+	\openin\r@pgf@reada=\tikzexternal@realjob.auxlock
+	\ifeof\r@pgf@reada
+		% no lock file. Unlock.
+		\def\tikzexternallocked{0}%
+	\else
+		% read first line...
+		\read\r@pgf@reada to\pgf@tempa
+		% ... and execute it.
+		\pgf@tempa
+		% it should contain a definition of \tikzexternallocked. If
+		% not, lock it anyway.
+		\pgfutil@ifundefined
+			{tikzexternallocked}
+			{\def\tikzexternallocked{1}}%
+			{}%
+	\fi
+	\closein\r@pgf@reada
+}%
+\def\tikzexternalauxlock@setlock#1{%
+	\immediate\openout\w@pgf@writea=\tikzexternal@realjob.auxlock
+	\immediate\write\w@pgf@writea{\noexpand\def\noexpand\tikzexternallocked{#1}}%
+	\immediate\closeout\w@pgf@writea
+}
 
 % Expands to the default image extension (it is set by
 % \tikzexternalize).
@@ -489,6 +629,22 @@
 	\endgroup
 }%
 
+% Returns the file name of the current picture.
+%
+% It returns the empty string in case the command is invoked outside
+% of a picture.
+% #1 the macro which will contain the file name.
+% @see \tikzexternalgetnextfilename
+\def\tikzexternalgetcurrentfilename#1{%
+	\ifx\tikzexternal@curfilename\relax
+		% we are outside of a picture.
+		\let#1=\pgfutil@empty
+	\else
+		% we are inside of a picture.
+		\let#1=\tikzexternal@curfilename
+	\fi
+}
+
 % Fills #1 with a filename for the current picture.
 %
 % The filename will be generated automatically by appending '-figure<number>' to the real jobname.
@@ -646,7 +802,7 @@
 %
 % This command will be actived as soons as \tikzexternalize has been
 % called.
-\def\tikzexternalfiledependsonfile@INACTIVE#1#2{%
+\def\tikzexternalfiledependsonfile@ACTIVE#1#2{%
 	\begingroup
 	\def\tikzpicturedependsonfile@name{#1}%
 	\ifx\tikzpicturedependsonfile@name\pgfutil@empty
@@ -689,14 +845,11 @@
 %
 % This command will be actived as soons as \tikzexternalize has been
 % called.
-\def\tikzpicturedependsonfile@INACTIVE#1{%
+\def\tikzpicturedependsonfile@ACTIVE#1{%
 	\begingroup
-	\ifx\tikzexternal@curfilename\relax
-		% we are *not* inside of the exported file.
-		% use next file name.
+	\tikzexternalgetcurrentfilename\tikzpicturedependsonfile@name
+	\ifx\tikzpicturedependsonfile@name\pgfutil@empty
 		\tikzexternalgetnextfilename\tikzpicturedependsonfile@name
-	\else
-		\let\tikzpicturedependsonfile@name=\tikzexternal@curfilename
 	\fi
 	\expandafter\tikzexternalfiledependsonfile\expandafter{\tikzpicturedependsonfile@name}{#1}%
 	\endgroup
@@ -1060,7 +1213,11 @@
 \def\tikzexternal@assemble@systemcall#1#2{%
 	\begingroup
 		\def\image{#1}%
-		\let\texsource=\tikzexternal@realjob
+		\iftikzexternal@auto@detect@jobname
+			\edef\texsource{\string\def\string\tikzexternalrealjob{\tikzexternal@realjob}\string\input{\tikzexternal@realjob}}%
+		\else
+			\let\texsource=\tikzexternal@realjob
+		\fi
 		\ifnum\the\catcode`\"=13 \tikzexternal@activate@normal@dq\fi
 		\ifnum\the\catcode`\'=13 \tikzexternal@activate@normal@sq\fi
 		\ifnum\the\catcode`\;=13 \tikzexternal@activate@normal@semic\fi
@@ -1083,7 +1240,10 @@
 		\iftikzexternal@verboseio
 			\immediate\write16{===== 'mode=convert with system call': Invoking '\pgf@tempa' ========}%
 		\fi
+		%
+		\tikzexternalauxlock@setlock1%
 		\immediate\write18{\pgf@tempa}%
+		\tikzexternalauxlock@setlock0%
 		\expandafter\tikzexternal@externalizefig@systemcall@assertsuccess\expandafter{\pgf@tempa}%
 		\pgfmath@smuggleone\pgf@filename
 		\endgroup
