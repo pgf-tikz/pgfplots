@@ -67,7 +67,10 @@
 }
 \makeatother
 
-%\pgfplotstableset{debug=true}
+\pgfplotstableset{
+	%debug=true,
+	begin table=\begin{tabular}[b],
+}
 
 \title{%
 	Manual for Package \PGFPlotstable\\
@@ -938,8 +941,10 @@ See section~\ref{sec:number:styles} for how to change the exponential display st
 	Sets both, |fixed zerofill| and |sci zerofill| at once.
 \end{stylekey}
 
-\begin{key}{/pgf/number format/std}
-Configures |\pgfmathprintnumber| to a standard algorithm. It chooses either \texttt{fixed} or \texttt{sci}, depending on the order of magnitude. Let $n=s \cdot m \cdot 10^e$ be the input number and $p$ the current precision. If $-p/2 \le e \le 4$, the number is displayed using the fixed format. Otherwise, it is displayed using the scientific format. 
+\begin{keylist}{/pgf/number format/std,%
+	/pgf/number format/std=\meta{lower e},
+	/pgf/number format/std=\meta{lower e}:\meta{upper e}}
+Configures |\pgfmathprintnumber| to a standard algorithm. It chooses either |fixed| or |sci|, depending on the order of magnitude. Let $n=s \cdot m \cdot 10^e$ be the input number and $p$ the current precision. If $-p/2 \le e \le 4$, the number is displayed using |fixed| format. Otherwise, it is displayed using |sci| format. 
 
 \begin{codeexample}[]
 \pgfkeys{/pgf/number format/.cd,std,precision=2}
@@ -949,7 +954,9 @@ Configures |\pgfmathprintnumber| to a standard algorithm. It chooses either \tex
 \pgfmathprintnumber{24415.98123}\hspace{1em}
 \pgfmathprintnumber{123456.12345}
 \end{codeexample}
-\end{key}
+The parameters can be customized using the optional integer argument(s): if $\text{\meta{lower e}} \le e \le \text{\meta{upper e}}$, the number is displayed in |fixed| format, otherwise in |sci| format. Note that \meta{lower e} should be negative for useful results. The precision used for scientific format can be adjusted with |sci precision| if necessary.
+
+\end{keylist}
 
 \begin{key}{/pgf/number format/int detect}
 Configures |\pgfmathprintnumber| to detect integers automatically. If the input number is an integer, no period is displayed at all. If not, the scientific format is chosen.
@@ -963,6 +970,18 @@ Configures |\pgfmathprintnumber| to detect integers automatically. If the input 
 \pgfmathprintnumber{0}
 \end{codeexample}
 \end{key}
+
+\begin{command}{\pgfmathifisint\marg{number constant}\marg{true code}\marg{false code}}
+	A command which does the same check as |int detect|, but it invokes \meta{true code} if the \meta{number constant} actually is an integer and the \meta{false code} if not.
+
+	As a side--effect, |\pgfretval| will contain the parsed number, either in integer format or as parsed floating point number.
+
+	The argument \meta{number constant} will be parsed with |\pgfmathfloatparsenumber|. 
+\begin{codeexample}[]
+15 \pgfmathifisint{15}{is an int: \pgfretval.}{is no int}\hspace{1em}
+15.5 \pgfmathifisint{15.5}{is an int: \pgfretval.}{is no int}
+\end{codeexample}
+\end{command}
 
 \begin{key}{/pgf/number format/int trunc}
 Truncates every number to integers (discards any digit after the period).
@@ -980,6 +999,12 @@ Truncates every number to integers (discards any digit after the period).
 \begin{key}{/pgf/number format/precision=\marg{number}}
 Sets the desired rounding precision for any display operation. For scientific format, this affects the mantisse.
 \end{key}
+\begin{key}{/pgf/number format/sci precision=\meta{number or empty} (initially empty)}
+	Sets the desired rounding precision only for |sci| styles. 
+
+	Use |sci precision={}| to restore the initial configuration (which uses the argument provided to |precision| for all number styles).
+\end{key}
+
 
 \subsubsection{Changing Number Format Display Styles}%
 \label{sec:number:styles}%
@@ -1186,6 +1211,29 @@ Typesets the exponent as superscript for any number displayed in scientific form
 \end{codeexample}
 \end{key}
 
+\begin{key}{/pgf/number format/sci generic=\marg{keys}}
+Allows to define an own number style for the scientific format. Here, \meta{keys} can be one of the following choices (omit the long key prefix):
+
+\begin{key}{/pgf/number format/sci generic/mantisse sep=\marg{text} (initially empty)}
+	Provides the separator between a mantisse and the exponent. It might be |\cdot|, for example,
+\end{key}
+\begin{key}{/pgf/number format/sci generic/exponent=\marg{text} (initially empty)}
+	Provides text to format the exponent. The actual exponent is available as argument |#1| (see below).
+\end{key}
+
+\begin{codeexample}[]
+\pgfkeys{
+	/pgf/number format/.cd,
+	sci,
+	sci generic={mantisse sep=\times,exponent={10^{#1}}}}
+\pgfmathprintnumber{12.345};
+\pgfmathprintnumber{0.00012345}
+\end{codeexample}
+	The \meta{keys} can depend on three parameters, namely on |#1| which is the exponent, |#2| containing the flags entity of the floating point number and |#3| is the (unprocessed and unformatted) mantisse.
+
+	Note that |sci generic| is \emph{not} suitable to modify the appearance of fixed point numbers, nor can it be used to format the mantisse (which is typeset like fixed point numbers). Use |dec sep|, |1000 sep| and |print sign| to customize the mantisse.
+\end{key}
+
 \begin{key}{/pgf/number format/@dec sep mark=\marg{text}}
 	Will be placed right before the place where a decimal separator belongs to. However, \marg{text} will be inserted even if there is no decimal separator. It is intented as place-holder for auxiliary routines to find alignment positions.
 
@@ -1203,6 +1251,24 @@ Typesets the exponent as superscript for any number displayed in scientific form
 	
 	The initial setting installs a |\pgfutilensuremath| around each final number to change to math mode if necessary. Use |assume math mode=true| if you know that math mode is active and you don't want |\pgfutilensuremath|.
 \end{key}
+
+\begin{stylekey}{/pgf/number format/verbatim}
+	A style which configures the number printer to produce verbatim text output, i.e.\ it doesn't contain \TeX\ macros.
+\begin{codeexample}[]
+\pgfkeys{
+	/pgf/fpu,
+	/pgf/number format/.cd,
+	sci,
+	verbatim}
+\pgfmathprintnumber{12.345};
+\pgfmathprintnumber{0.00012345};
+\pgfmathparse{exp(15)}
+\pgfmathprintnumber{\pgfmathresult}
+\end{codeexample}
+	The style resets |1000 sep|, |dec sep|, |print sign|, |skip 0.| and sets |assume math mode|. Furthermore, it installs a |sci generic| format for verbatim output of scientific numbers.
+
+	However, it will still respect |precision|, |fixed zerofill|, |sci zerofill| and the overall styles |fixed|, |sci|, |int detect| (and their variants). It might be useful if you intent to write output files.
+\end{stylekey}
 
 
 
