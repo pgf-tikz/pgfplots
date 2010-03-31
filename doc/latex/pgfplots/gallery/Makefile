@@ -20,7 +20,7 @@ prepare: $(DOC_SRC)
 	touch $@
 
 clean:
-	rm ./example* prepare index.html
+	rm -f ./example* prepare index.html
 
 
 prepared: $(PREPARED_SRC:%.tex=%.pdf)
