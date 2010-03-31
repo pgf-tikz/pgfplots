@@ -36,6 +36,7 @@
 
 
 \newif\ifpgfplotstabletypesetdebug
+\newif\ifpgfplotstable@sort
 \newif\ifpgfplotstabletypesetskipcoltypes
 \newif\ifpgfplotstabletypesetresult
 \newif\ifpgfplotstableuserow
@@ -886,14 +887,18 @@
 		/pgfplots/table/every even row/.code=,
 		/pgfplots/table/every first row/.code=,
 		/pgfplots/table/every last row/.code=,
+		/pgfplots/table/postproc cell content/.code=,
+		/pgfplots/table/preproc cell content/.code=,
 	},
 	/pgfplots/table/colnames from/.initial=,% for \pgfplotstabletranspose
 	/pgfplots/table/input colnames to/.initial=colnames,% for \pgfplotstabletranspose
+	/pgfplots/table/sort/.is if=pgfplotstable@sort,
+	/pgfplots/table/sort/.default=true,
 	/pgfplots/table/sort key/.initial=[index]0,%
 	% the argument of `sort cmp' will be evaluates as style in the key
-	% path /pgfplots/array. See pgfplotsarray.code.tex for available
+	% path /pgfplots/. See pgfplotsutil.code.tex for available
 	% styles.
-	/pgfplots/table/sort cmp/.initial=iflessthan float,
+	/pgfplots/table/sort cmp/.initial=float <,
 	/pgfplots/table/sort key from/.initial=,
 }
 % 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
@@ -908,8 +913,8 @@
 % \pgfplotstableset{
 %	create on use/cut/.style={create col/function graph cut y={7e-4}{x=Basis,ymode=log,xmode=log}{{table=regtable,y=special-L2}}},
 %}
-\pgfkeysdefargs{/pgfplots/table/create col/function graph cut y}{#1#2#3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{y}{x}}
-\pgfkeysdefargs{/pgfplots/table/create col/function graph cut x}{#1#2#3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{x}{y}}
+\pgfkeysdefnargs{/pgfplots/table/create col/function graph cut y}{3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{y}{x}}
+\pgfkeysdefnargs{/pgfplots/table/create col/function graph cut x}{3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{x}{y}}
 \pgfkeys{%
 	/pgfplots/table/create col/function graph cut/xmode/.is choice,
 	/pgfplots/table/create col/function graph cut/xmode/linear/.code={\def\pgfplotstable@fgc@xmode{0}},%
@@ -1061,7 +1066,8 @@
 		/pgfplots/table/in col sep=space,%
 		% WARNING: you NEED a '%' before '#1':
 		#1,%
-		outfile={#3}%
+		/pgfplots/table/include outfiles=false,
+		/pgfplots/table/outfile={#3}%
 	]{#2}%
 }%
 
@@ -1647,7 +1653,6 @@
 			\pgfutil@in@,{#1}%
 		\fi
 	\fi
-
 }%
 
 \def\pgfplotstable@insertemptycells@forbalance{%
@@ -1701,8 +1706,18 @@
 		\fi
 	\fi
 	\ifpgfplotstabletypeset@includeoutfiles
-		\input \pgfplotstable@outfilename\relax
+		\def\pgfplots@loc@TMPa{%
+			\input \pgfplotstable@outfilename\relax
+			\endgroup
+		}%
 	\else
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstabletypeset@opt@prepare{#2}%
+		}%
+	\fi
+	\pgfplots@loc@TMPa
+}%
+\def\pgfplotstabletypeset@opt@prepare#1{%
 	%
 	% Prepare outfile and debug options:
 	\let\pgfplotstable@notify@finished@line=\pgfutil@empty
@@ -1742,10 +1757,39 @@
 	% Start operation:
 	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
 	\ifx\pgfplotstable@colnames\pgfutil@empty
-		\pgfplotstablegetcolumnlist#2\to\pgfplotstable@colnames
+		\pgfplotstablegetcolumnlist#1\to\pgfplotstable@colnames
 	\else
 		\expandafter\pgfplotslistnew\expandafter\pgfplotstable@colnames\expandafter{\pgfplotstable@colnames}%
 	\fi
+	%
+	%
+	\ifpgfplotstable@sort
+		% make sure any columns exist (especially create on use). 
+		% this can be done by calling getcolumnbyname once for every
+		% column:
+		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
+			\pgfplotstable@is@colname\pgfplotstable@colname
+			\ifpgfplotstableread@foundcolnames
+			\else
+				\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#1\to\pgfplotstable@colname
+			\fi
+			\pgfplotstablegetcolumnbyname\pgfplotstable@colname\of#1\to\pgfplotstable@col
+		}%
+		\let\pgfplotstable@colname=\relax
+		\let\pgfplotstable@col=\relax
+		%
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstablesort\pgfplotstable@sortedtbl{#1}%
+			\pgfplotstabletypeset@opt@@{\pgfplotstable@sortedtbl}%
+		}%
+	\else
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstabletypeset@opt@@{#1}%
+		}%
+	\fi
+	\pgfplots@loc@TMPa
+}
+\def\pgfplotstabletypeset@opt@@#1{%
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@colnames
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@coltypes
 	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@cols
@@ -1765,9 +1809,9 @@
 		\pgfplotstable@is@colname\pgfplotstable@colname
 		\ifpgfplotstableread@foundcolnames
 		\else
-			\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#2\to\pgfplotstable@colname
+			\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#1\to\pgfplotstable@colname
 		\fi
-		\pgfplotstablegetcolumnbyname\pgfplotstable@colname\of#2\to\pgfplotstable@col
+		\pgfplotstablegetcolumnbyname\pgfplotstable@colname\of#1\to\pgfplotstable@col
 		%
 		% Init number of *input* rows here. This may not be the same
 		% as the number of *output* rows (see the row predicate
@@ -2088,7 +2132,6 @@
 		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
 		\xdef\pgfplots@glob@TMPa{\noexpand\def\expandafter\noexpand\pgfplots@loc@TMPa{\the\t@pgfplots@toka}}%
 	\fi
-	\fi
 	\endgroup
 	\pgfplots@glob@TMPa% execute 'write to macro' if set.
 }%
@@ -2222,7 +2265,7 @@
 	\global\let\pgfplots@glob@TMPb=\pgfplotstable@newcolname
 	\endgroup
 	\ifpgfplotstablecreatecol@isreallynew
-		\expandafter\pgfplotslistpushback\expandafter{\pgfplots@glob@TMPb}\to#3
+		\expandafter\pgfplotslistpushback\expandafter{\pgfplots@glob@TMPb}\to#3%
 	\fi
 	\expandafter\let\csname\string#3@\pgfplots@glob@TMPb\endcsname=\pgfplots@glob@TMPc
 }%
@@ -2482,12 +2525,12 @@
 		%
 		\ifx\pgfplotstable@colnames\pgfutil@empty
 			\pgfplotstableforeachcolumn{#3}\as\pgfplots@colname{%
+				\t@pgfplots@toka=\expandafter{\pgfplots@colname}%
 				\ifnum\pgfplotstablecol=0
-					\let\pgfplotstable@colnames=\pgfplots@colname
+					\edef\pgfplotstable@colnames{{\the\t@pgfplots@toka}}%
 				\else
-					\t@pgfplots@toka=\expandafter{\pgfplots@colname}%
 					\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
-					\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+					\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,{\the\t@pgfplots@toka}}%
 				\fi
 			}%
 		\fi
@@ -2495,15 +2538,19 @@
 		% sanity checking:
 		\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
 		\else
-			\def\pgfplotstable@loc@TMPa{\expandafter\pgfutil@in@\expandafter{\pgfplotstabletranspose@outcolnames}}%
-			\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstable@colnames}%
-			\ifpgfutil@in@
+			\def\pgfplotstabletranspose@outcolnames@foundit{0}%
+			\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotstable@colnames}\as\pgfplots@colname{%
+				\ifx\pgfplots@colname\pgfplotstabletranspose@outcolnames
+					\def\pgfplotstabletranspose@outcolnames@foundit{1}%
+				\fi
+			}%
+			\if1\pgfplotstabletranspose@outcolnames@foundit
 			\else
 				% insert the 'colnames from' column into 'columns':
 				\pgfplots@warning{table transposition: the 'colnames from=\pgfplotstabletranspose@outcolnames' is not part of 'columns'. Adding it.}%
 				\t@pgfplots@toka=\expandafter{\pgfplotstabletranspose@outcolnames}%
 				\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
-				\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,\the\t@pgfplots@toka}%
+				\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,{\the\t@pgfplots@toka}}%
 			\fi
 		\fi
 		%
@@ -2763,27 +2810,27 @@
 % \pgfplotstablesort[sort key=<colname>,sort key source=<\table>]\result{<input table>}
 \def\pgfplotstablesort{\pgfutil@ifnextchar[{\pgfplotstablesort@opt}{\pgfplotstablesort@opt[]}}
 \def\pgfplotstablesort@opt[#1]#2{%
-	\pgfplotstablecollectoneargwithpreparecatcodes{%
-		\pgfplotstablesort@[#1]{#2}%
-	}%
-}
-\def\pgfplotstablesort@[#1]#2#3{%
 	\begingroup
 	\pgfplotstableset{#1}%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstablesort@{#2}%
+	}%
+}
+\def\pgfplotstablesort@#1#2{%
 	\pgfkeysgetvalue{/pgfplots/table/sort key}\pgfplotstable@sort@key@colname
 	\pgfkeysgetvalue{/pgfplots/table/sort key from}\pgfplotstable@sort@key@table
 	\pgfkeysgetvalue{/pgfplots/table/sort cmp}\pgfplotstable@sort@cmp
 	%
 	%
-	\pgfplotstable@isloadedtable{#3}{%
-		\pgfplotstablegetrowsof{#3}%
+	\pgfplotstable@isloadedtable{#2}{%
+		\pgfplotstablegetrowsof{#2}%
 		\let\pgfplotstable@numrows=\pgfplotsretval
 		%
-		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp{#3}%
-		\def\pgfplotstable@table{#3}%
-		\let\pgfplotstable@input@colnames=#3\relax
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp{#2}%
+		\def\pgfplotstable@table{#2}%
+		\let\pgfplotstable@input@colnames=#2\relax
 	}{%
-		\pgfplotstableread{#3}\pgfp@tmp@in
+		\pgfplotstableread{#2}\pgfp@tmp@in
 		\pgfplotstablegetrowsof\pgfp@tmp@in
 		\let\pgfplotstable@numrows=\pgfplotsretval
 		\def\pgfplotstable@table{\pgfp@tmp@in}%
@@ -2860,7 +2907,7 @@
 	\pgfkeysdef{/pgfplots/array/unscope post}{}%
 	\pgfplotsarraysort{\pgfp@tmp}%
 	\endgroup
-	\pgfplotstable@copy@globalbuffers@to{#2}%
+	\pgfplotstable@copy@globalbuffers@to{#1}%
 }%
 
 \pgfutil@ifundefined{pgfcalendardatetojulian}{%
