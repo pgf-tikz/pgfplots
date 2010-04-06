@@ -29,16 +29,16 @@ The only steps which are necessary is to use
 \pgfmanualpdflabel{\textbackslash tikzexternalize}{}%
 |\usepgfplotslibrary{external}|
 
-|\tikzexternalize|\marg{the main file name}
+|\tikzexternalize|
 
-\noindent where \meta{the main file name} is the name of your |.tex| file (without the extension |.tex|). No further modification to the document is necessary. Suppose we have a file called |test.tex|:
+\noindent somewhere in your document's preamble. No further modification to the document is necessary. Suppose we have a file called |test.tex|:
 \begin{codeexample}[code only]
 \documentclass{article}
 
 \usepackage{pgfplots}
 
 \usepgfplotslibrary{external}
-\tikzexternalize{test}
+\tikzexternalize% activate externalization!
 
 \begin{document}
 	\begin{figure}
@@ -64,7 +64,7 @@ The only steps which are necessary is to use
 \begin{codeexample}[code only]
 pdflatex -shell-escape test
 \end{codeexample}
-\noindent and \LaTeX\ will now generate the required graphics files |test-figure0.pdf| and |test-figure1.pdf| automatically. Any further call to |pdflatex| will simply use |\includegraphics| and the |tikzpicture|s as such are no longer considered.
+\noindent and \LaTeX\ will now generate the required graphics files |test-figure0.pdf| and |test-figure1.pdf| automatically. Any further call to |pdflatex| will simply use |\includegraphics| and the |tikzpicture|s as such are no longer considered (you need a different command line switch for Mik\TeX, see the |shell escape| option).
 
 If a figure shall be remade, one can simply delete all or selected graphics files and re-generate them. Alternatively, one can use the command |\tikzset{external/force remake}| somewhere in the document to remake every following picture automatically.
 
@@ -98,7 +98,7 @@ There are three ways to modify the file names of externalized figures:
 \usepackage{tikz}
 
 \usepgfplotslibrary{external}
-\tikzexternalize[prefix=figures/]{main} % provide the file's real name
+\tikzexternalize[prefix=figures/]% activate with a name prefix
 
 \begin{document}
 
@@ -132,7 +132,7 @@ pdflatex -shell-escape main
 \usepackage{tikz}
 
 \usepgfplotslibrary{external}
-\tikzexternalize{main} % provide the file's real name
+\tikzexternalize% activate externalization!
 
 \begin{document}
 
@@ -193,22 +193,28 @@ pdflatex -shell-escape main
 
 \begin{key}{/tikz/external/system call=\marg{template}}
 \label{extlib:systemcall:option}
-	A template string used to generate system calls. Inside of \marg{template}, the macro |\image| can be used as placeholder for the image which is about to be generated while |\texsource| contains the main file name.
+	A template string used to generate system calls. Inside of \marg{template}, the macro |\image| can be used as placeholder for the image which is about to be generated while |\texsource| contains the main file name (in truth, it contains |\input|\marg{main file name}, but that doesn't matter).
 
 	The default is 
 \begin{codeexample}[code only]
-\tikzset{external/system call={pdflatex -shell-escape -halt-on-error 
-    -interaction=batchmode -jobname "\image" "\texsource"}}
+\tikzset{external/system call={pdflatex \tikzexternalcheckshellescape -halt-on-error 
+    -interaction=batchmode -jobname "\image" "\texsource"}
 \end{codeexample}
+	\noindent where \declareandlabel{\tikzexternalcheckshellescape} inserts the value of the configuration key |shell escape|
+	if and only if the current document has been typeset with |-shell-escape|\footnote{Note that this is always true for the default configuration. This security consideration applies mainly for \texttt{mode=list and make} which will also work \emph{without} shell escapes.}.
 
 	For |eps| output, you can (and need to) use
 \begin{codeexample}[code only]
-\tikzset{external/system call={latex -shell-escape -halt-on-error
+\tikzset{external/system call={latex \tikzexternalcheckshellescape -halt-on-error
     -interaction=batchmode -jobname "\image" "\texsource"; 
     dvips -o "\image".ps "\image".dvi}}
 \end{codeexample}
 	
 	The argument \marg{template} will be expanded using |\edef|, so any control sequences will be expanded. During this evaluation, `|\\|' will result in a normal backslash, `|\|'. Furthermore, double quotes `|"|', single quotes `|'|', semicolons and dashes `|-|' will be made to normal characters if any package uses them as macros. This ensures compatibility with the |german| package, for example.
+\end{key}
+
+\begin{key}{/tikz/external/shell escape=\marg{command-line arg} (initially -shell-escape)}
+	Contains the command line option for |latex| which enables the |\write18| feature. For \TeX-Live, this is |-shell-escape|. For Mik\TeX, you should use |\tikzexternalize[shell escape=-enable-write18]|.
 \end{key}
 
 \begin{key}{/tikz/external/mode=\mchoice{convert with system call,list and make,$\dotsc$} (initially convert with system call)}
@@ -217,6 +223,14 @@ pdflatex -shell-escape main
 	The choice |list and make| configures the library to check if there are already external graphics and uses them. If there are no graphics, the library will \emph{skip} the figure. However, it will also generate a |makefile| to generate the graphics, and a list of all required graphics files.
 
 	It is not required to use |make|: the library expects you to generate the images somehow and it doesn't care about the ``how''. Using |make -f |\meta{name-of-tex-file}|.makefile -j 2| allows parallel execution which might, indeed, be an option. Furthermore, the makefile also supports file dependencies: if one of your data tables has been updated, the external graphics will be remade automatically. \PGFPlots\ tells the external library about any file dependencies (input files and tables).
+
+	The two modes have the following characteristics:
+	\begin{enumerate}
+		\item |convert with system call| is automatic and does everything on--the--fly. However, it \emph{can't} work with |\ref| and/or |\label| information in external pictures.
+		\item |list and make| requires either manual (by calling the system calls manually) or semi--automatic conversion (using the generated \meta{main}|.makefile|), and multiple runs of |pdflatex|. The generated Makefile can be processed in parallel. Furthermore, |list and make| provides \emph{full support} for |\ref| and |\label|: any |\label| defined inside of an externalized graphics is still available for the main document.
+		
+		If you have legends with |legend to name| or |\label|/|\ref|, you need to generate the graphics defining the |\label| (or |legend to name|), then run |pdflatex| twice on the main document. Afterwards, you can externalize the legend graphics.
+	\end{enumerate}
 \end{key}
 
 The complete reference documentation and remaining options are documented in~\cite[``Externalization Library'']{tikz}. This reference also contains information about
@@ -237,7 +251,7 @@ There is a small replacement package \declareandlabel{tikzexternal.sty} which ca
 % \usepackage{tikz}
 % \usepackage{pgfplots}
 \usepackage{tikzexternal}
-\tikzexternalize{test} % <-- provide the main .tex name
+\tikzexternalize% activate externalization
 
 \begin{document}
 \begin{tikzpicture}
@@ -330,6 +344,12 @@ These steps are explained in much more detail in Section``Externalizing Graphics
 \paragraph{Attention:} Do not forget a correct |\pgfrealjobname| statement! If it is missing, externalization simply won't work. If it is wrong, any call to \LaTeX\ will produce empty output files.
 
 It should be noted that this approach of image externalization is not limited to \Tikz\ picture environments. In fact, it collects everything between the begin and end statements into the external file. It is implicitly assumed that the encapsulated stuff is one box, but you can also encapsulate complete paragraphs using something like the \LaTeX\ minipage (or a |\vbox| which is not as powerful but does not affect the remaining document that much).
+
+\begin{key}{/pgf/images/aux in dpth=\mchoice{true,false} (initially false)}
+	If this boolean is set to |true|, any |\label| information generated inside of the external image is stored into the already mentioned |.dpth| file. The main document can thus reference label information of externalized parts of the document (although you may need to run |latex| several times). 
+
+	Label support is provided for |\ref|, and probably |\cite|. The |\pageref| command is only partially supported.
+\end{key}
 
 \paragraph{Using the Library Without {\normalfont\pgfname} Installed}
 Simply uncomment the packages |\usepackage{tikz}| and |\usepackage{pgfplots}| and use

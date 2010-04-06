@@ -649,6 +649,13 @@
 		#3%
 	}%
 }%
+\def\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@allaxislinevariations#1#2#3{%
+	\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@{#1}{%
+		#2%
+	}{%
+		#3%
+	}%
+}%
 
 % A sub-part of \pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn
 % which is /only/ based on foreground/background flags.
@@ -678,9 +685,9 @@
 \def\pgfplots@ifgridlines@onorientedsurf@should@be@drawn#1#2{%
 	% grid lines shall be drawn 
 	% if and only if BOTH adjacent axis lines shall be drawn:
-	\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{0}{%
+	\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@allaxislinevariations{0}{%
 		% remark: this is ALWAYS true for 2D plots.
-		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{1}{%
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@allaxislinevariations{1}{%
 			#1%
 		}{%
 			#2%
@@ -1547,7 +1554,12 @@
 	\endgroup
 %\message{got scalex = \pgfplots@glob@TMPa\space and scaley = \pgfplots@glob@TMPb.}%
 	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
-	\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	% compute 1/(xmax - xmin) in float.
+	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
+	\pgfmathfloatparsenumber\pgfmathresult
+	\pgfmathfloatreciprocal@\pgfmathresult
+	\pgfmathfloattofixed\pgfmathresult
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(xmax-xmin) = 1/(\pgfplots@xmax-\pgfplots@xmin) = \pgfmathresult.}%
 	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
 	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
@@ -1555,7 +1567,10 @@
 	\pgf@xy=\pgfmathresult\pgf@xy
 	%
 	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-	\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\pgfmathfloatparsenumber\pgfmathresult
+	\pgfmathfloatreciprocal@\pgfmathresult
+	\pgfmathfloattofixed\pgfmathresult
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(ymay-ymin) = 1/(\pgfplots@ymax-\pgfplots@ymin) = \pgfmathresult.}%
 	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
 	\pgf@yy=\pgfplots@glob@TMPb\pgf@yy
@@ -1564,7 +1579,10 @@
 	%
 	\ifpgfplots@threedim
 		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
-		\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+		\pgfmathfloatparsenumber\pgfmathresult
+		\pgfmathfloatreciprocal@\pgfmathresult
+		\pgfmathfloattofixed\pgfmathresult
+		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(zmaz-zmin) = 1/(\pgfplots@zmax-\pgfplots@zmin) = \pgfmathresult.}%
 		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
 		\pgf@zy=\pgfplots@glob@TMPb\pgf@zy
@@ -2338,6 +2356,14 @@
 			\global\let\pgfplots@axiswide@metamax=\pgfmathresult
 		\fi
 	\fi
+	\if1\pgfplots@colorbar@set@src% this 0|1 switch is set in \pgfplots@start@plot@with@behavioroptions
+		\ifx\pgfplots@metamin\pgfutil@empty
+			\pgfplotsthrow{no such element}{\pgfplots@loc@TMPa}{Sorry, `colorbar source' can't be processed: the current \string\addplot\space command doesn't have point meta. Ignoring it.}\pgfeov%
+		\else
+			\global\let\pgfplots@colorbar@src@metamin=\pgfplots@metamin
+			\global\let\pgfplots@colorbar@src@metamax=\pgfplots@metamax
+		\fi
+	\fi
 	\ifpgfplots@autocompute@all@limits
 		\global\let\pgfplots@data@xmin=\pgfplots@xmin
 		\global\let\pgfplots@data@xmax=\pgfplots@xmax
@@ -2428,7 +2454,7 @@
 				\noexpand\def\noexpand\pgfplots@serialized@state@plothandler{\the\t@pgfplots@tokb}%
 			}%
 			{% draw command:
-				\noexpand\draw%
+				\noexpand\path%
 			}%
 		}%
 		\pgfplotsapplistXXlet\pgfplots@coord@stream@recorded
@@ -2762,7 +2788,7 @@
 						\message{PGFPlots: Scanline length is \pgfplotsscanlinelength.}%
 					\else
 						\ifnum\pgfplotsscanlinelength=-2
-							\message{PGFPlots: Scanline length could not be determined as multiple, different scan line lengths have been found.}%
+							\message{PGFPlots: Scanline length could not be determined since multiple, different scan line lengths have been found.}%
 						\else
 							\message{PGFPlots: No end-of-scanline marker found in input stream.}%
 						\fi
@@ -3630,6 +3656,19 @@
 	\def\pgfplots@current@point@coordindex{\the\c@pgfplots@coordindex}% can be used inside of coordinate filters.
 	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
 	\def\pgfplots@addplot@running{1}%
+	%
+	\def\pgfplots@colorbar@set@src{0}%
+	\pgfkeysdef{/pgfplots/colorbar source}{%
+		\pgfplotsutilifstringequal{##1}{true}{%
+			\def\pgfplots@colorbar@set@src{1}%
+		}{%
+			\pgfplotsutilifstringequal{##1}{false}{%
+				\def\pgfplots@colorbar@set@src{0}%
+			}{%
+				\pgfplots@error{Sorry, I don't know the value `colorbar source={##1}' and I am going to ignore it. Maybe you misspelled it?}%
+			}%
+		}%
+	}%
 	%
 	% these styles may contain behavior options (error bars,
 	% samples,... ) activate them!
@@ -5127,7 +5166,6 @@
 	\def\pgfplots@plot@filename{\tikz@plot@prefix\tikz@plot@id}%  
 	\pgfshell[\pgfplots@plot@filename]{#3}\pgfplots@addplotimpl@table@fromfile{#1}{#2}{\pgfplots@plot@filename.out}#4;%
 }%
-
 
 % This is a backwards-compatibility method to ensure that
 % \axis[ybar]
