@@ -1645,6 +1645,11 @@
 %
 % #1: the name of the coord math class
 % #2: methods to override the default.
+%
+% The available methods are documented and shown below in the
+% \pgfqkeys listing. 
+%
+% @see the predefined examples, also shown below.
 \def\pgfplotsdeclarecoordmath#1#2{%
 	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	\pgfqkeys{/pgfplots/@declare coord math}{%
@@ -1656,7 +1661,19 @@
 		min=		\csname pgfmath\csname pgfpmth@#1@suffix\endcsname min\endcsname{##1}{##2},%
 		min limit=	\def\pgfmathresult{-16300},%
 		max limit=	\def\pgfmathresult{16300},%
+		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
 		suffix=		#1,%
+		datascaletrafo set params=,
+		datascaletrafo get params=	\def\pgfmathresult{{}{}},
+		datascaletrafo=				\edef\pgfmathresult{##1},
+		datascaletrafo inverse=		\edef\pgfmathresult{##1},
+		datascaletrafo noshift inverse=		\edef\pgfmathresult{##1},
+		datascaletrafo inverse to fixed=	\edef\pgfmathresult{##1},
+		datascaletrafo noshift inverse to fixed=	\edef\pgfmathresult{##1},
+		datascaletrafo noshift=		\edef\pgfmathresult{##1},
+		datascaletrafo noshift=		\edef\pgfmathresult{##1},
+		datascaletrafo undo shift=	\edef\pgfmathresult{##1},
+		datascaletrafo redo shift=	\edef\pgfmathresult{##1},
 		#2%
 	}%
 	\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ op\endcsname##1##2{%
@@ -1693,6 +1710,11 @@
 	% defines \pgfmathresult to be the smallest supported number.
 	min limit/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ min limit\endcsname{#1}},%
+	%
+	% computes ##1 < ##2 and invokes ##3 in the true case and ##4 in
+	% the false case.
+	if less than/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
 	%
 	% applies the natural logarithm. If the result is empty, it is not defined.
 	log/.code=
@@ -1736,14 +1758,14 @@
 		{\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ suffix\endcsname{#1}},%
 }%
 
-\pgfplotsdeclarecoordmath{pgfbasic}{
+\pgfplotsdeclarecoordmath{pgfbasic}{%
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
 	max=\pgfplotsmathmax{#1}{#2},%
 	min=\pgfplotsmathmin{#1}{#2},%
 	log=\pgfmathlog@{#1},%
-	suffix=,
+	suffix=@basic,
 }
-\pgfplotsdeclarecoordmath{float}{
+\pgfplotsdeclarecoordmath{float}{%
 	parsenumber=\pgfmathfloatparsenumber{#1},
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
@@ -1751,6 +1773,7 @@
 	min=\pgfplotsmathfloatmin{#1}{#2},%
 	max limit=\pgfmathfloatcreate{1}{1.0}{2147483645},%
 	min limit=\pgfmathfloatcreate{2}{1.0}{2147483645},%
+	if less than=\pgfmathfloatlessthan@{#1}{#2}\ifpgfmathfloatcomparison #3\else #4\fi,
 	log=\pgfmathlog@float{#1},%
 	datascaletrafo set params={%
 		\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{#1}%
@@ -1821,6 +1844,14 @@
 	\fi
 }%
 
+% Enables a particular coordinate math class for the label `#1'.
+%
+% #1 a label (usually x,y or z)
+% #2 the coordinate math class (one prepare by
+% \pgfplotsdeclarecoordmath)
+%
+% From this point on, any call to \pgfplotscoordmath{#1}{...}
+% will use the selected math class.
 \def\pgfplotssetcoordmathfor#1#2{%
 	\pgfutil@ifundefined{pgfpmth@#2@parsenumber}{%
 		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, \string\pgfplotssetcoordmathfor{#1}{#2} failed since `#2' is unknown. Maybe you misspelled it?}\pgfeov%
@@ -2921,20 +2952,11 @@
 % 	i.e. whether #1 (x or y or z) coordinates are in ascending (+) ordering or in
 % 	descending order (-).
 \def\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting#1{%
-	\pgfplots@if{pgfplots@#1islinear}{%
-		\pgfmathfloatlessthan@
-			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
+	\pgfplotscoordmath{#1}{if less than}
+			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}%
 			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
-	}{%
-		\pgfplotsmathlessthan
-			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
-			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
-	}%
-	\ifpgfmathfloatcomparison
-		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}%
-	\else
-		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{-}%
-	\fi
+			{\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}}%
+			{\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{-}}%
 }%
 
 % Assigns default values to 'rows' and 'cols' in case
@@ -3225,41 +3247,48 @@
 		\pgfplots@if{pgfplots@#1islinear}{%
 			\ifcase\csname pgfplots@errorbars@#1mode\endcsname\relax
 				% fixed absolute error.
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
+				\pgfplotscoordmath{#1}{parsenumber}{\csname pgfplots@errorbars@#1fixed\endcsname}%
 				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
 					\if +##1%
-						\pgfmathfloatadd@
-							{\csname pgfplots@current@point@#1\endcsname}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@TMPb{add}%
 					\else
-						\pgfmathfloatsubtract@
-							{\csname pgfplots@current@point@#1\endcsname}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@TMPb{subtract}%
 					\fi
+					\pgfplotscoordmath{#1}{op}{\pgfplots@loc@TMPb}{%
+						{\csname pgfplots@current@point@#1\endcsname}%
+						{\csname pgfplots@error@coord@#1\endcsname}%
+					}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
 			\or% fixed relative error:
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1rel\endcsname}%
+				\pgfplotscoordmath{#1}{parsenumber}{\csname pgfplots@errorbars@#1rel\endcsname}%
 				\let\pgfplots@loc@TMPb=\pgfmathresult
 				%
 				% +1:
-				\pgfmathfloatcreate{1}{1.0}{0}%
+				\pgfplotscoordmath{#1}{parsenumber}{1}%
 				\let\pgfplots@loc@TMPa=\pgfmathresult
 				%
 				% Prepare '1 + err':
-				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{#1}{op}{add}{%
+					{\pgfplots@loc@TMPa}%
+					{\pgfplots@loc@TMPb}%
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
-				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{#1}{op}{subtract}{%
+					{\pgfplots@loc@TMPa}%
+					{\pgfplots@loc@TMPb}%
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
 				%
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
-					\pgfmathfloatmultiply@
+					\pgfplotscoordmath{#1}{op}{multiply}{%
 						{\csname pgfplots@current@point@#1\endcsname}
 						{\csname pgfplots@error@coord@#1@##1\endcsname}%
+					}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
@@ -3268,20 +3297,20 @@
 					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
 					\ifx\pgfplots@error@coord\pgfutil@empty
 					\else
-						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\pgfplotscoordmath{#1}{parsenumber}{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						% remember result here - will be used in case
 						% of '+' AND '-' error bars:
 						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
 						\if +##1%
-							\pgfmathfloatadd@
-								{\csname pgfplots@current@point@#1\endcsname}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@TMPb{add}%
 						\else
-							\pgfmathfloatsubtract@
-								{\csname pgfplots@current@point@#1\endcsname}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@TMPb{subtract}%
 						\fi
+						\pgfplotscoordmath{#1}{op}{\pgfplots@loc@TMPb}{%
+							{\csname pgfplots@current@point@#1\endcsname}%
+							{\pgfplots@error@coord}%
+						}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 					\fi
@@ -3293,7 +3322,7 @@
 					\else
 						\pgfmathparse{1##1\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
-						\pgfmathfloatmultiply@
+						\pgfplotscoordmath{#1}{multiply}
 							{\csname pgfplots@current@point@#1\endcsname}
 							{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
@@ -3314,6 +3343,11 @@
 			%
 			\ifcase\csname pgfplots@errorbars@#1mode\endcsname
 				% fixed absolute, log( x +- e_x )
+				%
+				% FIXME : I'd prefer to use the \pgfplotcoordmath
+				% framework here. But I can't since here, TWO math
+				% engines take place: float for non-log coords and
+				% basic for log!
 				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
 				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
@@ -6096,7 +6130,7 @@
 \def\pgfplots@prepare@ZERO@coordinates{%
 	\ifpgfplots@xislinear
 		\ifpgfplots@apply@datatrafo@x
-			\pgfmathfloatcreate{0}{0.0}{0}%
+			\pgfplotscoordmath{x}{parsenumber}{0}%
 			\pgfplotscoordmath{x}{datascaletrafo}{\pgfmathresult}%
 			\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
 		\else
@@ -6112,7 +6146,7 @@
 	%
 	\ifpgfplots@yislinear
 		\ifpgfplots@apply@datatrafo@y
-			\pgfmathfloatcreate{0}{0.0}{0}%
+			\pgfplotscoordmath{y}{parsenumber}{0}%
 			\pgfplotscoordmath{y}{datascaletrafo}{\pgfmathresult}%
 			\global\let\pgfplots@logical@ZERO@y=\pgfmathresult
 		\else
@@ -6129,7 +6163,7 @@
 	\ifpgfplots@threedim
 		\ifpgfplots@zislinear
 			\ifpgfplots@apply@datatrafo@z
-				\pgfmathfloatcreate{0}{0.0}{0}%
+				\pgfplotscoordmath{z}{parsenumber}{0}%
 				\pgfplotscoordmath{z}{datascaletrafo}{\pgfmathresult}%
 				\global\let\pgfplots@logical@ZERO@z=\pgfmathresult
 			\else
