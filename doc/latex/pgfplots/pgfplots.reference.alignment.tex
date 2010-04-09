@@ -250,13 +250,79 @@ cycle list={
 \end{codeexample}
 
 
+\subsubsection{Alignment In Array Form (Subplots)}
+\index{Subplots}%
+\index{Alignment!Subplots}%
+\index{Alignment!Array}%
+\index{array!Array Alignment}%
+\pgfmanualpdflabel{\textbackslash matrix}{}%
+Sometimes alignment in array form is desired. One can use the following approach or use the library |groupplots| on page \ref{sec:group:plot} which does
+not utilize \Tikz\ matrices. 
+
+While it is possible to use (for example) |tabular| combined with the vertical and horizontal alignment methods discussed above, it might be better to use a \Tikz\ |matrix|.
+
+A \Tikz\ matrix is some sort of ``graphical'' table. It knows everything about picture alignment and it has more flexibility than |tabular|. The complete documentation of a \Tikz\ matrix is beyond the scope of this manual, please refer to \cite{tikz} for details. But we provide an example here:
+\pgfmanualpdflabel{/tikz/matrix}{}%
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\pgfplotsset{small}
+	\matrix {
+		\begin{axis}
+			\addplot {x};
+		\end{axis}
+		&
+		% differently large labels are aligned automatically:
+		\begin{axis}[ylabel={$f(x)=x^2$},ylabel style={font=\Huge}]
+			\addplot {x^2};
+		\end{axis}
+		\\
+		%
+		\begin{axis}[xlabel=$x$,xlabel style={font=\Huge}]
+			\addplot {x^3};
+		\end{axis}
+		&
+		\begin{axis}
+			\addplot {x^4};
+		\end{axis}
+		\\
+	};
+\end{tikzpicture}
+\end{codeexample}
+\noindent So, a matrix is a picture element inside of |tikzpicture|. Its cells are separated by `|&|' as in tabular (or, if `|&|' causes problems, with |\pgfmatrixnextcell|). Its rows are separated by `|\\|'. Each cell is aligned using the cells' anchor. Since, by default, the anchor of an axis is placed at the lower left corner, the example above is completely aligned, without the need for any bounding box modifications -- even the labels are aligned correctly. If another anchor shall be used, simply place 
+\begin{codeexample}[code only]
+\pgfplotsset{anchor=....}
+\matrix {
+  ...
+};
+\end{codeexample}
+\noindent in front of the matrix. This will use the same configuration for every sub-plot.
+
+\paragraph{Attention:} Unfortunately, the array alignment with |\matrix| is \emph{incompatible} with legends. A legend is also a matrix and \Tikz\ matrizes can't be nested. Consider using the |legend to name| feature (or assemble a legend by means of |\label| and |\ref|) to overcome this weakness (see Section~\ref{pgfplots:legend:labelref} for details). 
+
+If one wishes to have an easier approach of aligning one should refer to the library |groupplots| on page~\pageref{sec:group:plot}.
+
+\subsubsection{Miscellaneous for Alignment}
+
+\begin{predefinednode}{current axis}
+	A node which refers to the current axis or the last typeset axis.
+
+	You can use this node in axis descriptions, for example to place axis labels or titles.
+
+	\paragraph{Remark:} If you use |current axis| inside of axis descriptions, the ``current axis'' is not yet finished. That means you \emph{can't use any outer anchor} inside of axis descriptions.
+
+	It is also possible to use |current axis| in any drawing or plotting commands inside of an axis (but no outer anchor as these are not defined when drawing commands are processed). This usage is similar to the |axis description cs|.
+\end{predefinednode}
+
 \subsubsection{Bounding box restrictions}
 Bounding box restrictions can be realized with several methods of \PGF:
 \begin{enumerate}
 	\item The |overlay| option,
 	\item The |pgfinterruptboundingbox| environment,
-	\item The |\useasboundingbox| path.
+	\item The |\useasboundingbox| path,
+	\item The |\pgfresetboundingbox| command.
 \end{enumerate}
+Note that all these methods are more or less incompatible with image externalization to |.pdf|. The problem is that |pdflatex| crops everything outside of the bounding box away. The only safe way to ``restrict'' bounding boxes of external |.pdf| images is to use negative |\hspace| or |\vspace| commands (or options to |\includegraphics|).
+
 \begin{key}{/tikz/overlay}
 \index{Bounding Box Control!Excluding Image Parts}
 	A special key of \PGF\ which disables bounding box updates for (parts of) the image. The effect is that those parts are an ``overlay'' over the document.
@@ -307,6 +373,36 @@ The following example places a legend somewhere without affecting the bounding b
 	More information about the |overlay| option can be found in the \PGF\ manual~\cite{tikz}.
 \end{key}
 
+\begin{command}{\pgfresetboundingbox}
+	This command of \pgfname\ resets the bounding box of the current picture. The computation starts from scratch afterwards, allowing to compute a user--defined bounding box.
+	
+\begin{codeexample}[]
+\setlength{\fboxsep}{0pt}%
+\fbox{%
+\begin{tikzpicture}%
+	\begin{axis}[
+		title=A title,
+		xlabel={$x$},
+		ylabel={$y$},
+		legend style={at={(0.5,0.97)},
+			anchor=north,legend columns=-1},
+		domain=-2:2
+	]
+	\addplot {x^2};
+	\addplot {x^3};
+	\addplot {x^4};
+	\legend{$x^2$,$x^3$,$x^4$}
+	\end{axis}
+
+	\pgfresetboundingbox
+	\path
+			  (current axis.south west)
+	rectangle (current axis.north east);
+\end{tikzpicture}%
+}%
+\end{codeexample}%
+	The example draws a normal picture, containing an axis. Afterwards, it throws the bounding box away and creates a new one based on the |current axis| node and its anchors.
+\end{command}
 
 \begin{environment}{{pgfinterruptboundingbox}}
 \label{sec:bounding:box:example}%
@@ -314,14 +410,13 @@ The following example places a legend somewhere without affecting the bounding b
 \index{Bounding Box Control!pgfinterruptboundingbox}
 {%
 \pgfmanualpdflabel{\textbackslash useasboundingbox}{}%
-An alternative to |overlay| is shown below: the figure has a truncated bounding box with is shown using |\fbox|.
+	Yet another approach with the same effect is shown below: the bounding box is interrupted manually, and resumed afterwards.
 \begin{codeexample}[]
 \setlength{\fboxsep}{0pt}%
 \fbox{%
 \begin{tikzpicture}%
 	\begin{pgfinterruptboundingbox}
 	\begin{axis}[
-		name=my plot,
 		title=A title,
 		xlabel={$x$},
 		ylabel={$y$},
@@ -337,8 +432,8 @@ An alternative to |overlay| is shown below: the figure has a truncated bounding 
 	\end{pgfinterruptboundingbox}
 
 	\useasboundingbox 
-			  (my plot.below south west)
-	rectangle (my plot.above north east);
+			  (current axis.below south west)
+	rectangle (current axis.above north east);
 \end{tikzpicture}%
 }%
 \end{codeexample}%
@@ -348,66 +443,3 @@ The |pgfinterruptboundingbox| environment does not include its content into the 
 
 \end{pgfplotskey}
 
-\subsubsection{Alignment In Array Form (Subplots)}
-\index{Subplots}%
-\index{Alignment!Subplots}%
-\index{Alignment!Array}%
-\index{array!Array Alignment}%
-\pgfmanualpdflabel{\textbackslash matrix}{}%
-Sometimes alignment in array form is desired. One can use the following approach or use the library |groupplots| on page \ref{sec:group:plot} which does
-not utilize \Tikz\ matrices. 
-
-While it is possible to use (for example) |tabular| combined with the vertical and horizontal alignment methods discussed above, it might be better to use a \Tikz\ |matrix|.
-
-A \Tikz\ matrix is some sort of ``graphical'' table. It knows everything about picture alignment and it has more flexibility than |tabular|. The complete documentation of a \Tikz\ matrix is beyond the scope of this manual, please refer to \cite{tikz} for details. But we provide an example here:
-\pgfmanualpdflabel{/tikz/matrix}{}%
-\begin{codeexample}[]
-\begin{tikzpicture}
-	\matrix {
-		\begin{axis}
-			\addplot {x};
-		\end{axis}
-		&
-		% differently large labels are aligned automatically:
-		\begin{axis}[ylabel={$f(x)=x^2$},ylabel style={font=\Huge}]
-			\addplot {x^2};
-		\end{axis}
-		\\
-		%
-		\begin{axis}[xlabel=$x$,xlabel style={font=\Huge}]
-			\addplot {x^3};
-		\end{axis}
-		&
-		\begin{axis}
-			\addplot {x^4};
-		\end{axis}
-		\\
-	};
-\end{tikzpicture}
-\end{codeexample}
-\noindent So, a matrix is a picture element inside of |tikzpicture|. Its cells are separated by `|&|' as in tabular (or, if `|&|' causes problems, with |\pgfmatrixnextcell|). Its rows are separated by `|\\|'. Each cell is aligned using the cells' anchor. Since, by default, the anchor of an axis is placed at the lower left corner, the example above is completely aligned, without the need for any bounding box modifications -- even the labels are aligned correctly. If another anchor shall be used, simply place 
-\begin{codeexample}[code only]
-\pgfplotsset{anchor=....}
-\matrix {
-  ...
-};
-\end{codeexample}
-\noindent in front of the matrix. This will use the same configuration for every sub-plot.
-
-\paragraph{Attention:} Unfortunately, the array alignment with |\matrix| is \emph{incompatible} with legends. A legend is also a matrix and, unfortunately,
-\Tikz\ matrizes can't be nested. Of course, this does not affect the manually created legends by means of |\label| and |\ref|, see
-section~\ref{pgfplots:legend:labelref} for details. 
-
-If one wishes to have an easier approach of aligning one should refer to the library |groupplots| on p. \ref{sec:group:plot}.
-
-\subsubsection{Miscellaneous for Alignment}
-
-\begin{predefinednode}{current axis}
-	A node which refers to the current axis or the last typeset axis.
-
-	You can use this node in axis descriptions, for example to place axis labels or titles.
-
-	\paragraph{Remark:} If you use |current axis| inside of axis descriptions, the ``current axis'' is not yet finished. That means you \emph{can't use any outer anchor} inside of axis descriptions.
-
-	It is also possible to use |current axis| in any drawing or plotting commands inside of an axis (but no outer anchor as these are not defined when drawing commands are processed). This usage is similar to the |axis description cs|.
-\end{predefinednode}
