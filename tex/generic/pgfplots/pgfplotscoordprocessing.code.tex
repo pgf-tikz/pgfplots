@@ -1687,7 +1687,7 @@
 				\fi
 			}%
 		},
-		log set basis=\pgfplotscoordmath@log@set@basis{##1},
+		set log basis=\pgfplotscoordmath@log@set@basis{##1},
 		tofixed=	\edef\pgfmathresult{##1},%
 		tostring=	\edef\pgfmathresult{##1},%
 		max=		\pgfplotsmathmax{##1}{##2},%
@@ -1695,6 +1695,7 @@
 		min limit=	\def\pgfmathresult{-16300},%
 		max limit=	\def\pgfmathresult{16300},%
 		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
+		if is bounded=\edef\pgfplotsretval{##1}\ifx\pgfplotsretval\pgfutil@empty ##3\else ##2\fi,
 		suffix=		#1,%
 		datascaletrafo set params=,
 		datascaletrafo get params=	\def\pgfmathresult{{}{}},
@@ -1759,13 +1760,19 @@
 	if less than/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
 	%
-	% applies the natural logarithm. If the result is empty, it is not defined.
+	% Checks if the argument ##1 is bounded and invokes ##2 in that
+	% case. IF the argument is unbounded, it invokes #3.
+	if is bounded/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if is bounded\endcsname##1##2##3{#1}},%
+	%
+	% applies the natural logarithm. If the log is not defined, the
+	% argument is "unbounded", see 'if is bounded'
 	%
 	% 'log' is special in that it accepts a number literal which is
 	% OUTSIDE of the accepted number format. The result, however, is
 	% then in the accepted number format.
 	%
-	% The log basis can be set with 'log set basis'
+	% The log basis can be set with 'set log basis'
 	log/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log\endcsname##1{#1}},%
 	% similar, but always uses log basis e:
@@ -1787,8 +1794,8 @@
 	log unsigned int/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int\endcsname##1{#1}},%
 	% sets (changes) the actual log basis.
-	log set basis/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log set basis\endcsname##1{#1}},%
+	set log basis/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ set log basis\endcsname##1{#1}},%
 	%
 	% A macro taking two parameters:
 	% #1: the EXPONENT (as integer)
@@ -1828,16 +1835,16 @@
 		{\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ suffix\endcsname{#1}},%
 }%
 
-% shared implementation for 'log set basis' It works for every
+% shared implementation for 'set log basis' It works for every
 % subclass.
 \def\pgfplotscoordmath@log@set@basis#1{%
 	%
 	\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{#1}%
 	\let\pgfplots@loc@TMPa=\pgfmathresult% TMPa = log_e(#1)
-	\pgfplotscoordmath{\pgfplotscoordmathid}{op}{reciprocal}{\pgfmathresult}%
+	\pgfplotscoordmath{\pgfplotscoordmathid}{op}{reciprocal}{{\pgfmathresult}}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult% TMPb = 1/log_e(#1)
 	%
-	\expandafter\edef\csname pgfpmth@\pgfplotscoordmath @log\endcsname##1{%
+	\expandafter\edef\csname pgfpmth@\pgfplotscoordmathid @log\endcsname##1{%
 		\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{##1}%
 		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
 		\noexpand\else
@@ -1921,12 +1928,12 @@
 	\edef\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
-			\noexpand\pgfplotscoordmath{#1}{op}{multiply}{{##1}{\pgfmathresult}}%
+			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
 		}%
 	\else
 		\csname pgfpmth@#1@op\endcsname{multiply}{{#2}{\pgfmathresult}}%
 		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
-			\noexpand\pgfplotscoordmath{#1}{op}{multiply}{{##1}{\pgfmathresult}}%
+			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
 		}%
 	\fi
 }%
@@ -1945,6 +1952,9 @@
 	min limit=\pgfmathfloatcreate{2}{1.0}{2147483645},%
 	log e=\pgfmathfloatparsenumber{#1}\pgfmathfloatln@{\pgfmathresult},%
 	if less than=\pgfmathfloatlessthan@{#1}{#2}\ifpgfmathfloatcomparison #3\else #4\fi,
+	if is bounded=%
+		\expandafter\pgfmathfloatgetflagstomacro\expandafter{#1}\pgfplotsretval
+		\ifnum\pgfplotsretval>2 #3\else #2\fi,
 	log=\pgfmathlog@float{#1},%
 	datascaletrafo set params={%
 		\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{#1}%
@@ -3533,7 +3543,7 @@
 							{\pgfplots@loc@TMPa}%
 							{\csname pgfplots@error@coord@#1\endcsname}%
 					\fi
-					\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+					\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
@@ -3547,24 +3557,26 @@
 				%
 				% Prepare '1 + err':
 				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-				\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
-				\ifx\pgfmathresult\pgfutil@empty
+				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
+				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
+				}{%
 					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
 					\pgfplots@error{Sorry, log(1+\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
-				\fi
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
 				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-				\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
-				\ifx\pgfmathresult\pgfutil@empty
+				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
+				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
+				}{%
 					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
 					\pgfplots@error{Sorry, log(1-\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
-				\fi
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
 				%
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
@@ -3599,7 +3611,7 @@
 								{\pgfplots@loc@TMPa}%
 								{\pgfplots@error@coord}%
 						\fi
-						\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 					\fi
@@ -3628,17 +3640,17 @@
 								{\pgfplots@loc@TMPa}%
 								{\pgfplots@error@coord}%
 						\fi
-						\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
-						\ifx\pgfplots@error@coord\pgfutil@empty
-							% -> log( <= 0 ) -> do nothing.
-						\else
+						\pgfplotscoordmath{#1}{if is bounded}{%
 							\pgfmath@basic@add@
 								{\csname pgfplots@current@point@#1\endcsname}
 								{\pgfplots@error@coord}%
 							\let\pgfplots@error@coord=\pgfmathresult
 							\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
-						\fi
+						}{%
+							% -> log( <= 0 ) -> do nothing.
+						}%
 					\fi
 				}%
 				%
