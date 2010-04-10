@@ -1643,6 +1643,21 @@
 
 % Declares a new "subclass" to perform coordinate math.
 %
+% Coordinate math usually needs a more powerful number format than the pgf
+% basic layer, or at least a powerful mapping into the pgf basic
+% layer. Both cases are realized by the coordinate math class.
+%
+% Different coordinates can use different instances, and it is also
+% possible to use yet a further instance for point meta (or whatever).
+%
+% Coordinate math is used to compute axis limits and to map the range
+% into the pgf number format. 
+%
+% It is *not* necessarily used for \pgfmathparse, since switching
+% the number format of \pgfmathparse is quite involved (at the time of
+% this writing). Instead, it is used for *single* operations (like
+% max, min, multiply, add).
+%
 % #1: the name of the coord math class
 % #2: methods to override the default.
 %
@@ -1654,11 +1669,29 @@
 	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	\pgfqkeys{/pgfplots/@declare coord math}{%
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
+		log e=		\pgfmathlog@{##1},%
+		log to display log=\pgfmathmultiply@{##1}{2.3025851},% * log(10)
+		log from display log=\pgfmathmultiply@{##1}{0.434294},% / log(10)
+		log unsigned int={%
+			\edef\pgfmathresult{%
+				\ifcase##1
+				\or0
+				\or0.693147
+				\or1.098612
+				\or1.386294
+				\or1.60943791
+				\or1.7917594
+				\or1.94591014
+				\or2.07944154
+				\or2.197224
+				\fi
+			}%
+		},
+		log set basis=\pgfplotscoordmath@log@set@basis{##1},
 		tofixed=	\edef\pgfmathresult{##1},%
 		tostring=	\edef\pgfmathresult{##1},%
-		log=		\csname pgfmath\csname pgfpmth@#1@suffix\endcsname ln\endcsname{##1},%
-		max=		\csname pgfmath\csname pgfpmth@#1@suffix\endcsname max\endcsname{##1}{##2},%
-		min=		\csname pgfmath\csname pgfpmth@#1@suffix\endcsname min\endcsname{##1}{##2},%
+		max=		\pgfplotsmathmax{##1}{##2},%
+		min=		\pgfplotsmathmin{##1}{##2},%
 		min limit=	\def\pgfmathresult{-16300},%
 		max limit=	\def\pgfmathresult{16300},%
 		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
@@ -1678,8 +1711,18 @@
 	}%
 	\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ op\endcsname##1##2{%
 		\noexpand\edef\noexpand\pgfplotscoordmath@{##2}%
-		\noexpand\expandafter\noexpand\expandafter\noexpand\csname pgfmath\csname pgfpmth@#1@suffix\endcsname##1\noexpand\endcsname\noexpand\pgfplotscoordmath@
+		\noexpand\expandafter\noexpand\expandafter\noexpand\csname pgfmath\csname pgfpmth@#1@suffix\endcsname ##1@\noexpand\endcsname\noexpand\pgfplotscoordmath@
 	}%
+	\pgfutil@ifundefined{pgfpmth\pgfplotsdeclarecoordmath@ log}{%
+		\pgfutil@namelet
+			{pgfpmth\pgfplotsdeclarecoordmath@ log}
+			{pgfpmth\pgfplotsdeclarecoordmath@ log e}%
+	}{}%
+	% store old impl of log unsigned int:
+	\pgfutil@namelet
+		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int@orig}
+		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int}%
+	\pgfplotscoordmath@def@log@to@log@ten{#1}{}% empty arg
 }%
 \pgfqkeys{/pgfplots/@declare coord math}{%
 	% takes a number literal as input and defines \pgfmathresult to be
@@ -1717,8 +1760,35 @@
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
 	%
 	% applies the natural logarithm. If the result is empty, it is not defined.
+	%
+	% 'log' is special in that it accepts a number literal which is
+	% OUTSIDE of the accepted number format. The result, however, is
+	% then in the accepted number format.
+	%
+	% The log basis can be set with 'log set basis'
 	log/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log\endcsname##1{#1}},%
+	% similar, but always uses log basis e:
+	log e/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log e\endcsname##1{#1}},%
+	% applies a *scale* from the actual log basis to the actual
+	% *display* log basis. The display log basis is usually 10, unless
+	% the log basis has been changed.
+	log to display log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to display log\endcsname##1{#1}},%
+	% applies a *scale* from the displau log basis to the actual
+	% log basis (the inverse of `log to display log').
+	log from display log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log from display log\endcsname##1{#1}},%
+	log to log 10/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to log 10\endcsname##1{#1}},%
+	% returns log(i) where i \in {1,2,3,...,basis-1}
+	% currently, it is only invoked for log basis 10
+	log unsigned int/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int\endcsname##1{#1}},%
+	% sets (changes) the actual log basis.
+	log set basis/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log set basis\endcsname##1{#1}},%
 	%
 	% A macro taking two parameters:
 	% #1: the EXPONENT (as integer)
@@ -1758,12 +1828,112 @@
 		{\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ suffix\endcsname{#1}},%
 }%
 
+% shared implementation for 'log set basis' It works for every
+% subclass.
+\def\pgfplotscoordmath@log@set@basis#1{%
+	%
+	\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult% TMPa = log_e(#1)
+	\pgfplotscoordmath{\pgfplotscoordmathid}{op}{reciprocal}{\pgfmathresult}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult% TMPb = 1/log_e(#1)
+	%
+	\expandafter\edef\csname pgfpmth@\pgfplotscoordmath @log\endcsname##1{%
+		\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{##1}%
+		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
+		\noexpand\else
+			\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{%
+				{\noexpand\pgfmathresult}%
+				{\pgfplots@loc@TMPb}%
+			}%
+		\noexpand\fi
+	}%
+	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log to display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log from display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	%
+	% compute 'log unsigned int' for the new basis.
+	%
+	% Idea: re-scale the old implementation (of basis e for i = 1,...,9)
+	% and re-compute i>=10 :
+	\begingroup
+		\expandafter\let\expandafter\logi\csname pgfpmath@\pgfplotscoordmathid @log unsigned int@orig\endcsname
+		\let\logscale=\pgfplots@loc@TMPb
+		%
+		\logi{1}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@1\endcsname=\pgfmathresult
+		%
+		\logi{2}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@2\endcsname=\pgfmathresult
+		%
+		\logi{3}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@3\endcsname=\pgfmathresult
+		%
+		\logi{4}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@4\endcsname=\pgfmathresult
+		%
+		\logi{5}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@5\endcsname=\pgfmathresult
+		%
+		\logi{6}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@6\endcsname=\pgfmathresult
+		%
+		\logi{7}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@7\endcsname=\pgfmathresult
+		%
+		\logi{8}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@8\endcsname=\pgfmathresult
+		%
+		\logi{9}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@9\endcsname=\pgfmathresult
+		%
+		\xdef\pgfplots@glob@TMPa##1{%
+			\noexpand\ifcase##1
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@1\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@2\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@3\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@4\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@5\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@6\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@7\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@8\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@9\endcsname}%
+			\noexpand\else
+				\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log}{##1}%
+			\noexpand\fi
+		}%
+	\endgroup
+	\expandafter\let\csname pgfpmth@\pgfplotscoordmathid @log unsigned int\endcsname=\pgfplots@glob@TMPa
+	\pgfplotscoordmath@def@log@to@log@ten\pgfplotscoordmathid\pgfplots@loc@TMPb
+}%
+% #1: the id of coord math
+% #2: either empty (basis e) or 1/ln(basis)
+\def\pgfplotscoordmath@def@log@to@log@ten#1#2{%
+	\csname pgfpmth@#1@parsenumber\endcsname{0.434294}%
+	\edef\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
+			\noexpand\pgfplotscoordmath{#1}{op}{multiply}{{##1}{\pgfmathresult}}%
+		}%
+	\else
+		\csname pgfpmth@#1@op\endcsname{multiply}{{#2}{\pgfmathresult}}%
+		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
+			\noexpand\pgfplotscoordmath{#1}{op}{multiply}{{##1}{\pgfmathresult}}%
+		}%
+	\fi
+}%
+
 \pgfplotsdeclarecoordmath{pgfbasic}{%
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
-	max=\pgfplotsmathmax{#1}{#2},%
-	min=\pgfplotsmathmin{#1}{#2},%
-	log=\pgfmathlog@{#1},%
-	suffix=@basic,
+	suffix=@basic@,
 }
 \pgfplotsdeclarecoordmath{float}{%
 	parsenumber=\pgfmathfloatparsenumber{#1},
@@ -1773,6 +1943,7 @@
 	min=\pgfplotsmathfloatmin{#1}{#2},%
 	max limit=\pgfmathfloatcreate{1}{1.0}{2147483645},%
 	min limit=\pgfmathfloatcreate{2}{1.0}{2147483645},%
+	log e=\pgfmathfloatparsenumber{#1}\pgfmathfloatln@{\pgfmathresult},%
 	if less than=\pgfmathfloatlessthan@{#1}{#2}\ifpgfmathfloatcomparison #3\else #4\fi,
 	log=\pgfmathlog@float{#1},%
 	datascaletrafo set params={%
@@ -1871,7 +2042,7 @@
 % \pgfplotscoordmath {x}{op}{multiply}{{<a>}{<b>}}
 % \pgfplotscoordmath {x}{parsenumber}{<a>}
 \def\pgfplotscoordmath#1#2{%
-	\def\pgfplotscoordmathid{#1}%
+	\edef\pgfplotscoordmathid{#1}%
 	\csname pgfpmth@\csname pgfcrdmth@#1\endcsname @#2\endcsname}%
 
 % ==================================================================================
