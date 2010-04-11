@@ -711,8 +711,10 @@
 	/pgfplots/colorbar to name/.initial=,
 	/pgfplots/colorbar source/.code={\pgfplots@error{Sorry, you can only set `colorbar source' inside of \string\addplot\space (or a cycle list)}},
 	/pgfplots/colorbar source/.default=true,
+	/pgfplots/colorbar pos*/.initial=,% one of 'rltb' (right, left, top, bottom). for internal use, to handle checks.
 	/pgfplots/colorbar right/.style={%
 		/pgfplots/colorbar=true,
+		/pgfplots/colorbar pos*=r,
 		/pgfplots/colorbar shift/.style={xshift=0.3cm},
 		/pgfplots/every colorbar/.style={%
 			title=,
@@ -740,21 +742,23 @@
 			xticklabel=,
 			ytick=,
 			yticklabel=,
-			yticklabel pos=right,
+			yticklabel pos=right,% ATTENTION: I check for this setting in 'colorbar sampled line', see below!
 			colorbar vertical/lowlevel,
 		}%
 	},%
 	/pgfplots/colorbar left/.style={%
 		/pgfplots/colorbar right,
+		/pgfplots/colorbar pos*=l,
 		/pgfplots/colorbar shift/.style={xshift=-0.3cm},
 		/pgfplots/every colorbar/.append style={%
 			at={(parent axis.left of north west)},
 			anchor=north east,
-			yticklabel pos=left,
+			yticklabel pos=left,% ATTENTION: I check for this setting in 'colorbar sampled line', see below!
 		}%
 	},%
 	/pgfplots/colorbar horizontal/.style={%
 		/pgfplots/colorbar=true,
+		/pgfplots/colorbar pos*=b,
 		/pgfplots/colorbar shift/.style={yshift=-0.3cm},
 		/pgfplots/every colorbar/.style={%
 			title=,
@@ -837,17 +841,37 @@
 			\pgfkeysvalueof{/pgfplots/colorbar addplot}%
 			\endaxis
 		},%
-		/pgfplots/colorbar horizontal/lowlevel/.style={%
-			axis x line*=bottom,
-			y axis line style={/pgfplots/every colorbar sampled line},
-			/pgfplots/colorbar addplot={\addplot {0.5};},
-			point meta=x,
+		/pgfplots/colorbar horizontal/lowlevel/.code={%
+			\pgfkeysgetvalue{/pgfplots/colorbar pos*}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				\def\pgfplots@loc@TMPa{b}%
+			\fi
+			\if b\pgfplots@loc@TMPa
+				\pgfkeysalso{axis x line*=top}% DEFAULT.
+			\else
+				\pgfkeysalso{axis x line*=bottom}%
+			\fi
+			\pgfkeysalso{%
+				y axis line style={/pgfplots/every colorbar sampled line},
+				/pgfplots/colorbar addplot={\addplot {0.5};},
+				point meta=x,
+			}%
 		},%
-		/pgfplots/colorbar vertical/lowlevel/.style={%
-			axis y line*=right,
-			x axis line style={/pgfplots/every colorbar sampled line},
-			/pgfplots/colorbar addplot={\addplot (0.5,x);},
-			point meta=y,
+		/pgfplots/colorbar vertical/lowlevel/.code={%
+			\pgfkeysgetvalue{/pgfplots/colorbar pos*}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				\def\pgfplots@loc@TMPa{r}%
+			\fi
+			\if l\pgfplots@loc@TMPa
+				\pgfkeysalso{axis y line*=left}%
+			\else
+				\pgfkeysalso{axis y line*=right}% DEFAULT
+			\fi
+			\pgfkeysalso{%
+				x axis line style={/pgfplots/every colorbar sampled line},
+				/pgfplots/colorbar addplot={\addplot (0.5,x);},
+				point meta=y,
+			}%
 		},%
 	},%
 	/pgfplots/colorbar sampled line/.default={scatter,only marks},
@@ -4420,6 +4444,18 @@
 		\pgfplots@xminorgridsfalse
 	\fi
 	%
+	\if0\pgfplots@xaxislinesnum\else
+		% axis x line* != box
+		\let\pgfplots@xticklabel@pos=\pgfutil@empty
+	\fi
+	\if0\pgfplots@yaxislinesnum\else
+		% axis y line* != box
+		\let\pgfplots@yticklabel@pos=\pgfutil@empty
+	\fi
+	\if0\pgfplots@zaxislinesnum\else
+		% axis y line* != box
+		\let\pgfplots@zticklabel@pos=\pgfutil@empty
+	\fi
 	%
 	\ifx\pgfplots@xticklabel@pos\pgfutil@empty
 		\def\pgfplots@xticklabel@pos{%
@@ -7890,6 +7926,13 @@
 		\global\let\pgfplots@colorbar@src@metamin=\pgfplots@axiswide@metamin
 		\global\let\pgfplots@colorbar@src@metamax=\pgfplots@axiswide@metamax
 	\fi
+	%
+	% normalize format:
+	\pgfmathfloattosci\pgfplots@colorbar@src@metamin
+	\global\let\pgfplots@colorbar@src@metamin=\pgfmathresult
+	\pgfmathfloattosci\pgfplots@colorbar@src@metamax
+	\global\let\pgfplots@colorbar@src@metamax=\pgfmathresult
+	%
 	\xdef#1{%
 		\noexpand\begingroup
 		\noexpand\def\noexpand\pgfplots@colorbar@draw{%
@@ -7906,6 +7949,7 @@
 			\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
 			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
 			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar addplot}{\the\toks2 }%
+			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar pos*}{\pgfkeysvalueof{/pgfplots/colorbar pos*}}%
 			\noexpand\pgfplots@colorbar@define@hook%
 			\noexpand\pgfkeysvalueof{/pgfplots/colorbar/draw/.@cmd}\noexpand\pgfeov
 			\ifx\pgfplots@colorbar@toname\pgfutil@empty
