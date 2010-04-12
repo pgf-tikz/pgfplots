@@ -17,6 +17,31 @@
 % You should have received a copy of the GNU General Public License
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
+% 
+% This is a library to draw ternary diagrams.
+%
+% A ternary diagram visualizes percentages of three components in a
+% triangle.
+%
+% Sometimes there is also contour data drawn on top of the ternary
+% diagram, i.e. data (x,y,z, T(x,y,z) ), but I can't do that yet.
+%
+%http://staff.aist.go.jp/a.noda/programs/ternary/ternary-en.html
+%
+%
+% FIXME : it won't work this way.
+%
+% I misunderstood the nonlinear transformation and its implications.
+%
+% how do you draw the x axis!? It is
+%   (1,0,0) -- (0,0,1)
+% and *NOT*
+% 	(1,0,0) -- (1,0,1) !
+% The oriented surf framework always keeps one coordinate fixed;
+% that's not useful here.
+%
+% Furthermore, the condition x+y+z = 1  is never met by any of the
+% tick line or grid line paths. It won't work.
 %--------------------------------------------
 
 \pgfplotsdefineaxistype{triangle}{%
@@ -31,24 +56,51 @@
 	\let\pgfplots@draw@axis=\pgfplots@ternary@draw@axis
 	\let\pgfplots@draw@axis@post=\pgfplots@ternary@draw@axis@post
 	\let\pgfplots@initsizes=\pgfplots@ternary@initsizes
+	\let\pgfplotspoint@initialisation@axes=\pgfplots@ternary@point@initialisation@axes
+	\let\pgfplotspoint@initialisation@units=\pgfplots@ternary@point@initialisation@units
 	\let\pgfplots@initsizes@setunitvector=\pgfplots@ternary@initsizes@setunitvector
 	\pgfkeyssetvalue{/pgfplots/view/az}{}%
 	\pgfkeyssetvalue{/pgfplots/view/el}{}%
+	\let\pgfplots@set@options@sanitize=\relax
+	\let\pgfplots@set@options@sanitizemode=\relax
+	\pgfplotsset{
+		enlargelimits=false,
+		clip=false,
+		disabledatascaling,
+		xmin=0,xmax=1,
+		ymin=0,ymax=1,
+		zmin=0,zmax=1,
+	}%
 	\def\pgfplots@xticklabel@pos{}%
 	\def\pgfplots@yticklabel@pos{}%
 	\def\pgfplots@zticklabel@pos{}%
-	\def\pgfplots@xaxislinesnum{1}%
-	\def\pgfplots@yaxislinesnum{3}%
-	\def\pgfplots@zaxislinesnum{3}%
+	%\def\pgfplots@xaxislinesnum{1}%
+	%\def\pgfplots@yaxislinesnum{3}%
+	%\def\pgfplots@zaxislinesnum{3}%
 	\def\pgfplotsifaxissurfaceisforeground##1##2##3{##2}%
-	%--------------------------------------------------
-	% 	\pgfplots@error{Sorry, 'axis type=triangle' needs a three dimensional axes. Make sure you supplied three dimensional coordinates (using \string\addplot3, for example)}%
-	%-------------------------------------------------- 
+	\def\pgfplots@init@ticklabelaxisspecfor##1##2{}%
+	\def\pgfplots@xticklabelaxisspec{v01}%
+	\def\pgfplots@yticklabelaxisspec{1v0}%
+	\def\pgfplots@zticklabelaxisspec{01v}%
+	\def\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@##1##2##3{%
+		\pgfplotspointonorientedsurfaceabtolinespec v##1%
+		\edef\pgfplots@loc@TMPe{\csname pgfplots@\pgfplotspointonorientedsurfaceA ticklabelaxisspec\endcsname}%
+		\ifx\pgfplots@loc@TMPe\pgfplotsretval
+			##2%
+		\else
+			##3%
+		\fi
+	}%
+	\let\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn=\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@%
 }%
 
 
 \let\pgfplots@ternary@initsizes@orig=\pgfplots@initsizes
 \def\pgfplots@ternary@initsizes{%
+	\ifpgfplots@threedim
+	\else
+	 	\pgfplots@error{Sorry, 'axis type=triangle' needs a three dimensional axes. Make sure you supplied three dimensional coordinates (using \string\addplot3, for example). This error is critical; I can't recover}%
+	\fi
 	\pgfplots@ternary@init@pre@map x
 	\pgfplots@ternary@init@pre@map y
 	\pgfplots@ternary@init@pre@map z
@@ -66,11 +118,11 @@
 \def\pgfplots@ternary@initsizes@setunitvector#1#2#3#4{%
 	\def#4{0}% whether we have (#1,0) or (0,#1)
 	\ifcase#2%
-		\pgfsetxvec{\pgfplots@ternary@qpointxyz\pgfplots@xmax00}%
+		\pgfsetxvec{\pgfplots@ternary@qpointxyz\pgfplots@xmax0\pgfplots@zmax}%
 	\or
-		\pgfsetyvec{\pgfplots@ternary@qpointxyz0\pgfplots@ymax0}%
+		\pgfsetyvec{\pgfplots@ternary@qpointxyz\pgfplots@xmax\pgfplots@ymax0}%
 	\or
-		\pgfsetzvec{\pgfplots@ternary@qpointxyz00\pgfplots@zmax}%
+		\pgfsetzvec{\pgfplots@ternary@qpointxyz0\pgfplots@ymax\pgfplots@zmax}%
 	\fi
 	\pgfmathveclen{\csname pgf@#1x\endcsname}{\csname pgf@#1y\endcsname}%
 	% The numbers 1/||e_x|| and 1/||e_y|| are used by the tick
@@ -83,6 +135,7 @@
 		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
 		\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
 	}%
+%\message{-> got unitvector(#1) = (\the\csname pgf@#1x\endcsname, \the\csname pgf@#1y\endcsname).}%
 }%
 
 % gx(x,y,z) = 0.5 * (x + 2*z)/(x+y+z)
@@ -128,15 +181,59 @@
 	%
 }%
 
+% POSTCONDITION: the macros
+% 	\pgfplotspointminminmin
+% 	\pgfplotspoint[xyz]axis
+% 	\pgfplotspoint[xyz]axislength
+%   are defined (globally).
+\def\pgfplots@ternary@point@initialisation@axes{%
+	\begingroup
+	\xdef\pgfplotspointminminmin{\noexpand\pgfpointorigin}%
+	%
+	\pgfplotsqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmin
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
+	\pgfplotsqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmax
+	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfplotsqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmin
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
+	\pgfplotsqpointxyz\pgfplots@xmax\pgfplots@ymax\pgfplots@zmin
+	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfplotsqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmax
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointzaxislength{\pgfmathresult pt}%
+	\pgfplotsqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmax
+	\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\endgroup
+	%
+}
+
+
+% PRECONDITION:
+% 	the unit vectors are set up
+%
+% POSTCONDITION:
+% 	\pgfplotspointunit[xyz]
+% 	\pgfplotspointunit[xyz]length
+% 	\pgfplotspointunit[xyz]invlength
+% 	are all set up.
+\def\pgfplots@ternary@point@initialisation@units{%
+	\edef\pgfplotspointunitx{\pgf@x=\the\pgf@xx\space\pgf@y=\the\pgf@xy\space}%
+	\edef\pgfplotspointunity{\pgf@x=\the\pgf@yx\space\pgf@y=\the\pgf@yy\space}%
+	\let\pgfplotsunitxlength=\pgfplots@x@veclength
+	\let\pgfplotsunitylength=\pgfplots@y@veclength
+	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
+	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
+	\ifpgfplots@threedim
+		\edef\pgfplotspointunitz{\pgf@x=\the\pgf@zx\space\pgf@y=\the\pgf@zy\space}%
+		\let\pgfplotsunitzlength=\pgfplots@z@veclength
+		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
+	\fi
+}%
 \def\pgfplots@ternary@draw@axis{%
-	%
-	% this should become the line for varying y:
-	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmin}{0}%
-	% it REQUIRES 
-	% 	z fixed to \pgfplots@zmin (ok)
-	% 	x fixed to \pgfplots@xmax (to be done by options)
-	\pgfplots@draw@axis@insurface yxz
-	%
 	% this should become the line for varying x:
 	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmax}{1}%
 	% it REQUIRES 
@@ -144,12 +241,20 @@
 	% 	y fixed to \pgfplots@ymin (to be done by options)
 	\pgfplots@draw@axis@insurface xyz
 	%
+	% this should become the line for varying y:
+	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmin}{0}%
+	% it REQUIRES 
+	% 	z fixed to \pgfplots@zmin (ok)
+	% 	x fixed to \pgfplots@xmax (to be done by options)
+	%\pgfplots@draw@axis@insurface yxz
+	%
+	%
 	% this should become the line for varying z:
 	\pgfplotspointonorientedsurfaceabsetupforsetx{\pgfplots@xmin}{0}%
 	% it REQUIRES 
 	% 	x fixed to \pgfplots@xmin (ok)
 	% 	y fixed to \pgfplots@ymax (to be done by options)
-	\pgfplots@draw@axis@insurface zyx
+	%\pgfplots@draw@axis@insurface zyx
 }%
 
 \def\pgfplots@ternary@draw@axis@post{%

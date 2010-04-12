@@ -97,17 +97,9 @@
 				{\pgfqpointxy@orig{##1}{##2}}% 
 		}%
 	}%
-	\edef\pgfplotspointunitx{\pgf@x=\the\pgf@xx\space\pgf@y=\the\pgf@xy\space}%
-	\edef\pgfplotspointunity{\pgf@x=\the\pgf@yx\space\pgf@y=\the\pgf@yy\space}%
-	\let\pgfplotsunitxlength=\pgfplots@x@veclength
-	\let\pgfplotsunitylength=\pgfplots@y@veclength
-	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
-	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
-	\ifpgfplots@threedim
-		\edef\pgfplotspointunitz{\pgf@x=\the\pgf@zx\space\pgf@y=\the\pgf@zy\space}%
-		\let\pgfplotsunitzlength=\pgfplots@z@veclength
-		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
-	\fi
+	\pgfplotspoint@initialisation@axes
+	\pgfplotspoint@initialisation@units
+	\pgfplotspoint@initialisation@center
 	%
 	% declare the '[xyz]ticklabel cs'
 	\tikzdeclarecoordinatesystem{xticklabel}{\pgfplotspointticklabelcs{x}{##1}}%
@@ -123,6 +115,161 @@
 	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{y}}}%
 	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{z}}}%
 	%
+}%
+
+% Determine final  axes this does also fix the axis' dimension.
+% There are the following cases: 
+% 1. the user really wants a fixed dimension,
+%    i.e. he used 'scale only axis'.
+%    Then, we have to work to get the correct dimension!
+%
+%    Up to now, the scaling mechanism looses to many significant
+%    digits such that the final width/height differs by 1-2 pt.
+%
+%    If I am not mistaken, this does ONLY affect the final size,
+%    not the relative plot precision.
+%    
+%    FIXME : really compute the plot precision!
+% 
+% 2. The use specified width and/or height, but not 'scale only
+%    axis'. Accept inaccurate final widths/heights (see above).
+%
+% 3. The user supplied 'x' and or 'y'. Simply use them, its
+% accurate.
+% POSTCONDITION: the macros
+% 	\pgfplotspointminminmin
+% 	\pgfplotspoint[xyz]axis
+% 	\pgfplotspoint[xyz]axislength
+%   are defined (globally).
+%
+\def\pgfplotspoint@initialisation@axes{%
+	\begingroup
+	\ifpgfplots@threedim
+		\def\pgfplotspointmaxminmin{\pgfplotsqpointxyz{\pgfplots@xmax}{\pgfplots@ymin}{\pgfplots@zmin}}%
+		\def\pgfplotspointminmaxmin{\pgfplotsqpointxyz{\pgfplots@xmin}{\pgfplots@ymax}{\pgfplots@zmin}}%
+		\pgfplotsqpointxyz{\pgfplots@xmin}{\pgfplots@ymin}{\pgfplots@zmin}%
+	\else
+		\def\pgfplotspointmaxminmin{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}}%
+		\def\pgfplotspointminmaxmin{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
+		\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\fi
+	\xdef\pgfplotspointminminmin{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	% ATTENTION: I re-use registers here! Make sure they won't be
+	% overwritten! \pgfpointdiff and \pgfplotsqpointxy are ok in this respect.
+	\let\pgfplots@xcoordminTEX=\pgf@xb
+	\let\pgfplots@ycoordminTEX=\pgf@yb
+	\pgfplots@xcoordminTEX=\pgf@x
+	\pgfplots@ycoordminTEX=\pgf@y
+	%
+	%--------------------------------------------------
+	% FIXME : WHAT IS THIS HERE FOR? 
+	% \pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	% \ifx\pgfplots@rectangle@width\pgfutil@empty
+	% 	\def\pgfplots@tmp@xmax@ymin{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}}%
+	% \else
+	% 	% this 'if' here should only make a difference of about
+	% 	% 1-2pt, not more.
+	% 	%
+	% 	% and I am quite sure that this inaccuracy (and this
+	% 	% work-around) only affects the
+	% 	% final size, not the relative plot accuracy.
+	% 	\pgf@x=\pgfplots@xcoordminTEX
+	% 	\advance\pgf@x by\pgfplots@width
+	% 	\edef\pgfplots@tmp@xmax@ymin{\noexpand\pgfqpoint{\the\pgf@x}{\noexpand\pgfplots@ycoordminTEX}}%
+	% \fi
+	% \ifx\pgfplots@rectangle@height\pgfutil@empty
+	% 	\def\pgfplots@tmp@xmin@ymax{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
+	% \else
+	% 	\pgf@x=\pgfplots@ycoordminTEX
+	% 	\advance\pgf@x\pgfplots@height
+	% 	\edef\pgfplots@tmp@xmin@ymax{\noexpand\pgfqpoint{\noexpand\pgfplots@xcoordminTEX}{\the\pgf@x}}%
+	% \fi
+	%-------------------------------------------------- 
+	\pgfpointdiff
+		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
+		{\pgfplotspointmaxminmin}%
+	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
+	%
+	\pgfpointdiff
+		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
+		{\pgfplotspointminmaxmin}%
+	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
+	%
+	\ifpgfplots@threedim
+		\pgfpointdiff
+			{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
+			{\pgfplotsqpointxyz{\pgfplots@xmin}{\pgfplots@ymin}{\pgfplots@zmax}}%
+		\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\pgfmathveclen{\pgf@x}{\pgf@y}%
+		\xdef\pgfplotspointzaxislength{\pgfmathresult pt}%
+	\else
+		\global\let\pgfplotspointzaxis=\pgfpointorigin
+		\gdef\pgfplotspointzaxislength{0pt}%
+	\fi
+	\endgroup
+	%
+}
+
+% PRECONDITION: called after \pgfplotspoint@initialisation@axes
+% POSTCONDITION:
+% 	\pgfplotspointcenter is defined.
+\def\pgfplotspoint@initialisation@center{%
+	\begingroup
+	%
+	%
+	\ifpgfplots@threedim
+		%
+		\pgfpointscale
+			{0.5}%
+			{\pgfplotspointxaxis
+			\pgf@xa=\pgf@x
+			\pgf@xb=\pgf@y
+			\pgfplotspointyaxis%
+			\advance\pgf@xa by\pgf@x
+			\advance\pgf@xb by\pgf@y
+			\pgfplotspointzaxis%
+			\advance\pgf@xa by\pgf@x
+			\advance\pgf@xb by\pgf@y
+			\pgf@x=\pgf@xa
+			\pgf@y=\pgf@xb
+			}%
+		\xdef\pgfplotspointcenter{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\else
+		\pgfpointscale
+			{0.5}%
+			{\pgfpointadd
+				\pgfplotspointxaxis%
+				\pgfplotspointyaxis%
+			}%
+		\xdef\pgfplotspointcenter{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\fi
+	\endgroup
+}
+
+% PRECONDITION:
+% 	the unit vectors are set up
+%
+% POSTCONDITION:
+% 	\pgfplotspointunit[xyz]
+% 	\pgfplotspointunit[xyz]length
+% 	\pgfplotspointunit[xyz]invlength
+% 	are all set up.
+\def\pgfplotspoint@initialisation@units{%
+	\edef\pgfplotspointunitx{\pgf@x=\the\pgf@xx\space\pgf@y=\the\pgf@xy\space}%
+	\edef\pgfplotspointunity{\pgf@x=\the\pgf@yx\space\pgf@y=\the\pgf@yy\space}%
+	\let\pgfplotsunitxlength=\pgfplots@x@veclength
+	\let\pgfplotsunitylength=\pgfplots@y@veclength
+	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
+	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
+	\ifpgfplots@threedim
+		\edef\pgfplotspointunitz{\pgf@x=\the\pgf@zx\space\pgf@y=\the\pgf@zy\space}%
+		\let\pgfplotsunitzlength=\pgfplots@z@veclength
+		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
+	\fi
 }%
 
 % The idea here is the following:
