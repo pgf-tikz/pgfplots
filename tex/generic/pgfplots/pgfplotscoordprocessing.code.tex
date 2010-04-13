@@ -1695,6 +1695,19 @@
 		min limit=	\def\pgfmathresult{-16300},%
 		max limit=	\def\pgfmathresult{16300},%
 		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
+		if is=	{%
+			\if##20
+				\ifdim##1pt=0pt ##2\else ##3\fi
+			\else
+				\if##2+\ifdim##1pt>0pt ##2\else ##3\fi
+				\else
+					\if##2-\ifdim##1pt<0pt ##2\else ##3\fi
+					\else
+						\def\pgfplots@loc@TMPd{##1}\ifx\pgfplots@loc@TMPd\pgfutil@empty ##2\else ##3\fi
+					\fi
+				\fi
+			\fi
+		},%
 		if is bounded=\edef\pgfplotsretval{##1}\ifx\pgfplotsretval\pgfutil@empty ##3\else ##2\fi,
 		suffix=		#1,%
 		datascaletrafo set params=,
@@ -1759,6 +1772,13 @@
 	% the false case.
 	if less than/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
+	% checks if ##1 is 0, positive, negative or unbounded
+	% ##1: the number to check
+	% ##2: either 0 or + or - or u (u = unbounded)
+	% ##3: true code
+	% ##4: false code
+	if is/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if is\endcsname##1##2##3##4{#1}},%
 	%
 	% Checks if the argument ##1 is bounded and invokes ##2 in that
 	% case. IF the argument is unbounded, it invokes #3.
@@ -1955,6 +1975,8 @@
 	if is bounded=%
 		\expandafter\pgfmathfloatgetflagstomacro\expandafter{#1}\pgfplotsretval
 		\ifnum\pgfplotsretval>2 #3\else #2\fi,
+	if is=%
+		\pgfmathfloatifflags{#1}{#2}{#3}{#4},
 	log=\pgfmathlog@float{#1},%
 	datascaletrafo set params={%
 		\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{#1}%
@@ -2157,31 +2179,25 @@
 \pgfplotsdeclarepointmetasource{}{}
 \pgfplotsdeclarepointmetasource{x}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@x
-		\ifpgfplots@xislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		}}
 \pgfplotsdeclarepointmetasource{y}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@y
-		\ifpgfplots@yislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		}}
 \pgfplotsdeclarepointmetasource{z}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@z
-		\ifpgfplots@zislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+	}}
 
 \pgfplotsdeclarepointmetasource{explicit}{%
 	assign={%
 		\ifx\pgfplots@current@point@meta\pgfutil@empty
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
 			\let\pgfplots@current@point@meta=\pgfmathresult
 		\fi
 	},
@@ -2201,6 +2217,7 @@
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
 			\pgfmathparse{\pgfplots@loc@TMPa}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfmathresult}%
 			\let\pgfplots@current@point@meta=\pgfmathresult
 		\fi
 	},%
@@ -2223,7 +2240,7 @@
 		\begingroup
 		\let\pgfplotspointmeta=\pgfutil@empty
 		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
-		\pgfmathfloatparsenumber{\pgfplotspointmeta}%
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplotspointmeta}%
 		\let\pgfplots@current@point@meta=\pgfmathresult
 		\pgfmath@smuggleone\pgfplots@current@point@meta
 		\endgroup
@@ -2693,7 +2710,7 @@
 	\pgfplotsmathdeclarepseudoconstant{meta}{%
 		\let\pgfmathresult=\pgfplots@current@point@meta
 		\ifx\pgfmathresult\pgfutil@empty
-			\pgfmathfloatcreate{0}{0.0}{0}%
+			\pgfplotscoordmath{meta}{parsenumber}{0}%
 		\fi
 	}%
 	%
@@ -2713,22 +2730,22 @@
 		\ifx\pgfplots@metamin\pgfutil@empty
 			\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
 			\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb
-				\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+				\pgfplotscoordmath{meta}{min}{\pgfplots@metamin}{\pgfplots@current@point@meta}%
 				\global\let\pgfplots@metamin=\pgfmathresult
 			}%
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@metamin}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@metamin}%
 			\global\let\pgfplots@metamin=\pgfmathresult
 		\fi
 		\pgfkeysgetvalue{/pgfplots/point meta max}\pgfplots@metamax
 		\ifx\pgfplots@metamax\pgfutil@empty
 			\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
 			\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb
-				\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+				\pgfplotscoordmath{meta}{max}{\pgfplots@metamax}{\pgfplots@current@point@meta}%
 				\global\let\pgfplots@metamax=\pgfmathresult
 			}%
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@metamax}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@metamax}%
 			\global\let\pgfplots@metamax=\pgfmathresult
 		\fi
 		%
@@ -2771,11 +2788,11 @@
 	\ifx\pgfplots@metamin\pgfutil@empty
 	\else
 		\if\pgfplots@axiswide@metamin@autocompute1%
-			\pgfplotsmathfloatmin{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
+			\pgfplotscoordmath{meta}{min}{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
 			\global\let\pgfplots@axiswide@metamin=\pgfmathresult
 		\fi
 		\if\pgfplots@axiswide@metamax@autocompute1%
-			\pgfplotsmathfloatmax{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
+			\pgfplotscoordmath{meta}{max}{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
 			\global\let\pgfplots@axiswide@metamax=\pgfmathresult
 		\fi
 	\fi
@@ -3704,7 +3721,7 @@
 			\def\pgfplots@perpointmeta@unboundedwarning##1{%
 				\ifx\pgfplots@perpointmeta@unboundedwarning@stop\relax
 					\begingroup
-						\pgfmathfloattofixed{##1}%
+						\pgfplotscoordmath{meta}{tostring}{##1}%
 						\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
 					\endgroup
 					\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
@@ -3717,11 +3734,12 @@
 			% colormap access=map
 			\ifx\pgfplots@metamax\pgfutil@empty
 				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatiffinite{##1}{%
-						\pgfmathfloattofixed@{##1}%
-					}{%
+					\pgfplotscoordmath{meta}{if is}{##1}{u}
+					{%
 						\def\pgfmathresult{0}%
 						\pgfplots@perpointmeta@unboundedwarning{##1}%
+					}{%
+						\pgfplotscoordmath{meta}{tofixed}{##1}%
 					}%
 				}%
 				\def\pgfplots@perpointmeta@traforange{0:1000}%
@@ -3743,36 +3761,36 @@
 					% Now, prepare the trafo as such.
 					% It assigns \pgfmathresult (in fixed point).
 					\def\pgfplots@perpointmeta@trafo##1{%
-						\pgfmathfloatiffinite{##1}{%
-							\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
-							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-						}{%
+						\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 							\def\pgfmathresult{0}%
 							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}{%
+							\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\pgfplots@axiswide@metamin}}%
+							\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
+							\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
 						}%
 					}%
-					\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
+					\pgfplotscoordmath{meta}{op}{subtract}{{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}}%
 				\else
 					% point meta rel=per plot:
 					\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 					% Now, prepare the trafo as such.
 					% It assigns \pgfmathresult (in fixed point).
 					\def\pgfplots@perpointmeta@trafo##1{%
-						\pgfmathfloatiffinite{##1}{%
-							\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
-							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-						}{%
+						\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 							\def\pgfmathresult{0}%
 							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}{%
+							\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\pgfplots@metamin}}%
+							\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
+							\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
 						}%
 					}%
-					\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
+					\pgfplotscoordmath{meta}{op}{subtract}{{\pgfplots@metamax}{\pgfplots@metamin}}%
 				\fi
 				\let\pgfplots@loc@TMPa=\pgfmathresult
-				\pgfmathfloatcreate{1}{1.0}{3}%
-				\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+				\pgfplotscoordmath{meta}{parsenumber}{1000}%
+				\pgfplotscoordmath{meta}{op}{divide}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
 				\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
 				%
 				% Expands to the transformation range as 'a:b':
@@ -3780,12 +3798,12 @@
 			\fi
 		\else
 			% colormap access=direct
-			\def\pgfplots@perpointmeta@trafo##1{
-				\pgfmathfloatiffinite{##1}{%
-					\pgfmathfloattofixed@{##1}%
-				}{%
+			\def\pgfplots@perpointmeta@trafo##1{%
+				\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 					\def\pgfmathresult{0}%
 					\pgfplots@perpointmeta@unboundedwarning{##1}%
+				}{%
+					\pgfplotscoordmath{meta}{tofixed}{##1}%
 				}%
 			}%
 			\def\pgfplots@perpointmeta@traforange{0:0}%
