@@ -1911,21 +1911,31 @@
 % \pgfplotsscanlinelengthinitzero
 %
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
-%
-% \pgfplotsscanlineendofinput
 %
 % \pgfplotsscanlinelengthcleanup
+%
+% In other words, the \pgfplotsscanlinelengthincrease routine is
+% invoked *before* the point is processed. That's important.
 %
 % Now, \pgfplotsscanlinelength expands to either 
 % a) a negative number in which case there is no 
@@ -1961,7 +1971,6 @@
 	\expandafter\let\expandafter\pgfplotsscanlinelengthincrease		\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @increase\endcsname
 	\expandafter\let\expandafter\pgfplotsscanlinecomplete			\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @complete\endcsname
 	\expandafter\let\expandafter\pgfplotsscanlinelengthcleanup		\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @cleanup\endcsname
-	\expandafter\let\expandafter\pgfplotsscanlineendofinput			\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @endofinput\endcsname
 	\pgfplotsscanlinelength@initzero
 }%
 \def\pgfplotsscanlinedisablechanges{%
@@ -2007,7 +2016,6 @@
 	\fi
 	\c@pgfplots@scanlineindex=0
 }
-\let\pgfplotsscanlinelength@scanline@endofinput=\pgfplotsscanlinelength@scanline@complete%
 \def\pgfplotsscanlinelength@scanline@cleanup{%
 	\ifnum\c@pgfplots@scanlineindex=0
 		% I assume the last scan line is already complete.
@@ -2023,32 +2031,42 @@
 \let\pgfplotsscanlinelength@none@initzero=\pgfutil@empty
 \let\pgfplotsscanlinelength@none@increase=\relax
 \let\pgfplotsscanlinelength@none@complete=\relax
-\let\pgfplotsscanlinelength@none@endofinput=\relax
 \let\pgfplotsscanlinelength@none@cleanup=\relax
 % -------------------------------------------------------------------------------
 %
 % newline=nan   class:
 \def\pgfplotsscanlinelength@nan@initzero{%
-	% FIXME : this is INCOMPATIBLE with unbounded coords=discard !
-	% Howe,ver the discard thing is the initial configuration...
-	\pgfplotsplothandlersurveyaddoptions{/pgfplots/unbounded coords=jump}%
 	\def\pgfplotsscanlinelength@nan@isfirst{1}%
+	\let\pgfplotsscanlinelength@nan@pendingwork=\relax
 }%
 \def\pgfplotsscanlinelength@nan@increase{%
 	\def\pgfplotsscanlinelength@nan@isfirst{0}%
+	\pgfplotsscanlinelength@nan@pendingwork
 }%
 \def\pgfplotsscanlinelength@nan@complete{%
 	\if1\pgfplotsscanlinelength@nan@isfirst
 	\else
-		\def\pgfplots@current@point@x{nan}%
-		\def\pgfplots@current@point@y{nan}%
-		\def\pgfplots@current@point@z{nan}%
-		\pgfplotsplothandlersurveypoint
+		\def\pgfplotsscanlinelength@nan@pendingwork{%
+			% this will be executed when the next point has been
+			% found.
+			\def\pgfplots@current@point@x{}%
+			\def\pgfplots@current@point@y{}%
+			\def\pgfplots@current@point@z{}%
+			% simply serialize an empty point. That works -- the
+			% visualization phase checks if the coordinates are empty and
+			% visualizes them as "jump"
+			%
+			% Note that \pgfplotsplothandlersurveypoint is not a good
+			% choice here unless one employs its 'unbounded coords=jump'
+			% feature
+			\pgfplotsaxisserializedatapoint
+			%
+			\let\pgfplotsscanlinelength@nan@pendingwork=\relax
+		}%
 	\fi
 	\def\pgfplotsscanlinelength@nan@isfirst{1}%
 }%
 \let\pgfplotsscanlinelength@nan@cleanup=\relax
-\let\pgfplotsscanlinelength@none@endofinput=\relax
 % 
 % -------------------------------------------------------------------------------
 
@@ -5597,21 +5615,14 @@
 %\message{Prepared macro	\string \pgfplotsaxisvisphasetransformcoordinate {\meaning\pgfplotsaxisvisphasetransformcoordinate}}%
 %\message{Prepared macro	\string \pgfplots@coord@stream@finalize@currentpt {\meaning\pgfplots@coord@stream@finalize@currentpt}}%
 	\def\pgfplots@coord@stream@coord@{%
-		\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
-		\pgfplotsaxisvisphasepreparedatapoint
-		\pgfplots@coord@stream@finalize@currentpt
+		\ifx\pgfplots@current@point@x\pgfutil@empty% this realizes `unbounded coords=jump', for example
+			\pgfplots@plothandler@unbounded@visualize@jump
+		\else
+			\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
+			\pgfplotsaxisvisphasepreparedatapoint
+			\pgfplots@coord@stream@finalize@currentpt
+		\fi
 	}%
-	\if\pgfplots@unbounded@handler j% unbounded coords=jump
-		\t@pgfplots@tokb=\expandafter{\pgfplots@coord@stream@coord@}%
-		\edef\pgfplots@coord@stream@coord@{%
-			\noexpand\ifx\noexpand\pgfplots@current@point@x\noexpand\pgfutil@empty
-				\noexpand\pgfplots@plothandler@unbounded@visualize@jump
-			\noexpand\else
-				\the\t@pgfplots@tokb
-			\noexpand\fi
-		}%
-	\fi
-	%
 }
 
 \def\pgfplots@plothandler@unbounded@visualize@jump{%
