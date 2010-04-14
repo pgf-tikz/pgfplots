@@ -1200,7 +1200,17 @@
 		}%
 	},
 	contour/handler/.style={/tikz/sharp plot},
-	contour/label distance/.initial=20pt,
+	contour/label distance/.initial=70pt,
+	contour/label node code/.code={%
+		\node {\pgfmathprintnumber{#1}};
+	},%
+	contour/every contour label/.style={%
+		sloped,%
+		transform shape,%
+		inner sep=2pt,
+		every node/.style={mapped color,fill=white},%
+		%every node/.style={yshift=10pt},%
+	},
 }%
 \def\pgfplotsplothandlercontour{%
 	\pgfplotsresetplothandler
@@ -1219,10 +1229,10 @@
 	%
 	\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
 	\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
-	\let\pgfplotsplothandlercontour@labeldist=\pgfmathresult
-	\pgfmath@basic@multiply@\pgfplotsplothandlercontour@labeldist\pgfplotsplothandlercontour@labeldist
 	\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
 	\let\pgfplots@plothandler@unbounded@visualize@jump=\relax
+	%
+	\pgfplotsapplistXnewempty[to global]\pgfplotsplothandlercontour@storedlabels
 	%
 	\pgfplotsset{/pgfplots/contour/handler}%
 	\tikz@plot@handler
@@ -1236,8 +1246,31 @@
 	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
 	\else
 		\pgfplotsplothandlercontour@finishcontourline
+		\scope[/pgfplots/contour/every contour label]
+		\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
+		\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
+		\pgfplotsapplistXnewempty[to global]\pgfplotsplothandlercontour@storedlabels
+		\expandafter\pgfplotsplothandlercontourplacelabels\pgfplotsplothandlercontour@storedlabels@\pgfplots@EOI
+		\endscope
 	\fi
 }%
+\def\pgfplotsplothandlercontourplacelabels#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		%
+		\pgfplotsplothandlercontourplacelabels@act#1\relax
+		%
+		\expandafter\pgfplotsplothandlercontourplacelabels
+	\fi
+}%
+\def\pgfplotsplothandlercontourplacelabels@act#1,#2;#3,#4;#5\relax{%
+	\begingroup
+	\pgftransformlineattime{0.5}{\pgfqpoint{#1}{#2}}{\pgfqpoint{#3}{#4}}%
+	\pgfkeysvalueof{/pgfplots/contour/label node code/.@cmd}#5\pgfeov
+	\endgroup
+}%
+
 \def\pgfplotsplothandlercontour@streampoint#1{%
 	\global\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
 	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
@@ -1284,16 +1317,25 @@
 		{\pgf@x=\pgf@xb \pgf@y=\pgf@yb}%
 	\pgf@xa=\pgf@sys@tonumber\pgf@x\pgf@x
 	\advance\pgf@xa by\pgf@sys@tonumber\pgf@y\pgf@y
-	\edef\pgfplotsplothandlercontour@act@len{\the\pgf@xa}%
+	\edef\pgfplotsplothandlercontour@act@len{\pgf@sys@tonumber\pgf@xa}%
+	\pgfmath@basic@sqrt@\pgfplotsplothandlercontour@act@len
+	\pgf@xa=\pgfmathresult pt
 	%
 	\advance\pgf@xa by\pgfplotsplothandlercontour@len\relax
 	\xdef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
-\message{contour: cur len=\pgfplotsplothandlercontour@len; most recently added=\pgfplotsplothandlercontour@act@len.}%
+%\message{contour(\pgfplotsplothandlercontour@act@contour): cur len=\pgfplotsplothandlercontour@len > \pgfplotsplothandlercontour@labeldist ?;}%
+	\ifdim\pgf@xa>\pgfplotsplothandlercontour@labeldist\relax
+		\pgfplotsplothandlercontour@lastcanvas
+		\edef\pgfplots@loc@TMPa{{\the\pgf@x,\the\pgf@y;\the\pgf@xb,\the\pgf@yb;{\pgfplots@current@point@meta}}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to\pgfplotsplothandlercontour@storedlabels
+		\advance\pgf@xa by-\pgfplotsplothandlercontour@labeldist\relax
+		\xdef\pgfplotsplothandlercontour@len{\the\pgf@xa\relax}%
+	\fi
 }%
 
 
 \def\pgfplotsplothandlercontour@preparenewcontourline{%
-\message{PREPARE NEW CONTOUR (\pgfplots@current@point@meta).}%
+%\message{PREPARE NEW CONTOUR (\pgfplots@current@point@meta).}%
 	\pgfplotsaxisvisphasetransformpointmeta
 	\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
 	\pgfsetstrokecolor{mapped color}%
