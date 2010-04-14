@@ -1635,6 +1635,429 @@
 	\fi
 }%
 
+% ==================================================================================
+% 
+% COORDINATE MATH.
+%
+% ==================================================================================
+
+% Declares a new "subclass" to perform coordinate math.
+%
+% Coordinate math usually needs a more powerful number format than the pgf
+% basic layer, or at least a powerful mapping into the pgf basic
+% layer. Both cases are realized by the coordinate math class.
+%
+% Different coordinates can use different instances, and it is also
+% possible to use yet a further instance for point meta (or whatever).
+%
+% Coordinate math is used to compute axis limits and to map the range
+% into the pgf number format. 
+%
+% It is *not* necessarily used for \pgfmathparse, since switching
+% the number format of \pgfmathparse is quite involved (at the time of
+% this writing). Instead, it is used for *single* operations (like
+% max, min, multiply, add).
+%
+% #1: the name of the coord math class
+% #2: methods to override the default.
+%
+% The available methods are documented and shown below in the
+% \pgfqkeys listing. 
+%
+% @see the predefined examples, also shown below.
+\def\pgfplotsdeclarecoordmath#1#2{%
+	\edef\pgfplotsdeclarecoordmath@{@#1@}%
+	\pgfqkeys{/pgfplots/@declare coord math}{%
+		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
+		log e=		\pgfmathlog@{##1},%
+		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
+		log from display log=\pgfmath@basic@multiply@{##1}{0.434294},% / log(10)
+		log unsigned int={%
+			\edef\pgfmathresult{%
+				\ifcase##1
+				\or0
+				\or0.693147
+				\or1.098612
+				\or1.386294
+				\or1.60943791
+				\or1.7917594
+				\or1.94591014
+				\or2.07944154
+				\or2.197224
+				\fi
+			}%
+		},
+		set log basis=\pgfplotscoordmath@log@set@basis{##1},
+		tofixed=	\edef\pgfmathresult{##1},%
+		tostring=	\edef\pgfmathresult{##1},%
+		max=		\pgfplotsmathmax{##1}{##2},%
+		min=		\pgfplotsmathmin{##1}{##2},%
+		min limit=	\def\pgfmathresult{-16300},%
+		max limit=	\def\pgfmathresult{16300},%
+		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
+		if is bounded=\edef\pgfplotsretval{##1}\ifx\pgfplotsretval\pgfutil@empty ##3\else ##2\fi,
+		suffix=		#1,%
+		datascaletrafo set params=,
+		datascaletrafo get params=	\def\pgfmathresult{{}{}},
+		datascaletrafo=				\edef\pgfmathresult{##1},
+		datascaletrafo inverse=		\edef\pgfmathresult{##1},
+		datascaletrafo noshift inverse=		\edef\pgfmathresult{##1},
+		datascaletrafo inverse to fixed=	\edef\pgfmathresult{##1},
+		datascaletrafo noshift inverse to fixed=	\edef\pgfmathresult{##1},
+		datascaletrafo noshift=		\edef\pgfmathresult{##1},
+		datascaletrafo noshift=		\edef\pgfmathresult{##1},
+		datascaletrafo undo shift=	\edef\pgfmathresult{##1},
+		datascaletrafo redo shift=	\edef\pgfmathresult{##1},
+		#2%
+	}%
+	\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ op\endcsname##1##2{%
+		\noexpand\edef\noexpand\pgfplotscoordmath@{##2}%
+		\noexpand\expandafter\noexpand\expandafter\noexpand\csname pgfmath\csname pgfpmth@#1@suffix\endcsname ##1@\noexpand\endcsname\noexpand\pgfplotscoordmath@
+	}%
+	\pgfutil@ifundefined{pgfpmth\pgfplotsdeclarecoordmath@ log}{%
+		\pgfutil@namelet
+			{pgfpmth\pgfplotsdeclarecoordmath@ log}
+			{pgfpmth\pgfplotsdeclarecoordmath@ log e}%
+	}{}%
+	% store old impl of log unsigned int:
+	\pgfutil@namelet
+		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int@orig}
+		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int}%
+	\pgfplotscoordmath@def@log@to@log@ten{#1}{}% empty arg
+}%
+\pgfqkeys{/pgfplots/@declare coord math}{%
+	% takes a number literal as input and defines \pgfmathresult to be
+	% the parsed result.
+	parsenumber/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ parsenumber\endcsname##1{#1}},%
+	%
+	% takes a parsed number and returns a fixed point number:
+	tofixed/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tofixed\endcsname##1{#1}},%
+	%
+	% chooses a human readable string (which can be processed by parsenumber):
+	tostring/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tostring\endcsname##1{#1}},%
+	%
+	% defines a max routine which returns the max of *exactly* two numbers:
+	max/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ max\endcsname##1##2{#1}},%
+	%
+	% counterpart for max:
+	min/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ max\endcsname##1##2{#1}},%
+	%
+	% defines \pgfmathresult to be the largest supported number.
+	max limit/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ max limit\endcsname{#1}},%
+	%
+	% defines \pgfmathresult to be the smallest supported number.
+	min limit/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ min limit\endcsname{#1}},%
+	%
+	% computes ##1 < ##2 and invokes ##3 in the true case and ##4 in
+	% the false case.
+	if less than/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
+	%
+	% Checks if the argument ##1 is bounded and invokes ##2 in that
+	% case. IF the argument is unbounded, it invokes #3.
+	if is bounded/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if is bounded\endcsname##1##2##3{#1}},%
+	%
+	% applies the natural logarithm. If the log is not defined, the
+	% argument is "unbounded", see 'if is bounded'
+	%
+	% 'log' is special in that it accepts a number literal which is
+	% OUTSIDE of the accepted number format. The result, however, is
+	% then in the accepted number format.
+	%
+	% The log basis can be set with 'set log basis'
+	log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log\endcsname##1{#1}},%
+	% similar, but always uses log basis e:
+	log e/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log e\endcsname##1{#1}},%
+	% applies a *scale* from the actual log basis to the actual
+	% *display* log basis. The display log basis is usually 10, unless
+	% the log basis has been changed.
+	log to display log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to display log\endcsname##1{#1}},%
+	% applies a *scale* from the displau log basis to the actual
+	% log basis (the inverse of `log to display log').
+	log from display log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log from display log\endcsname##1{#1}},%
+	log to log 10/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to log 10\endcsname##1{#1}},%
+	% returns log(i) where i \in {1,2,3,...,basis-1}
+	% currently, it is only invoked for log basis 10
+	log unsigned int/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int\endcsname##1{#1}},%
+	% sets (changes) the actual log basis.
+	set log basis/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ set log basis\endcsname##1{#1}},%
+	%
+	% A macro taking two parameters:
+	% #1: the EXPONENT (as integer)
+	% #2: the SHIFT (as fixed point number)
+	datascaletrafo set params/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo set params\endcsname##1##2{#1}},%
+	datascaletrafo set shift/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo set shift\endcsname##1{#1}},%
+	% 
+	% Defines \pgfmathresult to contain the two parameters required
+	% for 'datascaletrafo set params'.
+	datascaletrafo get params/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo get params\endcsname{#1}},%
+	datascaletrafo/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo\endcsname##1{#1}},%
+	datascaletrafo inverse/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo inverse\endcsname##1{#1}},%
+	datascaletrafo noshift inverse/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo noshift inverse\endcsname##1{#1}},%
+	datascaletrafo inverse to fixed/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo inverse to fixed\endcsname##1{#1}},%
+	datascaletrafo noshift inverse to fixed/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo noshift inverse to fixed\endcsname##1{#1}},%
+	datascaletrafo noshift/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo noshift\endcsname##1{#1}},%
+	datascaletrafo noshift/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo noshift\endcsname##1{#1}},%
+	datascaletrafo undo shift/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo undo shift\endcsname##1{#1}},%
+	datascaletrafo redo shift/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ datascaletrafo redo shift\endcsname##1{#1}},%
+	%
+	% defines a suffix such that
+	% 	\csname pgfmath<suffix><op>@\endcsname
+	% exists. Example: <suffix>=float  --> \pgfmathfloatmultiply@ for <op>=multiply
+	suffix/.code=
+		{\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ suffix\endcsname{#1}},%
+}%
+
+% shared implementation for 'set log basis' It works for every
+% subclass.
+\def\pgfplotscoordmath@log@set@basis#1{%
+	%
+	\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult% TMPa = log_e(#1)
+	\pgfplotscoordmath{\pgfplotscoordmathid}{op}{reciprocal}{{\pgfmathresult}}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult% TMPb = 1/log_e(#1)
+	%
+	\expandafter\edef\csname pgfpmth@\pgfplotscoordmathid @log\endcsname##1{%
+		\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{##1}%
+		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
+		\noexpand\else
+			\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{%
+				{\noexpand\pgfmathresult}%
+				{\pgfplots@loc@TMPb}%
+			}%
+		\noexpand\fi
+	}%
+	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log to display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log from display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	%
+	% compute 'log unsigned int' for the new basis.
+	%
+	% Idea: re-scale the old implementation (of basis e for i = 1,...,9)
+	% and re-compute i>=10 :
+	\begingroup
+		\expandafter\let\expandafter\logi\csname pgfpmath@\pgfplotscoordmathid @log unsigned int@orig\endcsname
+		\let\logscale=\pgfplots@loc@TMPb
+		%
+		\logi{1}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@1\endcsname=\pgfmathresult
+		%
+		\logi{2}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@2\endcsname=\pgfmathresult
+		%
+		\logi{3}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@3\endcsname=\pgfmathresult
+		%
+		\logi{4}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@4\endcsname=\pgfmathresult
+		%
+		\logi{5}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@5\endcsname=\pgfmathresult
+		%
+		\logi{6}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@6\endcsname=\pgfmathresult
+		%
+		\logi{7}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@7\endcsname=\pgfmathresult
+		%
+		\logi{8}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@8\endcsname=\pgfmathresult
+		%
+		\logi{9}%
+		\pgfplotscoordmath{\pgfplotscoordmathid}{op}{multiply}{{\pgfmathresult}{\logscale}}%
+		\expandafter\let\csname logi@@9\endcsname=\pgfmathresult
+		%
+		\xdef\pgfplots@glob@TMPa##1{%
+			\noexpand\ifcase##1
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@1\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@2\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@3\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@4\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@5\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@6\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@7\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@8\endcsname}%
+			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@9\endcsname}%
+			\noexpand\else
+				\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log}{##1}%
+			\noexpand\fi
+		}%
+	\endgroup
+	\expandafter\let\csname pgfpmth@\pgfplotscoordmathid @log unsigned int\endcsname=\pgfplots@glob@TMPa
+	\pgfplotscoordmath@def@log@to@log@ten\pgfplotscoordmathid\pgfplots@loc@TMPb
+}%
+% #1: the id of coord math
+% #2: either empty (basis e) or 1/ln(basis)
+\def\pgfplotscoordmath@def@log@to@log@ten#1#2{%
+	\csname pgfpmth@#1@parsenumber\endcsname{0.434294}%
+	\edef\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
+			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
+		}%
+	\else
+		\csname pgfpmth@#1@op\endcsname{multiply}{{#2}{\pgfmathresult}}%
+		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
+			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
+		}%
+	\fi
+}%
+
+\pgfplotsdeclarecoordmath{pgfbasic}{%
+	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
+	suffix=@basic@,
+}
+\pgfplotsdeclarecoordmath{float}{%
+	parsenumber=\pgfmathfloatparsenumber{#1},
+	tofixed=\pgfmathfloattofixed{#1},
+	tostring=\pgfmathfloattosci{#1},
+	max=\pgfplotsmathfloatmax{#1}{#2},%
+	min=\pgfplotsmathfloatmin{#1}{#2},%
+	max limit=\pgfmathfloatcreate{1}{1.0}{2147483645},%
+	min limit=\pgfmathfloatcreate{2}{1.0}{2147483645},%
+	log e=\pgfmathfloatparsenumber{#1}\pgfmathfloatln@{\pgfmathresult},%
+	if less than=\pgfmathfloatlessthan@{#1}{#2}\ifpgfmathfloatcomparison #3\else #4\fi,
+	if is bounded=%
+		\expandafter\pgfmathfloatgetflagstomacro\expandafter{#1}\pgfplotsretval
+		\ifnum\pgfplotsretval>2 #3\else #2\fi,
+	log=\pgfmathlog@float{#1},%
+	datascaletrafo set params={%
+		\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{#1}%
+		\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{#2}%
+	},%
+	datascaletrafo set shift={%
+		\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{#1}%
+	},%
+	datascaletrafo get params={%
+		\edef\pgfmathresult{%
+			{\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+			{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+		}%
+	},%
+	datascaletrafo={%
+		\edef\pgfmathresult{#1}%
+		\pgfmathfloatshift@\pgfmathresult{\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+		\pgfmathfloattofixed\pgfmathresult
+		\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+	},%
+	datascaletrafo noshift={%
+		\edef\pgfmathresult{#1}%
+		\pgfmathfloatshift@\pgfmathresult{\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+		\pgfmathfloattofixed{\pgfmathresult}%
+	},%
+	datascaletrafo undo shift=
+		\pgfmathsubtract@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+	datascaletrafo redo shift=\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+	datascaletrafo inverse={%
+		\pgfplotscoordmath@float@datascaletrafo@inverse{#1}%
+	},%
+	datascaletrafo inverse to fixed={%
+		\pgfplotscoordmath@float@datascaletrafo@inverse{#1}%
+		\pgfmathfloattofixed\pgfmathresult
+	},%
+	datascaletrafo noshift inverse={%
+		\edef\pgfplots@datascaletrafo@tmp{#1}%
+		\pgfmathapproxequalto@{\pgfplots@datascaletrafo@tmp}{0.0}%
+		\ifpgfmathcomparison
+			\pgfmathfloatcreate{0}{0.0}{0}%
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@datascaletrafo@tmp}%
+			\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+		\fi
+	},%
+	datascaletrafo noshift inverse to fixed={%
+		\edef\pgfplots@datascaletrafo@tmp{#1}%
+		\pgfmathapproxequalto@{\pgfplots@datascaletrafo@tmp}{0.0}%
+		\ifpgfmathcomparison
+			\def\pgfmathresult{0}%
+		\else
+			\pgfmathfloatparsenumber{\pgfplots@datascaletrafo@tmp}%
+			\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+			\pgfmathfloattofixed\pgfmathresult
+		\fi
+	},%
+}
+
+\def\pgfplotscoordmath@float@datascaletrafo@inverse#1{%
+	\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+	\let\pgfplots@inverse@datascaletrafo@@shifted=\pgfmathresult
+	\pgfmathapproxequalto@{\pgfplots@inverse@datascaletrafo@@shifted}{0.0}%
+	\ifpgfmathcomparison
+		\pgfmathfloatcreate{0}{0.0}{0}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplots@inverse@datascaletrafo@@shifted}%
+		\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+	\fi
+}%
+
+% Enables a particular coordinate math class for the label `#1'.
+%
+% #1 a label (usually x,y or z)
+% #2 the coordinate math class (one prepare by
+% \pgfplotsdeclarecoordmath)
+%
+% From this point on, any call to \pgfplotscoordmath{#1}{...}
+% will use the selected math class.
+\def\pgfplotssetcoordmathfor#1#2{%
+	\pgfutil@ifundefined{pgfpmth@#2@parsenumber}{%
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, \string\pgfplotssetcoordmathfor{#1}{#2} failed since `#2' is unknown. Maybe you misspelled it?}\pgfeov%
+	}{%
+		\expandafter\edef\csname pgfcrdmth@#1\endcsname{#2}%
+	}%
+}%
+
+
+% Invokes a coordinate math routine.
+%
+% #1: the axis (x,y or z)
+% #2: a method name declared by \pgfplotsdeclarecoordmath (one of
+% 'op', 'parsenumber', 'tofixed' etc)
+% #3-#9: any further arguments required to perform the call to '#2'.
+%
+% \pgfplotscoordmath {x}{op}{multiply}{{<a>}{<b>}}
+% \pgfplotscoordmath {x}{parsenumber}{<a>}
+\def\pgfplotscoordmath#1#2{%
+	\edef\pgfplotscoordmathid{#1}%
+	\csname pgfpmth@\csname pgfcrdmth@#1\endcsname @#2\endcsname}%
+
+% ==================================================================================
+
+
 
 % #1  the name of an input method for point meta. It must have been
 % declared by \pgfplotsdeclarepointmetasource first.
@@ -2812,20 +3235,11 @@
 % 	i.e. whether #1 (x or y or z) coordinates are in ascending (+) ordering or in
 % 	descending order (-).
 \def\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting#1{%
-	\pgfplots@if{pgfplots@#1islinear}{%
-		\pgfmathfloatlessthan@
-			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
+	\pgfplotscoordmath{#1}{if less than}
+			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}%
 			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
-	}{%
-		\pgfplotsmathlessthan
-			{\csname pgfplots@currentplot@firstcoord@#1\endcsname}
-			{\csname pgfplots@currentplot@lastcoord@#1\endcsname}%
-	}%
-	\ifpgfmathfloatcomparison
-		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}%
-	\else
-		\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{-}%
-	\fi
+			{\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{+}}%
+			{\pgfkeyssetvalue{/pgfplots/#1 coord sorting}{-}}%
 }%
 
 % Assigns default values to 'rows' and 'cols' in case
@@ -3116,41 +3530,48 @@
 		\pgfplots@if{pgfplots@#1islinear}{%
 			\ifcase\csname pgfplots@errorbars@#1mode\endcsname\relax
 				% fixed absolute error.
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
+				\pgfplotscoordmath{#1}{parsenumber}{\csname pgfplots@errorbars@#1fixed\endcsname}%
 				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
 					\if +##1%
-						\pgfmathfloatadd@
-							{\csname pgfplots@current@point@#1\endcsname}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@TMPb{add}%
 					\else
-						\pgfmathfloatsubtract@
-							{\csname pgfplots@current@point@#1\endcsname}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@TMPb{subtract}%
 					\fi
+					\pgfplotscoordmath{#1}{op}{\pgfplots@loc@TMPb}{%
+						{\csname pgfplots@current@point@#1\endcsname}%
+						{\csname pgfplots@error@coord@#1\endcsname}%
+					}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
 			\or% fixed relative error:
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1rel\endcsname}%
+				\pgfplotscoordmath{#1}{parsenumber}{\csname pgfplots@errorbars@#1rel\endcsname}%
 				\let\pgfplots@loc@TMPb=\pgfmathresult
 				%
 				% +1:
-				\pgfmathfloatcreate{1}{1.0}{0}%
+				\pgfplotscoordmath{#1}{parsenumber}{1}%
 				\let\pgfplots@loc@TMPa=\pgfmathresult
 				%
 				% Prepare '1 + err':
-				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{#1}{op}{add}{%
+					{\pgfplots@loc@TMPa}%
+					{\pgfplots@loc@TMPb}%
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
-				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{#1}{op}{subtract}{%
+					{\pgfplots@loc@TMPa}%
+					{\pgfplots@loc@TMPb}%
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
 				%
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
-					\pgfmathfloatmultiply@
+					\pgfplotscoordmath{#1}{op}{multiply}{%
 						{\csname pgfplots@current@point@#1\endcsname}
 						{\csname pgfplots@error@coord@#1@##1\endcsname}%
+					}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
@@ -3159,20 +3580,20 @@
 					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
 					\ifx\pgfplots@error@coord\pgfutil@empty
 					\else
-						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\pgfplotscoordmath{#1}{parsenumber}{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						% remember result here - will be used in case
 						% of '+' AND '-' error bars:
 						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
 						\if +##1%
-							\pgfmathfloatadd@
-								{\csname pgfplots@current@point@#1\endcsname}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@TMPb{add}%
 						\else
-							\pgfmathfloatsubtract@
-								{\csname pgfplots@current@point@#1\endcsname}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@TMPb{subtract}%
 						\fi
+						\pgfplotscoordmath{#1}{op}{\pgfplots@loc@TMPb}{%
+							{\csname pgfplots@current@point@#1\endcsname}%
+							{\pgfplots@error@coord}%
+						}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 					\fi
@@ -3184,7 +3605,7 @@
 					\else
 						\pgfmathparse{1##1\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
-						\pgfmathfloatmultiply@
+						\pgfplotscoordmath{#1}{multiply}
 							{\csname pgfplots@current@point@#1\endcsname}
 							{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
@@ -3205,6 +3626,11 @@
 			%
 			\ifcase\csname pgfplots@errorbars@#1mode\endcsname
 				% fixed absolute, log( x +- e_x )
+				%
+				% FIXME : I'd prefer to use the \pgfplotcoordmath
+				% framework here. But I can't since here, TWO math
+				% engines take place: float for non-log coords and
+				% basic for log!
 				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
 				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
@@ -3219,7 +3645,7 @@
 							{\pgfplots@loc@TMPa}%
 							{\csname pgfplots@error@coord@#1\endcsname}%
 					\fi
-					\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+					\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
@@ -3233,24 +3659,26 @@
 				%
 				% Prepare '1 + err':
 				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-				\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
-				\ifx\pgfmathresult\pgfutil@empty
+				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
+				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
+				}{%
 					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
 					\pgfplots@error{Sorry, log(1+\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
-				\fi
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
 				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-				\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
-				\ifx\pgfmathresult\pgfutil@empty
+				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
+				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
+				}{%
 					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfmathfloattofixed{\pgfplots@loc@TMPb}%
+					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
 					\pgfplots@error{Sorry, log(1-\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
-				\fi
+				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
 				%
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
@@ -3285,7 +3713,7 @@
 								{\pgfplots@loc@TMPa}%
 								{\pgfplots@error@coord}%
 						\fi
-						\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 					\fi
@@ -3314,17 +3742,17 @@
 								{\pgfplots@loc@TMPa}%
 								{\pgfplots@error@coord}%
 						\fi
-						\csname pgfplotsmathlog@#1@float\endcsname{\pgfmathresult}%
+						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
-						\ifx\pgfplots@error@coord\pgfutil@empty
-							% -> log( <= 0 ) -> do nothing.
-						\else
+						\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
 							\pgfmath@basic@add@
 								{\csname pgfplots@current@point@#1\endcsname}
 								{\pgfplots@error@coord}%
 							\let\pgfplots@error@coord=\pgfmathresult
 							\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
-						\fi
+						}{%
+							% -> log( <= 0 ) -> do nothing.
+						}%
 					\fi
 				}%
 				%
@@ -5663,16 +6091,16 @@
 	% @see \pgfplotsaxisvisphasepreparedatapoint
 	\xdef\pgfplotsaxisvisphasetransformcoordinate##1##2##3{%
 		\ifpgfplots@apply@datatrafo@x
-			\E\pgfplots@datascaletrafo@x{##1}%
+			\E\pgfplotscoordmath{x}{datascaletrafo}{##1}%
 			\E\let##1=\E\pgfmathresult
 		\fi
 		\ifpgfplots@apply@datatrafo@y
-			\E\pgfplots@datascaletrafo@y{##2}%
+			\E\pgfplotscoordmath{y}{datascaletrafo}{##2}%
 			\E\let##2=\E\pgfmathresult
 		\fi
 		\ifpgfplots@curplot@threedim
 			\ifpgfplots@apply@datatrafo@z
-				\E\pgfplots@datascaletrafo@z{##3}%
+				\E\pgfplotscoordmath{z}{datascaletrafo}{##3}%
 				\E\let##3=\E\pgfmathresult
 			\fi
 		\fi
@@ -5885,18 +6313,18 @@
 
 \def\pgfplots@errorbar@draw@float(#1,#2)(#3,#4){%
 	\ifpgfplots@apply@datatrafo@x
-		\pgfplots@datascaletrafo@x{#1}%
+		\pgfplotscoordmath{x}{datascaletrafo}{#1}%
 		\let\pgfplots@xarg=\pgfmathresult%
-		\pgfplots@datascaletrafo@x{#3}%
+		\pgfplotscoordmath{x}{datascaletrafo}{#3}%
 		\let\pgfplots@error@xarg=\pgfmathresult%
 	\else
 		\def\pgfplots@xarg{#1}%
 		\def\pgfplots@error@xarg{#3}%
 	\fi
 	\ifpgfplots@apply@datatrafo@y
-		\pgfplots@datascaletrafo@y{#2}%
+		\pgfplotscoordmath{y}{datascaletrafo}{#2}%
 		\let\pgfplots@yarg=\pgfmathresult%
-		\pgfplots@datascaletrafo@y{#4}%
+		\pgfplotscoordmath{y}{datascaletrafo}{#4}%
 		\let\pgfplots@error@yarg=\pgfmathresult%
 	\else
 		\def\pgfplots@yarg{#2}%
@@ -5908,27 +6336,27 @@
 }
 \def\pgfplots@errorbar@draw@float@threedim(#1,#2,#3)(#4,#5,#6){%
 	\ifpgfplots@apply@datatrafo@x
-		\pgfplots@datascaletrafo@x{#1}%
+		\pgfplotscoordmath{x}{datascaletrafo}{#1}%
 		\let\pgfplots@xarg=\pgfmathresult%
-		\pgfplots@datascaletrafo@x{#4}%
+		\pgfplotscoordmath{x}{datascaletrafo}{#4}%
 		\let\pgfplots@error@xarg=\pgfmathresult%
 	\else
 		\def\pgfplots@xarg{#1}%
 		\def\pgfplots@error@xarg{#4}%
 	\fi
 	\ifpgfplots@apply@datatrafo@y
-		\pgfplots@datascaletrafo@y{#2}%
+		\pgfplotscoordmath{y}{datascaletrafo}{#2}%
 		\let\pgfplots@yarg=\pgfmathresult%
-		\pgfplots@datascaletrafo@y{#5}%
+		\pgfplotscoordmath{y}{datascaletrafo}{#5}%
 		\let\pgfplots@error@yarg=\pgfmathresult%
 	\else
 		\def\pgfplots@yarg{#2}%
 		\def\pgfplots@error@yarg{#5}%
 	\fi
 	\ifpgfplots@apply@datatrafo@z
-		\pgfplots@datascaletrafo@z{#3}%
+		\pgfplotscoordmath{z}{datascaletrafo}{#3}%
 		\let\pgfplots@zarg=\pgfmathresult%
-		\pgfplots@datascaletrafo@z{#6}%
+		\pgfplotscoordmath{z}{datascaletrafo}{#6}%
 		\let\pgfplots@error@zarg=\pgfmathresult%
 	\else
 		\def\pgfplots@zarg{#3}%
@@ -5987,8 +6415,8 @@
 \def\pgfplots@prepare@ZERO@coordinates{%
 	\ifpgfplots@xislinear
 		\ifpgfplots@apply@datatrafo@x
-			\pgfmathfloatcreate{0}{0.0}{0}%
-			\pgfplots@datascaletrafo@x{\pgfmathresult}%
+			\pgfplotscoordmath{x}{parsenumber}{0}%
+			\pgfplotscoordmath{x}{datascaletrafo}{\pgfmathresult}%
 			\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
 		\else
 			\gdef\pgfplots@logical@ZERO@x{0}%
@@ -6003,8 +6431,8 @@
 	%
 	\ifpgfplots@yislinear
 		\ifpgfplots@apply@datatrafo@y
-			\pgfmathfloatcreate{0}{0.0}{0}%
-			\pgfplots@datascaletrafo@y{\pgfmathresult}%
+			\pgfplotscoordmath{y}{parsenumber}{0}%
+			\pgfplotscoordmath{y}{datascaletrafo}{\pgfmathresult}%
 			\global\let\pgfplots@logical@ZERO@y=\pgfmathresult
 		\else
 			\gdef\pgfplots@logical@ZERO@y{0}%
@@ -6020,8 +6448,8 @@
 	\ifpgfplots@threedim
 		\ifpgfplots@zislinear
 			\ifpgfplots@apply@datatrafo@z
-				\pgfmathfloatcreate{0}{0.0}{0}%
-				\pgfplots@datascaletrafo@z{\pgfmathresult}%
+				\pgfplotscoordmath{z}{parsenumber}{0}%
+				\pgfplotscoordmath{z}{datascaletrafo}{\pgfmathresult}%
 				\global\let\pgfplots@logical@ZERO@z=\pgfmathresult
 			\else
 				\gdef\pgfplots@logical@ZERO@z{0}%

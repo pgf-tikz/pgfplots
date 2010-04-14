@@ -469,7 +469,7 @@
 % #2: tick value.
 \def\pgfplots@show@ticklabel@#1#2{%
 	\csname ifpgfplots@apply@datatrafo@#1\endcsname
-		\csname pgfplots@inverse@datascaletrafo@#1\endcsname{#2}%
+		\pgfplotscoordmath{#1}{datascaletrafo inverse}{#2}%
 		\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
 		\or
 			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
@@ -900,10 +900,12 @@
 					\ifpgfplots@islinear
 						\pgfplots@tmpa=\pgfplots@minor@tick@dist pt %
 						\pgfplots@tmpa=\pgfplots@i\pgfplots@tmpa
+						\edef\pgfmathresult{\the\pgfplots@tmpa}%
 					\else
-						\pgfplots@tmpa=\csname pgfplotsmathlogi@#1\endcsname\pgfplots@i pt %
+						\pgfplotscoordmath{#1}{log unsigned int}{\pgfplots@i}%
+						\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+						\edef\pgfmathresult{\pgfmathresult pt}%
 					\fi
-					\edef\pgfmathresult{\the\pgfplots@tmpa}%
 					\pgfmath@smuggleone\pgfmathresult
 					\endgroup
 					\advance\pgfplots@tmpa by\pgfmathresult\relax
@@ -1298,7 +1300,7 @@
 			%
 			% make sure the \pgfmathlogtologten method works even for
 			% non-standard 'log basis #1':
-			\expandafter\let\expandafter\pgfmathlogtologten@\csname pgfplotsmathlogtologten@#1@\endcsname
+			\def\pgfmathlogtologten@{\pgfplotscoordmath{#1}{log to log 10}}%
 			%
 			\let\pgfplots@tick@origin=\pgfmathresult%
 			\xdef\pgfplots@show@ticklabel@LASTTICK{}%
@@ -1517,7 +1519,8 @@
 \def\pgfplots@compute@tick@times@logten#1\to#2#3{%
 	\global\let#2=\pgfutil@empty
 	\foreach \pgfplots@loc@TMPb in {#1} {%
-		\pgfmathmultiply@{\pgfplots@loc@TMPb}{\csname pgfplots@log@scale@todisplaylog@#3\endcsname}%
+		\pgfplotscoordmath{#3}{log to display log}{\pgfplots@loc@TMPb}%
+		\pgfplotscoordmath{#3}{tofixed}{\pgfmathresult}%
 		\ifx#2\pgfutil@empty
 			\xdef#2{\pgfmathresult}%
 		\else
@@ -1608,8 +1611,6 @@
 	% Shortcut-names:
 	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	% Attention here: use UNSHIFTET scalings, see remark above
-	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1@noshift\endcsname
-	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1@noshift\endcsname
 	\expandafter\let\expandafter\ifpgfplots@cur@is@linear\csname ifpgfplots@#1islinear\endcsname
 	%
 	\let\desirednumticks=\c@pgf@countd
@@ -1635,6 +1636,18 @@
 			\expandafter\pgfplots@compute@tick@times@logten\pgfplots@loc@TMPa\to\pgfplots@glob@TMPa{#1}%
 			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
 		\fi
+	\fi
+	\ifpgfplots@cur@is@linear
+	\else
+		\pgfplotscoordmath{#1}{parsenumber}{1}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{#1}{log from display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@from@display@log@scale=\pgfmathresult
+		%
+		\pgfplotscoordmath{#1}{log to display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@to@display@log@scale=\pgfmathresult
 	\fi
 	%
 	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
@@ -1663,7 +1676,7 @@
 			% CASE LINEAR AXIS
 			\ifpgfplots@is@datascaled
 				% This here works if the scaling trafo is linear.
-				\expandafter\pgfplots@data@scale@inverse@trafo\expandafter{\Hmacro}%
+				\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{\Hmacro}%
 				\let\Hmacro=\pgfmathresult
 			\else
 				\pgfmathfloatparsenumber{\Hmacro}%
@@ -1716,9 +1729,9 @@
 			% Now, convert everything into the fixed point data
 			% range:
 			\ifpgfplots@is@datascaled
-				\csname pgfplots@datascaletrafo@#1\endcsname{\MIN@new}%
+				\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
 				\MIN=\pgfmathresult pt
-				\pgfplots@data@scale@trafo\Hmacro
+				\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
 				\H=\pgfmathresult pt
 			\else
 				\pgfmathfloattofixed\MIN@new
@@ -1739,7 +1752,8 @@
 			%
 			% And prefer j=1 if that is possible (otherwise minor
 			% ticks are not useful).
-			\pgfmathmultiply@{\Hmacro}{\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname}%
+			%
+			\pgfmath@basic@multiply@{\Hmacro}{\pgfplots@loc@log@to@display@log@scale}%
 			\let\Hmacrobaseten=\pgfmathresult
 			\expandafter\H\pgfmathresult pt
 %\message{ [ H / log(10) = \pgfmathresult ]}%
@@ -1761,7 +1775,7 @@
 				\pgfplots@isuniformtickfalse
 			\fi
 %\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
-			\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
+			\H=\pgfplots@loc@log@to@display@log@scale\H
 			% Now, we want to activate the Tick set 
 			%   {lowest, lowest+H, ..., highest}
 			%
@@ -1774,14 +1788,14 @@
 			\MINH=\MIN
 			%
 			% and compute I and I*log(10) here:
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\MIN\relax
+			\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
 			\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
 			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
 			\ifdim\MIN<0pt
 				% the truncation rounds TOWARDS 0 which is not what I want.
 				\advance\c@pgf@counta by-1
 			\fi
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname pt
+			\MIN=\pgfplots@loc@log@to@display@log@scale pt
 			\multiply\MIN by\c@pgf@counta
 			\ifpgfplots@isuniformtick
 			\else
@@ -1811,7 +1825,7 @@
 				\advance\MINH by-\H
 				% 
 				\ifdim\MINH<0pt
-					\advance\MIN \csname pgfplots@log@scale@todisplaylog@#1\endcsname pt
+					\advance\MIN \pgfplots@loc@log@to@display@log@scale pt
 				\fi
 			\fi
 		\fi
@@ -1855,7 +1869,7 @@
 				\expandafter\MIN\csname pgfplots@#1min\endcsname pt
 				\H=\MAX
 				\advance\H by-\MIN
-				\H=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\H
+				\H=\pgfplots@loc@log@from@display@log@scale \H
 %\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
 				\c@pgf@counta=\desirednumticks\relax
 				\advance\c@pgf@counta by-1
@@ -1906,7 +1920,7 @@
 				% -> I = round(xmin/H)
 				% -> MIN = I * H
 				% BUT EVERYTHING to log(10) basis!
-				\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname \MIN\relax
+				\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
 				\pgfmathlog@invoke@expanded\pgfmathdivide@{%
 					{\pgf@sys@tonumber\MIN}%
 					{\Hmacro}%
@@ -1920,8 +1934,8 @@
 				\multiply\MIN by\c@pgf@counta\relax
 				%
 				% convert back to basis 'e':
-				\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\MIN\relax
-				\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
+				\MIN=\pgfplots@loc@log@to@display@log@scale\MIN\relax
+				\H=\pgfplots@loc@log@to@display@log@scale\H\relax
 				\MINH=\MIN\relax
 				\advance\MINH by\H\relax
 			}%
@@ -1947,13 +1961,14 @@
 % Helper method for 
 %  \pgfplots@apply@data@scale@trafo@to@options@for
 % #1: the ticks
-% #2: the trafo macro name 
+% #2: the trafo routine (not necessarily a single macro, but should
+% take one arg) 
 % #3: the output macro name
 \long\def\pgfplots@apply@data@scale@trafo@to@user@ticks#1#2\to#3{%
 	\let#3=\pgfutil@empty
 	\foreach \pgfplots@loc@TMPb in {#1} {%
 		\pgfmathfloatparsenumber{\pgfplots@loc@TMPb}%
-		\expandafter#2\expandafter{\pgfmathresult}%
+		#2{\pgfmathresult}%
 		\ifx#3\pgfutil@empty
 			\xdef#3{\pgfmathresult}%
 		\else
