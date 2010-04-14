@@ -214,11 +214,15 @@
 % 	calls \pgfplotsaxisdatapointsurveyed
 % \pgfplotsplothandlersurveyend: does nothing in the simple example.
 %
-% A further survey phase API function is
-% \pgfplotsplothandlersurveyaddoptions{<options>}
+% 2.2 Further Survey Phase API functions
+%   \pgfplotsplothandlersurveyaddoptions{<options>}
 % which allows to change the current plot style from within API
 % functions. It sets <options> and remembers them for the
 % visualization phase.
+%
+%   \pgfplotsaxisupdatelimitsforpointmeta{<meta>},
+% provided there is a point meta input handler (which is numeric).
+% Otherwise, the command is equal to \relax.
 %
 % In fact, this is more or less the initial configuration used for
 % lineto or similar plot handlers.
@@ -245,10 +249,6 @@
 % Use this only if there *is* point meta, see
 % \pgfplotsaxisifhaspointmeta{<true code>}{<false code>}.
 %
-% There is also
-% \pgfplotsaxisupdatelimitsforpointmeta{<meta>},
-% provided there is a point meta input handler (which is numeric).
-% Otherwise, the command is equal to \relax.
 
 
 % Resets the plot handler routines.
@@ -1185,3 +1185,126 @@
 	\fi
 }%
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%
+% Contour plots
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
+\pgfplotsset{
+	contour/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlercontour
+		\pgfqkeys{/pgfplots/contour}{%
+			#1,%
+		}%
+	},
+	contour/handler/.style={/tikz/sharp plot},
+	contour/label distance/.initial=20pt,
+}%
+\def\pgfplotsplothandlercontour{%
+	\pgfplotsresetplothandler
+	\ifpgfplots@curplot@threedim
+		\pgfplotsset{/pgfplots/set point meta if empty=z}%
+	\else
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfplots@error{Sorry, contour requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
+		}%
+	\fi
+	\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@visstart
+}%
+
+\def\pgfplotsplothandlercontour@visstart{%
+	\pgfplotsresetplothandler
+	%
+	\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
+	\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
+	\let\pgfplotsplothandlercontour@labeldist=\pgfmathresult
+	\pgfmath@basic@multiply@\pgfplotsplothandlercontour@labeldist\pgfplotsplothandlercontour@labeldist
+	\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
+	\let\pgfplots@plothandler@unbounded@visualize@jump=\relax
+	%
+	\pgfplotsset{/pgfplots/contour/handler}%
+	\tikz@plot@handler
+	\let\pgfplotsplothandlercontour@handler@start=\pgf@plotstreamstart
+	\global\let\pgfplotsplothandlercontour@lastcontour=\pgfutil@empty
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+}%
+
+\def\pgfplotsplothandlercontour@streamend{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		\pgfplotsplothandlercontour@finishcontourline
+	\fi
+}%
+\def\pgfplotsplothandlercontour@streampoint#1{%
+	\global\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+		% oh. its the very first point.
+		\pgfplotsplothandlercontour@preparenewcontourline
+	\else
+		\ifx\pgfplotsplothandlercontour@lastcontour\pgfplotsplothandlercontour@act@contour
+			% belongs to the same contour.
+		\else
+			% oh, a new contour line!
+			\pgfplotsplothandlercontour@finishcontourline
+			\pgfplotsplothandlercontour@preparenewcontourline
+		\fi
+	\fi
+	\pgf@process{#1}%
+	%
+	% remember point:
+	\edef\pgfplotsplothandlercontour@act@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	%
+	% compute difference vector and its squared length:
+	\ifx\pgfplotsplothandlercontour@lastcanvas\pgfutil@empty
+	\else
+		\pgfplotsplothandlercontour@handlesplinesegment{}%
+	\fi
+	%
+	\pgfplotsplothandlercontour@handler@streampoint{\pgfplotsplothandlercontour@act@canvas}%
+	\global\let\pgfplotsplothandlercontour@lastcanvas=\pgfplotsplothandlercontour@act@canvas
+	\global\let\pgfplotsplothandlercontour@lastcontour=\pgfplotsplothandlercontour@act@contour
+	%
+	\ifx\pgf@plotstreampoint\pgfplotsplothandlercontour@streampoint
+	\else
+		\global\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+	\fi
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+}%
+\def\pgfplotsplothandlercontour@handlesplinesegment#1{%
+	#1%
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	\pgfpointdiff
+		{\pgfplotsplothandlercontour@lastcanvas}
+		{\pgf@x=\pgf@xb \pgf@y=\pgf@yb}%
+	\pgf@xa=\pgf@sys@tonumber\pgf@x\pgf@x
+	\advance\pgf@xa by\pgf@sys@tonumber\pgf@y\pgf@y
+	\edef\pgfplotsplothandlercontour@act@len{\the\pgf@xa}%
+	%
+	\advance\pgf@xa by\pgfplotsplothandlercontour@len\relax
+	\xdef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+\message{contour: cur len=\pgfplotsplothandlercontour@len; most recently added=\pgfplotsplothandlercontour@act@len.}%
+}%
+
+
+\def\pgfplotsplothandlercontour@preparenewcontourline{%
+\message{PREPARE NEW CONTOUR (\pgfplots@current@point@meta).}%
+	\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+	\pgfsetstrokecolor{mapped color}%
+	\global\let\pgfplotsplothandlercontour@lastcanvas=\pgfutil@empty
+	\gdef\pgfplotsplothandlercontour@len{0pt}%
+	%
+	\pgfplotsplothandlercontour@handler@start
+	\global\let\pgfplotsplothandlercontour@handler@end=\pgf@plotstreamend
+	\global\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+}%
+\def\pgfplotsplothandlercontour@finishcontourline{%
+	\pgfplotsplothandlercontour@handler@end
+	\pgfusepath{stroke}%
+}%
