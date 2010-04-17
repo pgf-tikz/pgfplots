@@ -46,21 +46,22 @@
 % 2. At the beginning and end of each plot, the lists in 1.) are
 % initialised properly.
 %
-% 3. While plot coordinates are processed, the following methods
+% 3.1 While plot coordinates are processed during the survey phase, the following methods
 % interact with the stacked API:
 % \pgfplots@stacked@preparepoint@inmacro
 % 	-> compute the 'stacked' sum.
 % 	This may need to be done with floating point arithmetics because
 % 	the data scaling trafo is not yet initialised
+% \pgfplots@stacked@rememberzerolevelpoint@for@next@plot
+% \pgfplots@stacked@getnextzerolevelpoint
 %
+%
+% 3.2 during the final visualization phase, we have
 % \pgfplots@stacked@finishpoint
 % 	-> takes coordinates as they will be given to Tikz. This method is
 % 	used to 
 % 		- communicate zero level coordinates to Tikz
 % 		- implement the 'closed paths' option (allows filled stacked plots).
-%
-% \pgfplots@stacked@rememberzerolevelpoint@for@next@plot
-% \pgfplots@stacked@getnextzerolevelpoint
 %
 % 4. Zero levels are communicated to Tikz by
 % \pgfplots@stacked@initzerolevelhandler. This routine initialises an
@@ -68,10 +69,6 @@
 % zero levels. It is used by [xy]comb and [xy]bar.
 %
 %
-% REMARK:
-% the state of the boolean \ifpgfplots@datascaletrafo@initialised
-% determines whether these routines expect and return floating point
-% numbers or fixed point numbers.
 
 \let\pgfplots@stacked@zerolevelpoint@x=\pgfutil@empty
 \let\pgfplots@stacked@zerolevelpoint@y=\pgfutil@empty
@@ -120,21 +117,17 @@
 		% only work with float if its really necessary - for
 		% example if the scaling trafo which maps to pgfmath is
 		% not yet initialised.
-		\ifpgfplots@datascaletrafo@initialised
+		\ifpgfplots@datascaletrafo@initialised % FIXME : should be 'ifsurvey'
 		\else
-			\ifpgfplots@xislinear
-				\pgfmathfloatcreate{0}{0.0}{0}%
-				\let\pgfplots@stacked@zerolevelpoint@x=\pgfmathresult
-			\fi
-			\ifpgfplots@yislinear
-				\pgfmathfloatcreate{0}{0.0}{0}%
-				\let\pgfplots@stacked@zerolevelpoint@y=\pgfmathresult
-			\fi
+			\pgfplotscoordmath{x}{parsenumber}{0}%
+			\let\pgfplots@stacked@zerolevelpoint@x=\pgfmathresult
+			%
+			\pgfplotscoordmath{y}{parsenumber}{0}%
+			\let\pgfplots@stacked@zerolevelpoint@y=\pgfmathresult
+			%
 			\ifpgfplots@threedim
-				\ifpgfplots@zislinear
-					\pgfmathfloatcreate{0}{0.0}{0}%
-					\let\pgfplots@stacked@zerolevelpoint@z=\pgfmathresult
-				\fi
+				\pgfplotscoordmath{z}{parsenumber}{0}%
+				\let\pgfplots@stacked@zerolevelpoint@z=\pgfmathresult
 			\fi
 		\fi
 		\def\pgfplots@stacked@getnextzerolevelpoint{}% will remain constant anyway.
@@ -260,25 +253,13 @@
 \def\pgfplots@stacked@preparepoint@inmacro{%
 	\pgfplots@stacked@getnextzerolevelpoint
 	\ifpgfplots@stacked@plus
-		\let\pgfplots@stacked@op=\pgfmath@basic@add@
+		\def\pgfplots@stacked@op{add}%
 	\else
-		\let\pgfplots@stacked@op=\pgfmath@basic@subtract@
+		\def\pgfplots@stacked@op{subtract}%
 	\fi
-	\pgfplots@if{pgfplots@\pgfplots@stacked@dir islinear}{%
-		\ifpgfplots@datascaletrafo@initialised
-		\else
-			\ifpgfplots@stacked@plus
-				\let\pgfplots@stacked@op=\pgfmathfloatadd@
-			\else
-				\let\pgfplots@stacked@op=\pgfmathfloatsubtract@
-			\fi
-		\fi
-	}{}%
-	\edef\pgfplots@loc@TMPa{
-		\noexpand\pgfplots@stacked@op
+	\pgfplotscoordmath{\pgfplots@stacked@dir}{op}{\pgfplots@stacked@op}
 		{\csname pgfplots@stacked@zerolevelpoint@\pgfplots@stacked@dir\endcsname}%
 		{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}}%
-	\pgfplots@loc@TMPa
 	\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
 	\ifpgfplots@threedim
 		\ifpgfplots@curplot@threedim
