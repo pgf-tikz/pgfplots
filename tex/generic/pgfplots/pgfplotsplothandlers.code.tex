@@ -1184,6 +1184,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 
 \newif\ifpgfplotsplothandlercontour@labels
+\newif\ifpgfplotsplothandlercontour@filled
+
 \pgfplotsset{
 	contour prepared/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlercontourprepared
@@ -1191,13 +1193,22 @@
 			#1,%
 		}%
 	},
+	contourf prepared/.style={%
+		/pgfplots/contour prepared={draw color=mapped color!80!black,labels=false,filled=true},
+	},
+	% FIXME : should use \tikz@plot@handler instead of just the
+	% visualization thing!
 	contour/handler/.style={/tikz/sharp plot},
+	contour/draw color/.initial=mapped color,
+	contour/fill color/.initial=mapped color,
 	contour/label distance/.initial=70pt,
 	contour/label node code/.code={%
 		\node {\pgfmathprintnumber{#1}};
 	},%
 	contour/labels/.is if=pgfplotsplothandlercontour@labels,
 	contour/labels=true,
+	contour/filled/.is if=pgfplotsplothandlercontour@filled,
+	contour/filled/.default=true,
 	contour/every contour label/.style={%
 		sloped,%
 		transform shape,%
@@ -1226,13 +1237,21 @@
 		\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
 		%
 		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+		\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@handlesplinesegment@forlabels
+	\else
+		\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
 	\fi
 	%
+	\ifpgfplotsplothandlercontour@filled
+		\pgfseteorule
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+	\fi
 	%
 	\pgfplotsresetplothandler
 	\pgfplotsset{/pgfplots/contour/handler}%
 	\tikz@plot@handler
 	%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
 	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlercontour@jump
 	%
 	\let\pgfplotsplothandlercontour@handler@start=\pgf@plotstreamstart
@@ -1242,14 +1261,15 @@
 }%
 
 \def\pgfplotsplothandlercontour@jump{%
-	\def\pgfplotsplothandlervisualize@haspendingjump{1}%
+	\def\pgfplotsplothandlercontour@haspendingjump{1}%
 }%
 
 \def\pgfplotsplothandlercontour@streamend{%
-	\ifpgfplotsplothandlercontour@labels
-		\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
-		\else
-			\pgfplotsplothandlercontour@finishcontourline
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+		\pgfplotsplothandlercontour@finishcontourline
+		\ifpgfplotsplothandlercontour@labels
 			\scope[/pgfplots/contour/every contour label]
 			\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
 			\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
@@ -1288,16 +1308,18 @@
 	\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
 	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
 		% oh. its the very first point.
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
 		\pgfplotsplothandlercontour@preparenewcontourline
 	\else
 		\ifx\pgfplotsplothandlercontour@lastcontour\pgfplotsplothandlercontour@act@contour
 			% belongs to the same contour.
-			\if1\pgfplotsplothandlervisualize@haspendingjump
+			\if1\pgfplotsplothandlercontour@haspendingjump
 				\pgfplotsplothandlercontour@finishcontourline
 				\pgfplotsplothandlercontour@preparenewcontourline
 			\fi
 		\else
-			% oh, a new contour line!
+			% oh, a new contour line.
+			\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
 			\pgfplotsplothandlercontour@finishcontourline
 			\pgfplotsplothandlercontour@preparenewcontourline
 		\fi
@@ -1318,6 +1340,12 @@
 	\let\pgfplotsplothandlercontour@lastcanvas=\pgfplotsplothandlercontour@act@canvas
 	\let\pgfplotsplothandlercontour@lastcontour=\pgfplotsplothandlercontour@act@contour
 	%
+	\ifpgfplotsplothandlercontour@filled
+		\t@pgfplots@toka=\expandafter{\expandafter{\pgfplotsplothandlercontour@act@canvas}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter\pgf@plotstreampoint\the\t@pgfplots@toka
+			\to\pgfplotsplothandlercontour@stored@lastcontourpath
+	\fi
+	%
 	\ifx\pgf@plotstreampoint\pgfplotsplothandlercontour@streampoint
 	\else
 		\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
@@ -1332,7 +1360,7 @@
 % #1 : source
 % #2 : target
 % #3 : contour value
-\def\pgfplotsplothandlercontour@handlesplinesegment#1#2#3{%
+\def\pgfplotsplothandlercontour@handlesplinesegment@forlabels#1#2#3{%
 	#2%
 	\pgf@xb=\pgf@x
 	\pgf@yb=\pgf@y
@@ -1360,10 +1388,45 @@
 
 
 \def\pgfplotsplothandlercontour@preparenewcontourline{%
-%\message{PREPARE NEW CONTOUR (\pgfplots@current@point@meta).}%
-	\pgfplotsaxisvisphasetransformpointmeta
-	\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
-	\pgfsetstrokecolor{mapped color}%
+	\if0\pgfplotsplothandlercontour@haspendingjump
+\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
+		% a completely new level has been
+		% started, not due to jumps inside of one level.
+		%
+		% thus, we need to compute 'mapped color':
+		\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+		\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/contour/draw color}}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/contour/fill color}}%
+		\fi
+		%
+		% furthermore, we need to handle the 'filled' style:
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@stored@lastcontourpath@=\pgfplotsplothandlercontour@stored@lastcontourpath
+			% flush:
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+			%
+			% process it:
+			\ifx\pgfplotsplothandlercontour@stored@lastcontourpath@\pgfutil@empty
+				% oh. This here is the very first contour. Nothing to do!
+			\else
+				% ok. This here is the i'th contour level, i>0.
+				% Thus, we have the 'i-1'th contour stored.
+				% REPLICATE its path to fill the space between the (i-1)'th contour and the i'th one!
+				\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@handler@start
+				\pgf@plotstreamstart
+				\pgfplotsplothandlercontour@stored@lastcontourpath@
+				\pgf@plotstreamend
+			\fi
+		\fi
+	\else
+\message{PREPARE NEW CONTOUR for the already begun level \pgfplots@current@point@meta.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamstart\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
+	%
 	\let\pgfplotsplothandlercontour@lastcanvas=\pgfutil@empty
 	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfutil@empty
 	\ifpgfplotsplothandlercontour@labels
@@ -1375,7 +1438,7 @@
 		\pgf@xa=0.2\pgf@xa
 		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
 	\fi
-	\def\pgfplotsplothandlervisualize@haspendingjump{0}%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
 	%
 	\pgfplotsplothandlercontour@handler@start
 	\let\pgfplotsplothandlercontour@handler@end=\pgf@plotstreamend
@@ -1397,5 +1460,26 @@
 		\fi
 	\fi
 	\pgfplotsplothandlercontour@handler@end
-	\pgfusepath{stroke}%
+	%
+%	\ifpgfplotsplothandlercontour@filled
+%		\pgfpathclose % FIXME  this is, in general, not good enough.
+%	\fi
+	\if0\pgfplotsplothandlercontour@haspendingjump
+\message{usepath{} to finalize level \pgfplotsplothandlercontour@lastcontour.}%
+		% flush paths if the complete contour level is ready.
+		% do *not* flush paths if we have just a new part of the
+		% existing contour level.
+		%
+		% This makes a difference for the filled contour.
+		\ifpgfplotsplothandlercontour@filled
+			\pgfusepath{fill,stroke}%
+		\else
+			\pgfusepath{stroke}%
+		\fi
+	\else
+\message{usepath{} for level \pgfplotsplothandlercontour@lastcontour.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamend\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
 }%
