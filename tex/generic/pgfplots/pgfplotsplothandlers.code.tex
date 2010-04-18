@@ -1183,9 +1183,10 @@
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
 
+\newif\ifpgfplotsplothandlercontour@labels
 \pgfplotsset{
-	contour/.code={%
-		\let\tikz@plot@handler=\pgfplotsplothandlercontour
+	contour prepared/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlercontourprepared
 		\pgfqkeys{/pgfplots/contour}{%
 			#1,%
 		}%
@@ -1195,6 +1196,8 @@
 	contour/label node code/.code={%
 		\node {\pgfmathprintnumber{#1}};
 	},%
+	contour/labels/.is if=pgfplotsplothandlercontour@labels,
+	contour/labels=true,
 	contour/every contour label/.style={%
 		sloped,%
 		transform shape,%
@@ -1203,7 +1206,7 @@
 		%every node/.style={yshift=10pt},%
 	},
 }%
-\def\pgfplotsplothandlercontour{%
+\def\pgfplotsplothandlercontourprepared{%
 	\pgfplotsresetplothandler
 	\ifpgfplots@curplot@threedim
 		\pgfplotsset{/pgfplots/set point meta if empty=z}%
@@ -1217,32 +1220,43 @@
 
 \def\pgfplotsplothandlercontour@visstart{%
 	%
-	\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
-	\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
-	\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
+	\ifpgfplotsplothandlercontour@labels
+		\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
+		\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
+		\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
+		%
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+	\fi
 	%
-	\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
 	%
 	\pgfplotsresetplothandler
 	\pgfplotsset{/pgfplots/contour/handler}%
 	\tikz@plot@handler
-	\let\pgfplotsplothandlervisualizejump=\relax
+	%
+	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlercontour@jump
+	%
 	\let\pgfplotsplothandlercontour@handler@start=\pgf@plotstreamstart
 	\let\pgfplotsplothandlercontour@lastcontour=\pgfutil@empty
 	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
 	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
 }%
 
+\def\pgfplotsplothandlercontour@jump{%
+	\def\pgfplotsplothandlervisualize@haspendingjump{1}%
+}%
+
 \def\pgfplotsplothandlercontour@streamend{%
-	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
-	\else
-		\pgfplotsplothandlercontour@finishcontourline
-		\scope[/pgfplots/contour/every contour label]
-		\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
-		\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
-		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
-		\expandafter\pgfplotsplothandlercontourplacelabels\pgfplotsplothandlercontour@storedlabels@\pgfplots@EOI
-		\endscope
+	\ifpgfplotsplothandlercontour@labels
+		\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+		\else
+			\pgfplotsplothandlercontour@finishcontourline
+			\scope[/pgfplots/contour/every contour label]
+			\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+			\expandafter\pgfplotsplothandlercontourplacelabels\pgfplotsplothandlercontour@storedlabels@\pgfplots@EOI
+			\endscope
+		\fi
 	\fi
 }%
 \def\pgfplotsplothandlercontourplacelabels#1{%
@@ -1278,6 +1292,10 @@
 	\else
 		\ifx\pgfplotsplothandlercontour@lastcontour\pgfplotsplothandlercontour@act@contour
 			% belongs to the same contour.
+			\if1\pgfplotsplothandlervisualize@haspendingjump
+				\pgfplotsplothandlercontour@finishcontourline
+				\pgfplotsplothandlercontour@preparenewcontourline
+			\fi
 		\else
 			% oh, a new contour line!
 			\pgfplotsplothandlercontour@finishcontourline
@@ -1348,29 +1366,34 @@
 	\pgfsetstrokecolor{mapped color}%
 	\let\pgfplotsplothandlercontour@lastcanvas=\pgfutil@empty
 	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfutil@empty
-	\def\pgfplotsplothandlercontour@haslabel{0}%
-	% 
-	% this here means that 20% of labeldist are already there.
-	% it moves the first label nearer to its start.
-	\pgf@xa=\pgfplotsplothandlercontour@labeldist\relax
-	\pgf@xa=0.2\pgf@xa
-	\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+	\ifpgfplotsplothandlercontour@labels
+		\def\pgfplotsplothandlercontour@haslabel{0}%
+		% 
+		% this here means that 20% of labeldist are already there.
+		% it moves the first label nearer to its start.
+		\pgf@xa=\pgfplotsplothandlercontour@labeldist\relax
+		\pgf@xa=0.2\pgf@xa
+		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+	\fi
+	\def\pgfplotsplothandlervisualize@haspendingjump{0}%
 	%
 	\pgfplotsplothandlercontour@handler@start
 	\let\pgfplotsplothandlercontour@handler@end=\pgf@plotstreamend
 	\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
 }%
 \def\pgfplotsplothandlercontour@finishcontourline{%
-	\if0\pgfplotsplothandlercontour@haslabel
-		\ifx\pgfplotsplothandlercontour@lastlastcanvas\pgfutil@empty
-		\else
-			% force a label:
+	\ifpgfplotsplothandlercontour@labels
+		\if0\pgfplotsplothandlercontour@haslabel
+			\ifx\pgfplotsplothandlercontour@lastlastcanvas\pgfutil@empty
+			\else
+				% force a label:
 %\message{FORCING A LABEL for contour \pgfplotsplothandlercontour@lastcontour\space from (\pgfplotsplothandlercontour@lastlastcanvas --\pgfplotsplothandlercontour@lastcanvas)}%
-			\edef\pgfplotsplothandlercontour@len{\pgfplotsplothandlercontour@labeldist}%
-			\pgfplotsplothandlercontour@handlesplinesegment
-				{\pgfplotsplothandlercontour@lastlastcanvas}
-				{\pgfplotsplothandlercontour@lastcanvas}%
-				{\pgfplotsplothandlercontour@lastcontour}%
+				\edef\pgfplotsplothandlercontour@len{\pgfplotsplothandlercontour@labeldist}%
+				\pgfplotsplothandlercontour@handlesplinesegment
+					{\pgfplotsplothandlercontour@lastlastcanvas}
+					{\pgfplotsplothandlercontour@lastcanvas}%
+					{\pgfplotsplothandlercontour@lastcontour}%
+			\fi
 		\fi
 	\fi
 	\pgfplotsplothandlercontour@handler@end
