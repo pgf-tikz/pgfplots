@@ -1209,6 +1209,7 @@
 	contour/labels=true,
 	contour/filled/.is if=pgfplotsplothandlercontour@filled,
 	contour/filled/.default=true,
+	contour/data limits/.initial=,% FIXME EXPERIMENTAL
 	contour/every contour label/.style={%
 		sloped,%
 		transform shape,%
@@ -1227,6 +1228,15 @@
 		}%
 	\fi
 	\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@visstart
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlercontour@surveyend
+}%
+
+\def\pgfplotsplothandlercontour@surveyend{%
+	\pgfplotsplothandlercontour@init@limits
+	\ifx\pgfplotsplothandlercontour@limits@low@meta\pgfutil@empty
+	\else
+		\pgfplotsaxisupdatelimitsforpointmeta\pgfplotsplothandlercontour@limits@low@meta
+	\fi
 }%
 
 \def\pgfplotsplothandlercontour@visstart{%
@@ -1245,6 +1255,7 @@
 	\ifpgfplotsplothandlercontour@filled
 		\pgfseteorule
 		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+		\pgfplotsplothandlercontour@init@limits
 	\fi
 	%
 	\pgfplotsresetplothandler
@@ -1267,8 +1278,17 @@
 \def\pgfplotsplothandlercontour@streamend{%
 	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
 	\else
+		%
 		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
 		\pgfplotsplothandlercontour@finishcontourline
+		%
+		\ifpgfplotsplothandlercontour@filled
+			\if0\pgfplotsplothandlercontour@processed@outer
+				\pgfplotsplothandlercontour@stream@bbcontour
+				\pgfplotsplothandlercontour@finishcontourline
+			\fi
+		\fi
+		%
 		\ifpgfplotsplothandlercontour@labels
 			\scope[/pgfplots/contour/every contour label]
 			\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
@@ -1278,6 +1298,67 @@
 			\endscope
 		\fi
 	\fi
+}%
+\def\pgfplotsplothandlercontour@check@bbcontour{%
+	\ifpgfplotsplothandlercontour@filled
+		\if0\pgfplotsplothandlercontour@processed@outer
+			\pgfplotscoordmath{meta}{if less than}
+				{\pgfplotsplothandlercontour@act@contour}
+				{\pgfplotsplothandlercontour@limits@low@meta}
+				{%
+					% TRUE!
+					\pgfplotsplothandlercontour@stream@bbcontour@inbetween
+				}{}%
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@stream@bbcontour@inbetween{%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+}%
+
+\def\pgfplotsplothandlercontour@stream@bbcontour{%
+\message{contour: processing OUTER data limit contour...}%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}% important
+	%
+	% forbid labels:
+	\let\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting=\pgfplotsplothandlercontour@handlesplinesegment
+	\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
+	%
+	\let\pgfplots@current@point@meta=\pgfplotsplothandlercontour@limits@low@meta
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+	%
+	% restore labels:
+	\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting
 }%
 \def\pgfplotsplothandlercontourplacelabels#1{%
 	\def\pgfplots@loc@TMPa{#1}%
@@ -1321,6 +1402,7 @@
 			% oh, a new contour line.
 			\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
 			\pgfplotsplothandlercontour@finishcontourline
+			\pgfplotsplothandlercontour@check@bbcontour
 			\pgfplotsplothandlercontour@preparenewcontourline
 		\fi
 	\fi
@@ -1482,4 +1564,55 @@
 			\pgfplotsapplistXpushback\pgf@plotstreamend\to\pgfplotsplothandlercontour@stored@lastcontourpath
 		\fi
 	\fi
+}%
+
+\def\pgfplotsplothandlercontour@init@limits{%
+	\def\pgfplotsplothandlercontour@processed@outer{0}%
+	\let\pgfplotsplothandlercontour@limits@low@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@z=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@z=\pgfutil@empty
+	%
+	\pgfkeysgetvalue{/pgfplots/contour/data limits}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplotsplothandlercontour@processed@outer{1}%
+	\else
+		\expandafter\pgfplotsplothandlercontour@init@limits@getboundingboxlow\pgfplots@loc@TMPa\pgfplots@EOI
+	\fi
+	\message{contour: I processed data limits to MIN = (\pgfplotsplothandlercontour@limits@low@x,\pgfplotsplothandlercontour@limits@low@y,\pgfplotsplothandlercontour@limits@low@z;\pgfplotsplothandlercontour@limits@low@meta) and MAX = (\pgfplotsplothandlercontour@limits@high@x,\pgfplotsplothandlercontour@limits@high@y,\pgfplotsplothandlercontour@limits@high@z;\pgfplotsplothandlercontour@limits@high@meta).}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxlow(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{low}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@ifnextchar(%
+		\pgfplotsplothandlercontour@init@limits@getboundingboxhigh
+		{\pgfplots@error{Sorry, 'data limits=(xmin,ymin,zmin,contourmin) (xmax,ymax,zmax,contourmax)' has been expected, not \pgfkeysvalueof{/pgfplots/contour/data limits}}\pgfplots@gobble@until@EOI}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxhigh(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{high}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@gobble
+}%
+\def\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4){%
+	% FIXME : logs and trafos and user interface!
+	\pgfplotscoordmath{x}{parsenumber}{#1}%
+	\pgfplotscoordmath{x}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @x\endcsname=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{#2}%
+	\pgfplotscoordmath{y}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @y\endcsname=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{#3}%
+		\pgfplotscoordmath{z}{datascaletrafo}\pgfmathresult
+		\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @z\endcsname=\pgfmathresult
+	\fi
+	%
+	\pgfplotscoordmath{meta}{parsenumber}{#4}%
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @meta\endcsname=\pgfmathresult
 }%

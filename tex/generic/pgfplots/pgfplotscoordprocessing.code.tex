@@ -68,6 +68,19 @@
 	\let\pgfpointxyz@orig=\pgfpointxyz
 	\let\pgfqpointxyz@orig=\pgfqpointxyz
 	%
+	%
+	\edef\pgfplotsplothandlerpointxyz##1##2##3{%
+		\ifpgfplots@curplot@threedim
+			\noexpand\pgfplotsqpointxyz{##1}{##2}{##3}%
+		\else
+			\ifpgfplots@threedim
+				\noexpand\pgfplotsqpointxyz{##1}{##2}{0.0}%
+			\else
+				\noexpand\pgfplotsqpointxy{##1}{##2}%
+			\fi
+		\fi
+	}%
+	%
 	% A point command such that (0,0) is the 'south west' and (1,1)
 	% the 'north east' point of an axis.
 	\def\pgfplotspointdescriptionxy##1##2{%
@@ -1668,6 +1681,7 @@
 \def\pgfplotsdeclarecoordmath#1#2{%
 	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	\pgfqkeys{/pgfplots/@declare coord math}{%
+		initialise=,
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
 		log e=		\pgfmathlog@{##1},%
 		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
@@ -1737,8 +1751,11 @@
 		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int@orig}
 		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int}%
 	\pgfplotscoordmath@def@log@to@log@ten{#1}{}% empty arg
+	%
 }%
 \pgfqkeys{/pgfplots/@declare coord math}{%
+	initialise/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ initialise\endcsname{#1}},%
 	% takes a number literal as input and defines \pgfmathresult to be
 	% the parsed result.
 	parsenumber/.code=
@@ -1963,6 +1980,11 @@
 	suffix=@basic@,
 }
 \pgfplotsdeclarecoordmath{float}{%
+	initialise=
+		\pgfutil@ifundefined{pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid}{%
+			\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{0}%
+			\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{0}%
+		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
@@ -1995,7 +2017,7 @@
 		\edef\pgfmathresult{#1}%
 		\pgfmathfloatshift@\pgfmathresult{\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
 		\pgfmathfloattofixed\pgfmathresult
-		\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+		\expandafter\pgfmath@basic@subtract@\expandafter{\pgfmathresult}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
 	},%
 	datascaletrafo noshift={%
 		\edef\pgfmathresult{#1}%
@@ -2003,8 +2025,8 @@
 		\pgfmathfloattofixed{\pgfmathresult}%
 	},%
 	datascaletrafo undo shift=
-		\pgfmathsubtract@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
-	datascaletrafo redo shift=\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+		\pgfmath@basic@subtract@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+	datascaletrafo redo shift=\pgfmath@basic@add@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
 	datascaletrafo inverse={%
 		\pgfplotscoordmath@float@datascaletrafo@inverse{#1}%
 	},%
@@ -2036,7 +2058,7 @@
 }
 
 \def\pgfplotscoordmath@float@datascaletrafo@inverse#1{%
-	\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+	\pgfmath@basic@add@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
 	\let\pgfplots@inverse@datascaletrafo@@shifted=\pgfmathresult
 	\pgfmathapproxequalto@{\pgfplots@inverse@datascaletrafo@@shifted}{0.0}%
 	\ifpgfmathcomparison
@@ -2056,10 +2078,11 @@
 % From this point on, any call to \pgfplotscoordmath{#1}{...}
 % will use the selected math class.
 \def\pgfplotssetcoordmathfor#1#2{%
-	\pgfutil@ifundefined{pgfpmth@#2@parsenumber}{%
+	\pgfutil@ifundefined{pgfpmth@#2@initialise}{%
 		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, \string\pgfplotssetcoordmathfor{#1}{#2} failed since `#2' is unknown. Maybe you misspelled it?}\pgfeov%
 	}{%
 		\expandafter\edef\csname pgfcrdmth@#1\endcsname{#2}%
+		\pgfplotscoordmath{#1}{initialise}%
 	}%
 }%
 
