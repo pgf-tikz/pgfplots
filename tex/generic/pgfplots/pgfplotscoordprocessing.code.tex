@@ -4223,21 +4223,21 @@
 		\def\pgfplots@gnuplot@logdirs{}%
 		\ifpgfplots@xislinear
 		\else
+			\pgfplots@identify@gnuplot@logbehavior x%
 			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs x}%
 		\fi
 		\ifpgfplots@yislinear
 		\else
+			\pgfplots@identify@gnuplot@logbehavior y%
 			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs y}%
 		\fi
 		\ifpgfplots@curplot@threedim
 			\ifpgfplots@zislinear
 			\else
+				\pgfplots@identify@gnuplot@logbehavior z%
 				\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs z}%
 			\fi
-			\pgfplots@disablelogfilter@ztrue
 		\fi
-		\pgfplots@disablelogfilter@xtrue
-		\pgfplots@disablelogfilter@ytrue
 		\ifpgfplots@curplot@threedim
 			\if1\b@pgfplots@should@sample@LINE
 				\pgfplots@error{Sorry, I do not know how to sample 3D LINE plots with gnuplot... I only know 2D line and 3D mesh. You may want to help the author of pgfplots to improve this feature.}%
@@ -4272,6 +4272,55 @@
 	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#5}}%
 	\pgfplots@plot@data
 	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
+}%
+
+\def\pgfplots@identify@gnuplot@logbehavior#1{%
+	\pgfutil@ifundefined{pgfplots@gnuplot@logscale@writes@log}{%
+		\pgfplots@identify@gnuplot@logbehavior@checkversion%
+	}{}%
+	\if1\pgfplots@gnuplot@logscale@writes@log
+		\csname pgfplots@disablelogfilter@#1true\endcsname
+	\fi
+}%
+\def\pgfplots@identify@gnuplot@logbehavior@checkversion{%
+	\immediate\write18{gnuplot -V >\pgfplots@plot@filename}%
+	\openin\r@pgfplots@reada=\pgfplots@plot@filename\relax
+	\ifeof\r@pgfplots@reada
+		\pgfplots@warning{Sorry, I could not determine 'gnuplot -V' to check whether gnuplot and logscale writes results in log() or not. Please set `/pgfplots/gnuplot writes logscale=true|false' manually.}%
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}% something doesn't work. set it somehow.
+	\else
+		\read\r@pgfplots@reada to\pgfplots@loc@TMPa
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+		\immediate\write-1{Package pgfplots: checking gnuplot -V : `\pgfplots@loc@TMPa' (if this fails, set `/pgfplots/gnuplot writes logscale=true|false')}%
+		\expandafter\pgfplots@identify@gnuplot@logbehavior@checkversion@\pgfplots@loc@TMPa\relax
+		\closein\r@pgfplots@reada
+	\fi
+}%
+\def\pgfplots@identify@gnuplot@logbehavior@checkversion@#1 #2.#3 #4\relax{%
+	% starting with gnuplot 4.4, output files are no longer in
+	% logarithmic scale for log plots.
+	\ifnum#2<4
+		% version 3.X
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+	\else
+		\ifnum#2>4
+			% version 5.X
+			\gdef\pgfplots@gnuplot@logscale@writes@log{0}%
+		\else
+			\ifnum#3<4
+				% version 4.2 :
+				\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+			\else
+				% version 4.4 or later :
+				\gdef\pgfplots@gnuplot@logscale@writes@log{0}%
+			\fi
+		\fi
+	\fi
+	\if0\pgfplots@gnuplot@logscale@writes@log
+		\immediate\write-1{Package pgfplots: I found gnuplot version >= 4.4. This one doesn't write log() coordinates. I will apply log() manually.}%
+	\else
+		\immediate\write-1{Package pgfplots: I found gnuplot version < 4.4. This one writes log() coordinates. I'll handle it accordingly.}%
+	\fi
 }%
 
 \def\pgfplots@addplotimpl@gnuplotresult#1#2{%
