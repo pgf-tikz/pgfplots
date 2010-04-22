@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Fri Apr  9 11:20:01 CEST 2010 %%%
+%%% Date of this copy: Thu Apr 22 11:12:14 CEST 2010 %%%
 
 
 
@@ -141,12 +141,7 @@
 }
 % Extracts the flags of #1 into the macro #2.
 \def\pgfmathfloatgetflagstomacro#1#2{%
-	\begingroup
-		\edef\pgfmathfloat@loc@TMPa{#1}%
-		\expandafter\pgfmathfloat@decompose@F\pgfmathfloat@loc@TMPa\relax{\count0}%
-		\xdef\pgfmathfloat@glob@TMP{\the\count0 }%
-	\endgroup
-	\let#2=\pgfmathfloat@glob@TMP
+	\expandafter\pgfmathfloat@decompose@Fmacro#1\relax{#2}%
 }%
 
 % Extracts the mantisse of #1 into the dimen register #2.
@@ -245,6 +240,14 @@
 	\fi
 	#1#2%
 }%
+\def\pgfmathfloat@decompose@Fmacro#1#2{%
+	\ifx#2Y%
+		\expandafter\pgfmathfloat@decompose@Fmacro@%
+	\else
+		\expandafter\pgfmathfloat@decompose@F@error%
+	\fi
+	#1#2%
+}%
 \def\pgfmathfloat@decompose@M#1#2{%
 	\ifx#2Y%
 		\expandafter\pgfmathfloat@decompose@M@%
@@ -270,6 +273,7 @@
 	#1#2%
 }%
 \def\pgfmathfloat@decompose@F@#1Y#2e#3]\relax#4{#4=#1\relax}%
+\def\pgfmathfloat@decompose@Fmacro@#1Y#2e#3]\relax#4{\def#4{#1}}%
 \def\pgfmathfloat@decompose@M@#1Y#2e#3]\relax#4{#4=#2pt}%
 \def\pgfmathfloat@decompose@Mtok@#1Y#2e#3]\relax#4{#4={#2}}%
 \def\pgfmathfloat@decompose@E@#1Y#2e#3]\relax#4{#4=#3\relax}%
@@ -848,6 +852,9 @@
 \newif\ifpgfmathprintnumber@assumemathmode
 \newif\ifpgfmathprintnumber@showpositive
 \newif\ifpgfmathprintnumber@frac@warn
+\newif\ifpgfmathprintnumber@frac@whole
+
+\long\def\pgfmathfloatfrac@verbatim#1#2{#1/#2}%
 
 \pgfkeys{%
 	/pgf/number format/.is family,
@@ -860,6 +867,10 @@
 	int trunc/.code=		\pgfmath@set@number@printer{pgfmathprintnumber@INT@TRUNC},
 	frac/.code=				\pgfmath@set@number@printer{pgfmathprintnumber@frac},%
 	frac TeX/.initial=\frac,
+	frac whole format/.code={\def\pgfmathresult{#1}},
+	frac denom/.initial=,
+	frac whole/.is if=pgfmathprintnumber@frac@whole,
+	frac whole=true,
 	frac shift/.initial=4,
 	frac warning/.is if=pgfmathprintnumber@frac@warn,
 	frac warning=true,
@@ -923,6 +934,8 @@
 		print sign=false,
 		dec sep=.,
 		assume math mode,
+		frac TeX=\pgfmathfloatfrac@verbatim,
+		frac whole format/.code={\def\pgfmathresult{##1 }},
 		@dec sep mark=,
 		@sci exponent mark=,
 	},
@@ -1011,7 +1024,18 @@
 			\def\pgfmathfloat@loc@TMPa{+}%
 		\fi
 	\else
-		% FIXME : doesn't respect show pos!
+		\ifx\pgfmathfloat@loc@TMPa-%
+		\else
+			\ifx\pgfmathfloat@loc@TMPa+%
+			\else
+				\ifpgfmathprintnumber@showpositive
+					\edef\pgfmathfloat@loc@TMPa{+\pgfmathfloat@loc@TMPa}%
+				\fi
+				\def\pgfmathfloat@loc@TMPb{\pgfkeysvalueof{/pgf/number format/frac whole format/.@cmd}}%
+				\expandafter\pgfmathfloat@loc@TMPb\pgfmathfloat@loc@TMPa\pgfeov
+				\let\pgfmathfloat@loc@TMPa=\pgfmathresult
+			\fi
+		\fi
 	\fi
 	\toks1=\expandafter{\pgfmathfloat@loc@TMPa}%
 	\edef\pgfmathresult{%
@@ -1058,7 +1082,8 @@
 			\ifnum\pgfmathfloat@a@E<0
 				\def\pgfmathfloat@wholenumber{}%
 			\else
-				\pgfmathfloattofixed{#1}%
+				\pgfmathfloatcreate{1}{\the\pgfmathfloat@a@Mtok}{\the\pgfmathfloat@a@E}%
+				\pgfmathfloattofixed\pgfmathresult%
 				\def\pgfmathfloat@loc@TMPa##1.##2\relax{%
 					\def\pgfmathfloat@wholenumber{##1}%
 					\pgfmathfloatparsenumber{0.##2}%
@@ -1066,7 +1091,6 @@
 				\expandafter\pgfmathfloat@loc@TMPa\pgfmathresult\relax
 				\expandafter\pgfmathfloat@decompose@tok\pgfmathresult\relax\pgfmathfloat@b@S\pgfmathfloat@a@Mtok\pgfmathfloat@a@E
 			\fi
-			\pgfmathfloat@a@E=-\pgfmathfloat@a@E
 			%
 			\def\pgfmathfloat@loc@TMPa##1.##2\relax{%
 				\def\pgfmathfloat@mantisse@first{##1}%
@@ -1081,60 +1105,86 @@
 				\fi
 			}%
 			%
-			\ifdim\pgfmathfloat@mantisse@ltone pt=0pt
-				\def\pgfmathfloat@factor{1}%
-				\edef\pgfmathfloat@scaled@numerator{\the\pgfmathfloat@a@Mtok}%
-			\else
-				% FIXME : this here is numerically instable.
-				%
-				% The errors of 1/r are magnified by 10^k which
-				% doesn't work.
-				\pgfutil@ifundefined{FPdiv}{%
-					\pgfmathfloatparsenumber{\pgfmathfloat@mantisse@ltone}%
-					\pgfmathfloatreciprocal@{\pgfmathresult}%
-				}{%
-					% \usepackage{fp}.
-					% yields higher absolute precision.
-					\FPmessagesfalse%
-					\FPdebugfalse%
-					\FPdiv\pgfmathresult{1}{\pgfmathfloat@mantisse@ltone}%
-					\pgfmathfloatparsenumber{\pgfmathresult}%
-				}%
-				\let\pgfmathfloat@inv=\pgfmathresult
-				\pgfmathfloatcreate{1}{1.0}{\pgfkeysvalueof{/pgf/number format/frac shift}}%
-				\let\pgfmathfloat@scalebaseten=\pgfmathresult
-				\pgfmathfloatmultiply@{\pgfmathfloat@inv}{\pgfmathfloat@scalebaseten}%
-				\let\pgfmathfloat@factor=\pgfmathresult
-				%
-				\expandafter\pgfmathfloatparsenumber\expandafter{\the\pgfmathfloat@a@Mtok}%
-				\let\pgfmathfloat@loc@TMPa=\pgfmathresult
-				\pgfmathfloatmultiply@{\pgfmathfloat@factor}{\pgfmathfloat@loc@TMPa}%
-				\pgfmathfloattofixed\pgfmathresult
-				\let\pgfmathfloat@scaled@numerator=\pgfmathresult
-				%
-				\pgfmathfloattofixed\pgfmathfloat@factor
-				\expandafter\pgfmathfloat@loc@@to@int\pgfmathresult\relax{\pgfmathfloat@b@S}%
-				\edef\pgfmathfloat@factor{\the\pgfmathfloat@b@S}%
-			\fi
-			%
+			% alias registers names:
 			\let\pgfmathresultnumerator=\pgfmathfloat@b@S
 			\let\pgfmathresultdenom=\pgfmathfloat@b@E
 			%
-			\pgfmathresultdenom=\pgfmathfloat@factor\relax
-			\pgfmathfloat@multiply@ten@to@the@E\pgfmathresultdenom
+			\pgfkeysgetvalue{/pgf/number format/frac denom}\pgfmath@target@denominator
+			\ifx\pgfmath@target@denominator\pgfutil@empty
 			%
-			\expandafter\pgfmathfloat@loc@@to@int\pgfmathfloat@scaled@numerator\relax{\pgfmathresultnumerator}%
-%\message{scale = \pgfmathfloat@factor;  Z = \the\pgfmathresultnumerator\space ( von \pgfmathfloat@scaled@numerator), N = \the\pgfmathresultdenom.}%
-			%
-			\pgfmathgreatestcommondivisor{\pgfmathresultnumerator}{\pgfmathresultdenom}%
-			\divide\pgfmathresultnumerator by\pgfmathresult\relax
-			\divide\pgfmathresultdenom by\pgfmathresult\relax
-			\ifpgfmathprintnumber@frac@warn
-				\ifnum\pgfmathresultdenom>1000
+				\pgfmathfloat@a@E=-\pgfmathfloat@a@E
+				\ifdim\pgfmathfloat@mantisse@ltone pt=0pt
+					\def\pgfmathfloat@factor{1}%
+					\edef\pgfmathfloat@scaled@numerator{\the\pgfmathfloat@a@Mtok}%
+				\else
+					% FIXME : this here is numerically instable.
+					%
+					% The errors of 1/r are magnified by 10^k which
+					% doesn't work.
 					\pgfutil@ifundefined{FPdiv}{%
-						\pgfmathfloattosci@\pgfmathfloat@arg
-						\immediate\write16{! Package pgf /pgf/number format/frac warning=true: /pgf/number format/frac of `\pgfmathresult' = \the\pgfmathresultnumerator\space / \the\pgfmathresultdenom\space might be large due to instabilities. Try \string\usepackage{fp} to improve accuracy.}%
-					}{}%
+						\pgfmathfloatparsenumber{\pgfmathfloat@mantisse@ltone}%
+						\pgfmathfloatreciprocal@{\pgfmathresult}%
+					}{%
+						% \usepackage{fp}.
+						% yields higher absolute precision.
+						\FPmessagesfalse%
+						\FPdebugfalse%
+						\FPdiv\pgfmathresult{1}{\pgfmathfloat@mantisse@ltone}%
+						\pgfmathfloatparsenumber{\pgfmathresult}%
+					}%
+					\let\pgfmathfloat@inv=\pgfmathresult
+					\pgfmathfloatcreate{1}{1.0}{\pgfkeysvalueof{/pgf/number format/frac shift}}%
+					\let\pgfmathfloat@scalebaseten=\pgfmathresult
+					\pgfmathfloatmultiply@{\pgfmathfloat@inv}{\pgfmathfloat@scalebaseten}%
+					\let\pgfmathfloat@factor=\pgfmathresult
+					%
+					\expandafter\pgfmathfloatparsenumber\expandafter{\the\pgfmathfloat@a@Mtok}%
+					\let\pgfmathfloat@loc@TMPa=\pgfmathresult
+					\pgfmathfloatmultiply@{\pgfmathfloat@factor}{\pgfmathfloat@loc@TMPa}%
+					\pgfmathfloattofixed\pgfmathresult
+					\let\pgfmathfloat@scaled@numerator=\pgfmathresult
+					%
+					\pgfmathfloattofixed\pgfmathfloat@factor
+					\expandafter\pgfmathfloat@loc@@to@int\pgfmathresult\relax{\pgfmathfloat@b@S}%
+					\edef\pgfmathfloat@factor{\the\pgfmathfloat@b@S}%
+				\fi
+				%
+				%
+				\pgfmathresultdenom=\pgfmathfloat@factor\relax
+				\pgfmathfloat@multiply@ten@to@the@E\pgfmathresultdenom
+				%
+				\expandafter\pgfmathfloat@loc@@to@int\pgfmathfloat@scaled@numerator\relax{\pgfmathresultnumerator}%
+	%\message{scale = \pgfmathfloat@factor;  Z = \the\pgfmathresultnumerator\space ( von \pgfmathfloat@scaled@numerator), N = \the\pgfmathresultdenom.}%
+				%
+				\pgfmathgreatestcommondivisor{\pgfmathresultnumerator}{\pgfmathresultdenom}%
+				\divide\pgfmathresultnumerator by\pgfmathresult\relax
+				\divide\pgfmathresultdenom by\pgfmathresult\relax
+				\ifpgfmathprintnumber@frac@warn
+					\ifnum\pgfmathresultdenom>1000
+						\pgfutil@ifundefined{FPdiv}{%
+							\pgfmathfloattosci@\pgfmathfloat@arg
+							\immediate\write16{! Package pgf /pgf/number format/frac warning=true: /pgf/number format/frac of `\pgfmathresult' = \the\pgfmathresultnumerator\space / \the\pgfmathresultdenom\space might be large due to instabilities. Try \string\usepackage{fp} to improve accuracy.}%
+						}{}%
+					\fi
+				\fi
+			\else
+				% use target denominator:
+				\pgfmathresultdenom=\pgfmath@target@denominator\relax
+				\pgfmathfloatcreate{1}{\the\pgfmathfloat@a@Mtok}{\the\pgfmathfloat@a@E}%
+				\pgfmathfloattofixed\pgfmathresult
+				\pgf@xa=\pgfmathresult pt
+				\multiply\pgf@xa by\pgfmathresultdenom
+				\edef\pgfmathfloat@scaled@numerator{\pgf@sys@tonumber\pgf@xa}%
+				\expandafter\pgfmathfloat@loc@@to@int\pgfmathfloat@scaled@numerator\relax{\pgfmathresultnumerator}%
+			\fi
+			\ifpgfmathprintnumber@frac@whole
+			\else
+				\ifx\pgfmathfloat@wholenumber\pgfutil@empty
+				\else
+					\count0=\pgfmathfloat@wholenumber\relax
+					\multiply\count0 by\pgfmathresultdenom
+					\advance\pgfmathresultnumerator by\count0
+					\def\pgfmathfloat@wholenumber{}%
 				\fi
 			\fi
 			\ifnum\pgfmathfloat@a@S<0
@@ -1329,7 +1379,7 @@
 \def\pgfmathprintnumber{%
 	% \protect allows to supply \pgfmathprintnumber inside of latex
 	% captions. The \csname yields \relax in case protect is undefined.
-	\csname protect\endcsname\pgfmathprintnumber@protected
+	\pgf@texdist@protect\pgfmathprintnumber@protected
 }%
 \def\pgfmathprintnumber@protected{%
 	\pgfutil@ifnextchar[%
@@ -1955,6 +2005,7 @@
 \newif\ifpgfmathfloatparsenumberpendingperiod
 
 \def\pgfflt@EOI{p@EOI}%
+\def\pgfflt@EOI@unexpanded{\pgfflt@EOI}%
 
 % Starts a finite-start-machine parser to read a number.
 %
@@ -2211,16 +2262,16 @@
 
 \def\pgfflt@readexponent#1\pgfflt@EOI{%
 	\afterassignment\pgfflt@readexponent@
-	\pgfmathfloat@b@E=#1\relax\pgfflt@EOI
+	\pgfmathfloat@b@E=#1 \pgfflt@EOI% the white space is important, otherwise \pgfflt@EOI will be expanded.
 }
-\def\pgfflt@readexponent@{%
+\def\pgfflt@readexponent@#1{%
 	\advance\pgfmathfloat@a@E by\pgfmathfloat@b@E\relax
-	\afterassignment\pgfflt@readexponent@@
-	\let\pgfmathfloat@loc@TMPb=}%
-\def\pgfflt@readexponent@@#1\pgfflt@EOI{%
-	\ifx\pgfmathfloat@loc@TMPb\relax
+	%
+	% sanity checking:
+	\def\pgfmathfloat@loc@TMPb{#1}%
+	\ifx\pgfmathfloat@loc@TMPb\pgfflt@EOI@unexpanded
 	\else
-		\def\pgfmathfloat@loc@TMPb{\pgfflt@error#1\pgfflt@EOI}%
+		\def\pgfmathfloat@loc@TMPb{\pgfflt@error#1}%
 		\expandafter\pgfmathfloat@loc@TMPb
 	\fi
 }
