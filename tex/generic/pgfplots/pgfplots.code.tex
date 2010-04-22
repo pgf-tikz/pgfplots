@@ -3938,8 +3938,12 @@
 	\if1\bool@pgfplots@loc@enlargeany
 		\pgfplots@enlarge@limit@for{#1}%
 	\fi
+	\global\let\pgfplots@glob@TMPa=\bool@pgfplots@loc@enlargeany
 	% assignments are made globally.
 	\endgroup
+	\if1\pgfplots@glob@TMPa
+		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
+	\fi
 }
 
 % Helper method inside of \pgfplots@enlarge@limit@ifconfigured.
@@ -4355,7 +4359,7 @@
 \def\pgfplots@determinedefaultvalues{%
 	\pgfplots@check@invalid@range
 	%
-%\message{x = [\pgfplots@xmin:\pgfplots@xmax]  y = [\pgfplots@ymin:\pgfplots@ymax]}%
+%\message{untransformed: x = [\pgfplots@xmin:\pgfplots@xmax]  y = [\pgfplots@ymin:\pgfplots@ymax]. }%
 	%
 	%
 	\pgfplots@set@default@size@options
@@ -4372,6 +4376,7 @@
 		\pgfplots@check@and@apply@datatrafo@for z%
 	\fi
 	\pgfplots@datascaletrafo@initialisedtrue
+%\message{transformed: x = [\pgfplots@xmin:\pgfplots@xmax]  y = [\pgfplots@ymin:\pgfplots@ymax].}%
 	%
 	% From now on, we can always work with pgfmath.
 	% We simply need to apply the data scaling trafo before doing so.
@@ -5206,16 +5211,23 @@
 %\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [+- \pgfplots@glob@TMPb]}%
 		%
 		% Update auxiliary data members:
-		\csname pgfplots@#1min@reg\endcsname=\csname pgfplots@#1min\endcsname pt %
-		\csname pgfplots@#1max@reg\endcsname=\csname pgfplots@#1max\endcsname pt %
-		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-			\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1min\endcsname}%
-			\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfmathresult
-			\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1max\endcsname}%
-			\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfmathresult
-		}{}%
+		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
 	\fi
 }
+
+% should be invoked whenever \pgfplots@#1min or \pgfplots@#1max have
+% been changed during the visualization phase (for example, axis equal
+% or enlargelimits)
+\def\pgfplots@visphase@notify@changeofcanvaslimits#1{%
+	\csname pgfplots@#1min@reg\endcsname=\csname pgfplots@#1min\endcsname pt %
+	\csname pgfplots@#1max@reg\endcsname=\csname pgfplots@#1max\endcsname pt %
+	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+		\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1min\endcsname}%
+		\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfmathresult
+		\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1max\endcsname}%
+		\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfmathresult
+	}{}%
+}%
 
 % Invokes #3 if 
 % ( 10^{s1} * veclen1 < 10^{s2} * veclen2 )
@@ -8466,6 +8478,14 @@
 %
 \def\pgfplots@environment@opt[#1]{%
 	\begingroup
+	\pgfutil@ifundefined{pgfplots@is@in@axis}{}{%
+		\pgfplots@error{%
+			Sorry, nested axis environments are not supported.
+			Please move the inner axis environment below \string\end{axis} and
+			use alignment options (for example named nodes, see manual) to place it at the desired
+			position}%
+	}%
+	\def\pgfplots@is@in@axis{1}%
 	\pgfplots@checkandpreparefor@active@semicolon
 	\pgfplots@install@abbrev@commands
 	\pgfplots@stacked@initialise
@@ -8820,7 +8840,7 @@
 		\pgfutil@for\pgfplots@child@node@name:=\pgfplots@named@child@node@list\do{%
 			\ifx\pgfplots@child@node@name\pgfutil@empty
 			\else
-%\message{Attempting to correct  '\pgfplots@child@node@name' position (it is inside of an axis).}%
+%\message{Attempting to correct  '\pgfplots@child@node@name' position by \meaning\pgfplots@offset\space (the node is inside of an axis).}%
 				\expandafter\ifx\csname pgfplots@child@node@visited@\pgfplots@child@node@name\endcsname\relax%
 					\pgfutil@ifundefined{pgf@sh@nt@\pgfplots@child@node@name}{%
 						\pgfplots@warning{could not adjust coordinates of named node '\pgfplots@child@node@name' for reasons I do not understand! After finishing the image, it did no longer exist!? Sorry.}%
