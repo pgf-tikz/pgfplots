@@ -27,7 +27,7 @@
 \newif\ifpgfplots@annot@printable
 
 \pgfqkeys{/pgfplots}{
-	@backgroundpath@hook/.add code={}{\ifpgfplots@threedim\else\pgfplots@create@clickable@plotarea@hook\fi},
+	@backgroundpath@hook/.add code={}{\pgfplots@create@clickable@plotarea@hook},
 	clickable/.is if=pgfplots@clickable,
 	clickable/.default=true,
 	clickable=true,
@@ -59,6 +59,7 @@
 	clickable coords/.default={(xy)},
 	annot/js fillColor/.initial={["RGB",1,1,.855]},
 	annot/point format/.initial={(\%.1f,\%.1f)},
+	annot/point format 3d/.initial={(\%.1f, \%.1f, \%.1f)},
 	annot/slope format/.initial={\%.1f*x \%+.1f},
 	annot/printable/.is if=pgfplots@annot@printable,
 	annot/printable/.default=true,
@@ -83,12 +84,20 @@
 	annot/width/.initial=,
 	annot/height/.initial=,
 	annot/jsname/.initial=,
+	annot/dim/.initial=2,
 	annot/xmin/.initial=,
 	annot/xmax/.initial=,
 	annot/ymin/.initial=,
 	annot/ymax/.initial=,
+	annot/zmin/.initial=,
+	annot/zmax/.initial=,
 	annot/xscale/.initial=, % "log" or "linear" or "log:<basis>"
 	annot/yscale/.initial=,
+	annot/zscale/.initial=,
+	annot/origin/.initial=,
+	annot/xaxis/.initial=,
+	annot/yaxis/.initial=,
+	annot/zaxis/.initial=,
 	% format: 
 	% 	[<plot1coords>, <plot2coords>,...,<plotncoords>]
 	% with <ploticoords> = [<coord>,<coord>,....,<coord>]
@@ -366,8 +375,8 @@ var posOnMouseDownX = -1;
 var posOnMouseDownY = -1;
 
 // preallocation.
-var tmpArray1 = new Array(2);
-var tmpArray2 = new Array(2);
+var tmpArray1 = new Array(3);
+var tmpArray2 = new Array(3);
 
 var clickablePatternForXY="\pgfkeysvalueof{/pgfplots/annot/xy pattern}";
 
@@ -415,10 +424,12 @@ function ClickableCoordDraw( canvas, point, displayOpts )
 
 function ClickableCoord(canvasx,canvasy, realx,realy, text)
 {
+	this.dim=2;
 	this.canvasx=canvasx;
 	this.canvasy=canvasy;
 	this.realx=realx;
 	this.realy=realy;
+	this.realz=0;
 	this.text=text;
 	this.sourcePlotIdx = -1;
 	this.sourceCoordIdx = -1;
@@ -469,36 +480,62 @@ function ClickableCoord(canvasx,canvasy, realx,realy, text)
  * @return an instance of ClickableCoord or null.
  * The returned canvas coordinates are NOT yet initialised.
  */
-function findNearest( point, collectedPlots, startSearchAt )
+function findNearest( point, rect, axisAnnotObj, startSearchAt )
 {
 	var actx;
 	var acty;
 	var minSoFar = 1e324;
 	var minPtSoFar = null;
+	var tmpPt = null;
 	var dist =0;
 	var startPlot = 0;
 	var startCoord = 0;
+	var collectedPlots = axisAnnotObj.collectedPlots;
+	if( point.dim > 2 )
+		tmpPt = new ClickableCoord(0,0,0,0,"");
+		
 	if( startSearchAt && startSearchAt.isSnapToNearestCoord() ) {
 		startPlot = startSearchAt.sourcePlotIdx;
 		startCoord= startSearchAt.sourceCoordIdx;
 	}
 	for( var i = startPlot; i<collectedPlots.length; ++i ) {
 		for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
-			actx = collectedPlots[i][j][0] - point.realx;
-			acty = collectedPlots[i][j][1] - point.realy;
+			if( point.dim == 2 ) {
+				actx = collectedPlots[i][j][0] - point.realx;
+				acty = collectedPlots[i][j][1] - point.realy;
+			} else {
+				// dim > 2 should be compared using CANVAS coordinates, not real coordinates:
+				tmpPt.realx = collectedPlots[i][j][0];
+				tmpPt.realy = collectedPlots[i][j][1];
+				if( collectedPlots[i][j].length-1 >= 3 )
+					tmpPt.realz = collectedPlots[i][j][2];
+				else
+					tmpPt.realz = 0;
+				computeCanvasFor( tmpPt, rect, axisAnnotObj );
+				actx = tmpPt.canvasx - point.canvasx;
+				acty = tmpPt.canvasy - point.canvasy;
+			}
 			dist = actx*actx + acty*acty;
 			if( dist < minSoFar ) {
 			 	if( minPtSoFar == null )
 					minPtSoFar = new ClickableCoord(-1,-1,0,0,"");
 				minPtSoFar.realx = collectedPlots[i][j][0];
 				minPtSoFar.realy = collectedPlots[i][j][1];
-				minPtSoFar.text= collectedPlots[i][j][2];
+				if( collectedPlots[i][j].length-1 >= 3 )
+					minPtSoFar.realz = collectedPlots[i][j][2];
+				else
+					minPtSoFar.realz = 0;
+				minPtSoFar.text= collectedPlots[i][j][ collectedPlots[i][j].length-1 ];
 				minPtSoFar.sourcePlotIdx = i;
 				minPtSoFar.sourceCoordIdx = j;
 				minSoFar = dist;
 			}
 		}
 	}
+minPtSoFar.realx = 0;
+minPtSoFar.realy = 0;
+minPtSoFar.realz = 0.5;
+	computeCanvasFor(minPtSoFar,rect,axisAnnotObj);
 	return minPtSoFar;
 }
 
@@ -523,48 +560,52 @@ function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
 	rect[3] = Math.round(rect[3]);
 	canvas.rect= rect;
 
+	var realx=-1;
+	var realy=-1;
+	if( axisAnnotObj.dim == 2 ) {
+		// the following code inverts computeCanvasFor():
+		var originx = rect[0] + axisAnnotObj.origin[0];
+		var originy = rect[3] + axisAnnotObj.origin[1];
+		var vecx = x - originx;
+		var vecy = y - originy;
+		var A = [ 
+			[axisAnnotObj.xaxis[0], axisAnnotObj.yaxis[0]],
+			[axisAnnotObj.xaxis[1], axisAnnotObj.yaxis[1]] ];
+		var b = [ vecx, vecy ];
 
-	// the following code inverts computeCanvasFor():
-	var originx = rect[0] + axisAnnotObj.origin[0];
-	var originy = rect[3] + axisAnnotObj.origin[1];
-	var vecx = x - originx;
-	var vecy = y - originy;
-	var A = [ 
-		[axisAnnotObj.xaxis[0], axisAnnotObj.yaxis[0]],
-		[axisAnnotObj.xaxis[1], axisAnnotObj.yaxis[1]] ];
-	var b = [ vecx, vecy ];
+		var rowpermut = [0, 1];
+		if( Math.abs(A[0][0]) < 0.0001 ) {
+			rowpermut[0] = 1;
+			rowpermut[1] = 0;
+		}
+		var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
+		var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
+		var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
 
-	var rowpermut = [0, 1];
-	if( Math.abs(A[0][0]) < 0.0001 ) {
-		rowpermut[0] = 1;
-		rowpermut[1] = 0;
+		realx = unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
+		realy = unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
+		//console.println( "unitx = " + unitx + "; unity " + unity );
 	}
-	var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
-	var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
-	var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
 
-	var realx = unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
-	var realy = unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
-
-	//console.println( "unitx = " + unitx + "; unity " + unity );
 
 	var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+	point.dim = axisAnnotObj.dim;
 
 	if( startSearch && !startSearch.isSnapToNearestCoord() ) {
 		console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
 		startSearch = null;
 	}
 	
-	var nearestClickableCoord = findNearest( point, axisAnnotObj.collectedPlots, startSearch );
+	var nearestClickableCoord = findNearest( point, rect,axisAnnotObj, startSearch );
 	if( nearestClickableCoord ) {
-		computeCanvasFor(nearestClickableCoord,rect,axisAnnotObj);
-		if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < axisAnnotObj.snapDist ) {
+		if( true || getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < axisAnnotObj.snapDist ) {
 			return nearestClickableCoord;
 		}
 	}
-	if( startSearch ) {
+	if( startSearch )
 		point = null;
-	}
+	if( axisAnnotObj.dim > 2 ) // we didn't find a snap--to--nearest point.
+		point = null;
 
 	return point;
 }
@@ -583,11 +624,16 @@ function getDist( x1,y1, x2,y2 ) {
  */
 function computeCanvasFor( point, rect, axisAnnotObj)
 {
-	var unitx = point.realx  / (axisAnnotObj.xmax -axisAnnotObj.xmin);
+	var unitx = point.realx / (axisAnnotObj.xmax -axisAnnotObj.xmin);
 	var unity = point.realy / (axisAnnotObj.ymax -axisAnnotObj.ymin);
 
 	point.canvasx = rect[0] + axisAnnotObj.origin[0] + axisAnnotObj.xaxis[0] * unitx + axisAnnotObj.yaxis[0] * unity;
 	point.canvasy = rect[3] + axisAnnotObj.origin[1] + axisAnnotObj.xaxis[1] * unitx + axisAnnotObj.yaxis[1] * unity;
+	if( axisAnnotObj.dim >= 3 ) {
+		var unitz = point.realz / (axisAnnotObj.zmax -axisAnnotObj.zmin);
+		point.canvasx += axisAnnotObj.zaxis[0] * unitz;
+		point.canvasy += axisAnnotObj.zaxis[1] * unitz;
+	}
 }
 /**
  * Changes all required Field values of \c plotRegionField, inserts the proper
@@ -599,7 +645,7 @@ function computeCanvasFor( point, rect, axisAnnotObj)
  * @param y the corresponding y coord.
  * @param axisAnnotObj An object containing axis references.
  * @param displayOpts An object for display flags.
- * @param[out] retCoords will be filled with the point in axis coordinates.
+ * @param[out] retCoords will be filled with the point in axis coordinates (should have length axisAnnotObj.dim).
  */
 function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCoords )
 {
@@ -627,13 +673,25 @@ function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCo
 		}
 		point.realy = Math.exp(point.realy);
 	}
+	if( axisAnnotObj.dim > 2 ) {
+		if( axisAnnotObj.zscale.length >= 3 && axisAnnotObj.zscale.substr(0,3) == "log" ) {
+			if( axisAnnotObj.zscale.length > 4 ) // log:<basis>
+				point.realz = point.realz * Math.log( axisAnnotObj.zscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordz = point.realz / Math.log(10);
+			}
+			point.realz = Math.exp(point.realz);
+		}
+	}
 
 	// replace the text substring "(xy)" with the actual coordinates:
 	var coordOff = point.text.indexOf(clickablePatternForXY);
 	if( coordOff >= 0 ) {
 		point.text = 
 			point.text.substring( 0, coordOff ) + 
-			sprintf( displayOpts.pointFormat, point.realx,point.realy) +
+			sprintf( displayOpts.pointFormat, point.realx,point.realy,point.realz) +
 			point.text.substr( coordOff+clickablePatternForXY.length );
 	}
 	point.draw( this, textField, displayOpts );
@@ -641,6 +699,8 @@ function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCo
 	if( retCoords ) {
 		retCoords[0] = transformedCoordx;
 		retCoords[1] = transformedCoordy;
+		if( axisAnnotObj.dim > 2 )
+			retCoords[2] = transformedCoordz;
 	}
 
 }
@@ -679,6 +739,9 @@ function axisMouseUp(formName, axisAnnotObj, displayOpts)
 
 function axisDragNDrop( formName, axisAnnotObj, displayOpts )
 {
+	if( axisAnnotObj.dim == 3 )
+		return;
+
 	var result = this.getField( formName + "-result");
 	var result2 = this.getField( formName + "-result2");
 	var resultmark = this.getField( formName + "-resultmark");
@@ -808,7 +871,7 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 	\pgfplotscoordmath{y}{tostring}\pgfplots@current@point@y
 	\let\pgfplots@current@point@y=\pgfmathresult
 	\ifpgfplots@curplot@threedim
-		\pgfplotscoordmath{z}{tostring}\pgfplots@current@point@y
+		\pgfplotscoordmath{z}{tostring}\pgfplots@current@point@z
 		\let\pgfplots@current@point@z=\pgfmathresult
 	\fi
 	\begingroup
@@ -879,20 +942,27 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		{\pgfkeysvalueof{/pgfplots/annot/height}}%
 		{\pgfplots@clickable@uniquename}%
 		{{
-			xmin:\pgfkeysvalueof{/pgfplots/annot/xmin}, 
-			xmax:\pgfkeysvalueof{/pgfplots/annot/xmax},
-			ymin:\pgfkeysvalueof{/pgfplots/annot/ymin},
-			ymax:\pgfkeysvalueof{/pgfplots/annot/ymax},
-			xscale:"\pgfkeysvalueof{/pgfplots/annot/xscale}",
-			yscale:"\pgfkeysvalueof{/pgfplots/annot/yscale}",
+			dim:	\pgfkeysvalueof{/pgfplots/annot/dim},
+			xmin:	\pgfkeysvalueof{/pgfplots/annot/xmin}, 
+			xmax:	\pgfkeysvalueof{/pgfplots/annot/xmax},
+			ymin:	\pgfkeysvalueof{/pgfplots/annot/ymin},
+			ymax:	\pgfkeysvalueof{/pgfplots/annot/ymax},
+			xscale:	"\pgfkeysvalueof{/pgfplots/annot/xscale}",
+			yscale:	"\pgfkeysvalueof{/pgfplots/annot/yscale}",
+			\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3
+			zmin:	\pgfkeysvalueof{/pgfplots/annot/zmin},
+			zmax:	\pgfkeysvalueof{/pgfplots/annot/zmax},
+			zscale:	"\pgfkeysvalueof{/pgfplots/annot/zscale}",
+			zaxis:		\pgfkeysvalueof{/pgfplots/annot/z axis},
+			\fi
 			collectedPlots: \pgfplots@clickable@collectedplots@@,
-			snapDist:\pgfkeysvalueof{/pgfplots/annot/snap dist},
-			origin:\pgfkeysvalueof{/pgfplots/annot/origin},
-			xaxis:\pgfkeysvalueof{/pgfplots/annot/x axis},
-			yaxis:\pgfkeysvalueof{/pgfplots/annot/y axis}
+			snapDist:	\pgfkeysvalueof{/pgfplots/annot/snap dist},
+			origin:		\pgfkeysvalueof{/pgfplots/annot/origin},
+			xaxis:		\pgfkeysvalueof{/pgfplots/annot/x axis},
+			yaxis:		\pgfkeysvalueof{/pgfplots/annot/y axis}
 		}}%
 		{{
-			pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
+			pointFormat: "\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3 \pgfkeysvalueof{/pgfplots/annot/point format 3d}\else \pgfkeysvalueof{/pgfplots/annot/point format}\fi",
 			slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
 			fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
 			textFont:\pgfkeysvalueof{/pgfplots/annot/font},
@@ -913,7 +983,6 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmin}%
 		\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
 		\let\pgfplots@clickable@xmin=\pgfmathresult
-		%
 		\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmax}%
 		\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
 		\let\pgfplots@clickable@xmax=\pgfmathresult
@@ -921,10 +990,18 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymin}%
 		\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
 		\let\pgfplots@clickable@ymin=\pgfmathresult
-		%
 		\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymax}%
 		\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
 		\let\pgfplots@clickable@ymax=\pgfmathresult
+		%
+		\ifpgfplots@threedim
+			\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmin}%
+			\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@zmin=\pgfmathresult
+			\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmax}%
+			\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@zmax=\pgfmathresult
+		\fi
 		%
 		% Convert to user interface of clickable lib:
 		\pgfplotspointbbdiagonal
@@ -946,6 +1023,15 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\else
 			\pgfkeyssetvalue{/pgfplots/annot/yscale}{log:\pgfkeysvalueof{/pgfplots/log basis y}}%
 		\fi
+		\ifpgfplots@threedim
+			\pgfkeyslet{/pgfplots/annot/zmin}\pgfplots@clickable@zmin
+			\pgfkeyslet{/pgfplots/annot/zmax}\pgfplots@clickable@zmax
+			\ifpgfplots@zislinear
+				\pgfkeyssetvalue{/pgfplots/annot/zscale}{linear}%
+			\else
+				\pgfkeyssetvalue{/pgfplots/annot/zscale}{log:\pgfkeysvalueof{/pgfplots/log basis z}}%
+			\fi
+		\fi
 		%
 		\pgfpointdiff
 			\lowerleftinnercorner
@@ -963,6 +1049,15 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
 		\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
 		\pgfkeyslet{/pgfplots/annot/y axis}\pgfplots@loc@TMPa
+		%
+		\ifpgfplots@threedim
+			\pgfplotspointzaxis
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/z axis}\pgfplots@loc@TMPa
+		\fi
+		%
+		\pgfkeyssetvalue{/pgfplots/annot/dim}{\ifpgfplots@threedim 3\else2\fi}%
 		%
 		% communicate collected plot coordinates:
 		\pgfplotsapplistXgloballet\pgfplots@clickable@collectedplots@@=\pgfplots@clickable@collectedplots
