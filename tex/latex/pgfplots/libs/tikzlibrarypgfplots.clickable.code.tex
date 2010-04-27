@@ -423,6 +423,9 @@ function ClickableCoord(canvasx,canvasy, realx,realy, text)
 	this.sourcePlotIdx = -1;
 	this.sourceCoordIdx = -1;
 
+	this.isSnapToNearestCoord = function() {
+		return this.sourcePlotIdx >= 0;
+	}
 	this.draw=function( docObject, canvas, displayOpts )
 	{
 		canvas.value = ""+this.text;
@@ -466,7 +469,7 @@ function ClickableCoord(canvasx,canvasy, realx,realy, text)
  * @return an instance of ClickableCoord or null.
  * The returned canvas coordinates are NOT yet initialised.
  */
-function findNearest( point, collectedPlots, lastPoint )
+function findNearest( point, collectedPlots, startSearchAt )
 {
 	var actx;
 	var acty;
@@ -475,9 +478,9 @@ function findNearest( point, collectedPlots, lastPoint )
 	var dist =0;
 	var startPlot = 0;
 	var startCoord = 0;
-	if( lastPoint && lastPoint.sourcePlotIdx >= 0 ) {
-		startPlot = lastPoint.sourcePlotIdx;
-		startCoord= lastPoint.sourceCoordIdx+1;
+	if( startSearchAt && startSearchAt.isSnapToNearestCoord() ) {
+		startPlot = startSearchAt.sourcePlotIdx;
+		startCoord= startSearchAt.sourceCoordIdx;
 	}
 	for( var i = startPlot; i<collectedPlots.length; ++i ) {
 		for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
@@ -505,17 +508,12 @@ function findNearest( point, collectedPlots, lastPoint )
  * @param axisAnnotObj the axis in which we shall search.
  * @param x,y the input canvas coordinates
  * @param canvas a pointer to the Drawing object (TextField) whose 'rect' field is the drawing canvas.
- * @param startSearchAfter either null or an instance of ClickableCoord. If it is not null, the next matching point *after* it will be returned.
- *   If \c startSearchAfter is a snap--to--nearest coord, search starts after it, and null is returned if there is no more snap--to--nearest coord.
- *   If \c startSearchAfter is just a canvas coordinate, and (x,y) denotes the same point, null is returned.
- * @return an instance of ClickableCoord or null in case the startSearchAfter!=null and there are no further matches.
+ * @param startSearch either null or an instance of ClickableCoord for which isSnapToNearestCoord() returns true. 
+ *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
+ * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
  */
-function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearchAfter )
+function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
 {
-		// getDist( mouseX,mouseY,  lastMouseX,lastMouseY) < axisAnnotObj.snapDist ;
-	// lastMouseX = mouseX;
-	// lastMouseY = mouseY;
-
 	// Get and modify bounding box. The mouse movement is only accurate up to one point 
 	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
 	var rect = canvas.rect;
@@ -543,25 +541,21 @@ function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearchAfter )
 	//console.println( "unitx = " + unitx + "; unity " + unity );
 
 	var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+
+	if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+		console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+		startSearch = null;
+	}
 	
-	var nearestClickableCoord = findNearest( point, axisAnnotObj.collectedPlots, startSearchAfter );
+	var nearestClickableCoord = findNearest( point, axisAnnotObj.collectedPlots, startSearch );
 	if( nearestClickableCoord ) {
 		computeCanvasFor(nearestClickableCoord,rect,axisAnnotObj);
 		if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < axisAnnotObj.snapDist ) {
 			return nearestClickableCoord;
 		}
-
 	}
-
-	if( startSearchAfter ) {
-		if( startSearchAfter.sourcePlotIdx >= 0 ) {
-			// it is a snap--to--nearest coordinate.
-			return null;
-
-		} else if( getDist( mouseX,mouseY,  startSearchAfter.canvasx,startSearchAfter.canvasy) < axisAnnotObj.snapDist ) {
-			// we clicked twice onto the same location.
-			point = null;
-		}
+	if( startSearch ) {
+		point = null;
 	}
 
 	return point;
@@ -744,7 +738,20 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		return;
 	}
 
-	var point = axisFindClickableCoord(axisAnnotObj, mouseX, mouseY, a, lastPoint ); 
+	var point = null;
+	var bSearchPoint = true;
+	if( lastPoint ) {
+		if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < axisAnnotObj.snapDist ) {
+			if( lastPoint.isSnapToNearestCoord() )
+				++lastPoint.sourceCoordIdx;
+			else
+				bSearchPoint = false;
+
+		} else
+			lastPoint = null; // no search restriction.
+	}
+	if( bSearchPoint )
+		point = axisFindClickableCoord(axisAnnotObj, mouseX, mouseY, a, lastPoint ); 
 
 	lastPoint = point;
 
