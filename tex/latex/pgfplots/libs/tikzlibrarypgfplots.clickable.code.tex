@@ -516,7 +516,7 @@ function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
 {
 	// Get and modify bounding box. The mouse movement is only accurate up to one point 
 	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
-	var rect = canvas.rect;
+	var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to upper left corner
 	rect[0] = Math.round(rect[0]);
 	rect[1] = Math.round(rect[1]);
 	rect[2] = Math.round(rect[2]);
@@ -526,15 +526,37 @@ function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
 	var w = rect[2] - rect[0];
 	var h = rect[1] - rect[3];
 
-	// compute position 0 <= mx <= 1, 0<= my <= 1 relative to lower(!) left corner.
-	var mx = x - rect[0];
-	var my = h - (rect[1] - y);
+	var unitx=0;
+	var unity=0;
+	if( 0 ) {
+		// compute position 0 <= mx <= 1, 0<= my <= 1 relative to lower(!) left corner.
+		var mx = x - rect[0];
+		var my = h - (rect[1] - y);
 
-	var unitx = mx / w;
-	var unity = my / h;
+		unitx = mx / w;
+		unity = my / h;
 
-	var realx = axisAnnotObj.xmin + unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
-	var realy = axisAnnotObj.ymin + unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
+	} else {
+		var originx = rect[0] + axisAnnotObj.origin[0];
+		var originy = rect[3] + axisAnnotObj.origin[1];
+		var vecx = x - originx;
+		var vecy = y - originy;
+		var A = [ 
+			[axisAnnotObj.xaxis[0], axisAnnotObj.yaxis[0]],
+			[axisAnnotObj.xaxis[1], axisAnnotObj.yaxis[1]] ];
+		var b = [ vecx, vecy ];
+
+		var rowpermut = [0, 1];
+		if( Math.abs(A[0][0]) < 0.0001 ) {
+			rowpermut[0] = 1;
+			rowpermut[1] = 0;
+		}
+		var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
+		unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
+		unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
+	}
+	var realx = unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
+	var realy = unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
 
 	//console.println( "w = " + w + "; h = " + h );
 	//console.println( "mx = " + mx + "; my = " + my );
@@ -561,10 +583,13 @@ function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
 	return point;
 }
 
+function getVecLen( t1,t2 ) {
+	return Math.sqrt( t1*t1 + t2*t2);
+}
 function getDist( x1,y1, x2,y2 ) {
 	var t1 = (x1-x2);
 	var t2 = (y1-y2);
-	return Math.sqrt( t1*t1 + t2*t2);
+	return getVecLen(t1,t2);
 }
 
 /**
@@ -880,7 +905,10 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 			xscale:"\pgfkeysvalueof{/pgfplots/annot/xscale}",
 			yscale:"\pgfkeysvalueof{/pgfplots/annot/yscale}",
 			collectedPlots: \pgfplots@clickable@collectedplots@@,
-			snapDist:\pgfkeysvalueof{/pgfplots/annot/snap dist}
+			snapDist:\pgfkeysvalueof{/pgfplots/annot/snap dist},
+			origin:\pgfkeysvalueof{/pgfplots/annot/origin},
+			xaxis:\pgfkeysvalueof{/pgfplots/annot/x axis},
+			yaxis:\pgfkeysvalueof{/pgfplots/annot/y axis}
 		}}%
 		{{
 			pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
@@ -917,12 +945,11 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
 		\let\pgfplots@clickable@ymax=\pgfmathresult
 		%
+		% Convert to user interface of clickable lib:
 		\pgfplotspointbbdiagonal
 		\edef\pgfplots@clickable@wd{\the\pgf@x}%
-		\edef\pgfplots@clickable@ht{\the\pgf@y}%
-		%
-		% Convert to user interface of clickable lib:
 		\pgfkeyslet{/pgfplots/annot/width}\pgfplots@clickable@wd
+		\edef\pgfplots@clickable@ht{\the\pgf@y}%
 		\pgfkeyslet{/pgfplots/annot/height}\pgfplots@clickable@ht
 		\pgfkeyslet{/pgfplots/annot/xmin}\pgfplots@clickable@xmin
 		\pgfkeyslet{/pgfplots/annot/xmax}\pgfplots@clickable@xmax
@@ -938,6 +965,23 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		\else
 			\pgfkeyssetvalue{/pgfplots/annot/yscale}{log:\pgfkeysvalueof{/pgfplots/log basis y}}%
 		\fi
+		%
+		\pgfpointdiff
+			\lowerleftinnercorner
+			\origin
+		\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+		\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+		\pgfkeyslet{/pgfplots/annot/origin}\pgfplots@loc@TMPa
+		%
+		\pgfplotspointxaxis
+		\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+		\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+		\pgfkeyslet{/pgfplots/annot/x axis}\pgfplots@loc@TMPa
+		%
+		\pgfplotspointyaxis
+		\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+		\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+		\pgfkeyslet{/pgfplots/annot/y axis}\pgfplots@loc@TMPa
 		%
 		% communicate collected plot coordinates:
 		\pgfplotsapplistXgloballet\pgfplots@clickable@collectedplots@@=\pgfplots@clickable@collectedplots
