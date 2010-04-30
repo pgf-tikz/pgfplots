@@ -20,6 +20,8 @@
 % 
 % This is a library to draw ternary diagrams.
 %
+% How to read a ternary diagram:
+%  http://www.sv.vt.edu/classes/MSE2094_NoteBook/96ClassProj/experimental/ternary2.html
 % A ternary diagram visualizes percentages of three components in a
 % triangle.
 %
@@ -62,6 +64,11 @@
 	\let\pgfplotspoint@initialisation@axes=\pgfplots@ternary@point@initialisation@axes
 	\let\pgfplotspoint@initialisation@units=\pgfplots@ternary@point@initialisation@units
 	\let\pgfplots@initsizes@setunitvector=\pgfplots@ternary@initsizes@setunitvector
+	\let\pgfplotspointouternormalvectorofaxis@=\pgfplotspointouternormalvectorofaxis@ternary
+	\pgfkeys{/pgfplots/oriented surf installed/.add={}{%
+		\let\pgfplotspointonorientedsurfaceab@ternary@orig=\pgfplotspointonorientedsurfaceab
+		\let\pgfplotspointonorientedsurfaceab=\pgfplotspointonorientedsurfaceab@ternary
+	}}%
 	\pgfkeyssetvalue{/pgfplots/view/az}{}%
 	\pgfkeyssetvalue{/pgfplots/view/el}{}%
 	\let\pgfplots@set@options@sanitize=\relax
@@ -97,6 +104,21 @@
 	\let\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn=\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@%
 }%
 
+\def\pgfplotspointonorientedsurfaceab@ternary#1#2{%
+	\pgfmath@basic@subtract@{#2}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
+	\pgfmath@basic@multiply@{\pgfmathresult}{\csname pgfplots@ternary@pre@map@scale@\pgfplotspointonorientedsurfaceB\endcsname}%
+	\let\pgfplotspointonorientedsurfaceab@ternary@B=\pgfmathresult
+	\ifcase\pgfplotspointonorientedsurfacespecsymbol
+	\or
+	\else	
+		\pgfplots@error{Internal processing error: only \string\pgfplotspointonorientedsurfaceab\space for ternary axes works only for oriented surfs fixed to LOWER or UPPER axis limits.}%
+	\fi
+	\pgfmath@basic@subtract@{1}{\pgfplotspointonorientedsurfacespecsymbol}%
+	\pgfmath@basic@subtract@{\pgfmathresult}{\pgfplotspointonorientedsurfaceab@ternary@B}%
+	\let\pgfplotspointonorientedsurfaceab@ternary@A=\pgfmathresult
+	%
+	\pgfplotspointonorientedsurfaceab@ternary@orig{\pgfplotspointonorientedsurfaceab@ternary@A}{\pgfplotspointonorientedsurfaceab@ternary@B}%
+}%
 
 \let\pgfplots@ternary@initsizes@orig=\pgfplots@initsizes
 \def\pgfplots@ternary@initsizes{%
@@ -121,11 +143,23 @@
 \def\pgfplots@ternary@initsizes@setunitvector#1#2#3#4{%
 	\def#4{0}% whether we have (#1,0) or (0,#1)
 	\ifcase#2%
-		\pgfsetxvec{\pgfplots@ternary@qpointxyz\pgfplots@xmax0\pgfplots@zmax}%
+		\pgfsetxvec{%
+			\pgfpointdiff
+				{\pgfplots@ternary@qpointxyz001}
+				{\pgfplots@ternary@qpointxyz100}%
+		}%
 	\or
-		\pgfsetyvec{\pgfplots@ternary@qpointxyz\pgfplots@xmax\pgfplots@ymax0}%
+		\pgfsetyvec{%
+			\pgfpointdiff
+				{\pgfplots@ternary@qpointxyz100}
+				{\pgfplots@ternary@qpointxyz010}%
+		}%
 	\or
-		\pgfsetzvec{\pgfplots@ternary@qpointxyz0\pgfplots@ymax\pgfplots@zmax}%
+		\pgfsetzvec{%
+			\pgfpointdiff
+				{\pgfplots@ternary@qpointxyz010}
+				{\pgfplots@ternary@qpointxyz001}%
+		}%
 	\fi
 	\pgfmathveclen{\csname pgf@#1x\endcsname}{\csname pgf@#1y\endcsname}%
 	% The numbers 1/||e_x|| and 1/||e_y|| are used by the tick
@@ -237,30 +271,72 @@
 	\fi
 }%
 \def\pgfplots@ternary@draw@axis{%
-	% this should become the line for varying x:
-	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmax}{1}%
-	% it REQUIRES 
-	% 	z fixed to \pgfplots@zmax (ok)
-	% 	y fixed to \pgfplots@ymin (to be done by options)
-	\pgfplots@draw@axis@insurface xyz
-	%
-	% this should become the line for varying y:
-	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmin}{0}%
-	% it REQUIRES 
-	% 	z fixed to \pgfplots@zmin (ok)
-	% 	x fixed to \pgfplots@xmax (to be done by options)
-	%\pgfplots@draw@axis@insurface yxz
-	%
-	%
-	% this should become the line for varying z:
-	\pgfplotspointonorientedsurfaceabsetupforsetx{\pgfplots@xmin}{0}%
-	% it REQUIRES 
-	% 	x fixed to \pgfplots@xmin (ok)
-	% 	y fixed to \pgfplots@ymax (to be done by options)
-	%\pgfplots@draw@axis@insurface zyx
+	\pgfplots@ternary@draw@axislines
+}%
+\def\pgfplots@ternary@draw@axislines{%
+	\ifpgfplots@separate@axis@lines
+		\scope[/pgfplots/every outer x axis line,
+			xdiscont,decoration={pre length=\csname xdisstart\endcsname, post length=\csname xdisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+				\pgfpathmoveto{\pgfplotsqpointxyz001}%
+				\pgfpathlineto{\pgfplotsqpointxyz100}%
+			\endpgfextra 
+		};
+		\endscope
+		%
+		\scope[/pgfplots/every outer y axis line,
+			ydiscont,decoration={pre length=\csname ydisstart\endcsname, post length=\csname ydisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+		\pgfpathmoveto{\pgfplotsqpointxyz100}%
+		\pgfpathlineto{\pgfplotsqpointxyz010}%
+			\endpgfextra 
+		};
+		\endscope
+		%
+		\scope[/pgfplots/every outer z axis line,
+			zdiscont,decoration={pre length=\csname zdisstart\endcsname, post length=\csname zdisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+		\pgfpathmoveto{\pgfplotsqpointxyz010}%
+		\pgfpathlineto{\pgfplotsqpointxyz001}%
+			\endpgfextra 
+		};
+		\endscope
+	\else
+		\draw[
+			/pgfplots/every outer x axis line, % FIXME! these outer styles need much more attention :-(
+			/pgfplots/every outer y axis line]
+		\pgfextra{%
+		\pgfpathmoveto{\pgfplotsqpointxyz001}%
+		\pgfpathlineto{\pgfplotsqpointxyz100}%
+		\pgfpathlineto{\pgfplotsqpointxyz010}%
+		\pgfpathlineto{\pgfplotsqpointxyz001}%
+		};
+	\fi
 }%
 
 \def\pgfplots@ternary@draw@axis@post{%
 	% do nothing. There is no 3d box to draw here.
+}%
+
+\def\pgfplotspointouternormalvectorofaxis@ternary#1#2#3\relax{%
+	\if v#1%
+		\pgfpointadd
+			{\pgfplotspointyaxis}%
+			{\pgfplotspointzaxis}%
+	\else
+		\if v#2%
+			\pgfpointadd
+				{\pgfplotspointxaxis}%
+				{\pgfplotspointzaxis}%
+		\else
+			\pgfpointadd
+				{\pgfplotspointxaxis}%
+				{\pgfplotspointyaxis}%
+		\fi
+	\fi
+	\pgf@process{\pgfpointnormalised{}}%
 }%
 \endinput
