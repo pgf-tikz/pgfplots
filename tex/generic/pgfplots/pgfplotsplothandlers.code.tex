@@ -88,7 +88,9 @@
 % (see pgfmoduleplot.code.tex for example). BUT: do NOT overwrite
 % these methods globally!
 %
-% 2. THE SURVEY PHASE:
+% 2. A Description of the two phases:
+%
+% THE SURVEY PHASE:
 %   The survey phase works as follows.
 %   PRECONDITION:
 %   	- we are `inside' of an axis.
@@ -128,6 +130,9 @@
 %   	stacking, ...).
 %   	- The plot's survey state is stored using its serialized
 %   	representation.
+%
+% THE VISUALIZATION PHASE:
+% FIXME
 %
 % 2.1 The API of an axis
 %
@@ -217,6 +222,16 @@
 % In fact, this is more or less the initial configuration used for
 % lineto or similar plot handlers.
 %
+% 2.2 Further Survey Phase API functions
+%   \pgfplotsplothandlersurveyaddoptions{<options>}
+% which allows to change the current plot style from within API
+% functions. It sets <options> and remembers them for the
+% visualization phase.
+%
+%   \pgfplotsaxisupdatelimitsforpointmeta{<meta>},
+% provided there is a point meta input handler (which is numeric).
+% Otherwise, the command is equal to \relax.
+%
 %
 % 3. Details about the VISUALIZATION phase
 %
@@ -225,8 +240,12 @@
 % \pgfplotstreamstart
 % foreach serialized coordinate {
 % 	pgfplots calls \pgfplotsplothandlerdeserializestatefrom{<serialized repr>}
-% 	pgfplots calls \pgfplotsaxisvisphasetransformcoordinate
-% 	pgfplots calls \pgfplotsaxisvisphasepreparedatapoint
+% 	if coordinate is empty ("unbounded")
+% 		pgfplots call \pgfplotsplothandlervisualizejump
+% 	else
+% 		pgfplots calls \pgfplotsaxisvisphasetransformcoordinate
+% 		pgfplots calls \pgfplotsaxisvisphasepreparedatapoint
+% 	fi
 % 	\pgfplotstreampoint
 % }
 % \pgfplotstreamend
@@ -234,15 +253,16 @@
 % User defined plot handlers might need to invoke
 % \pgfplotsaxisvisphasetransformcoordinate on their own.
 %
-% During the visualization phase, you can also use
-% \pgfplotsaxisvisphasetransformpointmeta to set up point meta.
+% During the visualization phase, the following macros can be used:
+%
+% - \pgfplotsaxisvisphasetransformpointmeta to set up point meta.
 % Use this only if there *is* point meta, see
 % \pgfplotsaxisifhaspointmeta{<true code>}{<false code>}.
 %
-% There is also
-% \pgfplotsaxisupdatelimitsforpointmeta{<meta>},
-% provided there is a point meta input handler (which is numeric).
-% Otherwise, the command is equal to \relax.
+% 4. API Functions of pgfplots to work with the visualization phases
+%
+% \pgfplotsifissurveyphase{<true code>}{<false code>}
+% \pgfplotsifisvisualizationphase{<true code>}{<false code>}
 
 
 % Resets the plot handler routines.
@@ -250,16 +270,23 @@
 % This is necessary before installing a new plot handler!
 \def\pgfplotsresetplothandler{%
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@default
+	\let\pgfplotsplothandlername=\pgfplotsplothandlername@default
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@default
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@default
 	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@default
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@default
 	\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@default
 	\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@default
+	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlervisualizejump@default
 }%
 
 % \pgfplotsplothandlersurveystart
 \def\pgfplotsplothandlersurveystart@default{}%
+
+% \pgfplotsplothandlername
+\def\pgfplotsplothandlername@default{%
+	\edef\pgfplotsretval{[unnamed tikz@plot@handler: \meaning\pgf@plotstreamstart]}%
+}%
 
 % \pgfplotsplothandlersurveyend
 % Called at the end of each survey phase.
@@ -342,6 +369,11 @@
 %
 \def\pgfplotsplothandlerdeserializestatefrom@default#1{%
 	#1%
+}%
+
+\def\pgfplotsplothandlervisualizejump@default{%
+	\pgfplotstreamend
+	\pgfplotstreamstart
 }%
 
 \pgfplotsresetplothandler
@@ -731,31 +763,6 @@
 			\E\fi
 		\E\fi
 		%
-		%
-		\E\ifpgfplotsaxisparsecoordinateok
-			% coordinate is bounded AND non-empty, ok.
-			% insert the main 2d/3d code here:
-			\ifpgfplots@apply@datatrafo
-				\ifpgfplots@datascaletrafo@initialised
-					% apply data transformation directly.
-					% FIXME : as far as I remember, this will *never* happen.
-					\ifpgfplots@apply@datatrafo@x
-						\E\pgfplots@datascaletrafo@x\E\pgfplots@current@point@x
-						\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
-					\fi
-					\ifpgfplots@apply@datatrafo@y
-						\E\pgfplots@datascaletrafo@y\E\pgfplots@current@point@y
-						\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
-					\fi
-					\ifpgfplots@curplot@threedim
-						\ifpgfplots@apply@datatrafo@z
-							\E\pgfplots@datascaletrafo@z\E\pgfplots@current@point@z
-							\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
-						\fi
-					\fi
-				\fi
-			\fi
-		\E\fi
 	}%
 	%
 	\endgroup
@@ -878,6 +885,7 @@
 			\let\pgfplots@quiver@scale=\pgfutil@empty
 		\else
 			\pgfmathparse{\pgfplots@quiver@scale}%
+			\pgfmathfloatparsenumber\pgfplots@quiver@scale
 			\let\pgfplots@quiver@scale=\pgfmathresult
 		\fi
 	\fi
@@ -896,7 +904,7 @@
 		\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
 		\ifx\pgfplots@quiver@scale\pgfutil@empty
 		\else
-			\noexpand\pgfmathmultiply@{\pgfplots@quiver@scale}{\the\t@pgfplots@tokb}%
+			\noexpand\pgfmathfloatmultiply@{\pgfplots@quiver@scale}{\the\t@pgfplots@tokb}%
 			\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
 		\fi
 	}%
@@ -1178,3 +1186,443 @@
 	\fi
 }%
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%
+% Contour plots
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
+\newif\ifpgfplotsplothandlercontour@labels
+\newif\ifpgfplotsplothandlercontour@filled
+
+\pgfplotsset{
+	contour prepared/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlercontourprepared
+		\pgfqkeys{/pgfplots/contour}{%
+			#1,%
+		}%
+	},
+	contour prepared filled/.style={%
+		/pgfplots/contour prepared={draw color=mapped color!80!black,labels=false,filled=true},
+	},
+	% FIXME : should use \tikz@plot@handler instead of just the
+	% visualization thing!
+	contour/handler/.style={/tikz/sharp plot},
+	contour/draw color/.initial=mapped color,
+	contour/fill color/.initial=mapped color,
+	contour/label distance/.initial=70pt,
+	contour/label node code/.code={%
+		\node {\pgfmathprintnumber{#1}};
+	},%
+	contour/labels/.is if=pgfplotsplothandlercontour@labels,
+	contour/labels=true,
+	contour/filled/.is if=pgfplotsplothandlercontour@filled,
+	contour/filled/.default=true,
+	contour/data limits/.initial=,% FIXME EXPERIMENTAL
+	contour/every contour label/.style={%
+		sloped,%
+		transform shape,%
+		inner sep=2pt,
+		every node/.style={mapped color!50!black,fill=white},%
+		%every node/.style={yshift=10pt},%
+	},
+}%
+\def\pgfplotsplothandlercontourprepared{%
+	\pgfplotsresetplothandler
+	\ifpgfplots@curplot@threedim
+		\pgfplotsset{/pgfplots/set point meta if empty=z}%
+	\else
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfplots@error{Sorry, contour requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
+		}%
+	\fi
+	\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@visstart
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlercontour@surveyend
+}%
+
+\def\pgfplotsplothandlercontour@surveyend{%
+	\pgfplotsplothandlercontour@init@limits
+	\ifx\pgfplotsplothandlercontour@limits@low@meta\pgfutil@empty
+	\else
+		\pgfplotsaxisupdatelimitsforpointmeta\pgfplotsplothandlercontour@limits@low@meta
+	\fi
+}%
+
+\def\pgfplotsplothandlercontour@visstart{%
+	%
+	\ifpgfplotsplothandlercontour@labels
+		\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
+		\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
+		\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
+		%
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+		\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@handlesplinesegment@forlabels
+	\else
+		\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
+	\fi
+	%
+	\ifpgfplotsplothandlercontour@filled
+		\pgfseteorule
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+		\pgfplotsplothandlercontour@init@limits
+	\fi
+	%
+	\pgfplotsresetplothandler
+	\pgfplotsset{/pgfplots/contour/handler}%
+	\tikz@plot@handler
+	%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
+	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlercontour@jump
+	%
+	\let\pgfplotsplothandlercontour@handler@start=\pgf@plotstreamstart
+	\let\pgfplotsplothandlercontour@lastcontour=\pgfutil@empty
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+}%
+
+\def\pgfplotsplothandlercontour@jump{%
+	\def\pgfplotsplothandlercontour@haspendingjump{1}%
+}%
+
+\def\pgfplotsplothandlercontour@streamend{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		%
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+		\pgfplotsplothandlercontour@finishcontourline
+		%
+		\ifpgfplotsplothandlercontour@filled
+			\if0\pgfplotsplothandlercontour@processed@outer
+				\pgfplotsplothandlercontour@stream@bbcontour
+				\pgfplotsplothandlercontour@finishcontourline
+			\fi
+		\fi
+		%
+		\ifpgfplotsplothandlercontour@labels
+			\scope[/pgfplots/contour/every contour label]
+			\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+			\expandafter\pgfplotsplothandlercontourplacelabels\pgfplotsplothandlercontour@storedlabels@\pgfplots@EOI
+			\endscope
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@check@bbcontour{%
+	\ifpgfplotsplothandlercontour@filled
+		\if0\pgfplotsplothandlercontour@processed@outer
+			\pgfplotscoordmath{meta}{if less than}
+				{\pgfplotsplothandlercontour@act@contour}
+				{\pgfplotsplothandlercontour@limits@low@meta}
+				{%
+					% TRUE!
+					\pgfplotsplothandlercontour@stream@bbcontour@inbetween
+				}{}%
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@stream@bbcontour@inbetween{%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+}%
+
+\def\pgfplotsplothandlercontour@stream@bbcontour{%
+\message{contour: processing OUTER data limit contour...}%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}% important
+	%
+	% forbid labels:
+	\let\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting=\pgfplotsplothandlercontour@handlesplinesegment
+	\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
+	%
+	\let\pgfplots@current@point@meta=\pgfplotsplothandlercontour@limits@low@meta
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+	%
+	% restore labels:
+	\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting
+}%
+\def\pgfplotsplothandlercontourplacelabels#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		%
+		\pgfplotsplothandlercontourplacelabels@act#1\relax
+		%
+		\expandafter\pgfplotsplothandlercontourplacelabels
+	\fi
+}%
+\def\pgfplotsplothandlercontourplacelabels@act#1,#2;#3,#4;#5\relax{%
+	\begingroup
+	\def\pgfplots@current@point@meta{#5}%
+	\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+	%
+	\pgftransformlineattime{0.5}{\pgfqpoint{#1}{#2}}{\pgfqpoint{#3}{#4}}%
+	\pgfkeysvalueof{/pgfplots/contour/label node code/.@cmd}#5\pgfeov
+	\endgroup
+}%
+
+\def\pgfplotsplothandlercontour@streampoint#1{%
+	\pgf@process{#1}%
+	% remember point:
+	\edef\pgfplotsplothandlercontour@act@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+		% oh. its the very first point.
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+		\pgfplotsplothandlercontour@preparenewcontourline
+	\else
+		\ifx\pgfplotsplothandlercontour@lastcontour\pgfplotsplothandlercontour@act@contour
+			% belongs to the same contour.
+			\if1\pgfplotsplothandlercontour@haspendingjump
+				\pgfplotsplothandlercontour@finishcontourline
+				\pgfplotsplothandlercontour@preparenewcontourline
+			\fi
+		\else
+			% oh, a new contour line.
+			\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+			\pgfplotsplothandlercontour@finishcontourline
+			\pgfplotsplothandlercontour@check@bbcontour
+			\pgfplotsplothandlercontour@preparenewcontourline
+		\fi
+	\fi
+	%
+	%
+	% handle difference vector for label placement:
+	\ifx\pgfplotsplothandlercontour@lastcanvas\pgfutil@empty
+	\else
+		\pgfplotsplothandlercontour@handlesplinesegment
+			{\pgfplotsplothandlercontour@lastcanvas}
+			{\pgfplotsplothandlercontour@act@canvas}%
+			{\pgfplotsplothandlercontour@act@contour}%
+	\fi
+	%
+	\pgfplotsplothandlercontour@handler@streampoint{\pgfplotsplothandlercontour@act@canvas}%
+	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfplotsplothandlercontour@lastcanvas
+	\let\pgfplotsplothandlercontour@lastcanvas=\pgfplotsplothandlercontour@act@canvas
+	\let\pgfplotsplothandlercontour@lastcontour=\pgfplotsplothandlercontour@act@contour
+	%
+	\ifpgfplotsplothandlercontour@filled
+		\t@pgfplots@toka=\expandafter{\expandafter{\pgfplotsplothandlercontour@act@canvas}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter\pgf@plotstreampoint\the\t@pgfplots@toka
+			\to\pgfplotsplothandlercontour@stored@lastcontourpath
+	\fi
+	%
+	\ifx\pgf@plotstreampoint\pgfplotsplothandlercontour@streampoint
+	\else
+		\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+	\fi
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+	% ATTENTION : if the low level plot handler introduces extra
+	% levels of scopes, this *will* fail!
+}%
+
+%
+% #1 : source
+% #2 : target
+% #3 : contour value
+\def\pgfplotsplothandlercontour@handlesplinesegment@forlabels#1#2#3{%
+	#2%
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	#1%
+	\pgf@xc=\pgf@x
+	\pgf@yc=\pgf@y
+	\pgfpointdiff
+		{\pgf@x=\pgf@xc \pgf@y=\pgf@yc}
+		{\pgf@x=\pgf@xb \pgf@y=\pgf@yb}%
+	\edef\pgfplots@loc@TMPa{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+	\expandafter\pgfmath@basic@veclen@\pgfplots@loc@TMPa
+	\pgf@xa=\pgfmathresult pt
+	%
+	\advance\pgf@xa by\pgfplotsplothandlercontour@len\relax
+	\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+%\message{contour(\pgfplotsplothandlercontour@act@contour): cur len=\pgfplotsplothandlercontour@len > \pgfplotsplothandlercontour@labeldist ? [segment from #1--#2];}%
+	\ifdim\pgf@xa>\pgfplotsplothandlercontour@labeldist\relax
+		\def\pgfplotsplothandlercontour@haslabel{1}%
+		\edef\pgfplots@loc@TMPa{{\the\pgf@xc,\the\pgf@yc;\the\pgf@xb,\the\pgf@yb;{#3}}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to\pgfplotsplothandlercontour@storedlabels
+		\advance\pgf@xa by-\pgfplotsplothandlercontour@labeldist\relax
+		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa\relax}%
+	\fi
+}%
+
+
+\def\pgfplotsplothandlercontour@preparenewcontourline{%
+	\if0\pgfplotsplothandlercontour@haspendingjump
+\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
+		% a completely new level has been
+		% started, not due to jumps inside of one level.
+		%
+		% thus, we need to compute 'mapped color':
+		\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+		\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/contour/draw color}}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/contour/fill color}}%
+		\fi
+		%
+		% furthermore, we need to handle the 'filled' style:
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@stored@lastcontourpath@=\pgfplotsplothandlercontour@stored@lastcontourpath
+			% flush:
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+			%
+			% process it:
+			\ifx\pgfplotsplothandlercontour@stored@lastcontourpath@\pgfutil@empty
+				% oh. This here is the very first contour. Nothing to do!
+			\else
+				% ok. This here is the i'th contour level, i>0.
+				% Thus, we have the 'i-1'th contour stored.
+				% REPLICATE its path to fill the space between the (i-1)'th contour and the i'th one!
+				\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@handler@start
+				\pgf@plotstreamstart
+				\pgfplotsplothandlercontour@stored@lastcontourpath@
+				\pgf@plotstreamend
+			\fi
+		\fi
+	\else
+\message{PREPARE NEW CONTOUR for the already begun level \pgfplots@current@point@meta.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamstart\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
+	%
+	\let\pgfplotsplothandlercontour@lastcanvas=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfutil@empty
+	\ifpgfplotsplothandlercontour@labels
+		\def\pgfplotsplothandlercontour@haslabel{0}%
+		% 
+		% this here means that 20% of labeldist are already there.
+		% it moves the first label nearer to its start.
+		\pgf@xa=\pgfplotsplothandlercontour@labeldist\relax
+		\pgf@xa=0.2\pgf@xa
+		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+	\fi
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
+	%
+	\pgfplotsplothandlercontour@handler@start
+	\let\pgfplotsplothandlercontour@handler@end=\pgf@plotstreamend
+	\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+}%
+\def\pgfplotsplothandlercontour@finishcontourline{%
+	\ifpgfplotsplothandlercontour@labels
+		\if0\pgfplotsplothandlercontour@haslabel
+			\ifx\pgfplotsplothandlercontour@lastlastcanvas\pgfutil@empty
+			\else
+				% force a label:
+%\message{FORCING A LABEL for contour \pgfplotsplothandlercontour@lastcontour\space from (\pgfplotsplothandlercontour@lastlastcanvas --\pgfplotsplothandlercontour@lastcanvas)}%
+				\edef\pgfplotsplothandlercontour@len{\pgfplotsplothandlercontour@labeldist}%
+				\pgfplotsplothandlercontour@handlesplinesegment
+					{\pgfplotsplothandlercontour@lastlastcanvas}
+					{\pgfplotsplothandlercontour@lastcanvas}%
+					{\pgfplotsplothandlercontour@lastcontour}%
+			\fi
+		\fi
+	\fi
+	\pgfplotsplothandlercontour@handler@end
+	%
+%	\ifpgfplotsplothandlercontour@filled
+%		\pgfpathclose % FIXME  this is, in general, not good enough.
+%	\fi
+	\if0\pgfplotsplothandlercontour@haspendingjump
+\message{usepath{} to finalize level \pgfplotsplothandlercontour@lastcontour.}%
+		% flush paths if the complete contour level is ready.
+		% do *not* flush paths if we have just a new part of the
+		% existing contour level.
+		%
+		% This makes a difference for the filled contour.
+		\ifpgfplotsplothandlercontour@filled
+			\pgfusepath{fill,stroke}%
+		\else
+			\pgfusepath{stroke}%
+		\fi
+	\else
+\message{usepath{} for level \pgfplotsplothandlercontour@lastcontour.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamend\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
+}%
+
+\def\pgfplotsplothandlercontour@init@limits{%
+	\def\pgfplotsplothandlercontour@processed@outer{0}%
+	\let\pgfplotsplothandlercontour@limits@low@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@z=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@z=\pgfutil@empty
+	%
+	\pgfkeysgetvalue{/pgfplots/contour/data limits}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplotsplothandlercontour@processed@outer{1}%
+	\else
+		\expandafter\pgfplotsplothandlercontour@init@limits@getboundingboxlow\pgfplots@loc@TMPa\pgfplots@EOI
+	\fi
+	\message{contour: I processed data limits to MIN = (\pgfplotsplothandlercontour@limits@low@x,\pgfplotsplothandlercontour@limits@low@y,\pgfplotsplothandlercontour@limits@low@z;\pgfplotsplothandlercontour@limits@low@meta) and MAX = (\pgfplotsplothandlercontour@limits@high@x,\pgfplotsplothandlercontour@limits@high@y,\pgfplotsplothandlercontour@limits@high@z;\pgfplotsplothandlercontour@limits@high@meta).}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxlow(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{low}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@ifnextchar(%
+		\pgfplotsplothandlercontour@init@limits@getboundingboxhigh
+		{\pgfplots@error{Sorry, 'data limits=(xmin,ymin,zmin,contourmin) (xmax,ymax,zmax,contourmax)' has been expected, not \pgfkeysvalueof{/pgfplots/contour/data limits}}\pgfplots@gobble@until@EOI}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxhigh(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{high}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@gobble
+}%
+\def\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4){%
+	% FIXME : logs and trafos and user interface!
+	\pgfplotscoordmath{x}{parsenumber}{#1}%
+	\pgfplotscoordmath{x}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @x\endcsname=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{#2}%
+	\pgfplotscoordmath{y}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @y\endcsname=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{#3}%
+		\pgfplotscoordmath{z}{datascaletrafo}\pgfmathresult
+		\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @z\endcsname=\pgfmathresult
+	\fi
+	%
+	\pgfplotscoordmath{meta}{parsenumber}{#4}%
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @meta\endcsname=\pgfmathresult
+}%

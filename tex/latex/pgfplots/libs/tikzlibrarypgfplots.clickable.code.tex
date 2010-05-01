@@ -23,6 +23,103 @@
 \edef\pgfplotscatcodeDQ{\the\catcode`\"}%
 \catcode`\"=12
 
+\newif\ifpgfplots@clickable
+\newif\ifpgfplots@annot@printable
+
+\pgfqkeys{/pgfplots}{
+	@backgroundpath@hook/.add code={}{\pgfplots@create@clickable@plotarea@hook},
+	clickable/.is if=pgfplots@clickable,
+	clickable/.default=true,
+	clickable=true,
+	/pgfplots/execute at begin axis/.add={}{%
+		\pgfplots@clickable@beginaxis
+	},%
+	clickable coords code/.code={
+		\def\pgfplots@clickable@init@@{%
+			\pgfplots@clickable@startcoordcollect
+			\pgfplotsset{%
+				/pgfplots/execute at end plot@@/.add={}{%
+					\pgfplots@clickable@endcoordcollect
+				},
+				/pgfplots/execute for finished point/.add={}{%
+					\pgfplots@clickable@coordcollect{#1}%
+				},%
+			}%
+			\let\pgfplots@clickable@init@@=\relax
+		}%
+		\pgfkeysalso{%
+			/pgfplots/execute at begin plot@@/.add={}{%
+				\pgfplots@clickable@init@@
+			},
+		}%
+	},
+	clickable coords/.style={
+		clickable coords code={\def\pgfplotsretval{#1}},
+	},
+	clickable coords/.default={(xy)},
+	annot/js fillColor/.initial={["RGB",1,1,.855]},
+	annot/point format/.initial={(\%.1f, \%.1f)},
+	annot/point format 3d/.initial={(\%.1f, \%.1f, \%.1f)},
+	annot/slope format/.initial={\%.1f*x \%+.1f},
+	annot/printable/.is if=pgfplots@annot@printable,
+	annot/printable/.default=true,
+	% Available are:
+% Times-Roman           font.Times
+% Times-Bold            font.TimesB
+% Times-Italic          font.TimesI
+% Times-BoldItalic      font.TimesBI
+% Helvetica             font.Helv
+% Helvetica-Bold        font.HelvB
+% Helvetica-Oblique     font.HelvI
+% Helvetica-BoldOblique font.HelvBI
+% Courier               font.Cour
+% Courier-Bold          font.CourB
+% Courier-Oblique       font.CourI
+% Courier-BoldOblique   font.CourBI
+% Symbol                font.Symbol
+% ZapfDingbats          font.ZapfD
+	annot/font/.initial={font.Times},
+%	annot/font={"CMR10"},
+	annot/textSize/.initial=11,
+	annot/width/.initial=,
+	annot/height/.initial=,
+	annot/jsname/.initial=,
+	annot/dim/.initial=2,
+	annot/xmin/.initial=,
+	annot/xmax/.initial=,
+	annot/ymin/.initial=,
+	annot/ymax/.initial=,
+	annot/zmin/.initial=,
+	annot/zmax/.initial=,
+	annot/xscale/.initial=, % "log" or "linear" or "log:<basis>"
+	annot/yscale/.initial=,
+	annot/zscale/.initial=,
+	annot/minminmin/.initial=,
+	annot/xaxis/.initial=,
+	annot/yaxis/.initial=,
+	annot/zaxis/.initial=,
+	% format: 
+	% 	[<plot1coords>, <plot2coords>,...,<plotncoords>]
+	% with <ploticoords> = [<coord>,<coord>,....,<coord>]
+	% and <coord> = [ <x>, <y>, "text" ]
+	% for example:
+	% 	[[[0.0e0,-4.0849609e-1,": (0,0)"],[1.25e-1,-3.7412109e-1,": (3,1)"],[2.5e-1,-3.0849609e-1,": (2,1)"],[3.75e-1,-2.1162109e-1,": (3,3)"],[5.0e-1,-8.3496094e-2,": (1,1)"],[6.25e-1,7.5878906e-2,": (3,5)"],[7.5e-1,2.6650391e-1,": (2,3)"],[8.75e-1,4.8837891e-1,": (3,7)"],[1.0e0,7.4150391e-1,": (0,1)"]]]
+	annot/collected plots/.initial=,
+	annot/snap dist/.initial=4,
+	every semilogy axis/.append style={/pgfplots/annot/point format={(\%.1f, \%.1e)}},
+	every semilogx axis/.append style={/pgfplots/annot/point format={(\%.1e, \%.1f)}},
+	every loglog axis/.append style={/pgfplots/annot/point format={(\%.1e, \%.1e)}},
+}
+
+\pgfkeysifdefined{/pgfplots/annot/xy pattern}{%
+}{%
+	\pgfkeyssetvalue{/pgfplots/annot/xy pattern}{(xy)}%
+}%
+\pgfkeysifdefined{/pgfplots/annot/no such coord}{%
+}{%
+	\pgfkeyssetvalue{/pgfplots/annot/no such coord}{--}%
+}%
+
 % ATTENTION:
 % The eforms package creates \begin{Form} and \end{Form} in \AtBeginDocument and \AtEndDocument!
 \def\pgfplots@glob@TMPa{pgfsys-pdftex.def}
@@ -277,112 +374,345 @@ function sprintf( ) {
 /*********************************************************************************/
 
 
-var lastMouseX = -1;
-var lastMouseY = -1;
+var lastPoint = null;
 var posOnMouseDownX = -1;
 var posOnMouseDownY = -1;
 
 // preallocation.
-var tmpArray1 = new Array(2);
-var tmpArray2 = new Array(2);
+var tmpArray1 = new Array(3);
+var tmpArray2 = new Array(3);
+
+var clickablePatternForXY="\pgfkeysvalueof{/pgfplots/annot/xy pattern}";
+var clickableStringNoSuchCoord = "\pgfkeysvalueof{/pgfplots/annot/no such coord}";
 
 /**
- * Takes an already existing TextField, changes its value to \c value and places it at (x,y).
+ * Takes an already existing TextField, changes its value to point.text and places it at (x,y).
  * Additional \c displayOpts will be used to format it.
  */
-function initTextField( x,y, textField, displayOpts, value )
+function ClickableCoordDraw( canvas, point, displayOpts )
 {
-	textField.value = ""+value;
-	var R = textField.rect;
-	R[0] = x;
-	R[1] = y;
-	R[2] = R[0] + displayOpts.textSize/2*Math.max( 5,value.length );
+	canvas.value = ""+point.text;
+	var R = canvas.rect;
+	R[0] = point.canvasx;
+	R[1] = point.canvasy;
+	R[2] = R[0] + displayOpts.textSize/2*Math.max( 5,point.text.length );
 	R[3] = R[1] - 1.5*displayOpts.textSize;
-	textField.rect = R;
-	textField.textFont = displayOpts.textFont;
-	textField.textSize = displayOpts.textSize;
-	textField.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
-	textField.doNotSpellCheck = true;
-	textField.readonly = true;
+	canvas.rect = R;
+	canvas.textFont = displayOpts.textFont;
+	canvas.textSize = displayOpts.textSize;
+	canvas.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
+	canvas.doNotSpellCheck = true;
+	canvas.readonly = true;
 	if( displayOpts.printable )
-		textField.display = display.visible;
+		canvas.display = display.visible;
 	else
-		textField.display = display.noPrint;
+		canvas.display = display.noPrint;
+	
+	var mark = this.getField( canvas.name + "mark");
+	if( mark ) {
+		R = mark.rect;
+		R[0]=point.canvasx-2;
+		R[1]=point.canvasy-2;
+		R[2]=R[0]+4;
+		R[3]=R[1]+4;
+		mark.value="";
+		mark.rect = R;
+		mark.fillColor = ["RGB",0,0,0];
+		mark.doNotSpellCheck = true;
+		mark.readonly = true;
+		if( displayOpts.printable )
+			mark.display = display.visible;
+		else
+			mark.display = display.noPrint;
+	}
 }
 
+function ClickableCoord(canvasx,canvasy, realx,realy, text)
+{
+	this.dim=2;
+	this.canvasx=canvasx;
+	this.canvasy=canvasy;
+	this.realx=realx;
+	this.realy=realy;
+	this.realz=0;
+	this.text=text;
+	this.sourcePlotIdx = -1;
+	this.sourceCoordIdx = -1;
+
+	this.isSnapToNearestCoord = function() {
+		return this.sourcePlotIdx >= 0;
+	}
+	this.draw=function( docObject, canvas, displayOpts )
+	{
+		canvas.value = ""+this.text;
+		var R = canvas.rect;
+		R[0] = this.canvasx;
+		R[1] = this.canvasy;
+		R[2] = R[0] + displayOpts.textSize/2*Math.max( 5,this.text.length );
+		R[3] = R[1] - 1.5*displayOpts.textSize;
+		canvas.rect = R;
+		canvas.textFont = displayOpts.textFont;
+		canvas.textSize = displayOpts.textSize;
+		canvas.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
+		canvas.doNotSpellCheck = true;
+		canvas.readonly = true;
+		if( displayOpts.printable )
+			canvas.display = display.visible;
+		else
+			canvas.display = display.noPrint;
+		
+		var mark = docObject.getField( canvas.name + "mark");
+		if( mark ) {
+			R = mark.rect;
+			R[0]=this.canvasx-2;
+			R[1]=this.canvasy-2;
+			R[2]=R[0]+4;
+			R[3]=R[1]+4;
+			mark.value="";
+			mark.rect = R;
+			mark.fillColor = ["RGB",0,0,0];
+			mark.doNotSpellCheck = true;
+			mark.readonly = true;
+			if( displayOpts.printable )
+				mark.display = display.visible;
+			else
+				mark.display = display.noPrint;
+		}
+	}
+}
+
+/**
+ * @return an instance of ClickableCoord or null.
+ * The returned canvas coordinates are NOT yet initialised.
+ */
+function findNearest( point, rect, axisAnnotObj, startSearchAt )
+{
+	var actx;
+	var acty;
+	var minSoFar = 1e324;
+	var minPtSoFar = null;
+	var tmpPt = null;
+	var dist =0;
+	var startPlot = 0;
+	var startCoord = 0;
+	var collectedPlots = axisAnnotObj.collectedPlots;
+	if( point.dim > 2 )
+		tmpPt = new ClickableCoord(0,0,0,0,"");
+		
+	if( startSearchAt && startSearchAt.isSnapToNearestCoord() ) {
+		startPlot = startSearchAt.sourcePlotIdx;
+		startCoord= startSearchAt.sourceCoordIdx;
+	}
+	for( var i = startPlot; i<collectedPlots.length; ++i ) {
+		for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
+			if( point.dim == 2 ) {
+				actx = collectedPlots[i][j][0] - point.realx;
+				acty = collectedPlots[i][j][1] - point.realy;
+			} else {
+				// dim > 2 should be compared using CANVAS coordinates, not real coordinates:
+				tmpPt.realx = collectedPlots[i][j][0];
+				tmpPt.realy = collectedPlots[i][j][1];
+				if( collectedPlots[i][j].length-1 >= 3 )
+					tmpPt.realz = collectedPlots[i][j][2];
+				else
+					tmpPt.realz = 0;
+				computeCanvasFor( tmpPt, rect, axisAnnotObj );
+				actx = tmpPt.canvasx - point.canvasx;
+				acty = tmpPt.canvasy - point.canvasy;
+			}
+			dist = actx*actx + acty*acty;
+			if( dist < minSoFar ) {
+			 	if( minPtSoFar == null )
+					minPtSoFar = new ClickableCoord(-1,-1,0,0,"");
+				minPtSoFar.realx = collectedPlots[i][j][0];
+				minPtSoFar.realy = collectedPlots[i][j][1];
+				if( collectedPlots[i][j].length-1 >= 3 )
+					minPtSoFar.realz = collectedPlots[i][j][2];
+				else
+					minPtSoFar.realz = 0;
+				minPtSoFar.text= collectedPlots[i][j][ collectedPlots[i][j].length-1 ];
+				minPtSoFar.sourcePlotIdx = i;
+				minPtSoFar.sourceCoordIdx = j;
+				minSoFar = dist;
+			}
+		}
+	}
+	if( minPtSoFar )
+		computeCanvasFor(minPtSoFar,rect,axisAnnotObj);
+	return minPtSoFar;
+}
+
+/**
+ * Returns either a ClickableCoord describing the point under the mouse cursor or a snap--to--nearest result near the mouse cursor.
+ *
+ * @param axisAnnotObj the axis in which we shall search.
+ * @param x,y the input canvas coordinates
+ * @param canvas a pointer to the Drawing object (TextField) whose 'rect' field is the drawing canvas.
+ * @param startSearch either null or an instance of ClickableCoord for which isSnapToNearestCoord() returns true. 
+ *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
+ * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
+ */
+function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
+{
+	// Get and modify bounding box. The mouse movement is only accurate up to one point 
+	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
+	var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to upper left corner
+	rect[0] = Math.round(rect[0]);
+	rect[1] = Math.round(rect[1]);
+	rect[2] = Math.round(rect[2]);
+	rect[3] = Math.round(rect[3]);
+	canvas.rect= rect;
+
+	var realx=-1;
+	var realy=-1;
+	if( axisAnnotObj.dim == 2 ) {
+		// the following code inverts computeCanvasFor():
+		var minminminx = rect[0] + axisAnnotObj.minminmin[0];
+		var minminminy = rect[3] + axisAnnotObj.minminmin[1];
+		var vecx = x - minminminx;
+		var vecy = y - minminminy;
+		var A = [ 
+			[axisAnnotObj.xaxis[0], axisAnnotObj.yaxis[0]],
+			[axisAnnotObj.xaxis[1], axisAnnotObj.yaxis[1]] ];
+		var b = [ vecx, vecy ];
+
+		var rowpermut = [0, 1];
+		if( Math.abs(A[0][0]) < 0.0001 ) {
+			rowpermut[0] = 1;
+			rowpermut[1] = 0;
+		}
+		var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
+		var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
+		var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
+
+		realx = axisAnnotObj.xmin + unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
+		realy = axisAnnotObj.ymin + unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
+		//console.println( "unitx = " + unitx + "; unity " + unity );
+	}
+
+
+	var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+	point.dim = axisAnnotObj.dim;
+
+	if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+		console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+		startSearch = null;
+	}
+	
+	var nearestClickableCoord = findNearest( point, rect,axisAnnotObj, startSearch );
+	if( nearestClickableCoord ) {
+		if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < axisAnnotObj.snapDist ) {
+			return nearestClickableCoord;
+		}
+	}
+	if( startSearch )
+		point = null;
+	if( axisAnnotObj.dim > 2 ) { // we didn't find a snap--to--nearest point.
+		point.text = clickableStringNoSuchCoord;
+	}
+
+	return point;
+}
+
+function getVecLen( t1,t2 ) {
+	return Math.sqrt( t1*t1 + t2*t2);
+}
+function getDist( x1,y1, x2,y2 ) {
+	var t1 = (x1-x2);
+	var t2 = (y1-y2);
+	return getVecLen(t1,t2);
+}
+
+/**
+ * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
+ */
+function computeCanvasFor( point, rect, axisAnnotObj)
+{
+	var unitx = (point.realx - axisAnnotObj.xmin) / (axisAnnotObj.xmax -axisAnnotObj.xmin);
+	var unity = (point.realy - axisAnnotObj.ymin) / (axisAnnotObj.ymax -axisAnnotObj.ymin);
+
+	point.canvasx = rect[0] + axisAnnotObj.minminmin[0] + axisAnnotObj.xaxis[0] * unitx + axisAnnotObj.yaxis[0] * unity;
+	point.canvasy = rect[3] + axisAnnotObj.minminmin[1] + axisAnnotObj.xaxis[1] * unitx + axisAnnotObj.yaxis[1] * unity;
+	if( axisAnnotObj.dim >= 3 ) {
+		var unitz = (point.realz - axisAnnotObj.zmin) / (axisAnnotObj.zmax -axisAnnotObj.zmin);
+		point.canvasx += axisAnnotObj.zaxis[0] * unitz;
+		point.canvasy += axisAnnotObj.zaxis[1] * unitz;
+	}
+}
 /**
  * Changes all required Field values of \c plotRegionField, inserts the proper
  * value and displays it at the pdf positions (x,y) .
  *
  * @param plotRegionField a reference to a Field object.
- * @param x the x coordinate where the annotation shall be placed and which is used to determine
+ * @param x the x canvas coordinate where the annotation shall be placed and which is used to determine
  *  the annotation text.
  * @param y the corresponding y coord.
  * @param axisAnnotObj An object containing axis references.
  * @param displayOpts An object for display flags.
- * @param[out] retCoords will be filled with the point in axis coordinates.
+ * @param[out] retCoords will be filled with the point in axis coordinates (should have length axisAnnotObj.dim).
  */
-function placeAnnot( plotRegionField, x,y, textField, axisAnnotObj, displayOpts, retCoords )
+function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCoords )
 {
-	// Get and modify bounding box. The mouse movement is only accurate up to one point 
-	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
-	var R = plotRegionField.rect;
-	R[0] = Math.round(R[0]);
-	R[1] = Math.round(R[1]);
-	R[2] = Math.round(R[2]);
-	R[3] = Math.round(R[3]);
-	plotRegionField.rect= R;
 
-	var w = R[2] - R[0];
-	var h = R[1] - R[3];
-
-	// compute position 0 <= mx <= 1, 0<= my <= 1 relative to lower(!) left corner.
-	var mx = x - R[0];
-	var my = h - (R[1] - y);
-
-	var unitx = mx / w;
-	var unity = my / h;
-
-	var realx = axisAnnotObj.xmin + unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
-	var realy = axisAnnotObj.ymin + unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
-
-	var transformedCoordx = realx;
-	var transformedCoordy = realy;
+	var transformedCoordx = point.realx;
+	var transformedCoordy = point.realy;
 
 	if( axisAnnotObj.xscale.length >= 3 && axisAnnotObj.xscale.substr(0,3) == "log" ) {
 		if( axisAnnotObj.xscale.length > 4 ) // log:<basis>
-			realx = realx * Math.log( axisAnnotObj.xscale.substr(4) );
+			point.realx = point.realx * Math.log( axisAnnotObj.xscale.substr(4) );
 		else {
 			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
 			// convert to base 10:
-			transformedCoordx = realx / Math.log(10);
+			transformedCoordx = point.realx / Math.log(10);
 		}
-		realx = Math.exp(realx);
+		point.realx = Math.exp(point.realx);
 	}
 	if( axisAnnotObj.yscale.length >= 3 && axisAnnotObj.yscale.substr(0,3) == "log" ) {
 		if( axisAnnotObj.yscale.length > 4 ) // log:<basis>
-			realy = realy * Math.log( axisAnnotObj.yscale.substr(4) );
+			point.realy = point.realy * Math.log( axisAnnotObj.yscale.substr(4) );
 		else {
 			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
 			// convert to base 10:
-			transformedCoordy = realy / Math.log(10);
+			transformedCoordy = point.realy / Math.log(10);
 		}
-		realy = Math.exp(realy);
+		point.realy = Math.exp(point.realy);
+	}
+	if( axisAnnotObj.dim > 2 ) {
+		if( axisAnnotObj.zscale.length >= 3 && axisAnnotObj.zscale.substr(0,3) == "log" ) {
+			if( axisAnnotObj.zscale.length > 4 ) // log:<basis>
+				point.realz = point.realz * Math.log( axisAnnotObj.zscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordz = point.realz / Math.log(10);
+			}
+			point.realz = Math.exp(point.realz);
+		}
 	}
 
-//	console.println( "w = " + w + "; h = " + h );
-//	console.println( "mx = " + mx + "; my = " + my );
-//	console.println( "unitx = " + unitx + "; unity " + unity );
-
-	initTextField( x,y, textField, displayOpts,
-		//util.printf( "(\pgfplotsPERCENT.2f,\pgfplotsPERCENT.2f)", realx,realy )
-		sprintf( displayOpts.pointFormat, realx,realy) );
+	// replace the text substring "(xy)" with the actual coordinates:
+	var coordOff = point.text.indexOf(clickablePatternForXY);
+	if( coordOff >= 0 ) {
+		point.text = 
+			point.text.substring( 0, coordOff ) + 
+			sprintf( displayOpts.pointFormat, point.realx,point.realy,point.realz) +
+			point.text.substr( coordOff+clickablePatternForXY.length );
+	}
+	point.draw( this, textField, displayOpts );
 
 	if( retCoords ) {
 		retCoords[0] = transformedCoordx;
 		retCoords[1] = transformedCoordy;
+		if( axisAnnotObj.dim > 2 )
+			retCoords[2] = transformedCoordz;
 	}
 
+}
+
+function axisMouseDown(formName ) 
+{
+	posOnMouseDownX = mouseX;
+	posOnMouseDownY = mouseY;
 }
 
 /**
@@ -399,15 +729,73 @@ function placeAnnot( plotRegionField, x,y, textField, axisAnnotObj, displayOpts,
  *       ["RGB",1,1,.855]
  *	 - textFont / textSize
  */
-function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp ) 
+function axisMouseUp(formName, axisAnnotObj, displayOpts)
 {
-	if( !bMouseUp ) {
-		posOnMouseDownX = mouseX;
-		posOnMouseDownY = mouseY;
-		return;
+	if( Math.abs( mouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
+		Math.abs( mouseY - posOnMouseDownY ) > 6 )
+	{
+		axisDragNDrop( formName, axisAnnotObj, displayOpts );
+
+	} else {
+		axisClick( formName, axisAnnotObj, displayOpts );
 	}
+}
+
+function axisDragNDrop( formName, axisAnnotObj, displayOpts )
+{
+	if( axisAnnotObj.dim == 3 )
+		return;
+
 	var result = this.getField( formName + "-result");
 	var result2 = this.getField( formName + "-result2");
+	var resultmark = this.getField( formName + "-resultmark");
+	var result2mark = this.getField( formName + "-result2mark");
+	var slope 	= this.getField( formName + "-slope" );
+	if( !result ) {
+		console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
+		return;
+	}
+
+	var a = this.getField(formName);
+	if( ! a ) {
+		console.println( "Warning: there is no form named \"" + formName + "\"" );
+		return;
+	}
+	// dragging the mouse results in slope computation:
+	// placeClickableCoord shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
+	placeClickableCoord( 
+		axisFindClickableCoord( axisAnnotObj, posOnMouseDownX, posOnMouseDownY, a, null ),
+		result, axisAnnotObj, displayOpts, tmpArray1 );
+	placeClickableCoord( 
+		axisFindClickableCoord( axisAnnotObj, mouseX, mouseY, a, null ),
+		result2, axisAnnotObj, displayOpts, tmpArray2 );
+
+	var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
+	var n =  tmpArray1[1] - m * tmpArray1[0];
+
+	var slopePoint = new ClickableCoord(
+		0.5 * ( mouseX + posOnMouseDownX ),
+		0.5 * ( mouseY + posOnMouseDownY ),
+		-1,-1,
+		sprintf( displayOpts.slopeFormat, m, n ));
+	slopePoint.draw(
+		this,
+		slope,
+		displayOpts );
+
+	// FIXME! these document rights seem to forbid modifications to annotations, although they work for text fields!?
+	//var lineobj = this.getAnnot( a.page, formName + '-line' );
+	//console.println( 'lineobj = ' + lineobj );
+	//lineobj.points = [[mouseX,mouseY],[posOnMouseDownX,posOnMouseDownY]];
+	//lineobj.display = display.visible;
+}
+
+function axisClick( formName, axisAnnotObj, displayOpts )
+{
+	var result = this.getField( formName + "-result");
+	var result2 = this.getField( formName + "-result2");
+	var resultmark = this.getField( formName + "-resultmark");
+	var result2mark = this.getField( formName + "-result2mark");
 	var slope 	= this.getField( formName + "-slope" );
 	if( !result ) {
 		console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
@@ -415,51 +803,43 @@ function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp )
 	}
 	result2.display = display.hidden;
 	slope.display = display.hidden;
-
-	// clicking twice onto the same point hides it:
-	if( result.display != display.hidden && 
-		Math.abs(lastMouseX - mouseX) < 5 &&
-		Math.abs(lastMouseY - mouseY) < 5 ) 
-	{
-		result.display = display.hidden;
-		return;
-	}
-	lastMouseX = mouseX;
-	lastMouseY = mouseY;
+	result2mark.display = display.hidden;
 
 	var a = this.getField(formName);
 	if( ! a ) {
 		console.println( "Warning: there is no form named \"" + formName + "\"" );
 		return;
 	}
-	if( Math.abs( lastMouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
-		Math.abs( lastMouseY - posOnMouseDownY ) > 6 )
-	{
-		// dragging the mouse results in slope computation:
-		// placeAnnot shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
-		placeAnnot( a, posOnMouseDownX, posOnMouseDownY, result, axisAnnotObj, displayOpts, tmpArray1 );
-		placeAnnot( a, lastMouseX, lastMouseY, result2, axisAnnotObj, displayOpts, tmpArray2 );
 
-		var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
-		var n =  tmpArray1[1] - m * tmpArray1[0];
+	var point = null;
+	var bSearchPoint = true;
+	if( lastPoint ) {
+		if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < axisAnnotObj.snapDist ) {
+			if( lastPoint.isSnapToNearestCoord() )
+				++lastPoint.sourceCoordIdx;
+			else
+				bSearchPoint = false;
 
-		initTextField( 
-			0.5 * ( lastMouseX + posOnMouseDownX ),
-			0.5 * ( lastMouseY + posOnMouseDownY ),
-			slope,
-			displayOpts,
-			sprintf( displayOpts.slopeFormat, m, n ) );
-
-		// FIXME! these document rights seem to forbid modifications to annotations, although they work for text fields!?
-		//var lineobj = this.getAnnot( a.page, formName + '-line' );
-		//console.println( 'lineobj = ' + lineobj );
-		//lineobj.points = [[lastMouseX,lastMouseY],[posOnMouseDownX,posOnMouseDownY]];
-		//lineobj.display = display.visible;
-
-	} else {
-		placeAnnot( a, lastMouseX, lastMouseY, result, axisAnnotObj, displayOpts, null );
+		} else
+			lastPoint = null; // no search restriction.
 	}
+	if( bSearchPoint )
+		point = axisFindClickableCoord(axisAnnotObj, mouseX, mouseY, a, lastPoint ); 
+
+	lastPoint = point;
+
+	// clicking twice onto the same point hides it:
+	if( point == null ) {
+		result.display = display.hidden;
+		resultmark.display = display.hidden;
+		return;
+	}
+
+	placeClickableCoord( 
+		point,
+		result, axisAnnotObj, displayOpts, null );
 }
+
 \end{insDLJS}
 %--------------------------------------------------
 % function hideClickableTextfields() {
@@ -475,51 +855,50 @@ function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp )
 % hideClickableTextfields();
 %-------------------------------------------------- 
 
+\pgfkeysdef{/pgfplots/annot/xy pattern}{\pgfplots@clickable@xypat@error}%
+\pgfkeysdef{/pgfplots/annot/xy pattern/.initial}{\pgfplots@clickable@xypat@error}%
+\def\pgfplots@clickable@xypat@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/xy pattern/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
+\pgfkeysdef{/pgfplots/annot/no such coord}{\pgfplots@clickable@nosuchcoord@error}%
+\pgfkeysdef{/pgfplots/annot/no such coord/.initial}{\pgfplots@clickable@nosuchcoord@error}%
+\def\pgfplots@clickable@nosuchcoord@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/no such coord/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
 
-\newif\ifpgfplots@clickable
-\newif\ifpgfplots@annot@printable
+\def\pgfplots@clickable@beginaxis{%
+	\pgfplotsapplistXglobalnewempty\pgfplots@clickable@collectedplots
+	\gdef\pgfplots@clickable@collectedplots@isempty{1}%
+}%
 
-\pgfqkeys{/pgfplots}{
-	@backgroundpath@hook/.add code={}{\ifpgfplots@threedim\else\pgfplots@create@clickable@plotarea@hook\fi},
-	clickable/.is if=pgfplots@clickable,
-	clickable/.default=true,
-	clickable=true,
-	annot/js fillColor/.initial={["RGB",1,1,.855]},
-	annot/point format/.initial={(\%.1f,\%.1f)},
-	annot/slope format/.initial={\%.1f*x \%+.1f},
-	annot/printable/.is if=pgfplots@annot@printable,
-	annot/printable/.default=true,
-	% Available are:
-% Times-Roman           font.Times
-% Times-Bold            font.TimesB
-% Times-Italic          font.TimesI
-% Times-BoldItalic      font.TimesBI
-% Helvetica             font.Helv
-% Helvetica-Bold        font.HelvB
-% Helvetica-Oblique     font.HelvI
-% Helvetica-BoldOblique font.HelvBI
-% Courier               font.Cour
-% Courier-Bold          font.CourB
-% Courier-Oblique       font.CourI
-% Courier-BoldOblique   font.CourBI
-% Symbol                font.Symbol
-% ZapfDingbats          font.ZapfD
-	annot/font/.initial={font.Times},
-%	annot/font={"CMR10"},
-	annot/textSize/.initial=11,
-	annot/width/.initial=,
-	annot/height/.initial=,
-	annot/jsname/.initial=,
-	annot/xmin/.initial=,
-	annot/xmax/.initial=,
-	annot/ymin/.initial=,
-	annot/ymax/.initial=,
-	annot/xscale/.initial=, % "log" or "linear" or "log:<basis>"
-	annot/yscale/.initial=,
-	every semilogy axis/.append style={/pgfplots/annot/point format={(\%.1f,\%.1e)}},
-	every semilogx axis/.append style={/pgfplots/annot/point format={(\%.1e,\%.1f)}},
-	every loglog axis/.append style={/pgfplots/annot/point format={(\%.1e,\%.1e)}},
-}
+\def\pgfplots@clickable@startcoordcollect{%
+	\pgfplotsapplistXnewempty\pgfplots@clickable@collectedplot
+	\def\pgfplots@clickable@collectedplot@isempty{1}%
+}%
+\def\pgfplots@clickable@coordcollect#1{%
+	\begingroup
+	\pgfplotscoordmath{x}{tostring}\pgfplots@current@point@x
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{y}{tostring}\pgfplots@current@point@y
+	\let\pgfplots@current@point@y=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{tostring}\pgfplots@current@point@z
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	\begingroup
+		#1%
+		\xdef\pgfplots@glob@TMPa{\pgfplotsretval}%
+	\endgroup
+	\xdef\pgfplots@glob@TMPa{\if1\pgfplots@clickable@collectedplot@isempty\else,\fi[\pgfplots@current@point@x,\pgfplots@current@point@y\ifpgfplots@curplot@threedim,\pgfplots@current@point@z\fi,"\pgfplots@glob@TMPa"]}%
+	\endgroup
+	\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@glob@TMPa}\to\pgfplots@clickable@collectedplot
+	\def\pgfplots@clickable@collectedplot@isempty{0}%
+}%
+\def\pgfplots@clickable@endcoordcollect{%
+	\pgfplotsapplistXlet\pgfplots@clickable@collectedplot@=\pgfplots@clickable@collectedplot
+	\if1\pgfplots@clickable@collectedplots@isempty
+		\expandafter\pgfplotsapplistXglobalpushback\expandafter{\expandafter[\pgfplots@clickable@collectedplot@]}\to\pgfplots@clickable@collectedplots
+	\else
+		\expandafter\pgfplotsapplistXglobalpushback\expandafter{\expandafter,\expandafter[\pgfplots@clickable@collectedplot@]}\to\pgfplots@clickable@collectedplots
+	\fi
+	\gdef\pgfplots@clickable@collectedplots@isempty{0}%
+}%
 
 % Creates an area which is clickable. A click produces a popup which
 % contains information about the point under the cursor.
@@ -559,20 +938,38 @@ function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp )
 			\xdef\pgfplots@clickable@no{\the\c@pgf@counta}%
 		\endgroup
 	\fi
-	\edef\pgfplots@clickable@expanded@args{% FIXME : is that a good idea to do!? Are user-args expandable?
+	%
+	\pgfkeysgetvalue{/pgfplots/annot/collected plots}\pgfplots@clickable@collectedplots@@
+	\ifx\pgfplots@clickable@collectedplots@@\pgfutil@empty
+		\def\pgfplots@clickable@collectedplots@@{[]}%
+	\fi
+	%
+	\edef\pgfplots@clickable@expanded@args{%
 		{\pgfkeysvalueof{/pgfplots/annot/width}}%
 		{\pgfkeysvalueof{/pgfplots/annot/height}}%
 		{\pgfplots@clickable@uniquename}%
 		{{
-			xmin:\pgfkeysvalueof{/pgfplots/annot/xmin}, 
-			xmax:\pgfkeysvalueof{/pgfplots/annot/xmax},
-			ymin:\pgfkeysvalueof{/pgfplots/annot/ymin},
-			ymax:\pgfkeysvalueof{/pgfplots/annot/ymax},
-			xscale:"\pgfkeysvalueof{/pgfplots/annot/xscale}",
-			yscale:"\pgfkeysvalueof{/pgfplots/annot/yscale}"
+			dim:	\pgfkeysvalueof{/pgfplots/annot/dim},
+			xmin:	\pgfkeysvalueof{/pgfplots/annot/xmin}, 
+			xmax:	\pgfkeysvalueof{/pgfplots/annot/xmax},
+			ymin:	\pgfkeysvalueof{/pgfplots/annot/ymin},
+			ymax:	\pgfkeysvalueof{/pgfplots/annot/ymax},
+			xscale:	"\pgfkeysvalueof{/pgfplots/annot/xscale}",
+			yscale:	"\pgfkeysvalueof{/pgfplots/annot/yscale}",
+			\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3
+			zmin:	\pgfkeysvalueof{/pgfplots/annot/zmin},
+			zmax:	\pgfkeysvalueof{/pgfplots/annot/zmax},
+			zscale:	"\pgfkeysvalueof{/pgfplots/annot/zscale}",
+			zaxis:		\pgfkeysvalueof{/pgfplots/annot/z axis},
+			\fi
+			collectedPlots: \pgfplots@clickable@collectedplots@@,
+			snapDist:	\pgfkeysvalueof{/pgfplots/annot/snap dist},
+			minminmin:		\pgfkeysvalueof{/pgfplots/annot/minminmin},
+			xaxis:		\pgfkeysvalueof{/pgfplots/annot/x axis},
+			yaxis:		\pgfkeysvalueof{/pgfplots/annot/y axis}
 		}}%
 		{{
-			pointFormat: "\pgfkeysvalueof{/pgfplots/annot/point format}",
+			pointFormat: "\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3 \pgfkeysvalueof{/pgfplots/annot/point format 3d}\else \pgfkeysvalueof{/pgfplots/annot/point format}\fi",
 			slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
 			fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
 			textFont:\pgfkeysvalueof{/pgfplots/annot/font},
@@ -590,53 +987,107 @@ function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp )
 \def\pgfplots@create@clickable@plotarea@hook{%
 	\ifpgfplots@clickable
 		\begingroup
-		\ifpgfplots@apply@datatrafo@x
-			\pgfplots@inverse@datascaletrafo@x\pgfplots@xmin
-			\pgfmathfloattosci\pgfmathresult
+		% communicate collected plot coordinates:
+		\pgfplotsapplistXgloballet\pgfplots@clickable@collectedplots@@=\pgfplots@clickable@collectedplots
+		\pgfplotsapplistXglobalnewempty\pgfplots@clickable@collectedplots
+		\def\pgfplots@generate@clickable{1}%
+		\ifpgfplots@threedim
+			\ifx\pgfplots@clickable@collectedplots@@\pgfutil@empty
+				\def\pgfplots@generate@clickable{0}%
+			\fi
+		\fi
+		\if1\pgfplots@generate@clickable
+			\t@pgfplots@tokc=\expandafter{\pgfplots@clickable@collectedplots@@}%
+			\edef\pgfplots@clickable@collectedplots@@{[\the\t@pgfplots@tokc]}%
+			\pgfkeyslet{/pgfplots/annot/collected plots}\pgfplots@clickable@collectedplots@@
+			%
+			\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmin}%
+			\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
 			\let\pgfplots@clickable@xmin=\pgfmathresult
-			\pgfplots@inverse@datascaletrafo@x\pgfplots@xmax
-			\pgfmathfloattosci\pgfmathresult
+			\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmax}%
+			\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
 			\let\pgfplots@clickable@xmax=\pgfmathresult
-		\else
-			\let\pgfplots@clickable@xmin=\pgfplots@xmin
-			\let\pgfplots@clickable@xmax=\pgfplots@xmax
-		\fi
-		%
-		\ifpgfplots@apply@datatrafo@y
-			\pgfplots@inverse@datascaletrafo@y\pgfplots@ymin
-			\pgfmathfloattosci\pgfmathresult
+			%
+			\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymin}%
+			\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
 			\let\pgfplots@clickable@ymin=\pgfmathresult
-			\pgfplots@inverse@datascaletrafo@y\pgfplots@ymax
-			\pgfmathfloattosci\pgfmathresult
+			\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymax}%
+			\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
 			\let\pgfplots@clickable@ymax=\pgfmathresult
-		\else
-			\let\pgfplots@clickable@ymin=\pgfplots@ymin
-			\let\pgfplots@clickable@ymax=\pgfplots@ymax
+			%
+			\ifpgfplots@threedim
+				\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmin}%
+				\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+				\let\pgfplots@clickable@zmin=\pgfmathresult
+				\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmax}%
+				\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+				\let\pgfplots@clickable@zmax=\pgfmathresult
+			\fi
+			%
+			% Convert to user interface of clickable lib:
+			\pgfplotspointbbdiagonal
+			\edef\pgfplots@clickable@wd{\the\pgf@x}%
+			\pgfkeyslet{/pgfplots/annot/width}\pgfplots@clickable@wd
+			\edef\pgfplots@clickable@ht{\the\pgf@y}%
+			\pgfkeyslet{/pgfplots/annot/height}\pgfplots@clickable@ht
+			\pgfkeyslet{/pgfplots/annot/xmin}\pgfplots@clickable@xmin
+			\pgfkeyslet{/pgfplots/annot/xmax}\pgfplots@clickable@xmax
+			\pgfkeyslet{/pgfplots/annot/ymin}\pgfplots@clickable@ymin
+			\pgfkeyslet{/pgfplots/annot/ymax}\pgfplots@clickable@ymax
+			\ifpgfplots@xislinear
+				\pgfkeyssetvalue{/pgfplots/annot/xscale}{linear}%
+			\else
+				\pgfkeyssetvalue{/pgfplots/annot/xscale}{log:\pgfkeysvalueof{/pgfplots/log basis x}}%
+			\fi
+			\ifpgfplots@yislinear
+				\pgfkeyssetvalue{/pgfplots/annot/yscale}{linear}%
+			\else
+				\pgfkeyssetvalue{/pgfplots/annot/yscale}{log:\pgfkeysvalueof{/pgfplots/log basis y}}%
+			\fi
+			\ifpgfplots@threedim
+				\pgfkeyslet{/pgfplots/annot/zmin}\pgfplots@clickable@zmin
+				\pgfkeyslet{/pgfplots/annot/zmax}\pgfplots@clickable@zmax
+				\ifpgfplots@zislinear
+					\pgfkeyssetvalue{/pgfplots/annot/zscale}{linear}%
+				\else
+					\pgfkeyssetvalue{/pgfplots/annot/zscale}{log:\pgfkeysvalueof{/pgfplots/log basis z}}%
+				\fi
+			\fi
+			%
+			% note that \pgfplotspointbblowerleft has *not* been
+			% transformed after \endtikzpicture in pgfplots.code.tex.
+			% That's why I can use it here:
+			\pgfpointdiff
+				\pgfplotspointbblowerleft
+				{\pgfplotspointminminmin}%
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/minminmin}\pgfplots@loc@TMPa
+			%
+			\pgfplotspointxaxis
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/x axis}\pgfplots@loc@TMPa
+			%
+			\pgfplotspointyaxis
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/y axis}\pgfplots@loc@TMPa
+			%
+			\ifpgfplots@threedim
+				\pgfplotspointzaxis
+				\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+				\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+				\pgfkeyslet{/pgfplots/annot/z axis}\pgfplots@loc@TMPa
+			\fi
+			%
+			\pgfkeyssetvalue{/pgfplots/annot/dim}{\ifpgfplots@threedim 3\else2\fi}%
+			%
+			%
+			\pgfinterruptboundingbox%
+			\pgftext[left,bottom,at=\lowerleftinnercorner]{\pgfplotsclickablecreate[]}%
+			\endpgfinterruptboundingbox%
 		\fi
-		\pgfplotspointbbdiagonal
-		\edef\pgfplots@clickable@wd{\the\pgf@x}%
-		\edef\pgfplots@clickable@ht{\the\pgf@y}%
-		%
-		% Convert to user interface of clickable lib:
-		\pgfkeyslet{/pgfplots/annot/width}\pgfplots@clickable@wd
-		\pgfkeyslet{/pgfplots/annot/height}\pgfplots@clickable@ht
-		\pgfkeyslet{/pgfplots/annot/xmin}\pgfplots@clickable@xmin
-		\pgfkeyslet{/pgfplots/annot/xmax}\pgfplots@clickable@xmax
-		\pgfkeyslet{/pgfplots/annot/ymin}\pgfplots@clickable@ymin
-		\pgfkeyslet{/pgfplots/annot/ymax}\pgfplots@clickable@ymax
-		\ifpgfplots@xislinear
-			\pgfkeyssetvalue{/pgfplots/annot/xscale}{linear}%
-		\else
-			\pgfkeyssetvalue{/pgfplots/annot/xscale}{log:\pgfkeysvalueof{/pgfplots/log basis x}}%
-		\fi
-		\ifpgfplots@yislinear
-			\pgfkeyssetvalue{/pgfplots/annot/yscale}{linear}%
-		\else
-			\pgfkeyssetvalue{/pgfplots/annot/yscale}{log:\pgfkeysvalueof{/pgfplots/log basis y}}%
-		\fi
-		\pgfinterruptboundingbox%
-		\pgftext[left,bottom,at=\lowerleftinnercorner]{\pgfplotsclickablecreate[]}%
-		\endpgfinterruptboundingbox%
 		\endgroup
 	\fi
 }
@@ -684,14 +1135,16 @@ function processAnnotatedPlot(formName, axisAnnotObj, displayOpts, bMouseUp )
 		\AA{
 			% /U = "mouse UP"
 			% /D = "mouse DOWN"
-			/U << /S/JavaScript/JS(processAnnotatedPlot("#3", #4, #5, 1);) >> 
-			/D << /S/JavaScript/JS(processAnnotatedPlot("#3", #4, #5, 0);) >> 
+			/U << /S/JavaScript/JS(axisMouseUp("#3", #4, #5);) >> 
+			/D << /S/JavaScript/JS(axisMouseDown("#3");) >> 
 		}%
 		]
 		{#3}
 		{#1}{#2}%
 	\textField{#3-result}{0pt}{0pt}%
 	\textField{#3-result2}{0pt}{0pt}%
+	\textField{#3-resultmark}{0pt}{0pt}%
+	\textField{#3-result2mark}{0pt}{0pt}%
 	\textField{#3-slope}{0pt}{0pt}%
 	% Unfortunately, line annotations can't be created/changed in acrobat
 	% javascript due to right problems :-(

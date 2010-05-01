@@ -68,6 +68,19 @@
 	\let\pgfpointxyz@orig=\pgfpointxyz
 	\let\pgfqpointxyz@orig=\pgfqpointxyz
 	%
+	%
+	\edef\pgfplotsplothandlerpointxyz##1##2##3{%
+		\ifpgfplots@curplot@threedim
+			\noexpand\pgfplotsqpointxyz{##1}{##2}{##3}%
+		\else
+			\ifpgfplots@threedim
+				\noexpand\pgfplotsqpointxyz{##1}{##2}{0.0}%
+			\else
+				\noexpand\pgfplotsqpointxy{##1}{##2}%
+			\fi
+		\fi
+	}%
+	%
 	% A point command such that (0,0) is the 'south west' and (1,1)
 	% the 'north east' point of an axis.
 	\def\pgfplotspointdescriptionxy##1##2{%
@@ -1841,6 +1854,7 @@
 \def\pgfplotsdeclarecoordmath#1#2{%
 	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	\pgfqkeys{/pgfplots/@declare coord math}{%
+		initialise=,
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
 		log e=		\pgfmathlog@{##1},%
 		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
@@ -1868,6 +1882,19 @@
 		min limit=	\def\pgfmathresult{-16300},%
 		max limit=	\def\pgfmathresult{16300},%
 		if less than=	{\pgfplotsmathlessthan{##1}{##2}\ifpgfmathfloatcomparison ##3\else ##4\fi},
+		if is=	{%
+			\if##20
+				\ifdim##1pt=0pt ##2\else ##3\fi
+			\else
+				\if##2+\ifdim##1pt>0pt ##2\else ##3\fi
+				\else
+					\if##2-\ifdim##1pt<0pt ##2\else ##3\fi
+					\else
+						\def\pgfplots@loc@TMPd{##1}\ifx\pgfplots@loc@TMPd\pgfutil@empty ##2\else ##3\fi
+					\fi
+				\fi
+			\fi
+		},%
 		if is bounded=\edef\pgfplotsretval{##1}\ifx\pgfplotsretval\pgfutil@empty ##3\else ##2\fi,
 		suffix=		#1,%
 		datascaletrafo set params=,
@@ -1897,8 +1924,11 @@
 		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int@orig}
 		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int}%
 	\pgfplotscoordmath@def@log@to@log@ten{#1}{}% empty arg
+	%
 }%
 \pgfqkeys{/pgfplots/@declare coord math}{%
+	initialise/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ initialise\endcsname{#1}},%
 	% takes a number literal as input and defines \pgfmathresult to be
 	% the parsed result.
 	parsenumber/.code=
@@ -1918,7 +1948,7 @@
 	%
 	% counterpart for max:
 	min/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ max\endcsname##1##2{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ min\endcsname##1##2{#1}},%
 	%
 	% defines \pgfmathresult to be the largest supported number.
 	max limit/.code=
@@ -1932,6 +1962,13 @@
 	% the false case.
 	if less than/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if less than\endcsname##1##2##3##4{#1}},%
+	% checks if ##1 is 0, positive, negative or unbounded
+	% ##1: the number to check
+	% ##2: either 0 or + or - or u (u = unbounded)
+	% ##3: true code
+	% ##4: false code
+	if is/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ if is\endcsname##1##2##3##4{#1}},%
 	%
 	% Checks if the argument ##1 is bounded and invokes ##2 in that
 	% case. IF the argument is unbounded, it invokes #3.
@@ -2116,6 +2153,11 @@
 	suffix=@basic@,
 }
 \pgfplotsdeclarecoordmath{float}{%
+	initialise=
+		\pgfutil@ifundefined{pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid}{%
+			\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{0}%
+			\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{0}%
+		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
@@ -2128,6 +2170,8 @@
 	if is bounded=%
 		\expandafter\pgfmathfloatgetflagstomacro\expandafter{#1}\pgfplotsretval
 		\ifnum\pgfplotsretval>2 #3\else #2\fi,
+	if is=%
+		\pgfmathfloatifflags{#1}{#2}{#3}{#4},
 	log=\pgfmathlog@float{#1},%
 	datascaletrafo set params={%
 		\expandafter\edef\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname{#1}%
@@ -2146,7 +2190,7 @@
 		\edef\pgfmathresult{#1}%
 		\pgfmathfloatshift@\pgfmathresult{\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
 		\pgfmathfloattofixed\pgfmathresult
-		\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+		\expandafter\pgfmath@basic@subtract@\expandafter{\pgfmathresult}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
 	},%
 	datascaletrafo noshift={%
 		\edef\pgfmathresult{#1}%
@@ -2154,8 +2198,8 @@
 		\pgfmathfloattofixed{\pgfmathresult}%
 	},%
 	datascaletrafo undo shift=
-		\pgfmathsubtract@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
-	datascaletrafo redo shift=\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+		\pgfmath@basic@subtract@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
+	datascaletrafo redo shift=\pgfmath@basic@add@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname},%
 	datascaletrafo inverse={%
 		\pgfplotscoordmath@float@datascaletrafo@inverse{#1}%
 	},%
@@ -2187,7 +2231,7 @@
 }
 
 \def\pgfplotscoordmath@float@datascaletrafo@inverse#1{%
-	\pgfmathadd@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
+	\pgfmath@basic@add@{#1}{\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname}%
 	\let\pgfplots@inverse@datascaletrafo@@shifted=\pgfmathresult
 	\pgfmathapproxequalto@{\pgfplots@inverse@datascaletrafo@@shifted}{0.0}%
 	\ifpgfmathcomparison
@@ -2207,10 +2251,11 @@
 % From this point on, any call to \pgfplotscoordmath{#1}{...}
 % will use the selected math class.
 \def\pgfplotssetcoordmathfor#1#2{%
-	\pgfutil@ifundefined{pgfpmth@#2@parsenumber}{%
+	\pgfutil@ifundefined{pgfpmth@#2@initialise}{%
 		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, \string\pgfplotssetcoordmathfor{#1}{#2} failed since `#2' is unknown. Maybe you misspelled it?}\pgfeov%
 	}{%
 		\expandafter\edef\csname pgfcrdmth@#1\endcsname{#2}%
+		\pgfplotscoordmath{#1}{initialise}%
 	}%
 }%
 
@@ -2330,31 +2375,25 @@
 \pgfplotsdeclarepointmetasource{}{}
 \pgfplotsdeclarepointmetasource{x}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@x
-		\ifpgfplots@xislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		}}
 \pgfplotsdeclarepointmetasource{y}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@y
-		\ifpgfplots@yislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		}}
 \pgfplotsdeclarepointmetasource{z}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@z
-		\ifpgfplots@zislinear
-		\else	
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
-			\let\pgfplots@current@point@meta=\pgfmathresult
-		\fi}}
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+	}}
 
 \pgfplotsdeclarepointmetasource{explicit}{%
 	assign={%
 		\ifx\pgfplots@current@point@meta\pgfutil@empty
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@current@point@meta}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
 			\let\pgfplots@current@point@meta=\pgfmathresult
 		\fi
 	},
@@ -2374,6 +2413,7 @@
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
 			\pgfmathparse{\pgfplots@loc@TMPa}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfmathresult}%
 			\let\pgfplots@current@point@meta=\pgfmathresult
 		\fi
 	},%
@@ -2396,7 +2436,7 @@
 		\begingroup
 		\let\pgfplotspointmeta=\pgfutil@empty
 		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
-		\pgfmathfloatparsenumber{\pgfplotspointmeta}%
+		\pgfplotscoordmath{meta}{parsenumber}{\pgfplotspointmeta}%
 		\let\pgfplots@current@point@meta=\pgfmathresult
 		\pgfmath@smuggleone\pgfplots@current@point@meta
 		\endgroup
@@ -2436,15 +2476,7 @@
 % 	copy operations. That experiment was not successfull (it was not
 % 	faster :-(  ). However, the streaming methods still assign their
 % 	things globally...
-\newif\ifpgfplots@coord@stream@isfirst
 \def\pgfplots@coord@stream@start{%
-	\global\pgfplots@coord@stream@isfirsttrue
-	\global\let\pgfplots@currentplot@firstcoord@x=\pgfutil@empty
-	\global\let\pgfplots@currentplot@firstcoord@y=\pgfutil@empty
-	\global\let\pgfplots@currentplot@firstcoord@z=\pgfutil@empty
-	\global\let\pgfplots@currentplot@lastcoord@x=\pgfutil@empty
-	\global\let\pgfplots@currentplot@lastcoord@y=\pgfutil@empty
-	\global\let\pgfplots@currentplot@lastcoord@z=\pgfutil@empty
 	\let\pgfplots@current@point@x=\pgfutil@empty
 	\let\pgfplots@current@point@y=\pgfutil@empty
 	\let\pgfplots@current@point@z=\pgfutil@empty
@@ -2466,16 +2498,23 @@
 \def\pgfplots@coord@stream@coord{%
 	\pgfplots@coord@stream@coord@%
 }%
-\def\pgfplotsaxisdatapointsurveyed@remember@firstlast{%
+\def\pgfplotscoordstream@firstlast@init{%
+	\global\let\pgfplots@currentplot@firstcoord@x=\pgfutil@empty
+	\global\let\pgfplots@currentplot@firstcoord@y=\pgfutil@empty
+	\global\let\pgfplots@currentplot@firstcoord@z=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@x=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@y=\pgfutil@empty
+	\global\let\pgfplots@currentplot@lastcoord@z=\pgfutil@empty
+}%
+\def\pgfplotscoordstream@firstlast@update{%
 	\ifx\pgfplots@current@point@x\pgfutil@empty
 		% only one \if is enough as ONE empty coordinate results all
 		% others to be reset as well.
 	\else
-		\ifpgfplots@coord@stream@isfirst
+		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
 			\global\let\pgfplots@currentplot@firstcoord@x=\pgfplots@current@point@x
 			\global\let\pgfplots@currentplot@firstcoord@y=\pgfplots@current@point@y
 			\global\let\pgfplots@currentplot@firstcoord@z=\pgfplots@current@point@z
-			\global\pgfplots@coord@stream@isfirstfalse
 		\fi
 		\global\let\pgfplots@currentplot@lastcoord@x=\pgfplots@current@point@x
 		\global\let\pgfplots@currentplot@lastcoord@y=\pgfplots@current@point@y
@@ -2485,33 +2524,53 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
-% Scanline management. The idea is to allow a simple syntax
-% to provide matrix input - by means of scanlines.
+% Scanline management. The idea is to handle complete sequences of
+% input coordinates, which are usually separated by a blank line.
+%
+% This allows a simple syntax to provide matrix input - by means of scanlines.
+% Furthermore, 2d plots can use it to interrupt the display.
 %
 % An empty line in 'addplot coordinates {}' indicates the end of a
 % scan line. Similarly, an empty line in 'addplot file' or 'table'
 % also indicates the end of a scan line.
 %
-% The following methods allow to update the scanline computation.
+% The steps taken whenever a scan line is complete depend on the
+% configuration of the /pgfplots/empty line choice key (queried in
+% \pgfplotsscanlinelengthinitzero).
+%
+%
+% The following methods constitute the scanline interface.
 %
 % Usage:
 %
 % \pgfplotsscanlinelengthinitzero
 %
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinelengthincrease
+% <process point>
 % \pgfplotsscanlinecomplete
 %
 % \pgfplotsscanlinelengthcleanup
+%
+% In other words, the \pgfplotsscanlinelengthincrease routine is
+% invoked *before* the point is processed. That's important.
 %
 % Now, \pgfplotsscanlinelength expands to either 
 % a) a negative number in which case there is no 
@@ -2521,13 +2580,53 @@
 %  	had different lengths.
 % b) the scanline length.
 \def\pgfplotsscanlinelengthinitzero{%
+	\def\pgfplotsscanlinelength{-1}%
+	\pgfkeysgetvalue{/pgfplots/empty line}\pgfplots@loc@TMPa%
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+	\def\pgfplots@loc@TMPb{auto}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\ifpgfplots@curplot@threedim
+			\def\pgfplots@loc@TMPa{scanline}%
+		\else
+			\def\pgfplots@loc@TMPa{jump}%
+		\fi
+	\fi
+	\def\pgfplots@loc@TMPb{jump}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\def\pgfplots@loc@TMPa{nan}% alias for jump
+	\fi
+	\def\pgfplots@loc@TMPb{no op}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\def\pgfplots@loc@TMPa{none}% alias for no op
+	\fi
+	\pgfutil@ifundefined{pgfplotsscanlinelength@\pgfplots@loc@TMPa @initzero}{%
+		\pgfplots@error{Sorry, the choice `empty line=\pgfkeysvalueof{/pgfplots/empty line}' is unknown. Maybe you misspelled it}%
+	}{}%
+	\expandafter\let\expandafter\pgfplotsscanlinelength@initzero	\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @initzero\endcsname
+	\expandafter\let\expandafter\pgfplotsscanlinelengthincrease		\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @increase\endcsname
+	\expandafter\let\expandafter\pgfplotsscanlinecomplete			\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @complete\endcsname
+	\expandafter\let\expandafter\pgfplotsscanlinelengthcleanup		\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @cleanup\endcsname
+	\pgfplotsscanlinelength@initzero
+}%
+\def\pgfplotsscanlinedisablechanges{%
+	\let\pgfplotsscanlinecomplete=\relax
+	\let\pgfplotsscanlinelengthincrease=\relax
+	\let\pgfplotsscanlinelengthcleanup=\relax
+	\let\pgfplotsscanlinelengthinitzero=\relax
+	\let\pgfplotsscanlineendofinput=\relax
+}%
+
+% -------------------------------------------------------------------------------
+% empty line=scanline
+% class:
+\def\pgfplotsscanlinelength@scanline@initzero{%
 	\c@pgfplots@scanlineindex=0
 	\def\pgfplots@scanlinelength{-1}%
 }
-\def\pgfplotsscanlinelengthincrease{%
+\def\pgfplotsscanlinelength@scanline@increase{%
 	\advance\c@pgfplots@scanlineindex by1
 }
-\def\pgfplotsscanlinecomplete{%
+\def\pgfplotsscanlinelength@scanline@complete{%
 	\ifnum\pgfplots@scanlinelength>0
 		\ifnum\c@pgfplots@scanlineindex=0
 			% 
@@ -2552,7 +2651,7 @@
 	\fi
 	\c@pgfplots@scanlineindex=0
 }
-\def\pgfplotsscanlinelengthcleanup{%
+\def\pgfplotsscanlinelength@scanline@cleanup{%
 	\ifnum\c@pgfplots@scanlineindex=0
 		% I assume the last scan line is already complete.
 	\else
@@ -2560,12 +2659,51 @@
 	\fi
 	\let\pgfplotsscanlinelength=\pgfplots@scanlinelength
 }
-\def\pgfplotsscanlinedisablechanges{%
-	\let\pgfplotsscanlinecomplete=\relax
-	\let\pgfplotsscanlinelengthincreas=\relax
-	\let\pgfplotsscanlinelengthcleanup=\relax
-	\let\pgfplotsscanlinelengthinitzero=\relax
+% -------------------------------------------------------------------------------
+%
+% empty line=none   class:
+% 
+\let\pgfplotsscanlinelength@none@initzero=\pgfutil@empty
+\let\pgfplotsscanlinelength@none@increase=\relax
+\let\pgfplotsscanlinelength@none@complete=\relax
+\let\pgfplotsscanlinelength@none@cleanup=\relax
+% -------------------------------------------------------------------------------
+%
+% empty line=nan   class:
+\def\pgfplotsscanlinelength@nan@initzero{%
+	\def\pgfplotsscanlinelength@nan@isfirst{1}%
+	\let\pgfplotsscanlinelength@nan@pendingwork=\relax
 }%
+\def\pgfplotsscanlinelength@nan@increase{%
+	\def\pgfplotsscanlinelength@nan@isfirst{0}%
+	\pgfplotsscanlinelength@nan@pendingwork
+}%
+\def\pgfplotsscanlinelength@nan@complete{%
+	\if1\pgfplotsscanlinelength@nan@isfirst
+	\else
+		\def\pgfplotsscanlinelength@nan@pendingwork{%
+			% this will be executed when the next point has been
+			% found.
+			\def\pgfplots@current@point@x{}%
+			\def\pgfplots@current@point@y{}%
+			\def\pgfplots@current@point@z{}%
+			% simply serialize an empty point. That works -- the
+			% visualization phase checks if the coordinates are empty and
+			% visualizes them as "jump"
+			%
+			% Note that \pgfplotsplothandlersurveypoint is not a good
+			% choice here unless one employs its 'unbounded coords=jump'
+			% feature
+			\pgfplotsaxisserializedatapoint
+			%
+			\let\pgfplotsscanlinelength@nan@pendingwork=\relax
+		}%
+	\fi
+	\def\pgfplotsscanlinelength@nan@isfirst{1}%
+}%
+\let\pgfplotsscanlinelength@nan@cleanup=\relax
+% 
+% -------------------------------------------------------------------------------
 
 \newif\ifpgfplotsaxisparsecoordinateok
 
@@ -2675,12 +2813,6 @@
 			% by ifs).
 			\ifpgfplots@stackedmode
 				\E\pgfplots@stacked@preparepoint@inmacro%
-				\ifpgfplots@datascaletrafo@initialised% is also true if there is no scale trafo.
-					\E\pgfplots@stacked@finishpoint
-				\else
-					% the finishpoint routine will be invoked at
-					% \endaxis.
-				\fi
 			\fi
 		\E\fi
 	}%
@@ -2753,7 +2885,7 @@
 					\fi
 				\fi
 			\fi
-			\E\pgfplotsaxisdatapointsurveyed@remember@firstlast
+			\E\pgfplotscoordstream@firstlast@update
 			\E\pgfplotsaxisserializedatapoint
 		\E\else
 			% COORDINATE HAS BEEN FILTERED AWAY:
@@ -2821,6 +2953,7 @@
 	\pgfplotsresetplothandler
 	\pgfplots@basiclevel@plothandler
 	\pgfplotsplothandlersurveystart
+	\pgfplotscoordstream@firstlast@init
 	%
 	\pgfkeyssetvalue{/data point/x}{\pgfplots@current@point@x}%
 	\pgfkeyssetvalue{/data point/y}{\pgfplots@current@point@y}%
@@ -2866,7 +2999,7 @@
 	\pgfplotsmathdeclarepseudoconstant{meta}{%
 		\let\pgfmathresult=\pgfplots@current@point@meta
 		\ifx\pgfmathresult\pgfutil@empty
-			\pgfmathfloatcreate{0}{0.0}{0}%
+			\pgfplotscoordmath{meta}{parsenumber}{0}%
 		\fi
 	}%
 	%
@@ -2886,22 +3019,22 @@
 		\ifx\pgfplots@metamin\pgfutil@empty
 			\global\let\pgfplots@metamin=\pgfplots@invalidrange@metamin
 			\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb
-				\pgfplotsmathfloatmin{\pgfplots@metamin}{\pgfplots@current@point@meta}%
+				\pgfplotscoordmath{meta}{min}{\pgfplots@metamin}{\pgfplots@current@point@meta}%
 				\global\let\pgfplots@metamin=\pgfmathresult
 			}%
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@metamin}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@metamin}%
 			\global\let\pgfplots@metamin=\pgfmathresult
 		\fi
 		\pgfkeysgetvalue{/pgfplots/point meta max}\pgfplots@metamax
 		\ifx\pgfplots@metamax\pgfutil@empty
 			\global\let\pgfplots@metamax=\pgfplots@invalidrange@metamax
 			\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb
-				\pgfplotsmathfloatmax{\pgfplots@metamax}{\pgfplots@current@point@meta}%
+				\pgfplotscoordmath{meta}{max}{\pgfplots@metamax}{\pgfplots@current@point@meta}%
 				\global\let\pgfplots@metamax=\pgfmathresult
 			}%
 		\else
-			\pgfmathfloatparsenumber{\pgfplots@metamax}%
+			\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@metamax}%
 			\global\let\pgfplots@metamax=\pgfmathresult
 		\fi
 		%
@@ -2940,15 +3073,16 @@
 %
 % #1,#2: see \pgfplots@PREPARE@COORD@STREAM
 \def\pgfplots@PREPARE@COORD@STREAM@end@#1{%
+	\pgfkeysvalueof{/pgfplots/execute at end survey}%
 	\pgfplotsplothandlersurveyend
 	\ifx\pgfplots@metamin\pgfutil@empty
 	\else
 		\if\pgfplots@axiswide@metamin@autocompute1%
-			\pgfplotsmathfloatmin{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
+			\pgfplotscoordmath{meta}{min}{\pgfplots@axiswide@metamin}{\pgfplots@metamin}%
 			\global\let\pgfplots@axiswide@metamin=\pgfmathresult
 		\fi
 		\if\pgfplots@axiswide@metamax@autocompute1%
-			\pgfplotsmathfloatmax{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
+			\pgfplotscoordmath{meta}{max}{\pgfplots@axiswide@metamax}{\pgfplots@metamax}%
 			\global\let\pgfplots@axiswide@metamax=\pgfmathresult
 		\fi
 	\fi
@@ -2974,7 +3108,7 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@endplot
 	\fi
-	\ifpgfplots@coord@stream@isfirst
+	\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
 		\pgfplots@warning{the current plot has no coordinates (or all have been filtered away)}%
 	\else
 		% Idea: use
@@ -2989,6 +3123,8 @@
 		\pgfplotspreparemeshkeydefaults%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting x%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting y%
+		\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,%
+			/pgfplots/.cd,/pgfplots/every axis plot post}%
 		\ifpgfplots@curplot@isirrelevant
 			% for \label commands:
 			\expandafter\pgfplots@rememberplotspec@for@label\expandafter{\pgfplots@addplot@survey@@optionlist}%
@@ -3000,12 +3136,6 @@
 		\t@pgfplots@toka=\expandafter{\pgfplots@addplot@survey@@optionlist}%
 		% ATTENTION: do NOT call list macros from here on!
 		%
-		\ifpgfplots@datascaletrafo@initialised
-			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
-			\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
-		\else
-			\t@pgfplots@tokc={}%
-		\fi
 		\pgfplotsplothandlerserializestateto\pgfplots@loc@TMPa
 		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
 		% SERIALIZE RESULT:
@@ -3040,7 +3170,6 @@
 				\noexpand\pgfkeyssetvalue{/pgfplots/y coord sorting}{\pgfkeysvalueof{/pgfplots/y coord sorting}}%
 				%
 				\noexpand\pgfplots@initzerolevelhandler
-				\the\t@pgfplots@tokc% named start/end points (if already available)
 				\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@toka}% remember 'current plot style'
 				% per-point meta data ranges which apply only to
 				% this plot:
@@ -3177,6 +3306,15 @@
 		% Step 2: modify the DESERIALIZATION method:
 		\let\pgfplotsaxisdeserializedatapointfrom@private@orig=\pgfplotsaxisdeserializedatapointfrom@private
 		\let\pgfplotsaxisdeserializedatapointfrom@private=\pgfplotsaxisdeserializedatapointfrom@private@withdeplist
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/execute for finished point}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\expandafter\def\expandafter\pgfplotsaxisserializedatapoint@private\expandafter{%
+			\pgfplotsaxisserializedatapoint@private
+			\pgfkeysvalueof{/pgfplots/execute for finished point}%
+		}%
 	\fi
 }%
 \def\pgfplots@prepare@visualization@depends@on#1\pgfplots@EOI{%
@@ -3676,9 +3814,10 @@
 					\else
 						\pgfmathparse{1##1\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
-						\pgfplotscoordmath{#1}{multiply}
+						\pgfplotscoordmath{#1}{multiply}{%
 							{\csname pgfplots@current@point@#1\endcsname}
 							{\pgfplots@error@coord}%
+						}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 					\fi
@@ -3816,9 +3955,10 @@
 						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
-							\pgfmath@basic@add@
+							\pgfplotscoordmath{#1}{op}{add}{%
 								{\csname pgfplots@current@point@#1\endcsname}
 								{\pgfplots@error@coord}%
+							}%
 							\let\pgfplots@error@coord=\pgfmathresult
 							\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 						}{%
@@ -3877,7 +4017,7 @@
 			\def\pgfplots@perpointmeta@unboundedwarning##1{%
 				\ifx\pgfplots@perpointmeta@unboundedwarning@stop\relax
 					\begingroup
-						\pgfmathfloattofixed{##1}%
+						\pgfplotscoordmath{meta}{tostring}{##1}%
 						\pgfplots@warning{The per point meta data `\pgfmathresult' (##1) (and probably others as well) is unbounded - using the minimum value instead.}%
 					\endgroup
 					\gdef\pgfplots@perpointmeta@unboundedwarning@stop{1}%
@@ -3890,11 +4030,12 @@
 			% colormap access=map
 			\ifx\pgfplots@metamax\pgfutil@empty
 				\def\pgfplots@perpointmeta@trafo##1{%
-					\pgfmathfloatiffinite{##1}{%
-						\pgfmathfloattofixed@{##1}%
-					}{%
+					\pgfplotscoordmath{meta}{if is}{##1}{u}
+					{%
 						\def\pgfmathresult{0}%
 						\pgfplots@perpointmeta@unboundedwarning{##1}%
+					}{%
+						\pgfplotscoordmath{meta}{tofixed}{##1}%
 					}%
 				}%
 				\def\pgfplots@perpointmeta@traforange{0:1000}%
@@ -3916,36 +4057,36 @@
 					% Now, prepare the trafo as such.
 					% It assigns \pgfmathresult (in fixed point).
 					\def\pgfplots@perpointmeta@trafo##1{%
-						\pgfmathfloatiffinite{##1}{%
-							\pgfmathfloatsubtract@{##1}{\pgfplots@axiswide@metamin}%
-							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-						}{%
+						\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 							\def\pgfmathresult{0}%
 							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}{%
+							\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\pgfplots@axiswide@metamin}}%
+							\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
+							\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
 						}%
 					}%
-					\pgfmathfloatsubtract@{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}%
+					\pgfplotscoordmath{meta}{op}{subtract}{{\pgfplots@axiswide@metamax}{\pgfplots@axiswide@metamin}}%
 				\else
 					% point meta rel=per plot:
 					\edef\pgfplotspointmetarange{\pgfplots@metamin:\pgfplots@metamax}%
 					% Now, prepare the trafo as such.
 					% It assigns \pgfmathresult (in fixed point).
 					\def\pgfplots@perpointmeta@trafo##1{%
-						\pgfmathfloatiffinite{##1}{%
-							\pgfmathfloatsubtract@{##1}{\pgfplots@metamin}%
-							\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}%
-							\expandafter\pgfmathfloattofixed@\expandafter{\pgfmathresult}%
-						}{%
+						\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 							\def\pgfmathresult{0}%
 							\pgfplots@perpointmeta@unboundedwarning{##1}%
+						}{%
+							\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\pgfplots@metamin}}%
+							\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
+							\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
 						}%
 					}%
-					\pgfmathfloatsubtract@{\pgfplots@metamax}{\pgfplots@metamin}%
+					\pgfplotscoordmath{meta}{op}{subtract}{{\pgfplots@metamax}{\pgfplots@metamin}}%
 				\fi
 				\let\pgfplots@loc@TMPa=\pgfmathresult
-				\pgfmathfloatcreate{1}{1.0}{3}%
-				\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+				\pgfplotscoordmath{meta}{parsenumber}{1000}%
+				\pgfplotscoordmath{meta}{op}{divide}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
 				\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
 				%
 				% Expands to the transformation range as 'a:b':
@@ -3953,12 +4094,12 @@
 			\fi
 		\else
 			% colormap access=direct
-			\def\pgfplots@perpointmeta@trafo##1{
-				\pgfmathfloatiffinite{##1}{%
-					\pgfmathfloattofixed@{##1}%
-				}{%
+			\def\pgfplots@perpointmeta@trafo##1{%
+				\pgfplotscoordmath{meta}{if is}{##1}{u}{%
 					\def\pgfmathresult{0}%
 					\pgfplots@perpointmeta@unboundedwarning{##1}%
+				}{%
+					\pgfplotscoordmath{meta}{tofixed}{##1}%
 				}%
 			}%
 			\def\pgfplots@perpointmeta@traforange{0:0}%
@@ -4213,6 +4354,7 @@
 % and then, \pgfplots@coord@stream@coord will be called.
 \long\def\pgfplots@coord@stream@foreach@NORMALIZED#1{%
 	\pgfplots@coord@stream@start
+	\pgfplotscoordstream@firstlast@init
 	\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE#1\pgfplots@EOI%
 	\pgfplots@coord@stream@end
 }%
@@ -4225,6 +4367,7 @@
 		\def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded@braced{{#1}}%
 		\pgfplotsaxisdeserializedatapointfrom{#1}%
 		\pgfplots@coord@stream@coord
+		\pgfplotscoordstream@firstlast@update
 		\expandafter\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
 	\fi
 }
@@ -4321,10 +4464,17 @@
 		\edef\pgfplots@addplot@survey@@optionlist{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
 		\pgfplotsset{/pgfplots/every axis plot no \the\pgfplots@numplots/.try,/pgfplots/every axis plot post}%
 	\fi
-	\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,%
-		#1,/pgfplots/.cd,/pgfplots/every axis plot post}%
+	\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,#1}%
 	\pgfplots@validate@plot@domain@arguments
 }
+
+\def\pgfplotsplothandlersurveyaddoptions#1{%
+	\pgfplotsset{/pgfplots/execute at end survey/.add={}{%
+			\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,#1}%
+		},%
+		#1%
+	}%
+}%
 
 
 % The main interface to draw a plot into an axis.
@@ -4878,21 +5028,21 @@
 		\def\pgfplots@gnuplot@logdirs{}%
 		\ifpgfplots@xislinear
 		\else
+			\pgfplots@identify@gnuplot@logbehavior x%
 			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs x}%
 		\fi
 		\ifpgfplots@yislinear
 		\else
+			\pgfplots@identify@gnuplot@logbehavior y%
 			\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs y}%
 		\fi
 		\ifpgfplots@curplot@threedim
 			\ifpgfplots@zislinear
 			\else
+				\pgfplots@identify@gnuplot@logbehavior z%
 				\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs z}%
 			\fi
-			\pgfplots@disablelogfilter@ztrue
 		\fi
-		\pgfplots@disablelogfilter@xtrue
-		\pgfplots@disablelogfilter@ytrue
 		\ifpgfplots@curplot@threedim
 			\if1\b@pgfplots@should@sample@LINE
 				\pgfplots@error{Sorry, I do not know how to sample 3D LINE plots with gnuplot... I only know 2D line and 3D mesh. You may want to help the author of pgfplots to improve this feature.}%
@@ -4927,6 +5077,55 @@
 	\def\pgfplotxyfile{\pgfplots@addplotimpl@gnuplotresult{#5}}%
 	\pgfplots@plot@data
 	\let\pgfplotxyfile=\pgfplots@backupof@pgfplotxyfile
+}%
+
+\def\pgfplots@identify@gnuplot@logbehavior#1{%
+	\pgfutil@ifundefined{pgfplots@gnuplot@logscale@writes@log}{%
+		\pgfplots@identify@gnuplot@logbehavior@checkversion%
+	}{}%
+	\if1\pgfplots@gnuplot@logscale@writes@log
+		\csname pgfplots@disablelogfilter@#1true\endcsname
+	\fi
+}%
+\def\pgfplots@identify@gnuplot@logbehavior@checkversion{%
+	\immediate\write18{gnuplot -V >\pgfplots@plot@filename}%
+	\openin\r@pgfplots@reada=\pgfplots@plot@filename\relax
+	\ifeof\r@pgfplots@reada
+		\pgfplots@warning{Sorry, I could not determine 'gnuplot -V' to check whether gnuplot and logscale writes results in log() or not. Please set `/pgfplots/gnuplot writes logscale=true|false' manually.}%
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}% something doesn't work. set it somehow.
+	\else
+		\read\r@pgfplots@reada to\pgfplots@loc@TMPa
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+		\immediate\write-1{Package pgfplots: checking gnuplot -V : `\pgfplots@loc@TMPa' (if this fails, set `/pgfplots/gnuplot writes logscale=true|false')}%
+		\expandafter\pgfplots@identify@gnuplot@logbehavior@checkversion@\pgfplots@loc@TMPa\relax
+		\closein\r@pgfplots@reada
+	\fi
+}%
+\def\pgfplots@identify@gnuplot@logbehavior@checkversion@#1 #2.#3 #4\relax{%
+	% starting with gnuplot 4.4, output files are no longer in
+	% logarithmic scale for log plots.
+	\ifnum#2<4
+		% version 3.X
+		\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+	\else
+		\ifnum#2>4
+			% version 5.X
+			\gdef\pgfplots@gnuplot@logscale@writes@log{0}%
+		\else
+			\ifnum#3<4
+				% version 4.2 :
+				\gdef\pgfplots@gnuplot@logscale@writes@log{1}%
+			\else
+				% version 4.4 or later :
+				\gdef\pgfplots@gnuplot@logscale@writes@log{0}%
+			\fi
+		\fi
+	\fi
+	\if0\pgfplots@gnuplot@logscale@writes@log
+		\immediate\write-1{Package pgfplots: I found gnuplot version >= 4.4. This one doesn't write log() coordinates. I will apply log() manually.}%
+	\else
+		\immediate\write-1{Package pgfplots: I found gnuplot version < 4.4. This one writes log() coordinates. I'll handle it accordingly.}%
+	\fi
 }%
 
 \def\pgfplots@addplotimpl@gnuplotresult#1#2{%
@@ -6107,27 +6306,16 @@
 %\message{Prepared macro	\string \pgfplotsaxisvisphasetransformcoordinate {\meaning\pgfplotsaxisvisphasetransformcoordinate}}%
 %\message{Prepared macro	\string \pgfplots@coord@stream@finalize@currentpt {\meaning\pgfplots@coord@stream@finalize@currentpt}}%
 	\def\pgfplots@coord@stream@coord@{%
-		\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
-		\pgfplotsaxisvisphasepreparedatapoint
-		\pgfplots@coord@stream@finalize@currentpt
+		\ifx\pgfplots@current@point@x\pgfutil@empty% this realizes `unbounded coords=jump', for example
+			\pgfplotsplothandlervisualizejump
+		\else
+			\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
+			\pgfplotsaxisvisphasepreparedatapoint
+			\pgfplots@coord@stream@finalize@currentpt
+		\fi
 	}%
-	\if\pgfplots@unbounded@handler j% unbounded coords=jump
-		\t@pgfplots@tokb=\expandafter{\pgfplots@coord@stream@coord@}%
-		\edef\pgfplots@coord@stream@coord@{%
-			\noexpand\ifx\noexpand\pgfplots@current@point@x\noexpand\pgfutil@empty
-				\noexpand\pgfplots@plothandler@unbounded@visualize@jump
-			\noexpand\else
-				\the\t@pgfplots@tokb
-			\noexpand\fi
-		}%
-	\fi
-	%
 }
 
-\def\pgfplots@plothandler@unbounded@visualize@jump{%
-	\pgfplotstreamend
-	\pgfplotstreamstart
-}%
 
 % Defines an optimized and matching \pgfplotsaxisvisphasetransformcoordinate 
 % during the coordinate finalization step in \end{axis}.
@@ -6196,7 +6384,7 @@
 }
 
 \def\pgfplots@addplot@get@named@startendpoints@command#1{%
-	\ifpgfplots@coord@stream@isfirst
+	\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
 		% empty plot.
 		\def#1{%
 			\pgfcoordinate{current plot begin}{\pgfplotspointaxisorigin}%
@@ -6492,6 +6680,7 @@
 		\else
 			\gdef\pgfplots@logical@ZERO@x{0}%
 		\fi
+		% this works in standard fixed pt math:
 		\pgfplotsmathmax{\pgfplots@logical@ZERO@x}{\pgfplots@xmin}%
 		\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
 		\pgfplotsmathmin{\pgfplots@logical@ZERO@x}{\pgfplots@xmax}%
@@ -6558,7 +6747,7 @@
 		\global\let\pgf@plotstreampoint=\pgfplots@plot@handler@graphics@collectbb%
 		\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 		\global\let\pgf@plotstreamend=\pgfplots@plot@handler@graphics@finish%
-		\def\pgfplots@plothandler@unbounded@visualize@jump{%
+		\def\pgfplotsplothandlervisualizejump{%
 			\pgfplots@error{Sorry, plot graphics does not support 'unbounded coords=jump'.}%
 		}%
 	}%
@@ -6927,7 +7116,7 @@
 			\fi
 		\fi
 		% PREPARE THE STREAM PROCESSING:
-		\def\pgfplots@plothandler@unbounded@visualize@jump{%
+		\def\pgfplotsplothandlervisualizejump{%
 			\pgfplotstreampoint{\pgf@x=-16000.0pt \pgf@y=-16000.0pt }%
 		}%
 		\def\pgfplotsplothandlermesh@check@unbounded####1####2\relax{%
@@ -7011,7 +7200,7 @@
 				% shader=interp  does not support z buffer=sort.
 				% It also has its own \pgf@plotstreampoint method, see
 				% above.
-				\def\pgfplots@plothandler@unbounded@visualize@jump{%
+				\def\pgfplotsplothandlervisualizejump{%
 					\pgfplots@error{Sorry, shader=interp does not support 'unbounded coords=jump'. Please use 'shader=flat' for this case.}%
 				}%
 			\else

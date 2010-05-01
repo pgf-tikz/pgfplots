@@ -72,10 +72,18 @@ MISC
 + disable pgfplots CVS?
 
 - documentation todo:
+	- document frac whole format
+	- document /pgfplots/empty line
+	- document 'clickable coords' and 'clickable coords code' features
+	- document 'execute at begin axis' and its new variants
 	> There's a tiny typo in pgfplots manual:
 	>     \addplot table[x index=0,y index=0,header=false]
 	> on page 18. The second index should be 1, not 1.
 	- document how to plot against the coordindex
+	- document how to fix dimension too large problems: restrict to domain for
+	  example
+	- document \pgfresetboundingbox
+	- document how to plot against the column index
 	+ colorbar sampled
 	+ colorbar sampled line
 	- colorbar styles are not consistent between docs and code
@@ -257,6 +265,13 @@ PGF / TikZ Development:
 BUGS / FIXES
 -------------------------------------------------------------
 
+
++ plot handlers should be allowed to overwrite
+  \pgfplots@plothandler@unbounded@visualize@jump
+  --> mesh already does it.
++ the 'enlarge x limits={abs=3}' key doesn't work: it increases the lower
+  limits, but it doesn't draw any tick labels (neither major nor minor)
+
 - nodes near coords,ybar and a scale inside of nodes near coords doesn't work
   \begin{tikzpicture}
    \begin{axis}[ybar, width=\linewidth,  xtick=data, font=\tiny, ymax=950, minor y tick num=1, nodes near coords, point meta=y-901, every node near coord/.append style={scale=0.7,anchor=south, inner xsep=0pt}, nodes near coords align={above}]
@@ -270,7 +285,20 @@ BUGS / FIXES
    \end{axis}
 	\end{tikzpicture}
 
-- the 'colorbar sampled line' and 'colorbar left' styles are incompatible:
+- portability of externalized \label commands: define \tikzifinimage which
+  should be part of the external separate package (in which case it is always
+  false).
+
+- avoid dimension too large errors which occur due to a data range restrictions.
+  Example:
+  data range = 0:6000
+  view range = 0:1
+  -> results in error.
+  But that's easy to detect! Just compute the point coordinate in float (after
+  the scaling is complete). Then, install a filter somewhere. perhaps an "a
+  posteriori" filter in the pointxyz command?
+
++ the 'colorbar sampled line' and 'colorbar left' styles are incompatible:
   	there are no tick lines.
 
 + bug in linux printer drivers: colorbar shadings are not interpolated
@@ -281,6 +309,19 @@ BUGS / FIXES
 
 + the colorbar with surf mode is too short; the 3D colorbar axis won't be scaled correctly
 
++ the 'at' key appears to be broken. It happens if
+  	- pgf 2.00 is used,
+	- at=(anode)  is used where (anode) was originally in a different axis
+
+- the autodetection of the '\\' list format is buggy: it should return true if
+  and only if the last element is '\\', not if '\\' occurs inside of the
+  argument.
+
++ gnuplot compatibility is broken since gnuplot 4.4 changed its table format for
+  logscale. Excellent.
+  Suggested fix: test if the first point equals the lower domain end. If so, it
+  is probably log. Otherwise, it is linearly scaled and pgfplots should apply
+  the log..
 
 + the \pgfplots@ifgridlines@onorientedsurf@should@be@drawn#1#2 is WRONG.
   It works ONLY for boxed axes. All others need special handling...
@@ -317,9 +358,8 @@ BUGS / FIXES
 
 - in tick label reference: the example with \nicefrac has ymajorgrids, but
   doesn't display them! Check!
->>>>>>> origin/stable:doc/latex/pgfplots/todo.txt
 
-- parametric gnuplot plots do not work correctly (see mail of Gabriel Lera)
++ parametric gnuplot plots do not work correctly (see mail of Gabriel Lera)
 	-> require user interface method to set 'variable' and 'variable y' for this case.
 	Default should be 't' and 'u,v' !
 
@@ -1217,6 +1257,26 @@ X verschiebung des ylabels ist komisch, wegen der rotate option
 FEATURES
 -------------------------------------------------------------
 
+- Idea for input stuff: implement high level user interface for coordinate
+  input, similar to the pgf basic level framework. Then, add styles on top of it
+  (try to be compatible with DV engine)
+
+- Idea:
+  	implement an automatic /pgf/number format setting which determines a
+	suitable representation for a *set* of numbers.
+	For example,
+		1e-17 0.2 0.4 0.8
+	should be printed as
+		0 0.2 0.4 0.8
+	whereas
+		1e-17 2e-17 3e-17
+	should be printed using the scientific range (perhaps even using some sort
+	of scaling as for ticks).
+	This would be useful for contour plot labels as well.
+	-> a realization should check the data range (especially its exponent). 
+	Thus, I want a *relative* number printing style.
+
+
 - new plot structure : use the `/data point' key interface coming with pgf CVS
 
 - new structure for math operations:
@@ -1249,9 +1309,12 @@ FEATURES
 		  format than <suffix>
 	TODO:
 		- the log routines --> also use it for table package.
+			-> BUGGY! compare examples in manual. Minor log ticks don't work at
+			all, default log tick labels are simply wrong.
 		- disablelogfilter case
 		- error bars work with both, float and log
 		- plothandlers.code.tex
+		- prepare@ZERO@coords
 
 - rewrite the read number routines. They should allow 'disabledatafilter' thing
   during \addplot.
@@ -1265,7 +1328,14 @@ FEATURES
 		Same fo a vector of input data.
 		But what if I don't know whether it's a vector or matrix?
 		-> second run.
-		Note that the matrix case is expensive.
+		-> after the first, it should be possible to autocomplete the mesh
+		rows/cols. Try it. If that works, we have a matrix.
+		-> could be done from within the scanlinelength routines: auto-detect
+			- mesh/rows
+			- mesh/cols
+			- mesh/ordering
+			- mesh/width
+		-> but that fails if there is no scanline marker.
 	- what with log plots? What with other axis features like symbolic trafos?
 	  	-> need difference type!
 	- that is: quiver plots in log coords are *multiplicative* and invoke the
@@ -1278,6 +1348,21 @@ FEATURES
 
 - plot expression: make the sampling parameters available within survey phase
 
+- I got several feature requests for non-cartesian axes.
+  Perhaps there is a way to generalize the complete procedure... as far as I
+  remember, I use the pointxyz routines anyway to place tick marks and so on.
+  Perhaps it can be reconfigured to do something "advanced".
+  Idea: nonlinear transformation into the axis combined with special drawing
+  rotuines for the axis?
+  ternary diagrams
+  http://staff.aist.go.jp/a.noda/programs/ternary/ternary-en.html.
+  smith charts
+  http://www.mathworks.com/access/helpdesk/help/toolbox/rf/f2-999699.html
+  http://www.siart.de/lehre/smithdgr.pdf
+
+- idea: 'mesh/ordering=auto'. Just check for 'x varies' and 'y varies'! The two
+  first points inside of a scanline are enough.
+
 - it is possible to output contour data into files with gnuplot (and with
   matlab):
 	unset surface
@@ -1287,6 +1372,11 @@ FEATURES
 	splot [x=0:1] [y=0:1] x*y;
 	unset table
 	# contour info now in filename
+- contourf: I guess filled contour plots could be possible if always two
+  adjacent color levels are combined into a single path which is then filled
+  with the simplified even/odd rule (not the winding fill rule). With the
+  underlying smoothness assumption C^0, there can't be any level between two
+  adjacent ones, and there can't be self-intersections.
 - it would be very interesting to allow more flexible handling of empty lines in
   input data, especially files.
   For example 'empty lines=auto|scanline|nan|jump' -> allows to use "interrupted
@@ -1295,9 +1385,26 @@ FEATURES
   	- in table: check the mode. If "nan|jump" and "previous coord was no jump":
 	  insert a "nan nan nan.... nan" line into the table.
 	- in plot coords: same, but it is simpler.
+	- perhaps I can implement the stuff like \pgfplotsscanlinecomplete: it
+	  should stream a coordinate if it fails. The coordinate will use
+	  x=inf,y=inf,z=inf and all remaining fields are kept from the last valid
+	  coordinate. Should not hurt...
 	- the choice "auto" could be used as follows:
 	  	3d plot ---> use "scanline"
 		2d plot ---> use "nan"
+	-> ok, I implemented a first draft.
+- contour draft TODO:
+  	+ color of text nodes
+	+ make sure there is at least one label node
+	- implement contourf
+		- often: use 'even odd rule' to fill adjacent contours.
+		- but this works only if adjacent contours are contained in each other.
+		- if that's not the case, perhaps I need to add an artifical path from
+		  the data limits.
+		-> idea: in case I know the corner values, I'd know which contour
+		plateau requires  the artifical path.
+		-> other idea: I could implement some sort of even-odd rule in TeX. This
+		should also yield the information.
 
 - interesting: add "path after line segment". Idea: allow nodes on the path
   	\tikz \draw (0,0) -- (3,1)
@@ -1306,6 +1413,7 @@ FEATURES
   labels.
   Problems: how should the positions be determined automatically? Overlap should
   be reduced somehow.
+  furthermore, a contour uses more than one path...
 
 	
 
