@@ -56,6 +56,7 @@
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MIN
 	% PARSE IT:
 	\edef\pgfplots@loc@TMPa{#2}%
+	\let\pgfplots@createcolormap@context=\pgfutil@empty
 	% this does also init @H:
 	\expandafter\pgfplots@createcolormap@startloop\pgfplots@loc@TMPa\pgfplots@EOI
 	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
@@ -77,6 +78,7 @@
 %\pgfplots@colormap@showdebuginfofor{#1}%
 }
 \def\pgfplots@createcolormap@seth[#1]{%
+	\def\pgfplots@createcolormap@context{[#1]}%
 	\pgfmathparse{#1}%
 	\let\pgfplots@createcolormap@H=\pgfmathresult
 	\pgfplots@createcolormap@
@@ -102,7 +104,7 @@
 					\pgfutil@ifnextchar c{\pgfplots@createcolormap@grabcolor}%
 					{
 						\expandafter\pgfutil@ifnextchar\pgfplots@activesemicolon{\pgfplots@createcolormap@grabsemicolon@active}%
-						{\pgfplots@error{Illformed colormap specification}}%
+						{\pgfplots@error{Illformed colormap specification \ifx\pgfplots@createcolormap@context\pgfutil@empty\else. The error occured after `\pgfplots@createcolormap@context'\fi}}%
 					}%
 				}%
 			}%
@@ -147,6 +149,7 @@
 	}%
 }
 \def\pgfplots@createcolormap@grabrgb@(#1)=(#2,#3,#4){%
+	\def\pgfplots@createcolormap@context{rgb(#1)=(#2,#3,#4)}%
 	\pgfplots@createcolormap@nextRGB{#1}{#2}{#3}{#4}%
  	\pgfplots@createcolormap@}
 \def\pgfplots@createcolormap@grabrgb@two@five@five@rescale#1{%
@@ -157,6 +160,7 @@
 	\pgfplots@createcolormap@next
 }
 \def\pgfplots@createcolormap@grabrgb@two@five@five@(#1)=(#2,#3,#4){%
+	\def\pgfplots@createcolormap@context{rgb255(#1)=(#2,#3,#4)}%
 	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#2}%
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#3}%
@@ -171,6 +175,7 @@
 	\pgfplots@createcolormap@next
 }%
 \def\pgfplots@createcolormap@grabgray@(#1)=(#2){%
+	\def\pgfplots@createcolormap@context{gray(#1)=(#2)}%
 	\pgfplots@createcolormap@nextRGB{#1}{#2}{#2}{#2}%
  	\pgfplots@createcolormap@}
 \def\pgfplots@createcolormap@grabcolor color{%
@@ -178,6 +183,7 @@
 	\pgfplots@createcolormap@next
 }%
 \def\pgfplots@createcolormap@grabcolor@(#1)=(#2){%
+	\def\pgfplots@createcolormap@context{color(#1)=(#2)}%
 	\pgfutil@colorlet{pgf@tempcol}{#2}%
 	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
 	\expandafter\pgfutil@convertcolorspec\pgf@tempcolor{rgb}{\pgf@rgbcolor}%
@@ -186,7 +192,7 @@
 	\pgfplots@createcolormap@nextRGB{#4}{#1}{#2}{#3}%
  	\pgfplots@createcolormap@}
 \def\pgfplots@createcolormap@rgbrangeexception#1#2#3{%
-	\pgfplots@error{Sorry, RGB[#1,#2,#3] is not supported. The allowed range is 0 <= r,g,b <= 1.}%
+	\pgfplots@error{Sorry, RGB[#1,#2,#3] is not supported. The allowed range is 0 <= r,g,b <= 1. The error occured near `\pgfplots@createcolormap@context'}%
 }%
 % Ok, we parsed the next single spec.
 % #1: the width
@@ -222,7 +228,7 @@
 		\ifpgfplotsarrayempty
 			\ifdim\pgfplots@createcolormap@MAX pt=0pt
 			\else
-				\pgfplots@error{Sorry, the left end of a colormap (at 0pt) must be provided explicitly. You cannot start with \pgfplots@createcolormap@MAX pt.}%
+				\pgfplots@error{Sorry, the left end of a colormap (at 0pt) must be provided explicitly. You cannot start with \pgfplots@createcolormap@MAX pt. The error occured near `\pgfplots@createcolormap@context'}%
 				\def\pgfplots@createcolormap@MAX{0}%
 			\fi
 		\else
@@ -245,7 +251,6 @@
 			\endgroup
 			\if\pgfmathresult\pgfutil@empty
 				% I can't do that yet.
-				\pgfplots@error{Sorry, non-uniform colormaps are only partially implemented, yet: the provided points must be multiples of the mesh width h=\pgfplots@createcolormap@H pt. Perhaps it helps to provide the mesh widths as argument as in {<name>}{[1cm] <color arguments>}?}%
 			\else
 				\let\pgfplots@loc@TMPb=\pgfmathresult
 				% interpolate missing values using the already fixed H.
@@ -280,10 +285,23 @@
 	\edef\pgfplots@createcolormap@lastB{#4}%
 }%
 \def\pgfplots@createcolormap@nextRGB@consider@reinterpolation#1\relax{%
-	\ifdim#1pt<0.0005pt
-		\edef\pgfmathresult{\the\c@pgf@counta}%
-	\else
+	\pgf@xa=#1pt
+	\ifdim\pgf@xa>0.5pt % we have something like 99.995 or so.
+		% round up and compute 1 - #1:
+		\advance\c@pgf@counta by1
+		\pgf@xa=1pt \advance\pgf@xa by-#1pt
+	\fi
+	%
+	% compute relative error:
+	\pgf@xb=\the\c@pgf@counta pt
+	\divide\pgf@xb by10000
+%\message{Checking  H/h = \pgfplots@createcolormap@H@cur pt/\pgfplots@createcolormap@H pt = \the\c@pgf@counta+-\pgf@sys@tonumber\pgf@xa\space:  \the\pgf@xa > \the\pgf@xb\space (relative to \the\c@pgf@counta)?}%
+	%
+	\ifdim\pgf@xa>\pgf@xb
+		\pgfplots@error{Sorry, non-uniform colormaps are only partially implemented, yet: the provided points must be multiples of the mesh width h=\pgfplots@createcolormap@H pt (but I found one with H/h = \pgfplots@createcolormap@H@cur pt/\pgfplots@createcolormap@H pt = \the\c@pgf@counta+-\pgf@sys@tonumber\pgf@xa\space which is no integer). Perhaps it helps to provide the mesh widths as argument as in {<name>}{[1cm] <color arguments>}? The error occured near `\pgfplots@createcolormap@context'}%
 		\let\pgfmathresult=\pgfutil@empty
+	\else
+		\edef\pgfmathresult{\the\c@pgf@counta}%
 	\fi
 }%
 
