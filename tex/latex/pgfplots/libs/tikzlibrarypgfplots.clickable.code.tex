@@ -373,6 +373,7 @@ function sprintf( ) {
 }
 /*********************************************************************************/
 
+% see https://developer.mozilla.org/en/Core_JavaScript_1.5_Guide/Inheritance
 
 var lastPoint = null;
 var posOnMouseDownX = -1;
@@ -386,15 +387,26 @@ var clickablePatternForXY="\pgfkeysvalueof{/pgfplots/annot/xy pattern}";
 var clickableStringNoSuchCoord = "\pgfkeysvalueof{/pgfplots/annot/no such coord}";
 
 var pgfplotsAxisRegistry = new Object();
-pgfplotsAxisRegistry["rectangle"] = function( axisAnnotObj ) {
-	return new PGFPlotsAxis( axisAnnotObj );
+pgfplotsAxisRegistry["rectangle"]	= function( axisAnnotObj ) { return new PGFPlotsAxis( axisAnnotObj ); }
+pgfplotsAxisRegistry["ternary"]		= function( axisAnnotObj ) { return new PGFPlotsTernaryAxis( axisAnnotObj ); }
+
+function PGFPlotsClassExtend( child, super )
+{
+	for (var property in super.prototype) {
+		if (typeof child.prototype[property] == "undefined")
+			child.prototype[property] = super.prototype[property];
+	}
+	return child;
 }
 
-function PGFPlotsCreateAxisFor( axisAnnotObj )
+function PGFPlotsCreateAxisFor( axisAnnotObj, docObject )
 {
-	if( pgfplotsAxisRegistry[axisAnnotObj.axisType] )
-		return pgfplotsAxisRegistry[axisAnnotObj.axisType](axisAnnotObj);
-	return null;
+	var ret = null;
+	if( pgfplotsAxisRegistry[axisAnnotObj.axisType] ) {
+		ret = pgfplotsAxisRegistry[axisAnnotObj.axisType](axisAnnotObj);
+		ret.docObject = docObject;
+	}
+	return ret;
 }
 
 function ClickableCoord(canvasx,canvasy, realx,realy, text)
@@ -543,7 +555,7 @@ PGFPlotsAxis.prototype = {
 	 *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
 	 * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
 	 */
-	axisFindClickableCoord : function( x,y, canvas, startSearch )
+	findClickableCoord : function( x,y, canvas, startSearch )
 	{
 		// Get and modify bounding box. The mouse movement is only accurate up to one point 
 		// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
@@ -621,7 +633,239 @@ PGFPlotsAxis.prototype = {
 			point.canvasy += this.zaxis[1] * unitz;
 		}
 	},
+
+	handleDragNDrop : function( formName, displayOpts )
+	{
+		if( this.dim == 3 )
+			return;
+
+		var result = this.docObject.getField( formName + "-result");
+		var result2 = this.docObject.getField( formName + "-result2");
+		var resultmark = this.docObject.getField( formName + "-resultmark");
+		var result2mark = this.docObject.getField( formName + "-result2mark");
+		var slope 	= this.docObject.getField( formName + "-slope" );
+		if( !result ) {
+			console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
+			return;
+		}
+
+		var a = this.docObject.getField(formName);
+		if( ! a ) {
+			console.println( "Warning: there is no form named \"" + formName + "\"" );
+			return;
+		}
+		// dragging the mouse results in slope computation:
+		// placeClickableCoord shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
+		this.placeClickableCoord( 
+			this.findClickableCoord( posOnMouseDownX, posOnMouseDownY, a, null ),
+			result, displayOpts, tmpArray1 );
+		this.placeClickableCoord( 
+			this.findClickableCoord( mouseX, mouseY, a, null ),
+			result2, displayOpts, tmpArray2 );
+
+		var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
+		var n =  tmpArray1[1] - m * tmpArray1[0];
+
+		var slopePoint = new ClickableCoord(
+			0.5 * ( mouseX + posOnMouseDownX ),
+			0.5 * ( mouseY + posOnMouseDownY ),
+			-1,-1,
+			sprintf( displayOpts.slopeFormat, m, n ));
+		slopePoint.draw(
+			this.docObject,
+			slope,
+			displayOpts );
+
+		// FIXME! these document rights seem to forbid modifications to annotations, although they work for text fields!?
+		//var lineobj = this.getAnnot( a.page, formName + '-line' );
+		//console.println( 'lineobj = ' + lineobj );
+		//lineobj.points = [[mouseX,mouseY],[posOnMouseDownX,posOnMouseDownY]];
+		//lineobj.display = display.visible;
+	},
+
+	handleClick : function( formName, displayOpts )
+	{
+		var result = this.docObject.getField( formName + "-result");
+		var result2 = this.docObject.getField( formName + "-result2");
+		var resultmark = this.docObject.getField( formName + "-resultmark");
+		var result2mark = this.docObject.getField( formName + "-result2mark");
+		var slope 	= this.docObject.getField( formName + "-slope" );
+		if( !result ) {
+			console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
+			return;
+		}
+		result2.display = display.hidden;
+		slope.display = display.hidden;
+		result2mark.display = display.hidden;
+
+		var a = this.docObject.getField(formName);
+		if( ! a ) {
+			console.println( "Warning: there is no form named \"" + formName + "\"" );
+			return;
+		}
+
+		var point = null;
+		var bSearchPoint = true;
+		if( lastPoint ) {
+			if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < this.snapDist ) {
+				if( lastPoint.isSnapToNearestCoord() )
+					++lastPoint.sourceCoordIdx;
+				else
+					bSearchPoint = false;
+
+			} else
+				lastPoint = null; // no search restriction.
+		}
+		if( bSearchPoint )
+			point = this.findClickableCoord( mouseX, mouseY, a, lastPoint ); 
+
+		lastPoint = point;
+
+		// clicking twice onto the same point hides it:
+		if( point == null ) {
+			result.display = display.hidden;
+			resultmark.display = display.hidden;
+			return;
+		}
+
+		this.placeClickableCoord( 
+			point,
+			result, displayOpts, null );
+	},
+
+	/**
+	 * Changes all required Field values of \c plotRegionField, inserts the proper
+	 * value and displays it at the pdf positions (x,y) .
+	 *
+	 * @param plotRegionField a reference to a Field object.
+	 * @param x the x canvas coordinate where the annotation shall be placed and which is used to determine
+	 *  the annotation text.
+	 * @param y the corresponding y coord.
+	 * @param axis An object containing axis references.
+	 * @param displayOpts An object for display flags.
+	 * @param[out] retCoords will be filled with the point in axis coordinates (should have length axis.dim).
+	 */
+	placeClickableCoord : function( point, textField, displayOpts, retCoords )
+	{
+		var transformedCoordx = point.realx;
+		var transformedCoordy = point.realy;
+
+		if( this.xscale.length >= 3 && this.xscale.substr(0,3) == "log" ) {
+			if( this.xscale.length > 4 ) // log:<basis>
+				point.realx = point.realx * Math.log( this.xscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordx = point.realx / Math.log(10);
+			}
+			point.realx = Math.exp(point.realx);
+		}
+		if( this.yscale.length >= 3 && this.yscale.substr(0,3) == "log" ) {
+			if( this.yscale.length > 4 ) // log:<basis>
+				point.realy = point.realy * Math.log( this.yscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordy = point.realy / Math.log(10);
+			}
+			point.realy = Math.exp(point.realy);
+		}
+		if( this.dim > 2 ) {
+			if( this.zscale.length >= 3 && this.zscale.substr(0,3) == "log" ) {
+				if( this.zscale.length > 4 ) // log:<basis>
+					point.realz = point.realz * Math.log( this.zscale.substr(4) );
+				else {
+					// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+					// convert to base 10:
+					transformedCoordz = point.realz / Math.log(10);
+				}
+				point.realz = Math.exp(point.realz);
+			}
+		}
+
+		// replace the text substring "(xy)" with the actual coordinates:
+		var coordOff = point.text.indexOf(clickablePatternForXY);
+		if( coordOff >= 0 ) {
+			point.text = 
+				point.text.substring( 0, coordOff ) + 
+				sprintf( displayOpts.pointFormat, point.realx,point.realy,point.realz) +
+				point.text.substr( coordOff+clickablePatternForXY.length );
+		}
+		point.draw( this.docObject, textField, displayOpts );
+
+		if( retCoords ) {
+			retCoords[0] = transformedCoordx;
+			retCoords[1] = transformedCoordy;
+			if( this.dim > 2 )
+				retCoords[2] = transformedCoordz;
+		}
+
+	}
+
 }
+
+function PGFPlotsTernaryAxis(properties) {
+	PGFPlotsAxis.call(this,properties);
+}
+PGFPlotsTernaryAxis.prototype = {
+	findClickableCoord : function( x,y, canvas, startSearch )
+	{
+		// Get and modify bounding box. The mouse movement is only accurate up to one point 
+		// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
+		var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to lower left corner
+		rect[0] = Math.round(rect[0]);
+		rect[1] = Math.round(rect[1]);
+		rect[2] = Math.round(rect[2]);
+		rect[3] = Math.round(rect[3]);
+		canvas.rect= rect;
+
+		var ternaryScale = 1 / ( rect[2] - rect[0] );
+		var X = ( x - rect[0] ) * ternaryScale;
+		var Y = ( y - rect[3] ) * ternaryScale;
+
+		var realx = 1.15470053837925 * Y; // 2/sqrt(3) 
+		var realz = X - 0.5 * realx;
+		var realy = 1 - realx - realz;
+
+		if( realx < 0 || realy < 0 || realz < 0 )
+			return null;
+
+		var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+		point.realz = realz;
+		point.dim = this.dim;
+
+		if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+			console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+			startSearch = null;
+		}
+		
+		var nearestClickableCoord = this.findNearest( point, rect, startSearch );
+		if( nearestClickableCoord ) {
+			if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < this.snapDist ) {
+				return nearestClickableCoord;
+			}
+		}
+		if( startSearch )
+			point = null;
+
+		return point;
+	},
+
+	/**
+	 * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
+	 */
+	computeCanvasFor : function( point, rect)
+	{
+		var unitx = (point.realx - this.xmin) / (this.xmax -this.xmin);
+		var unity = (point.realy - this.ymin) / (this.ymax -this.ymin);
+		var unitz = (point.realz - this.zmin) / (this.zmax -this.zmin);
+
+		var ternaryScale = ( rect[2] - rect[0] );
+		point.canvasx = rect[0] + ternaryScale* 0.5 * (unitx + 2 * unitz);
+		point.canvasy = rect[3] + ternaryScale* 0.866025403784* unitx; // sqrt(3)/2
+	},
+}
+PGFPlotsClassExtend( PGFPlotsTernaryAxis, PGFPlotsAxis );
 
 
 
@@ -632,76 +876,6 @@ function getDist( x1,y1, x2,y2 ) {
 	var t1 = (x1-x2);
 	var t2 = (y1-y2);
 	return getVecLen(t1,t2);
-}
-
-/**
- * Changes all required Field values of \c plotRegionField, inserts the proper
- * value and displays it at the pdf positions (x,y) .
- *
- * @param plotRegionField a reference to a Field object.
- * @param x the x canvas coordinate where the annotation shall be placed and which is used to determine
- *  the annotation text.
- * @param y the corresponding y coord.
- * @param axis An object containing axis references.
- * @param displayOpts An object for display flags.
- * @param[out] retCoords will be filled with the point in axis coordinates (should have length axis.dim).
- */
-function placeClickableCoord( point, textField, axis, displayOpts, retCoords )
-{
-
-	var transformedCoordx = point.realx;
-	var transformedCoordy = point.realy;
-
-	if( axis.xscale.length >= 3 && axis.xscale.substr(0,3) == "log" ) {
-		if( axis.xscale.length > 4 ) // log:<basis>
-			point.realx = point.realx * Math.log( axis.xscale.substr(4) );
-		else {
-			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
-			// convert to base 10:
-			transformedCoordx = point.realx / Math.log(10);
-		}
-		point.realx = Math.exp(point.realx);
-	}
-	if( axis.yscale.length >= 3 && axis.yscale.substr(0,3) == "log" ) {
-		if( axis.yscale.length > 4 ) // log:<basis>
-			point.realy = point.realy * Math.log( axis.yscale.substr(4) );
-		else {
-			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
-			// convert to base 10:
-			transformedCoordy = point.realy / Math.log(10);
-		}
-		point.realy = Math.exp(point.realy);
-	}
-	if( axis.dim > 2 ) {
-		if( axis.zscale.length >= 3 && axis.zscale.substr(0,3) == "log" ) {
-			if( axis.zscale.length > 4 ) // log:<basis>
-				point.realz = point.realz * Math.log( axis.zscale.substr(4) );
-			else {
-				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
-				// convert to base 10:
-				transformedCoordz = point.realz / Math.log(10);
-			}
-			point.realz = Math.exp(point.realz);
-		}
-	}
-
-	// replace the text substring "(xy)" with the actual coordinates:
-	var coordOff = point.text.indexOf(clickablePatternForXY);
-	if( coordOff >= 0 ) {
-		point.text = 
-			point.text.substring( 0, coordOff ) + 
-			sprintf( displayOpts.pointFormat, point.realx,point.realy,point.realz) +
-			point.text.substr( coordOff+clickablePatternForXY.length );
-	}
-	point.draw( this, textField, displayOpts );
-
-	if( retCoords ) {
-		retCoords[0] = transformedCoordx;
-		retCoords[1] = transformedCoordy;
-		if( axis.dim > 2 )
-			retCoords[2] = transformedCoordz;
-	}
-
 }
 
 function axisMouseDown(formName ) 
@@ -726,118 +900,20 @@ function axisMouseDown(formName )
  */
 function axisMouseUp(formName, axisAnnotObj, displayOpts)
 {
-	var axis = PGFPlotsCreateAxisFor(axisAnnotObj);
+	var axis = PGFPlotsCreateAxisFor(axisAnnotObj,this);
 	if( axis == null )
 		return;
 
 	if( Math.abs( mouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
 		Math.abs( mouseY - posOnMouseDownY ) > 6 )
 	{
-		axisDragNDrop( formName, axis, displayOpts );
+		axis.handleDragNDrop( formName, displayOpts );
 
 	} else {
-		axisClick( formName, axis, displayOpts );
+		axis.handleClick( formName, displayOpts );
 	}
 }
 
-function axisDragNDrop( formName, axis, displayOpts )
-{
-	if( axis.dim == 3 )
-		return;
-
-	var result = this.getField( formName + "-result");
-	var result2 = this.getField( formName + "-result2");
-	var resultmark = this.getField( formName + "-resultmark");
-	var result2mark = this.getField( formName + "-result2mark");
-	var slope 	= this.getField( formName + "-slope" );
-	if( !result ) {
-		console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
-		return;
-	}
-
-	var a = this.getField(formName);
-	if( ! a ) {
-		console.println( "Warning: there is no form named \"" + formName + "\"" );
-		return;
-	}
-	// dragging the mouse results in slope computation:
-	// placeClickableCoord shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
-	placeClickableCoord( 
-		axis.axisFindClickableCoord( posOnMouseDownX, posOnMouseDownY, a, null ),
-		result, axis, displayOpts, tmpArray1 );
-	placeClickableCoord( 
-		axis.axisFindClickableCoord( mouseX, mouseY, a, null ),
-		result2, axis, displayOpts, tmpArray2 );
-
-	var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
-	var n =  tmpArray1[1] - m * tmpArray1[0];
-
-	var slopePoint = new ClickableCoord(
-		0.5 * ( mouseX + posOnMouseDownX ),
-		0.5 * ( mouseY + posOnMouseDownY ),
-		-1,-1,
-		sprintf( displayOpts.slopeFormat, m, n ));
-	slopePoint.draw(
-		this,
-		slope,
-		displayOpts );
-
-	// FIXME! these document rights seem to forbid modifications to annotations, although they work for text fields!?
-	//var lineobj = this.getAnnot( a.page, formName + '-line' );
-	//console.println( 'lineobj = ' + lineobj );
-	//lineobj.points = [[mouseX,mouseY],[posOnMouseDownX,posOnMouseDownY]];
-	//lineobj.display = display.visible;
-}
-
-function axisClick( formName, axis, displayOpts )
-{
-	var result = this.getField( formName + "-result");
-	var result2 = this.getField( formName + "-result2");
-	var resultmark = this.getField( formName + "-resultmark");
-	var result2mark = this.getField( formName + "-result2mark");
-	var slope 	= this.getField( formName + "-slope" );
-	if( !result ) {
-		console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
-		return;
-	}
-	result2.display = display.hidden;
-	slope.display = display.hidden;
-	result2mark.display = display.hidden;
-
-	var a = this.getField(formName);
-	if( ! a ) {
-		console.println( "Warning: there is no form named \"" + formName + "\"" );
-		return;
-	}
-
-	var point = null;
-	var bSearchPoint = true;
-	if( lastPoint ) {
-		if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < axis.snapDist ) {
-			if( lastPoint.isSnapToNearestCoord() )
-				++lastPoint.sourceCoordIdx;
-			else
-				bSearchPoint = false;
-
-		} else
-			lastPoint = null; // no search restriction.
-	}
-	if( bSearchPoint )
-		point = axis.axisFindClickableCoord( mouseX, mouseY, a, lastPoint ); 
-
-	lastPoint = point;
-
-	// clicking twice onto the same point hides it:
-	if( point == null ) {
-		result.display = display.hidden;
-		resultmark.display = display.hidden;
-		return;
-	}
-
-	placeClickableCoord( 
-		point,
-		result, axis, displayOpts, null );
-}
 
 \end{insDLJS}
 %--------------------------------------------------
