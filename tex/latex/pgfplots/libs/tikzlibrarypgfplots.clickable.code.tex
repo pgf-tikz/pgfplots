@@ -385,46 +385,16 @@ var tmpArray2 = new Array(3);
 var clickablePatternForXY="\pgfkeysvalueof{/pgfplots/annot/xy pattern}";
 var clickableStringNoSuchCoord = "\pgfkeysvalueof{/pgfplots/annot/no such coord}";
 
-/**
- * Takes an already existing TextField, changes its value to point.text and places it at (x,y).
- * Additional \c displayOpts will be used to format it.
- */
-function ClickableCoordDraw( canvas, point, displayOpts )
+var pgfplotsAxisRegistry = new Object();
+pgfplotsAxisRegistry["rectangle"] = function( axisAnnotObj ) {
+	return new PGFPlotsAxis( axisAnnotObj );
+}
+
+function PGFPlotsCreateAxisFor( axisAnnotObj )
 {
-	canvas.value = ""+point.text;
-	var R = canvas.rect;
-	R[0] = point.canvasx;
-	R[1] = point.canvasy;
-	R[2] = R[0] + displayOpts.textSize/2*Math.max( 5,point.text.length );
-	R[3] = R[1] - 1.5*displayOpts.textSize;
-	canvas.rect = R;
-	canvas.textFont = displayOpts.textFont;
-	canvas.textSize = displayOpts.textSize;
-	canvas.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
-	canvas.doNotSpellCheck = true;
-	canvas.readonly = true;
-	if( displayOpts.printable )
-		canvas.display = display.visible;
-	else
-		canvas.display = display.noPrint;
-	
-	var mark = this.getField( canvas.name + "mark");
-	if( mark ) {
-		R = mark.rect;
-		R[0]=point.canvasx-2;
-		R[1]=point.canvasy-2;
-		R[2]=R[0]+4;
-		R[3]=R[1]+4;
-		mark.value="";
-		mark.rect = R;
-		mark.fillColor = ["RGB",0,0,0];
-		mark.doNotSpellCheck = true;
-		mark.readonly = true;
-		if( displayOpts.printable )
-			mark.display = display.visible;
-		else
-			mark.display = display.noPrint;
-	}
+	if( pgfplotsAxisRegistry[axisAnnotObj.axisType] )
+		return pgfplotsAxisRegistry[axisAnnotObj.axisType](axisAnnotObj);
+	return null;
 }
 
 function ClickableCoord(canvasx,canvasy, realx,realy, text)
@@ -434,15 +404,29 @@ function ClickableCoord(canvasx,canvasy, realx,realy, text)
 	this.canvasy=canvasy;
 	this.realx=realx;
 	this.realy=realy;
-	this.realz=0;
 	this.text=text;
-	this.sourcePlotIdx = -1;
-	this.sourceCoordIdx = -1;
+}
+ClickableCoord.prototype = 
+{
+	dim : 0,
+	canvasx : 0,
+	canvasy : 0,
+	realx : 0,
+	realy : 0,
+	realz : 0,
+	text : "",
+	sourcePlotIdx : -1,
+	sourceCoordIdx : -1,
 
-	this.isSnapToNearestCoord = function() {
+	isSnapToNearestCoord : function() {
 		return this.sourcePlotIdx >= 0;
-	}
-	this.draw=function( docObject, canvas, displayOpts )
+	},
+
+	/**
+	 * Takes an already existing TextField, changes its value to point.text and places it at (x,y).
+	 * Additional \c displayOpts will be used to format it.
+	 */
+	draw : function( docObject, canvas, displayOpts )
 	{
 		canvas.value = ""+this.text;
 		var R = canvas.rect;
@@ -481,138 +465,165 @@ function ClickableCoord(canvasx,canvasy, realx,realy, text)
 	}
 }
 
-/**
- * @return an instance of ClickableCoord or null.
- * The returned canvas coordinates are NOT yet initialised.
- */
-function findNearest( point, rect, axisAnnotObj, startSearchAt )
-{
-	var actx;
-	var acty;
-	var minSoFar = 1e324;
-	var minPtSoFar = null;
-	var tmpPt = null;
-	var dist =0;
-	var startPlot = 0;
-	var startCoord = 0;
-	var collectedPlots = axisAnnotObj.collectedPlots;
-	if( point.dim > 2 )
-		tmpPt = new ClickableCoord(0,0,0,0,"");
+
+
+function PGFPlotsAxis(properties) {
+	for (var property in properties)
+		this[property] = properties[property];
+}
+PGFPlotsAxis.prototype = {
+	/**
+	 * @return an instance of ClickableCoord or null.
+	 * The returned canvas coordinates are NOT yet initialised.
+	 */
+	findNearest : function( point, rect, startSearchAt )
+	{
+		var actx;
+		var acty;
+		var minSoFar = 1e324;
+		var minPtSoFar = null;
+		var tmpPt = null;
+		var dist =0;
+		var startPlot = 0;
+		var startCoord = 0;
+		var collectedPlots = this.collectedPlots;
+		if( point.dim > 2 )
+			tmpPt = new ClickableCoord(0,0,0,0,"");
+			
+		if( startSearchAt != null && startSearchAt.isSnapToNearestCoord() ) {
+			startPlot = startSearchAt.sourcePlotIdx;
+			startCoord= startSearchAt.sourceCoordIdx;
+		}
+		for( var i = startPlot; i<collectedPlots.length; ++i ) {
+			for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
+				if( point.dim == 2 ) {
+					actx = collectedPlots[i][j][0] - point.realx;
+					acty = collectedPlots[i][j][1] - point.realy;
+				} else {
+					// dim > 2 should be compared using CANVAS coordinates, not real coordinates:
+					tmpPt.realx = collectedPlots[i][j][0];
+					tmpPt.realy = collectedPlots[i][j][1];
+					if( collectedPlots[i][j].length-1 >= 3 )
+						tmpPt.realz = collectedPlots[i][j][2];
+					else
+						tmpPt.realz = 0;
+					this.computeCanvasFor( tmpPt, rect );
+					actx = tmpPt.canvasx - point.canvasx;
+					acty = tmpPt.canvasy - point.canvasy;
+				}
+				dist = actx*actx + acty*acty;
+				if( dist < minSoFar ) {
+					if( minPtSoFar == null )
+						minPtSoFar = new ClickableCoord(-1,-1,0,0,"");
+					minPtSoFar.realx = collectedPlots[i][j][0];
+					minPtSoFar.realy = collectedPlots[i][j][1];
+					if( collectedPlots[i][j].length-1 >= 3 )
+						minPtSoFar.realz = collectedPlots[i][j][2];
+					else
+						minPtSoFar.realz = 0;
+					minPtSoFar.text= collectedPlots[i][j][ collectedPlots[i][j].length-1 ];
+					minPtSoFar.sourcePlotIdx = i;
+					minPtSoFar.sourceCoordIdx = j;
+					minSoFar = dist;
+				}
+			}
+		}
+		if( minPtSoFar )
+			this.computeCanvasFor(minPtSoFar,rect);
+		return minPtSoFar;
+	},
+
+	/**
+	 * Returns either a ClickableCoord describing the point under the mouse cursor or a snap--to--nearest result near the mouse cursor.
+	 *
+	 * @param this the axis in which we shall search.
+	 * @param x,y the input canvas coordinates
+	 * @param canvas a pointer to the Drawing object (TextField) whose 'rect' field is the drawing canvas.
+	 * @param startSearch either null or an instance of ClickableCoord for which isSnapToNearestCoord() returns true. 
+	 *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
+	 * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
+	 */
+	axisFindClickableCoord : function( x,y, canvas, startSearch )
+	{
+		// Get and modify bounding box. The mouse movement is only accurate up to one point 
+		// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
+		var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to upper left corner
+		rect[0] = Math.round(rect[0]);
+		rect[1] = Math.round(rect[1]);
+		rect[2] = Math.round(rect[2]);
+		rect[3] = Math.round(rect[3]);
+		canvas.rect= rect;
+
+		var realx=-1;
+		var realy=-1;
+		if( this.dim == 2 ) {
+			// the following code inverts computeCanvasFor():
+			var minminminx = rect[0] + this.minminmin[0];
+			var minminminy = rect[3] + this.minminmin[1];
+			var vecx = x - minminminx;
+			var vecy = y - minminminy;
+			var A = [ 
+				[this.xaxis[0], this.yaxis[0]],
+				[this.xaxis[1], this.yaxis[1]] ];
+			var b = [ vecx, vecy ];
+
+			var rowpermut = [0, 1];
+			if( Math.abs(A[0][0]) < 0.0001 ) {
+				rowpermut[0] = 1;
+				rowpermut[1] = 0;
+			}
+			var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
+			var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
+			var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
+
+			realx = this.xmin + unitx * (this.xmax - this.xmin);
+			realy = this.ymin + unity * (this.ymax - this.ymin);
+			//console.println( "unitx = " + unitx + "; unity " + unity );
+		}
+
+
+		var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+		point.dim = this.dim;
+
+		if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+			console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+			startSearch = null;
+		}
 		
-	if( startSearchAt && startSearchAt.isSnapToNearestCoord() ) {
-		startPlot = startSearchAt.sourcePlotIdx;
-		startCoord= startSearchAt.sourceCoordIdx;
-	}
-	for( var i = startPlot; i<collectedPlots.length; ++i ) {
-		for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
-			if( point.dim == 2 ) {
-				actx = collectedPlots[i][j][0] - point.realx;
-				acty = collectedPlots[i][j][1] - point.realy;
-			} else {
-				// dim > 2 should be compared using CANVAS coordinates, not real coordinates:
-				tmpPt.realx = collectedPlots[i][j][0];
-				tmpPt.realy = collectedPlots[i][j][1];
-				if( collectedPlots[i][j].length-1 >= 3 )
-					tmpPt.realz = collectedPlots[i][j][2];
-				else
-					tmpPt.realz = 0;
-				computeCanvasFor( tmpPt, rect, axisAnnotObj );
-				actx = tmpPt.canvasx - point.canvasx;
-				acty = tmpPt.canvasy - point.canvasy;
-			}
-			dist = actx*actx + acty*acty;
-			if( dist < minSoFar ) {
-			 	if( minPtSoFar == null )
-					minPtSoFar = new ClickableCoord(-1,-1,0,0,"");
-				minPtSoFar.realx = collectedPlots[i][j][0];
-				minPtSoFar.realy = collectedPlots[i][j][1];
-				if( collectedPlots[i][j].length-1 >= 3 )
-					minPtSoFar.realz = collectedPlots[i][j][2];
-				else
-					minPtSoFar.realz = 0;
-				minPtSoFar.text= collectedPlots[i][j][ collectedPlots[i][j].length-1 ];
-				minPtSoFar.sourcePlotIdx = i;
-				minPtSoFar.sourceCoordIdx = j;
-				minSoFar = dist;
+		var nearestClickableCoord = this.findNearest( point, rect, startSearch );
+		if( nearestClickableCoord ) {
+			if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < this.snapDist ) {
+				return nearestClickableCoord;
 			}
 		}
-	}
-	if( minPtSoFar )
-		computeCanvasFor(minPtSoFar,rect,axisAnnotObj);
-	return minPtSoFar;
+		if( startSearch )
+			point = null;
+		if( this.dim > 2 ) { // we didn't find a snap--to--nearest point.
+			point.text = clickableStringNoSuchCoord;
+		}
+
+		return point;
+	},
+
+	/**
+	 * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
+	 */
+	computeCanvasFor : function( point, rect)
+	{
+		var unitx = (point.realx - this.xmin) / (this.xmax -this.xmin);
+		var unity = (point.realy - this.ymin) / (this.ymax -this.ymin);
+
+		point.canvasx = rect[0] + this.minminmin[0] + this.xaxis[0] * unitx + this.yaxis[0] * unity;
+		point.canvasy = rect[3] + this.minminmin[1] + this.xaxis[1] * unitx + this.yaxis[1] * unity;
+		if( this.dim >= 3 ) {
+			var unitz = (point.realz - this.zmin) / (this.zmax -this.zmin);
+			point.canvasx += this.zaxis[0] * unitz;
+			point.canvasy += this.zaxis[1] * unitz;
+		}
+	},
 }
 
-/**
- * Returns either a ClickableCoord describing the point under the mouse cursor or a snap--to--nearest result near the mouse cursor.
- *
- * @param axisAnnotObj the axis in which we shall search.
- * @param x,y the input canvas coordinates
- * @param canvas a pointer to the Drawing object (TextField) whose 'rect' field is the drawing canvas.
- * @param startSearch either null or an instance of ClickableCoord for which isSnapToNearestCoord() returns true. 
- *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
- * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
- */
-function axisFindClickableCoord( axisAnnotObj, x,y, canvas, startSearch )
-{
-	// Get and modify bounding box. The mouse movement is only accurate up to one point 
-	// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
-	var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to upper left corner
-	rect[0] = Math.round(rect[0]);
-	rect[1] = Math.round(rect[1]);
-	rect[2] = Math.round(rect[2]);
-	rect[3] = Math.round(rect[3]);
-	canvas.rect= rect;
 
-	var realx=-1;
-	var realy=-1;
-	if( axisAnnotObj.dim == 2 ) {
-		// the following code inverts computeCanvasFor():
-		var minminminx = rect[0] + axisAnnotObj.minminmin[0];
-		var minminminy = rect[3] + axisAnnotObj.minminmin[1];
-		var vecx = x - minminminx;
-		var vecy = y - minminminy;
-		var A = [ 
-			[axisAnnotObj.xaxis[0], axisAnnotObj.yaxis[0]],
-			[axisAnnotObj.xaxis[1], axisAnnotObj.yaxis[1]] ];
-		var b = [ vecx, vecy ];
-
-		var rowpermut = [0, 1];
-		if( Math.abs(A[0][0]) < 0.0001 ) {
-			rowpermut[0] = 1;
-			rowpermut[1] = 0;
-		}
-		var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
-		var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
-		var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
-
-		realx = axisAnnotObj.xmin + unitx * (axisAnnotObj.xmax - axisAnnotObj.xmin);
-		realy = axisAnnotObj.ymin + unity * (axisAnnotObj.ymax - axisAnnotObj.ymin);
-		//console.println( "unitx = " + unitx + "; unity " + unity );
-	}
-
-
-	var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
-	point.dim = axisAnnotObj.dim;
-
-	if( startSearch && !startSearch.isSnapToNearestCoord() ) {
-		console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
-		startSearch = null;
-	}
-	
-	var nearestClickableCoord = findNearest( point, rect,axisAnnotObj, startSearch );
-	if( nearestClickableCoord ) {
-		if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < axisAnnotObj.snapDist ) {
-			return nearestClickableCoord;
-		}
-	}
-	if( startSearch )
-		point = null;
-	if( axisAnnotObj.dim > 2 ) { // we didn't find a snap--to--nearest point.
-		point.text = clickableStringNoSuchCoord;
-	}
-
-	return point;
-}
 
 function getVecLen( t1,t2 ) {
 	return Math.sqrt( t1*t1 + t2*t2);
@@ -624,22 +635,6 @@ function getDist( x1,y1, x2,y2 ) {
 }
 
 /**
- * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
- */
-function computeCanvasFor( point, rect, axisAnnotObj)
-{
-	var unitx = (point.realx - axisAnnotObj.xmin) / (axisAnnotObj.xmax -axisAnnotObj.xmin);
-	var unity = (point.realy - axisAnnotObj.ymin) / (axisAnnotObj.ymax -axisAnnotObj.ymin);
-
-	point.canvasx = rect[0] + axisAnnotObj.minminmin[0] + axisAnnotObj.xaxis[0] * unitx + axisAnnotObj.yaxis[0] * unity;
-	point.canvasy = rect[3] + axisAnnotObj.minminmin[1] + axisAnnotObj.xaxis[1] * unitx + axisAnnotObj.yaxis[1] * unity;
-	if( axisAnnotObj.dim >= 3 ) {
-		var unitz = (point.realz - axisAnnotObj.zmin) / (axisAnnotObj.zmax -axisAnnotObj.zmin);
-		point.canvasx += axisAnnotObj.zaxis[0] * unitz;
-		point.canvasy += axisAnnotObj.zaxis[1] * unitz;
-	}
-}
-/**
  * Changes all required Field values of \c plotRegionField, inserts the proper
  * value and displays it at the pdf positions (x,y) .
  *
@@ -647,19 +642,19 @@ function computeCanvasFor( point, rect, axisAnnotObj)
  * @param x the x canvas coordinate where the annotation shall be placed and which is used to determine
  *  the annotation text.
  * @param y the corresponding y coord.
- * @param axisAnnotObj An object containing axis references.
+ * @param axis An object containing axis references.
  * @param displayOpts An object for display flags.
- * @param[out] retCoords will be filled with the point in axis coordinates (should have length axisAnnotObj.dim).
+ * @param[out] retCoords will be filled with the point in axis coordinates (should have length axis.dim).
  */
-function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCoords )
+function placeClickableCoord( point, textField, axis, displayOpts, retCoords )
 {
 
 	var transformedCoordx = point.realx;
 	var transformedCoordy = point.realy;
 
-	if( axisAnnotObj.xscale.length >= 3 && axisAnnotObj.xscale.substr(0,3) == "log" ) {
-		if( axisAnnotObj.xscale.length > 4 ) // log:<basis>
-			point.realx = point.realx * Math.log( axisAnnotObj.xscale.substr(4) );
+	if( axis.xscale.length >= 3 && axis.xscale.substr(0,3) == "log" ) {
+		if( axis.xscale.length > 4 ) // log:<basis>
+			point.realx = point.realx * Math.log( axis.xscale.substr(4) );
 		else {
 			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
 			// convert to base 10:
@@ -667,9 +662,9 @@ function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCo
 		}
 		point.realx = Math.exp(point.realx);
 	}
-	if( axisAnnotObj.yscale.length >= 3 && axisAnnotObj.yscale.substr(0,3) == "log" ) {
-		if( axisAnnotObj.yscale.length > 4 ) // log:<basis>
-			point.realy = point.realy * Math.log( axisAnnotObj.yscale.substr(4) );
+	if( axis.yscale.length >= 3 && axis.yscale.substr(0,3) == "log" ) {
+		if( axis.yscale.length > 4 ) // log:<basis>
+			point.realy = point.realy * Math.log( axis.yscale.substr(4) );
 		else {
 			// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
 			// convert to base 10:
@@ -677,10 +672,10 @@ function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCo
 		}
 		point.realy = Math.exp(point.realy);
 	}
-	if( axisAnnotObj.dim > 2 ) {
-		if( axisAnnotObj.zscale.length >= 3 && axisAnnotObj.zscale.substr(0,3) == "log" ) {
-			if( axisAnnotObj.zscale.length > 4 ) // log:<basis>
-				point.realz = point.realz * Math.log( axisAnnotObj.zscale.substr(4) );
+	if( axis.dim > 2 ) {
+		if( axis.zscale.length >= 3 && axis.zscale.substr(0,3) == "log" ) {
+			if( axis.zscale.length > 4 ) // log:<basis>
+				point.realz = point.realz * Math.log( axis.zscale.substr(4) );
 			else {
 				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
 				// convert to base 10:
@@ -703,7 +698,7 @@ function placeClickableCoord( point, textField, axisAnnotObj, displayOpts, retCo
 	if( retCoords ) {
 		retCoords[0] = transformedCoordx;
 		retCoords[1] = transformedCoordy;
-		if( axisAnnotObj.dim > 2 )
+		if( axis.dim > 2 )
 			retCoords[2] = transformedCoordz;
 	}
 
@@ -717,7 +712,7 @@ function axisMouseDown(formName )
 
 /**
  * @param formName the name of the clickable button. It is expected to be as large as the underlying plot.
- * @param axisAnnotObj an object with the fields
+ * @param axis an object with the fields
  *   - xmin, xmax
  *   - ymin, ymax
  *   - xscale, yscale
@@ -731,19 +726,23 @@ function axisMouseDown(formName )
  */
 function axisMouseUp(formName, axisAnnotObj, displayOpts)
 {
+	var axis = PGFPlotsCreateAxisFor(axisAnnotObj);
+	if( axis == null )
+		return;
+
 	if( Math.abs( mouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
 		Math.abs( mouseY - posOnMouseDownY ) > 6 )
 	{
-		axisDragNDrop( formName, axisAnnotObj, displayOpts );
+		axisDragNDrop( formName, axis, displayOpts );
 
 	} else {
-		axisClick( formName, axisAnnotObj, displayOpts );
+		axisClick( formName, axis, displayOpts );
 	}
 }
 
-function axisDragNDrop( formName, axisAnnotObj, displayOpts )
+function axisDragNDrop( formName, axis, displayOpts )
 {
-	if( axisAnnotObj.dim == 3 )
+	if( axis.dim == 3 )
 		return;
 
 	var result = this.getField( formName + "-result");
@@ -764,11 +763,11 @@ function axisDragNDrop( formName, axisAnnotObj, displayOpts )
 	// dragging the mouse results in slope computation:
 	// placeClickableCoord shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
 	placeClickableCoord( 
-		axisFindClickableCoord( axisAnnotObj, posOnMouseDownX, posOnMouseDownY, a, null ),
-		result, axisAnnotObj, displayOpts, tmpArray1 );
+		axis.axisFindClickableCoord( posOnMouseDownX, posOnMouseDownY, a, null ),
+		result, axis, displayOpts, tmpArray1 );
 	placeClickableCoord( 
-		axisFindClickableCoord( axisAnnotObj, mouseX, mouseY, a, null ),
-		result2, axisAnnotObj, displayOpts, tmpArray2 );
+		axis.axisFindClickableCoord( mouseX, mouseY, a, null ),
+		result2, axis, displayOpts, tmpArray2 );
 
 	var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
 	var n =  tmpArray1[1] - m * tmpArray1[0];
@@ -790,7 +789,7 @@ function axisDragNDrop( formName, axisAnnotObj, displayOpts )
 	//lineobj.display = display.visible;
 }
 
-function axisClick( formName, axisAnnotObj, displayOpts )
+function axisClick( formName, axis, displayOpts )
 {
 	var result = this.getField( formName + "-result");
 	var result2 = this.getField( formName + "-result2");
@@ -814,7 +813,7 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 	var point = null;
 	var bSearchPoint = true;
 	if( lastPoint ) {
-		if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < axisAnnotObj.snapDist ) {
+		if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < axis.snapDist ) {
 			if( lastPoint.isSnapToNearestCoord() )
 				++lastPoint.sourceCoordIdx;
 			else
@@ -824,7 +823,7 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 			lastPoint = null; // no search restriction.
 	}
 	if( bSearchPoint )
-		point = axisFindClickableCoord(axisAnnotObj, mouseX, mouseY, a, lastPoint ); 
+		point = axis.axisFindClickableCoord( mouseX, mouseY, a, lastPoint ); 
 
 	lastPoint = point;
 
@@ -837,7 +836,7 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 
 	placeClickableCoord( 
 		point,
-		result, axisAnnotObj, displayOpts, null );
+		result, axis, displayOpts, null );
 }
 
 \end{insDLJS}
@@ -949,6 +948,7 @@ function axisClick( formName, axisAnnotObj, displayOpts )
 		{\pgfkeysvalueof{/pgfplots/annot/height}}%
 		{\pgfplots@clickable@uniquename}%
 		{{
+			axisType:	"\pgfkeysvalueof{/pgfplots/axis type}",
 			dim:	\pgfkeysvalueof{/pgfplots/annot/dim},
 			xmin:	\pgfkeysvalueof{/pgfplots/annot/xmin}, 
 			xmax:	\pgfkeysvalueof{/pgfplots/annot/xmax},
