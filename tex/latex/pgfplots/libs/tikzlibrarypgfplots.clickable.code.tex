@@ -81,6 +81,14 @@
 	annot/font/.initial={font.Times},
 %	annot/font={"CMR10"},
 	annot/textSize/.initial=11,
+	annot/richtext/.initial=true,
+	annot/richtext/.default=true,
+	annot/popup size generic/.initial=auto,
+	annot/popup size snap/.initial=auto,
+	annot/popup size/.style={
+		/pgfplots/annot/popup size generic={#1},
+		/pgfplots/annot/popup size snap={#1},
+	},
 	annot/width/.initial=,
 	annot/height/.initial=,
 	annot/jsname/.initial=,
@@ -440,15 +448,51 @@ ClickableCoord.prototype =
 	 */
 	draw : function( docObject, canvas, displayOpts )
 	{
-		canvas.value = ""+this.text;
+		var charsX = 1;
+		var charsY = 1.5;
+		var popupSize = ( this.isSnapToNearestCoord() ? displayOpts.popupSizeSnap : displayOpts.popupSizeGeneric );
+		if( popupSize == "auto" ) {
+			charsX = Math.max( 5,this.text.length )/2;
+
+		} else {
+			var commaOff = popupSize.indexOf( "," );
+			if( commaOff >= 0 ) {
+				charsX = popupSize.substring( 0, commaOff );
+				charsY = popupSize.substring( commaOff+1 );
+			} else
+				charsX = popupSize;
+		}
+
+		if( !displayOpts.richText  )
+			canvas.value = ""+this.text;
+		else {
+			canvas.richText=true;
+			var xmlValue = "<?xml version=\"1.0\"?>"+
+				"<body> " + % xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:9.3.2\" xfa:spec=\"2.0.2\">" +
+				%"<p>"+
+				"<span>"+ % style="font-size:9.0pt;text-align:left;color:#7E0000;font-weight:normal;font-style:normal;font-family:Helvetica,sans-serif;font-stretch:normal"
+					this.text + 
+				"</span>"+
+				%"</p>"+
+				"</body>";
+			canvas.richValue = util.xmlToSpans(xmlValue);
+% debug helper:
+% spans= new Array();
+% spans[0] = new Object();
+% spans[0].text = this.text;
+% spans[0].textColor = ["RGB",0.5,0,0];
+% canvas.richValue = spans;
+% console.println(util.spansToXML(canvas.richValue));
+	 	}
 		var R = canvas.rect;
 		R[0] = this.canvasx;
 		R[1] = this.canvasy;
-		R[2] = R[0] + displayOpts.textSize/2*Math.max( 5,this.text.length );
-		R[3] = R[1] - 1.5*displayOpts.textSize;
+		R[2] = R[0] + charsX*displayOpts.textSize;
+		R[3] = R[1] - charsY*displayOpts.textSize;
 		canvas.rect = R;
 		canvas.textFont = displayOpts.textFont;
 		canvas.textSize = displayOpts.textSize;
+		canvas.multiline = true;
 		canvas.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
 		canvas.doNotSpellCheck = true;
 		canvas.readonly = true;
@@ -930,9 +974,11 @@ function axisMouseUp(formName, axisAnnotObj, displayOpts)
 % hideClickableTextfields();
 %-------------------------------------------------- 
 
+
 \pgfkeysdef{/pgfplots/annot/xy pattern}{\pgfplots@clickable@xypat@error}%
 \pgfkeysdef{/pgfplots/annot/xy pattern/.initial}{\pgfplots@clickable@xypat@error}%
 \def\pgfplots@clickable@xypat@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/xy pattern/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
+
 \pgfkeysdef{/pgfplots/annot/no such coord}{\pgfplots@clickable@nosuchcoord@error}%
 \pgfkeysdef{/pgfplots/annot/no such coord/.initial}{\pgfplots@clickable@nosuchcoord@error}%
 \def\pgfplots@clickable@nosuchcoord@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/no such coord/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
@@ -946,6 +992,22 @@ function axisMouseUp(formName, axisAnnotObj, displayOpts)
 	\pgfplotsapplistXnewempty\pgfplots@clickable@collectedplot
 	\def\pgfplots@clickable@collectedplot@isempty{1}%
 }%
+
+{\catcode`\|=0 |catcode`|\=12 |gdef|pgfplots@clickable@bslash{\}}%
+{
+\catcode`\"=13
+\catcode`\|=13
+\catcode`\#=12
+\gdef\pgfplots@clickable@coordcollect@handlechars{%
+	\def"{\string\\\string\"}%
+	\def\#{#}%
+	\expandafter\def\csname \string"\endcsname{\string\\\string\"}%
+	\def|{\string"}%
+	\def\n{\pgfplots@clickable@bslash\string\n}%
+	\def\r{\pgfplots@clickable@bslash\string\r}%
+	\def\t{\pgfplots@clickable@bslash\string\t}%
+}%
+}
 \def\pgfplots@clickable@coordcollect#1{%
 	\begingroup
 	\pgfplotscoordmath{x}{tostring}\pgfplots@current@point@x
@@ -957,8 +1019,10 @@ function axisMouseUp(formName, axisAnnotObj, displayOpts)
 		\let\pgfplots@current@point@z=\pgfmathresult
 	\fi
 	\begingroup
+		\pgfplots@clickable@coordcollect@handlechars
 		#1%
 		\xdef\pgfplots@glob@TMPa{\pgfplotsretval}%
+%\message{I have '\pgfplotsretval'}%
 	\endgroup
 	\xdef\pgfplots@glob@TMPa{\if1\pgfplots@clickable@collectedplot@isempty\else,\fi[\pgfplots@current@point@x,\pgfplots@current@point@y\ifpgfplots@curplot@threedim,\pgfplots@current@point@z\fi,"\pgfplots@glob@TMPa"]}%
 	\endgroup
@@ -1050,6 +1114,9 @@ function axisMouseUp(formName, axisAnnotObj, displayOpts)
 			fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
 			textFont:\pgfkeysvalueof{/pgfplots/annot/font},
 			textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
+			richText:\pgfkeysvalueof{/pgfplots/annot/richtext},
+			popupSizeGeneric:"\pgfkeysvalueof{/pgfplots/annot/popup size generic}",
+			popupSizeSnap:"\pgfkeysvalueof{/pgfplots/annot/popup size snap}",
 			printable: \ifpgfplots@annot@printable true\else false\fi
 		}}%
 	}%
