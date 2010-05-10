@@ -789,12 +789,16 @@
 				\let\pgfmathdiff@x=\pgfmathresult
 				\pgfmathsubtract@{\pgfmathnext@y}{\pgfmathcur@y}%
 				\let\pgfmathdiff@y=\pgfmathresult
-				\ifdim\pgfmathdiff@x pt=0.0pt
+				% FPU is more robust:
+				\pgfmathfloatparsenumber\pgfmathdiff@x\let\pgfmathdiff@x=\pgfmathresult
+				\pgfmathfloatparsenumber\pgfmathdiff@y\let\pgfmathdiff@y=\pgfmathresult
+				\pgfplots@ifzero\pgfmathdiff@x{%
 					\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
-				\else
-					\pgfmathdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+				}{%
+					\pgfmathfloatdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+					\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
 					\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
-				\fi
+				}%
 			\else
 			%	\pgfmathfloatcreate{3}{0.0}{0}%
 			%	\pgfmathfloattosci@\pgfmathresult
@@ -2161,6 +2165,7 @@
 	\t@pgfplots@toka=\expandafter{#2}% this should handle macro names in '#2'.
 	\edef\pgfplotstable@newcolname{\the\t@pgfplots@toka}%
 	\global\pgfplotstablecreatecol@isreallynewtrue
+	\c@pgf@countd=0
 	\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
 		\pgfplotstable@is@colname\pgfplotstable@colname
 		\ifpgfplotstableread@foundcolnames
@@ -2172,7 +2177,10 @@
 		\ifx\pgfplotstable@colname\pgfplotstable@newcolname
 			\global\pgfplotstablecreatecol@isreallynewfalse
 		\fi
+		\expandafter\edef\csname pgfplotstablecreate@index@to@name@\the\c@pgf@countd\endcsname{\pgfplotstable@colname}%
+		\advance\c@pgf@countd by1
 	}%
+	\edef\pgfplotstablecols{\the\c@pgf@countd}%
 	\pgfplotstable@isfirstrowtrue
 	\pgfplotstable@islastrowfalse
 	\pgfplotslistnewempty\pgfplotstable@newcol
@@ -2187,6 +2195,17 @@
 	\def\prevrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@prev@}{\pgfplotstable@thisrow@impl@}}%
 	\def\thisrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@cur@}{\pgfplotstable@thisrow@impl@}}%
 	\def\nextrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@next@}{\pgfplotstable@thisrow@impl@}}%
+	\def\pgfplotstable@rowno@impl##1##2{%
+		\pgfutil@ifundefined{pgfplotstablecreate@index@to@name@##1}{%
+			\csname ##2row\endcsname{colindex##1}%
+		}{%
+			\csname ##2row\endcsname{\csname pgfplotstablecreate@index@to@name@##1\endcsname}%
+		}%
+	}%
+	\def\prevrowno##1{\pgfplotstable@rowno@impl{##1}{prev}}%
+	\def\thisrowno##1{\pgfplotstable@rowno@impl{##1}{this}}%
+	\def\nextrowno##1{\pgfplotstable@rowno@impl{##1}{next}}%
+	%
 	\def\getprevrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@prev@##1\endcsname}%
 	\def\getthisrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@cur@##1\endcsname}%
 	\def\getnextrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@next@##1\endcsname}%
