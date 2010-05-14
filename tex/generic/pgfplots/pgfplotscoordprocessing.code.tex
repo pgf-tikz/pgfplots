@@ -1123,7 +1123,17 @@
 %
 % The returned normal vector has length 1 (computed with
 % \pgfpointnormalised).
+%
+% NOTE: some specialized axis types support non-linear axes (for
+% example, polar axes). In that case, the outer normal vector *varies*
+% along the `v' direction (of the three-character-string `#1').
+% The value of `v' can be set using
+% \pgfplotspointouternormalvectorofaxissetv{<axis three char string>}{<transformed coordinate>}
 \def\pgfplotspointouternormalvectorofaxis#1{%
+	\pgfplotspointouternormalvectorofaxis@ifdependson@v{#1}{%
+		\expandafter\global\expandafter\let\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname\relax
+	}{%
+	}%
 	\expandafter\ifx\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname\relax
 		\begingroup
 		\edef\pgfplots@loc@TMPa{#1}%
@@ -1134,6 +1144,61 @@
 		\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname
 	\fi
 }%
+
+% Fixes the "v" value for successive calls to
+% \pgfplotspointouternormalvectorofaxis{#1}.
+%
+% #1 the three-character-string of an axis or the empty string.
+% If #1 is empty, the actual configuration of oriented surfaces may be
+% used to check which normal vector is intented.
+%
+% #2 the "v" value to store. It should be a transformed coordinate.
+\def\pgfplotspointouternormalvectorofaxissetv#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\expandafter\edef\csname pgfplotspointouternormalvectorofaxis@v@\pgfplotspointonorientedsurfaceA\endcsname{#2}%
+	\else
+		\expandafter\edef\csname pgfplotspointouternormalvectorofaxis@v@#1\endcsname{#2}%
+	\fi
+}%
+
+% Defines \pgfplotsretval to contain the 'v' value for an outer normal
+% vector (if there is one known). If there is no such value,
+% \pgfplotsretval will be empty.
+% #1 a three-character-string
+\def\pgfplotspointouternormalvectorofaxisgetv#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplotspointouternormalvectorofaxisgetv@\pgfplots@loc@TMPa\relax\relax\relax\relax
+}
+\def\pgfplotspointouternormalvectorofaxisgetv@#1#2#3\relax{%
+	\pgfutil@ifundefined{pgfplotspointouternormalvectorofaxis@v@#1#2#3}{%
+		% no value found so far.
+		\if#1v%
+			\def\pgfplotsretval{x}%
+		\else
+			\if#2v%
+				\def\pgfplotsretval{y}%
+			\else
+				\def\pgfplotsretval{z}%
+			\fi
+		\fi
+		\pgfutil@ifundefined{pgfplotspointouternormalvectorofaxis@v@\pgfplotsretval}{%
+			\let\pgfplotsretval\pgfutil@empty
+		}{%
+			\edef\pgfplotsretval{\csname pgfplotspointouternormalvectorofaxis@v@\pgfplotsretval\endcsname}%
+		}%
+	}{%
+		\edef\pgfplotsretval{\csname pgfplotspointouternormalvectorofaxis@v@#1#2#3\endcsname}%
+	}%
+\message{getv(#1#2#3) = \meaning\pgfplotsretval}%
+}%
+
+% invokes #2 if the outer normal for the axis #1 (identified by a
+% three-character-string) depends on a coordinate on that axis and #3
+% otherwise.
+%
+% Overwrite in subclasses if necessary.
+\def\pgfplotspointouternormalvectorofaxis@ifdependson@v#1#2#3{#3}
 
 % FIXME : this doesn't work if one of the three characters is '2' (for
 % center)
@@ -1270,6 +1335,7 @@
 		\pgfpointadd
 			{\pgfplotspointonorientedsurfaceab{\pgfplots@loc@A}{\pgfplots@loc@B}}
 			{%
+				\pgfplotspointouternormalvectorofaxissetv{#1#2#3}{\pgfplots@loc@A}%
 				\pgfqpointscale
 					{\pgfplots@loc@distalong@normal}%
 					{\pgfplotspointouternormalvectorofaxis{#1#2#3}}%
