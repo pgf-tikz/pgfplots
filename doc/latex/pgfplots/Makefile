@@ -24,7 +24,7 @@ pgfplots.makefile:
 	@export TEXMFCNF=.: && $(PDFLATEX) pgfplots
 	
 clean:
-	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
+	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.makefile pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
 
 
 FORCE:
