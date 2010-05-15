@@ -164,7 +164,7 @@
 %
 %   If necessary, the plot handler calls
 %   \pgfplotsaxisparsecoordinate{} and
-%   \pgfplotsaxispreparecoordinate{} multiple times, ones for each
+%   \pgfplotsaxispreparecoordinate{} multiple times, once for each
 %   encountered coordinate.
 %
 %	It might occasionally be too much to call
@@ -1209,6 +1209,10 @@
 	% FIXME : should use \tikz@plot@handler instead of just the
 	% visualization thing!
 	contour/handler/.style={/tikz/sharp plot},
+	contour prepared format/.is choice,
+	contour prepared format/standard/.code=	{\def\pgfplotsplothandlercontourprepared@format{s}},
+	contour prepared format/matlab/.code=	{\def\pgfplotsplothandlercontourprepared@format{m}},
+	contour prepared format/standard,
 	contour/draw color/.initial=mapped color,
 	contour/fill color/.initial=mapped color,
 	contour/label distance/.initial=70pt,
@@ -1230,6 +1234,15 @@
 }%
 \def\pgfplotsplothandlercontourprepared{%
 	\pgfplotsresetplothandler
+	\let\pgf@plotstreamstart=\pgfplotsplothandlervisstart@contour
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contour
+	\if m\pgfplotsplothandlercontourprepared@format
+		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contour
+		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contour
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfplotsset{/pgfplots/point meta=explicit}%
+		}%
+	\fi
 	\ifpgfplots@curplot@threedim
 		\pgfplotsset{/pgfplots/set point meta if empty=z}%
 	\else
@@ -1237,11 +1250,30 @@
 			\pgfplots@error{Sorry, contour requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
 		}%
 	\fi
-	\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@visstart
-	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlercontour@surveyend
 }%
 
-\def\pgfplotsplothandlercontour@surveyend{%
+\def\pgfplotsplothandlersurveystart@contour{%
+	\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
+	\def\c@pgfplotsplothandlercontourprepared@matlabformat@count{0}%
+}
+\def\pgfplotsplothandlersurveypoint@contour{%
+	\ifnum\c@pgfplotsplothandlercontourprepared@matlabformat@cur=\c@pgfplotsplothandlercontourprepared@matlabformat@count\relax
+		\pgfmathfloatparsenumber{\pgfplots@current@point@y}%
+		\pgfmathfloattoint\pgfmathresult
+		\let\c@pgfplotsplothandlercontourprepared@matlabformat@count=\pgfmathresult
+		\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
+		%
+		\pgfmathfloatparsenumber{\pgfplots@current@point@x}%
+		\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
+		%
+	\else
+		\let\pgfplots@current@point@z=\pgfplotsplothandlercontourprepared@matlabformat@meta
+		\let\pgfplots@current@point@meta=\pgfplotsplothandlercontourprepared@matlabformat@meta
+		\pgfplotsplothandlersurveypoint@default
+		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlercontourprepared@matlabformat@cur
+	\fi
+}%
+\def\pgfplotsplothandlersurveyend@contour{%
 	\pgfplotsplothandlercontour@init@limits
 	\ifx\pgfplotsplothandlercontour@limits@low@meta\pgfutil@empty
 	\else
@@ -1249,7 +1281,7 @@
 	\fi
 }%
 
-\def\pgfplotsplothandlercontour@visstart{%
+\def\pgfplotsplothandlervisstart@contour{%
 	%
 	\ifpgfplotsplothandlercontour@labels
 		\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
