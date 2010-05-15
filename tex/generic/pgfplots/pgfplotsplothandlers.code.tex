@@ -223,6 +223,17 @@
 % lineto or similar plot handlers.
 %
 % 2.2 Further Survey Phase API functions
+% 	\pgfplotsplothandlernotifyscanlinecomplete
+% Called whenever an end-of-scanline marker has been processed, i.e.
+% whenever the 'empty line' key has been triggered. The default is to
+% do nothing.
+%
+%   \pgfplotsaxissurveysetpointmeta
+% processes the 'point meta' key, i.e. it assigns
+% \pgfplots@current@point@meta. This macro can only be called once for
+% each coordinate (it will be deactivated afterwards). PGFPlots calls
+% it in \pgfplotsaxisdatapointsurveyed .
+%
 %   \pgfplotsplothandlersurveyaddoptions{<options>}
 % which allows to change the current plot style from within API
 % functions. It sets <options> and remembers them for the
@@ -278,6 +289,7 @@
 	\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@default
 	\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@default
 	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlervisualizejump@default
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\relax
 }%
 
 % \pgfplotsplothandlersurveystart
@@ -291,6 +303,7 @@
 % \pgfplotsplothandlersurveyend
 % Called at the end of each survey phase.
 \def\pgfplotsplothandlersurveyend@default{}
+\let\pgfplotsplothandlernotifyscanlinecomplete=\relax%
 
 % \pgfplotsplothandlersurveypoint is called for each encountered data
 % point.
@@ -1657,4 +1670,119 @@
 	%
 	\pgfplotscoordmath{meta}{parsenumber}{#4}%
 	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @meta\endcsname=\pgfmathresult
+}%
+
+
+\pgfplotsset{
+	contour gnuplot/.code={%
+		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourgnuplot{#1}}%
+	},
+}%
+\def\pgfplotsplothandlercontourgnuplot#1{%
+	\edef\pgfplotsplothandlercontourgnuplot@file{#1}%
+	\pgfplotsresetplothandler
+	\def\pgfplotsplothandlername{contour gnuplot}%
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourgnuplot
+	\def\pgf@plotstreamstart{%
+		\pgfplotsplothandlercontourprepared
+		\pgf@plotstreamstart
+	}%
+}%
+\gdef\c@pgfplotsplothandlersurveystart@contourgnuplot@fileno{0}%
+\def\pgfplotsplothandlersurveystart@contourgnuplot{%
+	\ifx\pgfplotsplothandlercontourgnuplot@file\pgfutil@empty
+		\edef\pgfplotsplothandlercontourgnuplot@file{\jobname-contourtmp\c@pgfplotsplothandlersurveystart@contourgnuplot@fileno.dat}%
+		\pgfplotsutil@advancestringcounter@global\c@pgfplotsplothandlersurveystart@contourgnuplot@fileno
+	\fi
+\message{contour gnuplot: start (file=\pgfplotsplothandlercontourgnuplot@file)}%
+	%
+	\pgfplotsplothandlertofile{\pgfplotsplothandlercontourgnuplot@file}%
+	\pgfplotsplothandlersurveystart
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourgnuplot
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contourgnuplot
+}%
+\def\pgfplotsplothandlersurveypoint@contourgnuplot{%
+	\pgfplotsaxissurveysetpointmeta
+	\let\pgfplots@current@point@z=\pgfplots@current@point@meta
+	%
+%\message{contour gnuplot: collecting point (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z) [\pgfplots@current@point@meta]...}%
+	\pgfplotsplothandlersurveypoint@tofile
+}%
+
+{
+\catcode`\"=12
+\gdef\pgfplotsplothandlersurveyend@contourgnuplot{%
+\message{contour gnuplot: end survey.}%
+	\pgfplotsplothandlersurveyend@tofile
+	%
+	\immediate\openout\w@pgf@writea=\pgfplotsplothandlercontourgnuplot@file.gnuplot
+	\immediate\write\w@pgf@writea{unset surface}%
+	\immediate\write\w@pgf@writea{set contour}%
+	\immediate\write\w@pgf@writea{set table "\pgfplotsplothandlercontourgnuplot@file.table"}%
+	\immediate\write\w@pgf@writea{splot "\pgfplotsplothandlercontourgnuplot@file"}%
+	\immediate\closeout\w@pgf@writea
+	%
+	\immediate\write18{gnuplot \pgfplotsplothandlercontourgnuplot@file.gnuplot}%
+	%
+}%
+}
+		
+
+
+
+% the `plot unprocessed to file' plot handler simply copies the input data
+% UNPROCESSED to an output file.
+%
+% I use it as helper tool for `contour gnuplot'.
+\pgfplotsset{
+	plot unprocessed to file/.code={
+		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlertofile{#1}}%
+	},
+}
+
+\def\pgfplotsplothandlertofile#1{%
+	\edef\pgfplotsplothandlertofile@name{#1}%
+	\pgfplotsresetplothandler
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@tofile
+	\def\pgfplotsplothandlername{plot to file}%
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@tofile
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@tofile
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlernotifyscanlinecomplete@tofile
+}%
+\def\pgfplotsplothandlernotifyscanlinecomplete@tofile{%
+	\immediate\write\w@pgf@writea{}% empty line.
+}%
+\def\pgfplotsplothandlersurveypoint@tofile{%
+	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y}%
+	\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{\pgfplots@current@point@z}%
+		\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	%
+	\pgfplotsaxissurveysetpointmeta
+	\pgfplotsaxisifhaspointmeta{%
+		\pgfplotscoordmath{meta}{tostring}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+	}%
+	%
+	\immediate\write\w@pgf@writea{%
+		\pgfplots@current@point@x\pgfplots@TAB
+		\pgfplots@current@point@y\pgfplots@TAB
+		\ifpgfplots@curplot@threedim\pgfplots@current@point@z\pgfplots@TAB\fi
+		\pgfplots@current@point@meta\pgfplots@TAB
+	}%
+}%
+\def\pgfplotsplothandlersurveyend@tofile{%
+	\immediate\closeout\w@pgf@writea
+}%
+\def\pgfplotsplothandlersurveystart@tofile{%
+	\immediate\openout\w@pgf@writea=\pgfplotsplothandlertofile@name\relax
 }%
