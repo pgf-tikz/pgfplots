@@ -803,9 +803,9 @@
 		\let\tikz@plot@handler=\pgfplotsplothandlerquiver
 		\pgfqkeys{/pgfplots/quiver}{#1}%
 	},%
-	quiver/u value*/.initial=,
-	quiver/v value*/.initial=,
-	quiver/w value*/.initial=,
+	quiver/u value*/.initial=0,
+	quiver/v value*/.initial=0,
+	quiver/w value*/.initial=0,
 	quiver/u value is expr/.initial=0,
 	quiver/v value is expr/.initial=0,
 	quiver/w value is expr/.initial=0,
@@ -887,7 +887,13 @@
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@quiver
 	\let\pgfplotsplothandlerquiver@vis@hook=\pgfutil@empty
 	%
+	\ifpgfplots@xislinear \else \pgfplotsplothandlerquivererror \fi
+	\ifpgfplots@yislinear \else \pgfplotsplothandlerquivererror\fi
+	\pgfplotsifcurplotthreedim{%
+		\ifpgfplots@zislinear \else \pgfplotsplothandlerquivererror \fi
+	}{}%
 }%
+\def\pgfplotsplothandlerquivererror{\pgfplots@error{Sorry, quiver plots for logarithmic axes are not yet implemented. In fact, the implementation does something -- but it will probably change in future releases. Contact the mailing list if you have questions}}%
 
 \def\pgfplotsplothandlersurveystart@quiver{%
 	\pgfkeysgetvalue{/pgfplots/quiver/scale arrows}\pgfplots@quiver@scale
@@ -1046,6 +1052,7 @@
 }%
 
 \newif\ifpgfplotsplothandlerhistogram@intervals
+\newif\ifpgfplotsplothandlerhistogram@cumulative
 \pgfplotsset{
 	hist/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerhistogram
@@ -1058,6 +1065,8 @@
 	hist/intervals/.is if=pgfplotsplothandlerhistogram@intervals,
 	hist/intervals/.default=true,
 	hist/intervals=true,
+	hist/cumulative/.is if=pgfplotsplothandlerhistogram@cumulative,
+	hist/cumulative/.default=true,
 	hist/handler/.style={/tikz/ybar interval},
 }%
 \def\pgfplotsplothandlerhistogram{%
@@ -1134,6 +1143,16 @@
 	\pgfplotsapplistXnewempty\pgfp@hist@@
 	\expandafter\pgfplotsplothandlersurveyend@hist@loop\pgfplots@hist@data\pgfplots@EOI
 	\let\pgfplots@hist@data=\relax
+	%
+	\ifpgfplotsplothandlerhistogram@cumulative
+		\c@pgf@counta=0
+		\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+			\pgfplotsplothandlerhistgetintervalstartfor\pgfplotsarrayforeachindex
+			\advance\c@pgf@counta by\pgfplots@hist@count\relax
+			\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+		}%
+	\fi
 	%
 	\pgfplotsset{/pgfplots/hist/handler}%
 	\pgfplotsresetplothandler
@@ -1243,6 +1262,35 @@
 		inner sep=2pt,
 		every node/.style={mapped color!50!black,fill=white},%
 		%every node/.style={yshift=10pt},%
+	},
+	contour/contour label style/.style={
+		/pgfplots/contour/every contour label/.append style={#1}},
+	%
+	%
+	%  Styles to actually *compute* the contour.
+	%  These are mostly placeholders here: As long as the
+	%  algorithm is not ready, we have to resort to external tools.
+	%
+	%  Shared parameters:
+	contour/number/.initial=5,
+	%
+	%
+	% Interface to external tools:
+	contour external/.code={%
+		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourexternal}%
+		\pgfqkeys{/pgfplots/contour external}{#1}%
+	},
+	contour external/file/.initial=,% auto-generate
+	contour external/script extension/.initial=script,
+	contour external/script/.initial=,% not yet initialised
+	contour external/cmd/.initial=,% not yet initialised
+	contour external/.search also=/pgfplots/contour,
+	contour gnuplot/.style={
+		contour external={%
+			script={unset surface; set cntrparam levels \pgfkeysvalueof{/pgfplots/contour/number}; set contour; set table \"\outfile\"; splot \"\infile\";},
+			cmd={gnuplot \"\script\"},
+			#1,%
+		},
 	},
 }%
 \def\pgfplotsplothandlercontourprepared{%
@@ -1373,7 +1421,7 @@
 }%
 
 \def\pgfplotsplothandlercontour@stream@bbcontour{%
-\message{contour: processing OUTER data limit contour...}%
+%\message{contour: processing OUTER data limit contour...}%
 	\def\pgfplotsplothandlercontour@haspendingjump{0}% important
 	%
 	% forbid labels:
@@ -1527,7 +1575,7 @@
 
 \def\pgfplotsplothandlercontour@preparenewcontourline{%
 	\if0\pgfplotsplothandlercontour@haspendingjump
-\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
+%\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
 		% a completely new level has been
 		% started, not due to jumps inside of one level.
 		%
@@ -1559,7 +1607,7 @@
 			\fi
 		\fi
 	\else
-\message{PREPARE NEW CONTOUR for the already begun level \pgfplots@current@point@meta.}%
+%\message{PREPARE NEW CONTOUR for the already begun level \pgfplots@current@point@meta.}%
 		\ifpgfplotsplothandlercontour@filled
 			\pgfplotsapplistXpushback\pgf@plotstreamstart\to\pgfplotsplothandlercontour@stored@lastcontourpath
 		\fi
@@ -1603,7 +1651,7 @@
 %		\pgfpathclose % FIXME  this is, in general, not good enough.
 %	\fi
 	\if0\pgfplotsplothandlercontour@haspendingjump
-\message{usepath{} to finalize level \pgfplotsplothandlercontour@lastcontour.}%
+%\message{usepath{} to finalize level \pgfplotsplothandlercontour@lastcontour.}%
 		% flush paths if the complete contour level is ready.
 		% do *not* flush paths if we have just a new part of the
 		% existing contour level.
@@ -1615,7 +1663,7 @@
 			\pgfusepath{stroke}%
 		\fi
 	\else
-\message{usepath{} for level \pgfplotsplothandlercontour@lastcontour.}%
+%\message{usepath{} for level \pgfplotsplothandlercontour@lastcontour.}%
 		\ifpgfplotsplothandlercontour@filled
 			\pgfplotsapplistXpushback\pgf@plotstreamend\to\pgfplotsplothandlercontour@stored@lastcontourpath
 		\fi
@@ -1639,7 +1687,7 @@
 	\else
 		\expandafter\pgfplotsplothandlercontour@init@limits@getboundingboxlow\pgfplots@loc@TMPa\pgfplots@EOI
 	\fi
-	\message{contour: I processed data limits to MIN = (\pgfplotsplothandlercontour@limits@low@x,\pgfplotsplothandlercontour@limits@low@y,\pgfplotsplothandlercontour@limits@low@z;\pgfplotsplothandlercontour@limits@low@meta) and MAX = (\pgfplotsplothandlercontour@limits@high@x,\pgfplotsplothandlercontour@limits@high@y,\pgfplotsplothandlercontour@limits@high@z;\pgfplotsplothandlercontour@limits@high@meta).}%
+%\message{contour: I processed data limits to MIN = (\pgfplotsplothandlercontour@limits@low@x,\pgfplotsplothandlercontour@limits@low@y,\pgfplotsplothandlercontour@limits@low@z;\pgfplotsplothandlercontour@limits@low@meta) and MAX = (\pgfplotsplothandlercontour@limits@high@x,\pgfplotsplothandlercontour@limits@high@y,\pgfplotsplothandlercontour@limits@high@z;\pgfplotsplothandlercontour@limits@high@meta).}%
 }%
 \def\pgfplotsplothandlercontour@init@limits@getboundingboxlow(#1,#2,#3,#4){%
 	\def\pgfplotsplothandlercontour@init@limits@cur{low}%
@@ -1673,27 +1721,24 @@
 	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @meta\endcsname=\pgfmathresult
 }%
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% contour external implementation
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\pgfplotsset{
-	contour external/.code={%
-		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourexternal}%
-		\pgfqkeys{/pgfplots/contour external}{#1}%
-	},
-	contour external/file/.initial=,% auto-generate
-	contour external/script extension/.initial=script,
-	contour external/script/.initial=,% not yet initialised
-	contour external/cmd/.initial=,% not yet initialised
-	contour gnuplot/.style={
-		contour external={%
-			script={unset surface; set contour; set table \"\outfile\"; splot \"\infile\";},
-			cmd={gnuplot \"\script\"},
-			#1,%
-		},
-	},
-}%
 \def\pgfplotsplothandlercontourexternal{%
 	\pgfplotsresetplothandler
-	\def\pgfplotsplothandlername{contour gnuplot}%
+	\def\pgfplotsplothandlername{contour external}%
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotsset{/pgfplots/set point meta if empty=z}%
+	\else
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfplots@error{Sorry, 'contour external' requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
+		}%
+	\fi
+	%
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourexternal
 	\def\pgf@plotstreamstart{%
 		\pgfplotsplothandlercontourprepared
