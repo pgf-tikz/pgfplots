@@ -655,8 +655,217 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 	If anyone has ideas how to fix this problem: let me know. As far as I know, postscript should accept 32 bit coordinates, so it might be a mistake in the shading driver.
 \end{pgfplotskey}
 
+\subsubsection{Contour Plots}
+\PGFPlots\ supports visualization of contour plots whose coordinates have been computed by \emph{external tools}. The |contour prepared| plot handler coming with \PGFPlots\ takes precomputed contour line coordinates and handles their visualization (|contour/draw color|, |contour/labels| etc.). The |contour gnuplot| style takes matrix input in the same format as for |mesh| or |surf| (that includes any of the \PGFPlots\ matrix input methods). It then writes the matrix data to a file and invokes |gnuplot| (or other, user customizable external programs) to compute contour coordinates. Finally, the computed contours are visualized with the |contour prepared| algorithm. Thus, external programs need to compute the contour coordinates and \PGFPlots\ visualizes the result.
+
+We discuss the high level interface to external programs first and continue with |contour prepared| later-on.
+
+\begin{plottype}[/pgfplots]{contour gnuplot=\textcolor{black}{\marg{{\normalfont options with `\texttt{contour/}' or `\texttt{contour external/}' prefix}}}}
+	This is a high level contour plot interface. It expects matrix data in the same way as two dimensional |surf| or |mesh| plots do. It then computes contours and visualizes them.
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[view={0}{90}]
+	\addplot3[contour gnuplot]
+		{x*y};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent The example uses \verbpdfref{\addplot3} together with |expression| plotting, that means the input data is of the form $(x_i,y_i,f(x_i,y_i))$. The |view={0}{90}| flag means ``view from top'', otherwise the contour lines would have been drawn as $z$ value:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot3[contour gnuplot]
+		{exp(0-x^2-y^2)};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+As mentioned, you can use any of the \PGFPlots\ input methods as long as it yields matrix output. Thus, we can re-use our introductory example of matrix data, this time with inline data:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]%
+\begin{tikzpicture}%
+% FIXME : THE \begin{codeexample} environment
+% screws up the end-of-lines!
+	\begin{axis}[view={0}{90}]%
+	\addplot3[contour gnuplot]%
+		coordinates {
+			(0,0,0) (1,0,0)   (2,0,0)   (3,0,0)
+
+			(0,1,0) (1,1,0.6) (2,1,0.7) (3,1,0.5)
+
+			(0,2,0) (1,2,0.7) (2,2,0.8) (3,2,0.5)
+		};
+	\end{axis}%
+\end{tikzpicture}%
+\end{codeexample}
+	\noindent 
+
+	What happens behind the scenes is that \PGFPlots\ takes the input matrix and writes all encountered coordinates to a temporary file, including the end--of--scanline markers. Then, it generates a small |gnuplot| script and invokes |gnuplot| to compute the contour coordinates, writing everything into a temporary output file. Afterwards, it includes the files just as if you'd write |\addplot3[contour prepared] file |\marg{temporaryfile}|;|.
+
+	All this invocation of |gnuplot|, including input/output file management is transparent to the user. It only requires two things: first of all, it requires matrix data as input. Second, it requires you to enable system calls. Consider the documentation for \verbpdfref{plot gnuplot} for how to enable system calls.
+
+	There are several fine tuning parameters of the input/output file management, and it is even possible to invoke different programs than |gnuplot| (even |matlab|). These details are discussed at the end of this section, see below at page~\pageref{key:pgfplots:contour:gnuplot}.
+\end{plottype}
+
+\begin{pgfplotskey}{contour/number=\marg{integer} (initially 5)}
+	Configures the number of contour lines which should be produced by any external contouring algorithm.	
+
+	Note that |contour/number| has no effect on |contour prepared|.
+\end{pgfplotskey}
+
+\begin{plottype}[/pgfplots]{contour prepared=\textcolor{black}{\marg{{\normalfont options with `\texttt{contour/}' prefix}}}}
+	A plot handler which expects already computed contours on input and visualizes them. It cannot compute contours on its own.
+
+	\begin{pgfplotskey}{contour prepared format=\mchoice{standard,matlab} (initially standard)}
+	There are two accepted input formats. The first is a long sequence of coordinates of the form $(x,y,z)$ where all successive coordinates with the same $z$ value make up a contour level. The end--of--scanline markers (empty lines in the input) mark an interruption in one contour level.
+
+	For example, |contour prepared format=standard| could be\footnote{This is actually the output from our \texttt{\textbackslash addplot3[contour gnuplot] coordinates} example from above.}
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot[contour prepared]
+		table[row sep=\\] {
+			 2  2  0.8 \\
+			\\
+			 0.857143  2  0.6 \\
+			 1  1  0.6 \\
+			 2  0.857143  0.6 \\
+			 2.5  1  0.6 \\
+			 2.66667  2  0.6 \\
+			\\
+			 0.571429  2  0.4 \\
+			 0.666667  1  0.4 \\
+			 1  0.666667  0.4 \\
+			 2  0.571429  0.4 \\
+			 3  0.8  0.4 \\
+			\\
+			 0.285714  2  0.2 \\
+			 0.333333  1  0.2 \\
+			 1  0.333333  0.2 \\
+			 2  0.285714  0.2 \\
+			 3  0.4  0.2 \\
+		};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent Note that the empty lines are not necessary in this case: empty lines make only a difference if they occur within the same contour level (i.e. if the same $z$ value appears above and below of them).
+		
+		The choice |contour prepared format=matlab| expects two--dimensional input data where the contour level and the number of elements of the contour line are provided as $x$ and $y$ coordinates, respectively, of a leading point. Such a format is used by |matlab|'s contour algorithms, i.e.\ it resembles the output of the matlab commands |data=contour(...)| or |data=contourc(...)|.
+
+		In case you use matlab, you can generate such data with
+\begin{verbatim}
+[x,y]=meshgrid(linspace(0,1,15));
+data=contour(x,y,x.*y);
+data=data';
+save 'exporteddata.dat' data -ASCII
+\end{verbatim}
+	\end{pgfplotskey}
+
+	\begin{pgfplotskey}{contour/draw color=\marg{color} (initially mapped color)}
+		
+	\end{pgfplotskey}
+
+	\begin{pgfplotskey}{contour/labels=\marg{true,false} (initially true)}
+		
+	\end{pgfplotskey}
+	\begin{pgfplotskey}{contour/label distance=\marg{dimension} (initially 70pt)}
+		
+	\end{pgfplotskey}
+
+	\begin{stylekey}{/pgfplots/contour/every contour label}
+		The initial value is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	contour/every contour label/.style={
+		sloped,
+		transform shape,
+		inner sep=2pt,
+		every node/.style={mapped color!50!black,fill=white},
+		%every node/.style={yshift=10pt},%
+	}
+}
+\end{codeexample}
+	\end{stylekey}
+	
+\pgfplotsshortstylekey contour/contour label style=contour/every contour label\pgfeov
+
+	\begin{pgfplotscodekey}{contour/label node code}
+		The initial value is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	contour/label node code/.code={\node {\pgfmathprintnumber{#1}};}
+}
+\end{codeexample}
+	\end{pgfplotscodekey}
+
+	\begin{stylekey}{/pgfplots/contour/handler}
+		The initial value is 
+\begin{codeexample}[code only]
+\pgfplotsset{contour/handler/.style={/tikz/sharp plot}}
+\end{codeexample}
+	\end{stylekey}
+\end{plottype}
+
+
+\begin{plottype}[/pgfplots]{contour external=\textcolor{black}{\marg{{\normalfont options with `\texttt{contour/}' or `\texttt{contour external/}' prefix}}}}
+	\begin{pgfplotskey}{contour external/file=\marg{base file name} (initially empty)}
+		The initial configuration is to automatically generate a unique file name.
+	\end{pgfplotskey}
+
+	\begin{pgfplotskey}{contour external/script=\marg{Code for external program} (initially empty)}
+		
+	\end{pgfplotskey}
+
+	\begin{pgfplotskey}{contour external/script extension=\marg{extension} (initially script)}
+		
+	\end{pgfplotskey}
+
+	\begin{pgfplotskey}{contour external/cmd=\marg{system call} (initially empty)}
+		
+	\end{pgfplotskey}
+
+	\begin{stylekey}{/pgfplots/contour gnuplot}
+		\label{key:pgfplots:contour:gnuplot}
+		The initial configuration is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	contour gnuplot/.style={
+		contour external={
+			script={
+				unset surface; 
+				set cntrparam levels \pgfkeysvalueof{/pgfplots/contour/number};
+				set contour;
+				set table \"\outfile\"; 
+				splot \"\infile\";
+			},
+			cmd={gnuplot \"\script\"},
+			#1,%
+		},
+	}
+}
+\end{codeexample}
+	\end{stylekey}
+\end{plottype}
+
+\subsubsection{Filled Contours (Experimental)}
+Filled contour plots are \emph{not} ready yet. There is only limited experimental support up to now. Use at your own risk!
+
+\begin{pgfplotskey}{contour/data limits={$(\underline x,\underline y,\underline z,\underline m)$ $(\bar x,\bar y,\bar z,\bar m)$} (initially empty)}
+	
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{contour/filled=\mchoice{true,false} (initially false)}
+	
+\end{pgfplotskey}
+\begin{pgfplotskey}{contour/fill color=\marg{color} (initially mapped color)}
+	
+\end{pgfplotskey}
+
+
 \subsubsection{Parameterized Plots}
-Parameterized plots use the same plot types as documented in the preceding sections: both, mesh and surface plots are actually special parameterized plots where $x$ and $y$ are on cartesian grid points.
+Parameterized plots use the same plot types as documented in the preceding sections: both, |mesh| and |surf|ace plots are actually special parameterized plots where $x$ and $y$ are on cartesian grid points.
 
 Parameterized plots just need a special way to provide the coordinates:
 

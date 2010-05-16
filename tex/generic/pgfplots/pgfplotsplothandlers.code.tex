@@ -1299,26 +1299,39 @@
 	\let\pgf@plotstreamstart=\pgfplotsplothandlervisstart@contour
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contour
 	\if m\pgfplotsplothandlercontourprepared@format
-		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contour
-		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contour
+		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourmatlabformat
+		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourmatlabformat
 		\pgfplotsaxisifhaspointmeta{}{%
 			\pgfplotsset{/pgfplots/point meta=explicit}%
 		}%
 	\fi
+	\pgfplotsplothandlercontour@prepare@point@meta
+}%
+\def\pgfplotsplothandlercontour@prepare@point@meta{%
 	\ifpgfplots@curplot@threedim
 		\pgfplotsset{/pgfplots/set point meta if empty=z}%
 	\else
-		\pgfplotsaxisifhaspointmeta{}{%
-			\pgfplots@error{Sorry, contour requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
-		}%
+		\pgfkeysgetvalue{/pgfplots/table/meta index}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\pgfkeyssetvalue{/pgfplots/table/meta index}{2}%
+		\fi
+		\pgfplotsset{/pgfplots/set point meta if empty=explicit}%
+		%\pgfplots@error{Sorry, 'contour external' requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
+	\fi
+	\def\pgfplotsplothandlercontour@empty@pointmeta@error@@{0}%
+}%
+\def\pgfplotsplothandlercontour@empty@pointmeta@error{%
+	\if0\pgfplotsplothandlercontour@empty@pointmeta@error@@
+		\def\pgfplots@current@point@meta{0}%
+		\pgfplotsthrow{invalid argument}{\pgfplots@current@point@meta}{Sorry, contour plots require non--empty `point meta'. Please use '\string\addplot3[contour ...] together with 'view={0}{90}' or provide a valid 'point meta=<value>' (for example `<value>=z'?)}%
 	\fi
 }%
 
-\def\pgfplotsplothandlersurveystart@contour{%
+\def\pgfplotsplothandlersurveystart@contourmatlabformat{%
 	\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
 	\def\c@pgfplotsplothandlercontourprepared@matlabformat@count{0}%
 }
-\def\pgfplotsplothandlersurveypoint@contour{%
+\def\pgfplotsplothandlersurveypoint@contourmatlabformat{%
 	\ifnum\c@pgfplotsplothandlercontourprepared@matlabformat@cur=\c@pgfplotsplothandlercontourprepared@matlabformat@count\relax
 		\pgfmathfloatparsenumber{\pgfplots@current@point@y}%
 		\pgfmathfloattoint\pgfmathresult
@@ -1491,6 +1504,10 @@
 	\edef\pgfplotsplothandlercontour@act@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
 	%
 	\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
+	\ifx\pgfplotsplothandlercontour@act@contour\pgfutil@empty
+		% oh. No Z data!? That should not happen!
+		\pgfplotsplothandlercontour@empty@pointmeta@error
+	\fi
 	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
 		% oh. its the very first point.
 		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
@@ -1731,13 +1748,7 @@
 	\pgfplotsresetplothandler
 	\def\pgfplotsplothandlername{contour external}%
 	%
-	\ifpgfplots@curplot@threedim
-		\pgfplotsset{/pgfplots/set point meta if empty=z}%
-	\else
-		\pgfplotsaxisifhaspointmeta{}{%
-			\pgfplots@error{Sorry, 'contour external' requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
-		}%
-	\fi
+	\pgfplotsplothandlercontour@prepare@point@meta
 	%
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourexternal
 	\def\pgf@plotstreamstart{%
@@ -1822,10 +1833,13 @@
 % UNPROCESSED to an output file.
 %
 % I use it as helper tool for `contour gnuplot'.
+\newif\ifpgfplotsplothandlertofile@writeemptylines
+\pgfplotsplothandlertofile@writeemptylinestrue
 \pgfplotsset{
 	plot unprocessed to file/.code={
 		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlertofile{#1}}%
 	},
+	plot to file/empty lines/.is if=pgfplotsplothandlertofile@writeemptylines,
 }
 
 \def\pgfplotsplothandlertofile#1{%
@@ -1838,7 +1852,9 @@
 	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlernotifyscanlinecomplete@tofile
 }%
 \def\pgfplotsplothandlernotifyscanlinecomplete@tofile{%
-	\immediate\write\w@pgf@writea{}% empty line.
+	\ifpgfplotsplothandlertofile@writeemptylines
+		\immediate\write\w@pgf@writea{}% empty line.
+	\fi
 }%
 \def\pgfplotsplothandlersurveypoint@tofile{%
 	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x}%
