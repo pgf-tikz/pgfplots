@@ -32,6 +32,7 @@
 %
 % Drawing ternary diagrams: http://staff.aist.go.jp/a.noda/programs/ternary/ternary-en.html
 %
+% computing these coordinates: http://www.gamedev.net/community/forums/topic.asp?topic_id=451357
 %
 
 \pgfplotsdefineaxistype{ternary}{%
@@ -45,8 +46,11 @@
 	/pgfplots/ternary limits relative/.is if=pgfplots@ternary@rellimits,
 	/pgfplots/ternary limits relative=true,
 	/pgfplots/ternary limits relative/.default=true,
+	/pgfplots/ternary start x/.initial=, % FIXME : implement
+	/pgfplots/ternary start y/.initial=,
+	/pgfplots/ternary start z/.initial=,
 	/pgfplots/every ternary axis/.style={
-		/pgfplots/tick align=outside, % FIXME : that's wrong. Seems as if something points into the wrong dir.
+		/pgfplots/tick align=outside,
 		grid=major,
 		xticklabel style={anchor=west},
 		% yticklabel style={anchor=south east},
@@ -196,12 +200,10 @@
 		\edef\pgfplotspointonorientedsurfaceab@ternary@A{#1}%
 		\edef\pgfplotspointonorientedsurfaceab@ternary@B{#2}%
 	\else
-		\pgfmath@basic@subtract@{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceA min\endcsname}%
-		\pgfmath@basic@multiply@{\pgfmathresult}{\csname pgfplots@ternary@pre@map@scale@\pgfplotspointonorientedsurfaceA\endcsname}%
+		\csname pgfplots@ternary@pre@map@\pgfplotspointonorientedsurfaceA\endcsname{#1}%
 		\let\pgfplotspointonorientedsurfaceab@ternary@A=\pgfmathresult
 		%
-		\pgfmath@basic@subtract@{#2}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
-		\pgfmath@basic@multiply@{\pgfmathresult}{\csname pgfplots@ternary@pre@map@scale@\pgfplotspointonorientedsurfaceB\endcsname}%
+		\csname pgfplots@ternary@pre@map@\pgfplotspointonorientedsurfaceB\endcsname{#2}%
 		\let\pgfplotspointonorientedsurfaceab@ternary@B=\pgfmathresult
 	\fi
 	\if0\pgfplotspointonorientedsurfacespecsymbol
@@ -280,11 +282,18 @@
 }%
 
 \def\pgfplots@ternary@init@pre@map#1{%
+	\begingroup
 	\pgfmath@basic@subtract@
 		{\csname pgfplots@#1max\endcsname}
 		{\csname pgfplots@#1min\endcsname}%
 	\pgfmath@basic@reciprocal@\pgfmathresult
-	\expandafter\let\csname pgfplots@ternary@pre@map@scale@#1\endcsname=\pgfmathresult
+	\let\pgfplots@pre@map@scale=\pgfmathresult
+	%
+	\expandafter\xdef\csname pgfplots@ternary@pre@map@#1\endcsname##1{%
+		\noexpand\pgfmath@basic@subtract@{##1}{\csname pgfplots@#1min\endcsname}%
+		\noexpand\pgfmath@basic@multiply@{\noexpand\pgfmathresult}{\pgfplots@pre@map@scale}%
+	}%
+	\endgroup
 }
 
 \def\pgfplots@initsizes@setunitvector@ternary#1#2#3#4{%
@@ -341,37 +350,36 @@
 % gy(x,y,z) = (sqrt(3) / 2) * x / (x+y+z)
 \def\pgfplotsqpointxyz@ternary#1#2#3{%
 	\pgf@process{%
-		\dimen1=#1pt
-		\dimen2=#2pt
-		\dimen3=#3pt
 		\ifpgfplots@ternary@next@is@unitinterval
+			\dimen1=#1pt
+			\dimen2=#2pt
+			\dimen3=#3pt
 		\else
-			\advance\dimen1 by-\pgfplots@xmin pt
-			\dimen1=\pgfplots@ternary@pre@map@scale@x\dimen1
+			\pgfplots@ternary@pre@map@x{#1}%
+			\dimen1=\pgfmathresult pt
 			%
-			\advance\dimen2 by-\pgfplots@ymin pt
-			\dimen2=\pgfplots@ternary@pre@map@scale@y\dimen2
+			\pgfplots@ternary@pre@map@y{#2}%
+			\dimen2=\pgfmathresult pt
 			%
-			\advance\dimen3 by-\pgfplots@zmin pt
-			\dimen3=\pgfplots@ternary@pre@map@scale@z\dimen3
+			\pgfplots@ternary@pre@map@z{#3}%
+			\dimen3=\pgfmathresult pt
 		\fi
 		\global\pgfplots@ternary@next@is@unitintervalfalse
 		%
-		\edef\pgfplots@temp{{\the\dimen1}{\the\dimen2}{\the\dimen3}}%
-		\expandafter\pgfplotsqpointxyz@ternary@\pgfplots@temp
+		\pgfplotsqpointxyz@ternary@
 	}%
 }%
-\def\pgfplotsqpointxyz@ternary@#1#2#3{%
-	\dimen1=#1
-	\dimen2=#2
-	\dimen3=#3
+\def\pgfplotsqpointxyz@ternary@{%
+	%\dimen1=#1
+	%\dimen2=#2
+	%\dimen3=#3
 	% FIXME . I didn't understand that stuff.
 	\if r\pgfkeysvalueof{/pgfplots/x dir/value}% reversed
 		%\multiply\dimen1 by-1
 		%\advance\dimen1 by1pt
-		\dimen1=#2
-		\dimen2=#3
-		\dimen3=#1
+		%\dimen1=#2
+		%\dimen2=#3
+		%\dimen3=#1
 	\fi
 	%--------------------------------------------------
 	% \if r\pgfkeysvalueof{/pgfplots/y dir/value}% reversed
@@ -386,11 +394,13 @@
 	\pgfplotsqpointxyz@ternary@@%
 }%
 \def\pgfplotsqpointxyz@ternary@@{%
-	\dimen4=\dimen1
-	\advance\dimen4 by\dimen2
-	\advance\dimen4 by\dimen3
-	\edef\pgfplots@ternary@sum{\pgf@sys@tonumber{\dimen4}}%
-	\pgfmathapproxequalto@{1}{\pgfplots@ternary@sum}%
+	% Disable renormalization!?
+	%\dimen4=\dimen1
+	%\advance\dimen4 by\dimen2
+	%\advance\dimen4 by\dimen3
+	%\edef\pgfplots@ternary@sum{\pgf@sys@tonumber{\dimen4}}%
+	%\pgfmathapproxequalto@{1}{\pgfplots@ternary@sum}%
+	\pgfmathcomparisontrue
 	\ifpgfmathcomparison
 		\let\pgfplots@ternary@scale=\pgfplots@width@ternary
 	\else
@@ -664,14 +674,5 @@
 	\pgf@process{\pgfpointnormalised{}}%
 	\endgroup
 }%
-
-\def\pgfplots@environment@ternaryaxis{\pgfutil@ifnextchar[\pgfplots@environment@ternaryaxis@{\pgfplots@environment@ternaryaxis@[]}}%
-\long\def\pgfplots@environment@ternaryaxis@[#1]{%
-	\begin{axis}[#1,axis type=ternary]%
-}%
-\def\endpgfplots@environment@ternaryaxis{\end{axis}}%
-
-\tikzaddtikzonlycommandshortcutlet\ternaryaxis\pgfplots@environment@ternaryaxis
-\tikzaddtikzonlycommandshortcutlet\endternaryaxis\endpgfplots@environment@ternaryaxis
 
 \endinput
