@@ -5468,6 +5468,22 @@
 		/tikz/mark=}%
 	\pgfplots@PREPARE@COORD@STREAM{#5}%
 	\pgfplots@coord@stream@start
+	%
+	\pgfkeysgetvalue{/pgfplots/plot graphics/points}{\pgfplots@current@point@points}%
+	\ifx\pgfplots@current@point@points\pgfutil@empty
+	\else
+		\let\pgfplots@coord@stream@start=\relax
+		\let\pgfplots@addplotimpl@graphics@@end=\pgfplots@coord@stream@end
+		\let\pgfplots@coord@stream@end=\relax
+		\ifpgfplots@curplot@threedim
+			\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@current@point@points}%
+		\else
+			\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@current@point@points}%
+		\fi
+		\let\pgfplots@coord@stream@end=\pgfplots@addplotimpl@graphics@@end
+		\def\pgfplots@addplotimpl@graphics@@error##1{}%
+	\fi
+	%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/xmin}{\pgfplots@current@point@x}%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/ymin}{\pgfplots@current@point@y}%
 	\ifx\pgfplots@current@point@x\pgfutil@empty\pgfplots@addplotimpl@graphics@@error{xmin}\fi
@@ -6911,8 +6927,8 @@
 % coordinates.
 \def\pgfplotsplothandlergraphics{%
 	\def\pgf@plotstreamstart{%
-		\global\let\pgfplots@plot@handler@graphics@bb@first=\pgfutil@empty
-		\global\let\pgfplots@plot@handler@graphics@bb@second=\pgfutil@empty
+		\gdef\pgfplots@plot@handler@graphics@bb@first{\pgf@x=16000pt \pgf@y=16000pt }%
+		\gdef\pgfplots@plot@handler@graphics@bb@second{\pgf@x=-16000pt \pgf@y=-16000pt }%
 		\global\let\pgf@plotstreampoint=\pgfplots@plot@handler@graphics@collectbb%
 		\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 		\global\let\pgf@plotstreamend=\pgfplots@plot@handler@graphics@finish%
@@ -6923,28 +6939,35 @@
 }%
 \def\pgfplots@plot@handler@graphics@collectbb#1{%
 	\pgf@process{#1}%
-	\ifx\pgfplots@plot@handler@graphics@bb@first\pgfutil@empty
-		% ok, this is the lower left corner.
-		\xdef\pgfplots@plot@handler@graphics@bb@first{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
-	\else
-		\ifx\pgfplots@plot@handler@graphics@bb@second\pgfutil@empty
-			% ok, this is the upper right corner.
-			\xdef\pgfplots@plot@handler@graphics@bb@second{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
-		\else
-			\pgfplots@error{Error using 'plot graphics': I encountered more than two coordinates!? I expected only the lower left and upper right corners!}%
-		\fi
-	\fi
+	\pgf@xa=\pgf@x
+	\pgf@ya=\pgf@y
+	\pgfplots@plot@handler@graphics@bb@first
+	\ifdim\pgf@xa<\pgf@x \pgf@x=\pgf@xa\fi
+	\ifdim\pgf@ya<\pgf@y \pgf@y=\pgf@ya\fi
+	\xdef\pgfplots@plot@handler@graphics@bb@first{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfplots@plot@handler@graphics@bb@second
+	\ifdim\pgf@xa>\pgf@x \pgf@x=\pgf@xa\fi
+	\ifdim\pgf@ya>\pgf@y \pgf@y=\pgf@ya\fi
+	\xdef\pgfplots@plot@handler@graphics@bb@second{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
 }%
 \def\pgfplots@plot@handler@graphics@finish{%
-	\ifx\pgfplots@plot@handler@graphics@bb@first\pgfutil@empty
+	\pgfpointdiff{\pgfplots@plot@handler@graphics@bb@first}{\pgfplots@plot@handler@graphics@bb@second}%
+	\def\pgfplots@plot@handler@graphics@finish@ok{1}%
+	\ifdim\pgf@x=0pt
+		\def\pgfplots@plot@handler@graphics@finish@ok{0}%
+	\else
+		\ifdim\pgf@y=0pt
+			\def\pgfplots@plot@handler@graphics@finish@ok{0}%
+		\fi
+	\fi
+	\if0\pgfplots@plot@handler@graphics@finish@ok
 		\pgfplots@error{Error using 'plot graphics': I got too few coordinates! I expected the lower left and upper right corners!}%
+		\xdef\pgfplots@plot@handler@graphics@bb@first{\noexpand\pgfqpoint{0pt}{0pt}}%
 		\xdef\pgfplots@plot@handler@graphics@bb@first{\noexpand\pgfqpoint{0pt}{0pt}}%
 		
 	\fi	
-	\ifx\pgfplots@plot@handler@graphics@bb@second\pgfutil@empty
-		\pgfplots@error{Error using 'plot graphics': I got too few coordinates! I expected the lower left and upper right corners!}%
-		\xdef\pgfplots@plot@handler@graphics@bb@second{\noexpand\pgfqpoint{0pt}{0pt}}%
-	\fi
 	\begingroup
 	% determine the lower left / upper right corners.
 	\pgfplots@plot@handler@graphics@bb@first
