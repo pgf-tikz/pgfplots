@@ -246,9 +246,35 @@
 	\pgfplotsutil@ifdefinedui@withsuffix{#1}{@@table@name}{#2}{#3}%
 }%
 
-\def\pgfplotstableifiscreateonuse#1#2#3{%
-	\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{#2}{#3}%
+% If the colum name `#1' is a `create on use' speicifcation, #2 is
+% invoked, #3 otherwise.
+\long\def\pgfplotstableifiscreateonuse#1#2#3{%
+	\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{#2}{%
+		\pgfutil@in@{create col/}{#1}%
+		\ifpgfutil@in@
+			#2%
+		\else
+			#3%
+		\fi
+	}%
 }%
+
+% Defines \pgfplotsretval to be a column name which does not already
+% occur in the column names of table #1.
+\def\pgfplotstablegenerateuniquecolnamefor#1{%
+	\begingroup
+	\c@pgf@countd=0
+	\pgfplotstableforeachcolumn{#1}\as\pgfplots@loc@TMPa{%
+		\def\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+		\edef\pgfplots@loc@TMPb{autocol\the\c@pgf@countd}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\advance\c@pgf@countd by1
+		\fi
+	}%
+	\edef\pgfplotsretval{autocol\the\c@pgf@countd}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
 
 % Returns a column vector in form of \pgfplotslist
 % into #3.
@@ -267,6 +293,7 @@
 % \pgfplotstable@getcol...\getcolmethod{#1}.
 %
 % #2: a set of keys which redefine the behavior.
+% See below for available choices.
 \def\pgfplotstable@definegetcolmethod#1#2{%
 	\edef\pgfplotstable@definegetcolmethod@{#1}%
 	\pgfqkeys{/pgfplots/table/@getcol}{%
@@ -323,41 +350,64 @@
 %
 % #4: is a getcolmethod declared with \pgfplotstable@definegetcolmethod
 %
+% ATTENTION: this macro should be expandable! It is also used inside
+% of \thisrow{}.
 \def\pgfplotstable@getcol#1\of#2\to#3\getcolmethod#4{%
 	\csname pgfplotstable@getcol@ifexists@#4\endcsname{#1}\of{#2}{%
 		\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
 	}{%
 		% Oh, there is no column '#1' in table '#2'!
 		%
-		% Ok, then check for the 'create on use' and the 'alias'
-		% features...
-		% 1. create on use:
+		% Ok, then check for special features.
+		%
+		% 1. 'create col/...' 
+		% 2. 'create on use'
+		% 3. 'alias'
 		%
 		% WARNING : this code has been REPLICATED in
 		% *** \pgfplotstablereadvalueofcolname ***
-		\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
-			% aah - a 'create on use' style exists. Apply it!
-			\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
-				\pgfplotstablecreatecol[/pgfplots/table/create on use/#1]{#1}{#2}%
-				% and return the newly generated col:
-				\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
-			\else
-				\csname pgfplotstable@getcol@lazyforbidden@#4\endcsname{#1}\of{#2}\to#3%
-			\fi
-		}{%
-			% ok, then it is either an alias or it simply doesn't exist
-			\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
-				\csname pgfplotstable@getcol@ifexists@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
-					\csname pgfplotstable@getcol@getexisting@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
-				}{%
-					\csname pgfplotstable@getcol@noalias@#4\endcsname{#1}\of{#2}\to{#3}%
+		\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
+			\pgfutil@in@{create col/}{#1}%
+			\ifpgfutil@in@
+				\pgfplotstablegenerateuniquecolnamefor{#2}%
+				\def\pgfplotstable@loc@TMPa{%
+					\pgfkeysdef{/pgfplots/table/create on use/##1}{#1}%
+					\pgfplotstablecreatecol[/pgfplots/table/create on use/##1]{##1}{#2}%
+					% and return the newly generated col:
+					\csname pgfplotstable@getcol@getexisting@#4\endcsname{##1}\of{#2}\to#3%
 				}%
-			}{%
-				\csname pgfplotstable@getcol@nocol@#4\endcsname{#1}\of{#2}\to{#3}%
-			}%
-		}%
+				\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotsretval}%
+			\else
+				\pgfplotstable@getcol@next{#1}\of{#2}\to{#3}\getcolmethod{#4}%
+			\fi
+		\else
+			\pgfplotstable@getcol@next{#1}\of{#2}\to{#3}\getcolmethod{#4}%
+		\fi
 	}%
 }%
+\def\pgfplotstable@getcol@next#1\of#2\to#3\getcolmethod#4{%
+	\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
+		% aah - a 'create on use' style exists. Apply it!
+		\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
+			\pgfplotstablecreatecol[/pgfplots/table/create on use/#1]{#1}{#2}%
+			% and return the newly generated col:
+			\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
+		\else
+			\csname pgfplotstable@getcol@lazyforbidden@#4\endcsname{#1}\of{#2}\to#3%
+		\fi
+	}{%
+		% ok, then it is either an alias or it simply doesn't exist
+		\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
+			\csname pgfplotstable@getcol@ifexists@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
+				\csname pgfplotstable@getcol@getexisting@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
+			}{%
+				\csname pgfplotstable@getcol@noalias@#4\endcsname{#1}\of{#2}\to{#3}%
+			}%
+		}{%
+			\csname pgfplotstable@getcol@nocol@#4\endcsname{#1}\of{#2}\to{#3}%
+		}%
+	}%
+}
 \def\pgfplotstablegetcolumnbyname@impl@createonuseforbidden#1\of#2\to#3{%
 	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@
 }
