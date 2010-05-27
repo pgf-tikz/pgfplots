@@ -259,38 +259,73 @@
 %
 % @throw `no such element' on error
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
-	\pgfplotstablegetcolumnbyname@impl{#1}\of{#2}\to{#3}\allowcreateonuse1%
+	\pgfplotstable@getcol{#1}\of{#2}\to{#3}\getcolmethod{STD}%
 }
 
-% Checks if column '#1' exists in table `#2' and invokes `#3' if that
-% is the case and `#4' if not.
+% Declares a new getcolmethod class #1.
+% The argument '#1' can then be used as argument for 
+% \pgfplotstable@getcol...\getcolmethod{#1}.
 %
-% Note that the check is only for physically existent colums, no alias
-% or create on use is checked here.
-%
-% During 'read to listener', this macro will be replaced.
-\long\def\pgfplotstableifcolumnexists#1\of#2#3#4{%
-	\pgfutil@ifundefined{\string#2@#1}{#4}{#3}%
+% #2: a set of keys which redefine the behavior.
+\def\pgfplotstable@definegetcolmethod#1#2{%
+	\edef\pgfplotstable@definegetcolmethod@{#1}%
+	\pgfqkeys{/pgfplots/table/@getcol}{%
+		% Checks if column '#1' exists in table `#2' and invokes `#3' if that
+		% is the case and `#4' if not.
+		%
+		% Note that the check is only for physically existent colums, no alias
+		% or create on use is checked here.
+		% #1: colname
+		% #2: table struct
+		% #3: true code
+		% #4: false code
+		ifexists	=\pgfutil@ifundefined{\string##2@##1}{##4}{##3},
+		%
+		% Low level method to return (the actual content) of column #1 of
+		% table #2 to macro #3.
+		% #1: colname
+		% #2: table struct
+		% #3: result macro
+		getexisting	=\expandafter\let\expandafter##3\csname\string##2@##1\endcsname,
+		%
+		% no arguments, the value is a boolean (0 or 1)
+		createonuse	=1,
+		%
+		% error handling.
+		% #1: colname
+		% #2: table struct
+		% #3: result macro
+		lazyforbidden=\pgfplotstablegetcolumnbyname@impl@createonuseforbidden{##1}\of{##2}\to{##3},
+		noalias		=\pgfplotstablegetcolumnbyname@impl@nosuchalias{##1}\of{##2}\to{##3},
+		nocol		=\pgfplotstablegetcolumnbyname@impl@nocolumn{##1}\of{##2}\to{##3},
+		#2%
+	}%
 }%
-% Low level method to return (the actual content) of column #1 of
-% table #2 to macro #3.
-%
-% During 'read to listener', this macro will be replaced.
-\def\pgfplotstablegetcolumnbyname@exists#1\of#2\to#3{\expandafter\let\expandafter#3\csname\string#2@#1\endcsname}%
+\pgfqkeys{/pgfplots/table/@getcol}{%
+	ifexists/.code		={\expandafter\def\csname pgfplotstable@getcol@ifexists@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2##3##4{#1}},%
+	getexisting/.code	={\expandafter\def\csname pgfplotstable@getcol@getexisting@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	createonuse/.code	={\expandafter\def\csname pgfplotstable@getcol@createonuse@\pgfplotstable@definegetcolmethod@\endcsname{#1}},%
+	lazyforbidden/.code	={\expandafter\def\csname pgfplotstable@getcol@lazyforbidden@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	noalias/.code		={\expandafter\def\csname pgfplotstable@getcol@noalias@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	nocol/.code			={\expandafter\def\csname pgfplotstable@getcol@nocol@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+}%
+
+\pgfplotstable@definegetcolmethod{STD}{}%
+\pgfplotstable@definegetcolmethod{getptr}{%
+	ifexists	=\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}{#4}{#3},%
+	getexisting	=\edef#3{\csname pgfplotstblread@colindex@for@name#1\endcsname},%
+}
+\pgfplotstable@definegetcolmethod{resolvename}{%
+	getexisting	=\edef#3{#1},%
+}
 
 % The low level implementation of \pgfplotstablegetcolumnbyname.
 %
-% It allows to disable 'create on use'. Furthermore, it can be used
-% inside of '\edef' --- provided the macros
-% \pgfplotstablegetcolumnbyname@exists and
-% \pgfplotstableifcolumnexists are replaced by expandable variants.
+% #4: is a getcolmethod declared with \pgfplotstable@definegetcolmethod
 %
-% In other words, this macro can also be prepared to run during 'read
-% to listener'.
-%
-\def\pgfplotstablegetcolumnbyname@impl#1\of#2\to#3\allowcreateonuse#4{%
-	\pgfplotstableifcolumnexists{#1}\of{#2}{%
-		\pgfplotstablegetcolumnbyname@exists{#1}\of{#2}\to#3%
+\def\pgfplotstable@getcol#1\of#2\to#3\getcolmethod#4{%
+	\csname pgfplotstable@getcol@ifexists@#4\endcsname{#1}\of{#2}{%
+		\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
 	}{%
 		% Oh, there is no column '#1' in table '#2'!
 		%
@@ -302,23 +337,23 @@
 		% *** \pgfplotstablereadvalueofcolname ***
 		\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
 			% aah - a 'create on use' style exists. Apply it!
-			\if1#4%
+			\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
 				\pgfplotstablecreatecol[/pgfplots/table/create on use/#1]{#1}{#2}%
 				% and return the newly generated col:
-				\pgfplotstablegetcolumnbyname@exists{#1}\of{#2}\to#3%
+				\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
 			\else
-				\pgfplotstablegetcolumnbyname@impl@createonuseforbidden{#1}\of{#2}\to#3%
+				\csname pgfplotstable@getcol@lazyforbidden@#4\endcsname{#1}\of{#2}\to#3%
 			\fi
 		}{%
 			% ok, then it is either an alias or it simply doesn't exist
 			\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
-				\pgfplotstableifcolumnexists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
-					\pgfplotstablegetcolumnbyname@exists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
+				\csname pgfplotstable@getcol@ifexists@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
+					\csname pgfplotstable@getcol@getexisting@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
 				}{%
-					\pgfplotstablegetcolumnbyname@impl@nosuchalias{#1}\of{#2}\to{#3}%
+					\csname pgfplotstable@getcol@noalias@#4\endcsname{#1}\of{#2}\to{#3}%
 				}%
 			}{%
-				\pgfplotstablegetcolumnbyname@impl@nocolumn{#1}\of{#2}\to{#3}%
+				\csname pgfplotstable@getcol@nocol@#4\endcsname{#1}\of{#2}\to{#3}%
 			}%
 		}%
 	}%
@@ -362,11 +397,7 @@
 % #3: a macro name which will be filled with the (probably modified)
 % column name into #2.
 \def\pgfplotstableresolvecolname#1\of#2\to#3{%
-	\begingroup
-	\def\pgfplotstablegetcolumnbyname@exists##1\of##2\to##3{\edef#3{##1}}%
-	\pgfplotstablegetcolumnbyname@impl{#1}\of{#2}\to{#3}\allowcreateonuse0%
-	\pgfmath@smuggleone#3%
-	\endgroup
+	\pgfplotstable@getcol{#1}\of{#2}\to{#3}\getcolmethod{resolvename}%
 }
 
 % Invokes either \pgfplotstablegetcolumnbyindex or
@@ -1317,16 +1348,7 @@
 % are done at the time of pointer creation, dereferencing the pointer
 % is fast.
 \def\pgfplotstablereadgetptrtocolname@#1#2{%
-	\begingroup
-	\def\pgfplotstablegetcolumnbyname@exists##1\of##2\to##3{%
-		\edef#2{\csname pgfplotstblread@colindex@for@name##1\endcsname}%
-	}%
-	\def\pgfplotstableifcolumnexists##1\of##2##3##4{%
-		\pgfutil@ifundefined{pgfplotstblread@colindex@for@name##1}{##4}{##3}%
-	}%
-	\pgfplotstablegetcolumnbyname@impl{#1}\of{}\to{#2}\allowcreateonuse0%
-	\pgfmath@smuggleone#2%
-	\endgroup
+	\pgfplotstable@getcol{#1}\of{}\to{#2}\getcolmethod{getptr}%
 }%
 
 % As \pgfplotstablereadgetptrtocolname, but this here access columns
