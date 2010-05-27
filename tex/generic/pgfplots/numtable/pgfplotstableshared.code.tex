@@ -298,6 +298,75 @@
 	}%
 }
 
+\long\def\pgfplotstableifcolumnexists#1\of#2#3#4{%
+	\pgfutil@ifundefined{\string#2@#1}{#4}{#3}%
+}%
+\def\pgfplotstablegetcolumnbyname@exists#1\of#2\to#3{\expandafter\let\expandafter#3\csname\string#2@#1\endcsname}%
+
+\def\pgfplotstablegetcolumnbyname@impl#1\of#2\to#3\allowcreateonuse#4{%
+	\pgfplotstableifcolumnexists{#1}\of{#2}{%
+		\pgfplotstablegetcolumnbyname@exists{#1}\of{#2}\to#3%
+	}{%
+		% Oh, there is no column '#1' in table '#2'!
+		%
+		% Ok, then check for the 'create on use' and the 'alias'
+		% features...
+		% 1. create on use:
+		%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
+		\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
+			% aah - a 'create on use' style exists. Apply it!
+			\if1#4%
+				\pgfplotstablecreatecol[/pgfplots/table/create on use/#1]{#1}{#2}%
+				% and return the newly generated col:
+				\pgfplotstablegetcolumnbyname@exists{#1}\of{#2}\to#3%
+			\else
+				\pgfplotstablegetcolumnbyname@impl@createonuseforbidden{#1}\of{#2}\to#3%
+			\fi
+		}{%
+			% ok, then it is either an alias or it is simply not
+			% existant.
+			\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
+				\pgfplotstableifcolumnexists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
+					\pgfplotstablegetcolumnbyname@exists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
+				}{%
+					\pgfplotstablegetcolumnbyname@impl@nosuchalias{#1}\of{#2}\to{#3}%
+				}%
+			}{%
+				\pgfplotstablegetcolumnbyname@impl@nocolumn{#1}\of{#2}\to{#3}%
+			}%
+		}%
+	}%
+}%
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbidden#1\of#2\to#3{%
+	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@
+}
+
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@#1{%
+	\space Note that I found a 'create on use/#1' style, but unfortunately, I can't evaluate it in this context. Please use the 'read completely' key such that it is processed earlier (see the manual for details)%
+}%
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable#1{}%
+
+\def\pgfplotstablegetcolumnbyname@impl@nosuchalias#1\of#2\to#3{
+	\pgfplotstablegetcolumnbyname@impl@nosuchalias@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable
+}%
+	
+\def\pgfplotstablegetcolumnbyname@impl@nosuchalias@#1\of#2\to#3#4{%
+	\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfkeysvalueof{/pgfplots/table/alias/#1}' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.#4{#1}}\pgfeov%
+}%
+
+\def\pgfplotstablegetcolumnbyname@impl@nocolumn#1\of#2\to#3{%
+	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable
+}%
+\def\pgfplotstablegetcolumnbyname@impl@nocolumn@#1\of#2\to#3{%
+	\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).#4{#1}}\pgfeov%
+}%
+
+
 % Retrieves the column *NAME* '#1' of table #2 and writes it into
 % '#3'.
 %
