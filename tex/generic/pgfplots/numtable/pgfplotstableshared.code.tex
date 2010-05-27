@@ -259,50 +259,35 @@
 %
 % @throw `no such element' on error
 \def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
-	\pgfutil@ifundefined{\string#2@#1}{%
-		% Oh, there is no column '#1' in table '#2'!
-		%
-		% Ok, then check for the 'create on use' and the 'alias'
-		% features...
-		% 1. create on use:
-		%
-		% WARNING : this code has been REPLICATED in
-		% *** \pgfplotstablereadgetptrtocolname ***
-		% *** \pgfplotstablegetcolumnbyname ***
-		% *** \pgfplotstableresolvecolname ***
-		% *** \pgfplotstablereadvalueofcolname ***
-		\def\pgfplotstable@loc@TMPa{/pgfplots/table/create on use/#1}%
-		\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%	
-			% aah - a 'create on use' style exists. Apply it!
-			\expandafter\pgfplotstablecreatecol\expandafter[\pgfplotstable@loc@TMPa]{#1}{#2}%
-			% and return the newly generated col:
-			\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
-		}{%
-			% ok, then it is either an alias or it is simply not
-			% existant.
-			\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
-			\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
-				\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
-				\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
-				\pgfutil@ifundefined{\string#2@\pgfplotstable@loc@TMPa}{%
-					\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}\pgfeov%
-				}{%
-					\expandafter\let\expandafter#3\csname\string#2@\pgfplotstable@loc@TMPa\endcsname
-				}%
-			}{%
-				\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}\pgfeov%
-			}%
-		}%
-	}{%
-		\expandafter\let\expandafter#3\csname\string#2@#1\endcsname
-	}%
+	\pgfplotstablegetcolumnbyname@impl{#1}\of{#2}\to{#3}\allowcreateonuse1%
 }
 
+% Checks if column '#1' exists in table `#2' and invokes `#3' if that
+% is the case and `#4' if not.
+%
+% Note that the check is only for physically existent colums, no alias
+% or create on use is checked here.
+%
+% During 'read to listener', this macro will be replaced.
 \long\def\pgfplotstableifcolumnexists#1\of#2#3#4{%
 	\pgfutil@ifundefined{\string#2@#1}{#4}{#3}%
 }%
+% Low level method to return (the actual content) of column #1 of
+% table #2 to macro #3.
+%
+% During 'read to listener', this macro will be replaced.
 \def\pgfplotstablegetcolumnbyname@exists#1\of#2\to#3{\expandafter\let\expandafter#3\csname\string#2@#1\endcsname}%
 
+% The low level implementation of \pgfplotstablegetcolumnbyname.
+%
+% It allows to disable 'create on use'. Furthermore, it can be used
+% inside of '\edef' --- provided the macros
+% \pgfplotstablegetcolumnbyname@exists and
+% \pgfplotstableifcolumnexists are replaced by expandable variants.
+%
+% In other words, this macro can also be prepared to run during 'read
+% to listener'.
+%
 \def\pgfplotstablegetcolumnbyname@impl#1\of#2\to#3\allowcreateonuse#4{%
 	\pgfplotstableifcolumnexists{#1}\of{#2}{%
 		\pgfplotstablegetcolumnbyname@exists{#1}\of{#2}\to#3%
@@ -315,8 +300,6 @@
 		%
 		% WARNING : this code has been REPLICATED in
 		% *** \pgfplotstablereadgetptrtocolname ***
-		% *** \pgfplotstablegetcolumnbyname ***
-		% *** \pgfplotstableresolvecolname ***
 		% *** \pgfplotstablereadvalueofcolname ***
 		\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
 			% aah - a 'create on use' style exists. Apply it!
@@ -328,8 +311,7 @@
 				\pgfplotstablegetcolumnbyname@impl@createonuseforbidden{#1}\of{#2}\to#3%
 			\fi
 		}{%
-			% ok, then it is either an alias or it is simply not
-			% existant.
+			% ok, then it is either an alias or it simply doesn't exist
 			\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
 				\pgfplotstableifcolumnexists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
 					\pgfplotstablegetcolumnbyname@exists{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
@@ -362,7 +344,7 @@
 \def\pgfplotstablegetcolumnbyname@impl@nocolumn#1\of#2\to#3{%
 	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable
 }%
-\def\pgfplotstablegetcolumnbyname@impl@nocolumn@#1\of#2\to#3{%
+\def\pgfplotstablegetcolumnbyname@impl@nocolumn@#1\of#2\to#3#4{%
 	\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).#4{#1}}\pgfeov%
 }%
 
@@ -381,36 +363,11 @@
 % #3: a macro name which will be filled with the (probably modified)
 % column name into #2.
 \def\pgfplotstableresolvecolname#1\of#2\to#3{%
-	\pgfutil@ifundefined{\string#2@#1}{%
-		% Oh, there is no column '#1' in table '#2'!
-		%
-		% Ok, then check for the 'alias' feature ...
-		%
-		% WARNING : this code has been REPLICATED in
-		% *** \pgfplotstablereadgetptrtocolname ***
-		% *** \pgfplotstablegetcolumnbyname ***
-		% *** \pgfplotstableresolvecolname ***
-		% *** \pgfplotstablereadvalueofcolname ***
-		\def\pgfplotstable@loc@TMPa{/pgfplots/table/alias/#1}%
-		\pgfkeysifdefined{\pgfplotstable@loc@TMPa}{%
-			\pgfkeysgetvalue{\pgfplotstable@loc@TMPa}{\pgfplotstable@loc@TMPb}%
-			\let\pgfplotstable@loc@TMPa=\pgfplotstable@loc@TMPb
-			\pgfutil@ifundefined{\string#2@\pgfplotstable@loc@TMPa}{%
-				\def\pgfplotstable@loc@TMPb{/pgfplots/table/create on use/#1}%
-				\pgfkeysifdefined{\pgfplotstable@loc@TMPb/.@cmd}{%
-					\pgfplotstable@error{Sorry, '\pgfplotstable@loc@TMPb' from table '\pgfplotstableread@filename' can't be evaluated in this context. Please prepare the table before using it here. You can do this using the 'read completely' key, see the manual for details.}%
-				}{%
-					\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfplotstable@loc@TMPa' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.}\pgfeov%
-				}%
-			}{%
-				\let#3=\pgfplotstable@loc@TMPa
-			}%
-		}{%
-			\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).}\pgfeov%
-		}%
-	}{%
-		\def#3{#1}%
-	}%
+	\begingroup
+	\def\pgfplotstablegetcolumnbyname@exists##1\of##2\to##3{\def#3{#1}}%
+	\pgfplotstablegetcolumnbyname@impl{#1}\of{#2}\to{#3}\allowcreateonuse0%
+	\pgfmath@smuggleone#3%
+	\endgroup
 }
 
 % Invokes either \pgfplotstablegetcolumnbyindex or
