@@ -626,8 +626,8 @@
 		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfplotsretval}%
 	},
 	/pgfplots/table/create col/linear regression/.default=,%
-	/pgfplots/table/create col/linear regression/x/.initial=[index]0,%
-	/pgfplots/table/create col/linear regression/y/.initial=[index]1,%
+	/pgfplots/table/create col/linear regression/x/.initial=,%
+	/pgfplots/table/create col/linear regression/y/.initial=,%
 	/pgfplots/table/create col/linear regression/table/.initial=,%
 	/pgfplots/table/create col/linear regression/variance/.initial=,%
 	/pgfplots/table/create col/linear regression/variance list/.initial=,%
@@ -686,7 +686,6 @@
 			/pgfplots/table/create col/next content=
 		},%
 		/pgfplots/table/create col/assign/.code={%
-\message{dyadic refinement rate running.}%
 			\pgfmathfloatparsenumber{\prevrow{#1}}%
 			\let\pgfmatharga=\pgfmathresult
 			\pgfmathfloatparsenumber{\thisrow{#1}}%
@@ -994,6 +993,30 @@
 	}%
 	\let\pgfplotsretval=\pgfmathresult
 }%
+
+% Defines \pgfplotsretval to contain the number of columns in table
+% #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\long\def\pgfplotstablegetcolsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistsize#1\to\c@pgfplotstable@counta
+		\edef\pgfplotsretval{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplots@table
+			\pgfplotstablegetcolsof{\pgfplots@table}%
+			\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}%
+	\let\pgfmathresult=\pgfplotsretval
+}
 
 % \pgfplotstablesave[<options>]{<\tablename>}{file name}
 \def\pgfplotstablesave{%
@@ -2689,6 +2712,26 @@
 	\fi
 	\ifx\pgfplotstable@table\pgfutil@empty
 		\pgfplots@error{Sorry, I couldn't determine a value for create col/linear regression/table. Which table should I load?}%
+	\fi
+	\ifx\pgfplotstable@xsrc\pgfutil@empty
+		\pgfplotsifinaddplottablestruct{%
+			\pgfutil@ifundefined{pgfplots@plot@tbl@x}{}{%
+				\let\pgfplotstable@xsrc=\pgfplots@plot@tbl@x
+				\ifx\pgfplotstable@ysrc\pgfutil@empty
+					\pgfplotstablegetcolsof\pgfplots@table
+					\ifnum\pgfplotsretval=2
+					\else
+						\pgfplotsthrow{invalid argument}{\pgfplotstable@ysrc}{Sorry, I don't which column should be used as `y' for the linear regression. Please provide 'linear regression={y=<colname>}'}\pgfeov%
+					\fi
+				\fi
+			}%
+		}{}%
+	\fi
+	\ifx\pgfplotstable@xsrc\pgfutil@empty
+		\def\pgfplotstable@xsrc{[index]0}%
+	\fi
+	\ifx\pgfplotstable@ysrc\pgfutil@empty
+		\def\pgfplotstable@ysrc{[index]1}%
 	\fi
 	%
 	\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
