@@ -7109,22 +7109,29 @@
 \def\pgfplotsplothandlermesh{%
 	\def\pgf@plotstreamstart{%
 %		\scope
-		\pgfplotsautocompletemeshkeys%
-		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
-		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
-		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
-		%
+		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\pgfutil@ifundefined{pgfplots@drawmodes}{%
 			\let\pgfplots@drawmodes=\tikz@mode
 			\let\pgfplots@drawoptions=\tikz@options
 		}{}%
 		%
-		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
-		\ifnum\pgfplotsplothandlermesh@cols=1
-			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
-		\fi
-		\ifnum\pgfplotsplothandlermesh@rows=1
-			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
+		\if5\pgfplotsplothandlermesh@type
+			% mesh/type=lattice
+			\pgfplotsautocompletemeshkeys%
+			\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
+			\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
+			\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
+			%
+			%
+			\ifnum\pgfplotsplothandlermesh@cols=1
+				\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
+			\fi
+			\ifnum\pgfplotsplothandlermesh@rows=1
+				\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
+			\fi
+		\else
+			% mesh/type=triangle
+			\pgfkeys{/pgfplots/mesh/ordering/x varies}% disable any special handling.
 		\fi
 		%
 		% this shouldn't be necessary, but it doesn't hurt either.
@@ -7176,9 +7183,12 @@
 					}%
 			\fi
 			\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
-				\if\pgfplotsplothandlermesh@shader2% 'shader=interp'
-					\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat' will be used.}%
-					\def\pgfplotsplothandlermesh@shader{0}% 'flat'
+				\if5\pgfplotsplothandlermesh@type
+					% mesh/type=lattice
+					\if\pgfplotsplothandlermesh@shader2% 'shader=interp'
+						\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat' will be used.}%
+						\def\pgfplotsplothandlermesh@shader{0}% 'flat'
+					\fi
 				\fi
 			\fi
 			\ifnum\pgfplotsplothandlermesh@shader<2
@@ -7205,8 +7215,15 @@
 					\global\pgfplots@tmpa=0pt
 					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@preparedrawforcurrent}%
 					\if\pgfplotsplothandlermesh@ONEDIMMODE0
-						\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by4 }%
+						\if5\pgfplotsplothandlermesh@type
+							% mesh/type=lattice
+							\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by4 }%
+						\else
+							% mesh/type=triangle
+							\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by3 }%
+						\fi
 					\else
+						% its just a line:
 						\t@pgfplots@tokb={\global\divide\pgfplots@tmpa by2 }%
 					\fi
 					\t@pgfplots@tokc={%
@@ -7218,6 +7235,8 @@
 						\the\t@pgfplots@toka
 					}%
 				\fi
+				%
+				%
 				\if\pgfplots@meshmode m%
 					% 'mesh' plot: stroke only and use the 'flat' code
 					% here just to define the color for each mesh
@@ -7248,6 +7267,11 @@
 				\pgfkeyssetvalue{/pgfplots/surf shading/north east corner}{\pgfplotspointbbupperright}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/south west corner}{\pgfplotspointbblowerleft}%
 				\pgfkeyssetvalue{/pgfplots/surf shading/anchor}{\pgfpointorigin}%
+				\if5\pgfplotsplothandlermesh@type
+					\pgfkeys{/pgfplots/surf shading/shading type=lattice}%
+				\else
+					\pgfkeys{/pgfplots/surf shading/shading type=triangle}%
+				\fi
 				\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
 				\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
 				\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
@@ -7351,63 +7375,54 @@
 				% y varies (=colwise):
 				\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
 			\fi
-			\def\pgfplotsplothandlermesh@process@element{%
-				\pgfplotsplothandlermesh@draw@element
-					\pgfplotsplothandlermesh@im@jm
-					\pgfplotsplothandlermesh@im@j
-					\pgfplotsplothandlermesh@i@j
-					\pgfplotsplothandlermesh@i@jm
-			}%
-			% Init memory:
-			% in fact, this does only remember the maximum capacity;
-			% it doesn't fill the memory.
-			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-			\advance\c@pgfplots@scanlineindex by1
-			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+			\if5\pgfplotsplothandlermesh@type
+				% mesh/type=lattice
+				\def\pgfplotsplothandlermesh@process@element{%
+					\pgfplotsplothandlermesh@draw@element
+						\pgfplotsplothandlermesh@im@jm
+						\pgfplotsplothandlermesh@im@j
+						\pgfplotsplothandlermesh@i@j
+						\pgfplotsplothandlermesh@i@jm
+				}%
+			\else
+				% mesh/type=triangle
+				\def\pgfplotsplothandlermesh@process@element{%
+					\pgfplotsplothandlermesh@draw@element
+						\pgfplotsplothandlermesh@triangle@A
+						\pgfplotsplothandlermesh@triangle@B
+						\pgfplotsplothandlermesh@triangle@C
+				}%
+			\fi
 			%
+			% handling of jumps.
 			\if2\pgfplotsplothandlermesh@shader
-				% shader=interp  does not support z buffer=sort.
-				% It also has its own \pgf@plotstreampoint method, see
-				% above.
+				% shader=interp does not support jumps.
 				\def\pgfplotsplothandlervisualizejump{%
 					\pgfplots@error{Sorry, shader=interp does not support 'unbounded coords=jump'. Please use 'shader=flat' for this case.}%
 				}%
 			\else
-				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
-				\if\pgfplotsplothandlermesh@zbuffer@choice4%
-					% z buffer=sort:
-					% create a z buffer:
-					% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
-					\pgfplotsarraynewempty\pgfplots@zbuffer@local
-					%
-					% and collect each point into the z buffer
-					% (instead of drawing it):
-					\def\pgfplotsplothandlermesh@process@element{%
-						\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-						% assemble array element:
-						\edef\pgfplots@loc@TMPa{%
-							{\pgfmathresult}%
-							{%
-								{\pgfplotsplothandlermesh@im@jm}%
-								{\pgfplotsplothandlermesh@im@j}%
-								{\pgfplotsplothandlermesh@i@j}%
-								{\pgfplotsplothandlermesh@i@jm}%
-							}%
-						}%
-						\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
-					}%
-				\fi
 				\if\pgfplots@unbounded@handler j%
 					% unbounded coords=jump:
 					% append checks for unbounded coords to
 					% \pgfplotsplothandlermesh@process@element
-					\t@pgfplots@tokb={%
-						\pgfplots@loc@tmptrue
-						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@j\relax
-						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@jm\relax
-						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@j\relax
-						\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@jm\relax
-					}%
+					\if5\pgfplotsplothandlermesh@type
+						% mesh/type=lattice
+						\t@pgfplots@tokb={%
+							\pgfplots@loc@tmptrue
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@j\relax
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@i@jm\relax
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@j\relax
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@im@jm\relax
+						}%
+					\else
+						% mesh/type=triangle
+						\t@pgfplots@tokb={%
+							\pgfplots@loc@tmptrue
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@triangle@A\relax
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@triangle@B\relax
+							\expandafter\pgfplotsplothandlermesh@check@unbounded\pgfplotsplothandlermesh@triangle@C\relax
+						}%
+					\fi
 					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@process@element}%
 					\edef\pgfplotsplothandlermesh@process@element{%
 						\the\t@pgfplots@tokb
@@ -7418,10 +7433,86 @@
 				\fi
 			\fi
 			%
+			% z buffering:
+			\if2\pgfplotsplothandlermesh@shader
+				% shader=interp  does not support z buffer=sort.
+			\else
+				\if\pgfplotsplothandlermesh@zbuffer@choice4%
+					% z buffer=sort:
+					% create a z buffer:
+					% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+					\pgfplotsarraynewempty\pgfplots@zbuffer@local
+					%
+					% and collect each point into the z buffer
+					% (instead of drawing it):
+					\if5\pgfplotsplothandlermesh@type
+						% mesh/type=lattice
+						\def\pgfplotsplothandlermesh@process@element{%
+							\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+							% assemble array element:
+							\edef\pgfplots@loc@TMPa{%
+								{\pgfmathresult}%
+								{%
+									{\pgfplotsplothandlermesh@im@jm}%
+									{\pgfplotsplothandlermesh@im@j}%
+									{\pgfplotsplothandlermesh@i@j}%
+									{\pgfplotsplothandlermesh@i@jm}%
+								}%
+							}%
+							\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+						}%
+					\else
+						% mesh/type=triangle
+						\def\pgfplotsplothandlermesh@process@element{%
+							\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+							% assemble array element:
+							\edef\pgfplots@loc@TMPa{%
+								{\pgfmathresult}%
+								{%
+									{\pgfplotsplothandlermesh@triangle@A}%
+									{\pgfplotsplothandlermesh@triangle@B}%
+									{\pgfplotsplothandlermesh@triangle@C}%
+								}%
+							}%
+							\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+						}%
+					\fi
+				\fi
+			\fi
+			%
+			\if5\pgfplotsplothandlermesh@type
+				% mesh/type=lattice
+				% Init memory:
+				% in fact, this does only remember the maximum capacity;
+				% it doesn't fill the memory.
+				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+				\advance\c@pgfplots@scanlineindex by1
+				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+			\fi
+			%
 			\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 			\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
-			\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
-		\fi
+			%
+			\if5\pgfplotsplothandlermesh@type
+				% mesh/type=lattice
+				\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
+				\if2\pgfplotsplothandlermesh@shader
+					% shader=interp :
+					% \pgf@plotstreampoint has already been initialised.
+				\else
+					\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
+				\fi
+			\else
+				% mesh/type=triangle
+				\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@triangle
+				\if2\pgfplotsplothandlermesh@shader
+					% shader=interp :
+					% \pgf@plotstreampoint has already been initialised.
+				\else
+					\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@collecttriangle%
+				\fi
+			\fi
+		\fi% endif ONEDIM mode
 		\c@pgfplots@scanlineindex=0
 	}%
 }%
@@ -7522,6 +7613,21 @@
 		\c@pgfplots@scanlineindex=0
 	\fi
 }%
+% the pgf@plotstreampoint routine for patch plots
+\def\pgfplotsplothandlermesh@collecttriangle#1{%
+	\pgf@process{#1}%
+	\ifcase\c@pgfplots@scanlineindex
+		\edef\pgfplotsplothandlermesh@triangle@A{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\c@pgfplots@scanlineindex=1
+	\or
+		\edef\pgfplotsplothandlermesh@triangle@B{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\c@pgfplots@scanlineindex=2
+	\or
+		\edef\pgfplotsplothandlermesh@triangle@C{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\c@pgfplots@scanlineindex=0
+		\pgfplotsplothandlermesh@process@element
+	\fi
+}%
 
 % This is the pgf@plotstreampoint for all scan lines starting with the
 % second.
@@ -7612,6 +7718,15 @@
 	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#2}%
 	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#3}%
 	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#4}%
+	\pgfplotsplothandlermesh@preparedrawforcurrent
+	\pgfpathclose
+	\pgfplotsplothandlermesh@usepath
+}%
+% a possible value for \pgfplotsplothandlermesh@draw@element
+\def\pgfplotsplothandlermesh@draw@element@triangle#1#2#3{%
+	\pgfpathmoveto{\expandafter\pgfplotsplothandlermesh@unpack#1}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#2}%
+	\pgfpathlineto{\expandafter\pgfplotsplothandlermesh@unpack#3}%
 	\pgfplotsplothandlermesh@preparedrawforcurrent
 	\pgfpathclose
 	\pgfplotsplothandlermesh@usepath
