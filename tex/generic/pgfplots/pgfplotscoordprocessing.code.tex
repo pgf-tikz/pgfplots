@@ -7560,12 +7560,26 @@
 			% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
 			\pgfplotsarraynewempty\pgfplots@zbuffer@local
 			%
+			\def\pgfplotsplothandlermesh@determine@streamdata{%
+				\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+				\edef\pgfplotsretval{{\pgfmathresult}}%
+			}%
 			% and collect each point into the z buffer
 			% (instead of drawing it):
 			\if5\pgfplotsplothandlermesh@type
 				% mesh/type=lattice
 				\def\pgfplotsplothandlermesh@process@element{%
-					\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+					%
+					% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@jm
+					\let\pgfmathresult\pgfplotsretval
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@j
+					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@j
+					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@jm
+					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
+					%
 					% assemble array element:
 					\edef\pgfplots@loc@TMPa{%
 						{\pgfmathresult}%
@@ -7579,9 +7593,17 @@
 					\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
 				}%
 			\else
+\message{------------------------------> PREPAREING Z BUFFER FOR TRINAGLE PATCH PLOT}%
 				% mesh/type=triangle
 				\def\pgfplotsplothandlermesh@process@element{%
-					\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+					% compute DEPTH(triangle element):= min{DEPTH(A),DEPTH(B),DEPTH(C)}
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@A
+					\let\pgfmathresult\pgfplotsretval
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@B
+					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
+					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@C
+					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
+					%
 					% assemble array element:
 					\edef\pgfplots@loc@TMPa{%
 						{\pgfmathresult}%
@@ -7717,10 +7739,13 @@
 %	\endscope
 }%
 
+\def\pgfplotsplothandlermesh@determine@streamdata{\let\pgfplotsretval\pgfutil@empty}%
+
 % the pgf@plotstreampoint routine for the first scan line:
 \def\pgfplotsplothandlermesh@fillscanline#1{%
+	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\advance\c@pgfplots@scanlineindex by1
 	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
@@ -7731,15 +7756,16 @@
 }%
 % the pgf@plotstreampoint routine for patch plots
 \def\pgfplotsplothandlermesh@collecttriangle#1{%
+	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	\ifcase\c@pgfplots@scanlineindex
-		\edef\pgfplotsplothandlermesh@triangle@A{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\edef\pgfplotsplothandlermesh@triangle@A{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 		\c@pgfplots@scanlineindex=1
 	\or
-		\edef\pgfplotsplothandlermesh@triangle@B{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\edef\pgfplotsplothandlermesh@triangle@B{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 		\c@pgfplots@scanlineindex=2
 	\or
-		\edef\pgfplotsplothandlermesh@triangle@C{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}%
+		\edef\pgfplotsplothandlermesh@triangle@C{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 		\c@pgfplots@scanlineindex=0
 		\pgfplotsplothandlermesh@process@element
 	\fi
@@ -7768,8 +7794,9 @@
 	% NOTATION: 
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
+	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}}% FIXME relies on pgfplots macros
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}% FIXME relies on pgfplots macros
 %\message{##\the\c@pgfplots@scanlineindex: prepare rectangle with corner \meaning\pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
@@ -7864,6 +7891,10 @@
 \def\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@#1#2{%
 	\def\pgfmathresult{#1}%
 }%
+\def\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth#1#2#3#4{%
+	\def\pgfplotsretval{#4}%
+}%
+
 
 % #1: projected x coord
 % #2: projected y coord
@@ -8043,7 +8074,7 @@
 			\endgroup
 		\else
 			% mesh/type=triangle
-			\ifpgfplots@curplot@threedim
+			\ifpgfplots@threedim
 				\if\pgfplots@meshmode n%
 				\else
 					\pgfkeys{/pgfplots/z buffer=sort}%
@@ -8060,10 +8091,8 @@
 			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			% mesh=true
-			\begingroup
 			\pgfkeysalso{/pgfplots/z buffer=auto}%
 			\pgfplots@apply@zbuffer{#1}%
-			\endgroup
 		\fi
 	\fi
 }%
