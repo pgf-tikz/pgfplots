@@ -1190,7 +1190,6 @@
 	}{%
 		\edef\pgfplotsretval{\csname pgfplotspointouternormalvectorofaxis@v@#1#2#3\endcsname}%
 	}%
-\message{getv(#1#2#3) = \meaning\pgfplotsretval}%
 }%
 
 % invokes #2 if the outer normal for the axis #1 (identified by a
@@ -7226,7 +7225,7 @@
 		% this is processed by the 'shader=flat' code below.
 		\def\pgfplotsplothandlermesh@shader{0}% 'flat'
 	\fi
-	\if\pgfplotsplothandlermesh@shader2% 'shader=interp'
+	\ifnum\pgfplotsplothandlermesh@shader>1% 'shader=interp' and 'shader=faceted interp'
 		\pgflibrarysurfshadingifactive
 			{}%
 			{%
@@ -7276,8 +7275,9 @@
 			\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering=x varies:
-				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp%
+				% nothing special to do
 			\else
+				% [this happens only for mesh/type=lattice]
 				% colwise:
 				%
 				% The low level shader NEEDS rowwise ordering. So, we need to transpose the data matrix.
@@ -7286,7 +7286,7 @@
 				% while we iterate colwise through the input data, accumulate row vectors.
 				% Then, process the row vectors.
 				% Since vectors are expensive (in terms of number of macros), we use fast "append" lists instead of vectors.
-				\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
+				\let\pgfplotsplothandlermesh@shader@interp=\pgfplotsplothandlermesh@shader@interp@incremental@transpose
 				%
 				% init all required row vectors:
 				\c@pgfplots@scanlineindex=0
@@ -7447,6 +7447,11 @@
 	\fi
 }%
 
+% This appends code to the \pgfplotsplothandlermesh@process@element
+% routine.
+%
+% Note that \pgfplotsplothandlermesh@process@element will be
+% *overwritten* in case of z buffering.
 \def\pgfplotsplothandlermesh@init@mesh@process@element{%
 	\if3\pgfplotsplothandlermesh@shader
 		% shader=faceted interp
@@ -7504,6 +7509,8 @@
 	\fi
 }%
 
+% This appends code to the \pgfplotsplothandlermesh@process@element
+% routine.
 \def\pgfplotsplothandlermesh@init@jumphandling{%
 	\if2\pgfplotsplothandlermesh@shader
 		% shader=interp does not support jumps.
@@ -7561,6 +7568,13 @@
 			\pgfplotsarraynewempty\pgfplots@zbuffer@local
 			%
 			\def\pgfplotsplothandlermesh@determine@streamdata{%
+				% The idea: while the coordinate stream visits every
+				% coordinate, we compute the view depth.
+				%
+				% We store it along with
+				% {<canvasx>}{<canvasy>}{<cdata>}{<depth>}
+				% and extract it once all points of one patch element
+				% are together.
 				\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
 				\edef\pgfplotsretval{{\pgfmathresult}}%
 			}%
@@ -7571,13 +7585,13 @@
 				\def\pgfplotsplothandlermesh@process@element{%
 					%
 					% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@jm
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@jm
 					\let\pgfmathresult\pgfplotsretval
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@j
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@im@j
 					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@j
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@j
 					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@jm
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@i@jm
 					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
 					%
 					% assemble array element:
@@ -7593,15 +7607,14 @@
 					\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
 				}%
 			\else
-\message{------------------------------> PREPAREING Z BUFFER FOR TRINAGLE PATCH PLOT}%
 				% mesh/type=triangle
 				\def\pgfplotsplothandlermesh@process@element{%
 					% compute DEPTH(triangle element):= min{DEPTH(A),DEPTH(B),DEPTH(C)}
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@A
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@A
 					\let\pgfmathresult\pgfplotsretval
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@B
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@B
 					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
-					\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@C
+					\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth\pgfplotsplothandlermesh@triangle@C
 					\pgfplotsmathmin\pgfplotsretval\pgfmathresult
 					%
 					% assemble array element:
@@ -7639,19 +7652,19 @@
 		\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@rectangle
 		\if2\pgfplotsplothandlermesh@shader
 			% shader=interp :
-			% \pgf@plotstreampoint has already been initialised.
+			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@shader@interp%
 		\else
 			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@fillscanline%
 		\fi
 	\else
 		% mesh/type=triangle
-		\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@triangle
 		\if2\pgfplotsplothandlermesh@shader
 			% shader=interp :
-			% \pgf@plotstreampoint has already been initialised.
+			\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@triangle@interp
 		\else
-			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@collecttriangle%
+			\let\pgfplotsplothandlermesh@draw@element=\pgfplotsplothandlermesh@draw@element@triangle
 		\fi
+		\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@collecttriangle%
 	\fi
 }
 
@@ -7714,29 +7727,28 @@
 }%
 
 \def\pgfplotsplothandlermesh@finish{%
-	\ifnum\pgfplotsplothandlermesh@shader=2
+	\if\pgfplotsplothandlermesh@zbuffer@choice4%
+		% z buffer=sort:
+		% process the z buffer:
+		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
+		\pgfkeysdef{/pgfplots/array/unscope pre}{%
+			\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
+				\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
+			}%
+		}%
+		\pgfkeysdef{/pgfplots/array/unscope post}{}%
+		\pgfplotsarraysort\pgfplots@zbuffer@local
+	\fi
+	%
+	\if2\pgfplotsplothandlermesh@shader
 		% shader=interp:
-		\ifx\pgf@plotstreampoint\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
+		\ifx\pgfplotsplothandlermesh@shader@interp\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
 			% This is the case for 'mesh/ordering=colwise'. We need to finish the transpose procedure:
 			\pgfplotsplothandlermesh@shader@interp@transpose@finish
 		\fi
 		\pgfplotslibrarysurfstreamend
 		\pgfplotslibrarysurfdrawinpicture
-	\else
-		\if\pgfplotsplothandlermesh@zbuffer@choice4%
-			% z buffer=sort:
-			% process the z buffer:
-			\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
-			\pgfkeysdef{/pgfplots/array/unscope pre}{%
-				\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
-					\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
-				}%
-			}%
-			\pgfkeysdef{/pgfplots/array/unscope post}{}%
-			\pgfplotsarraysort\pgfplots@zbuffer@local
-		\fi
 	\fi
-%	\endscope
 }%
 
 \def\pgfplotsplothandlermesh@determine@streamdata{\let\pgfplotsretval\pgfutil@empty}%
@@ -7874,6 +7886,14 @@
 	\pgfpathclose
 	\pgfplotsplothandlermesh@usepath
 }%
+\def\pgfplotsplothandlermesh@draw@element@triangle@interp#1#2#3{%
+	\expandafter\pgfplotsplothandlermesh@unpack@simple#1%
+	\pgfplotsplothandlermesh@shader@interp{}%
+	\expandafter\pgfplotsplothandlermesh@unpack@simple#2%
+	\pgfplotsplothandlermesh@shader@interp{}%
+	\expandafter\pgfplotsplothandlermesh@unpack@simple#3%
+	\pgfplotsplothandlermesh@shader@interp{}%
+}%
 
 \def\pgfplotsplothandlermesh@zbuffer@sort@iflessthen#1#2#3#4\pgfeov{%
 	\edef\pgfplots@loc@TMPa{#1}%
@@ -7891,8 +7911,12 @@
 \def\pgfplotsplothandlermesh@zbuffer@sort@iflessthen@#1#2{%
 	\def\pgfmathresult{#1}%
 }%
-\def\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth#1#2#3#4{%
+\def\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth#1{%
+	\expandafter\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth@#1{#1}%
+}%
+\def\pgfplotsplothandlermesh@unpack@zbuffer@pointdepth@#1#2#3#4#5{%
 	\def\pgfplotsretval{#4}%
+	\def#5{{#1}{#2}{#3}}% eliminate the point depth from the macro. It will only confuse the other @unpack routines.
 }%
 
 
