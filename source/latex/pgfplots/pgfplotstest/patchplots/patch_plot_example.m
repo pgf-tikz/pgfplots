@@ -66,7 +66,7 @@ patchtopgfplots(tx,ty,Tz,tc, 'plot5.dat');
 C = colormap;
 I = 1:1:size(C,1);
 CC = C(I,:);
-fid = fopen('colormap.tex','w');
+fid = fopen('patchplottestcolormap.tex','w');
 fprintf(fid,'\\pgfplotsset{colormap={matlab}{\n');
 fprintf(fid,'rgb=(%f,%f,%f)\n',CC');
 fprintf(fid,'}}\n');
