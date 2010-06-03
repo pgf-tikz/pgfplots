@@ -32,6 +32,9 @@
 
 \pgfplotsset{
 	/pgfplots/every polar axis/.style={
+		grid=major,
+		clip=false,
+		xmin=0,xmax=360,
 	},
 }
 
@@ -50,6 +53,7 @@
 	\let\pgfplots@initsizes=\pgfplots@initsizes@polar
 	\let\pgfplots@set@options@sanitize=\relax
 	\let\pgfplots@set@options@sanitizemode=\relax
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@polar
 	%
 	% this here is set *before* 'every polar axis' is invoked.
 	\pgfplotsset{
@@ -74,6 +78,22 @@
 
 \def\pgfplotspointcartesian@#1,#2\pgfplots@coord@end{%
 	\pgfpointxy@orig{#1}{#2}%
+}%
+\def\pgfplotscoordmathnotifydatascalesetfor@polar#1{%
+	\def\pgfplotscoordmathnotifydatascalesetfor##1{}%
+	\edef\pgfplotscoordmathnotifydatascalesetfor@{#1}%
+	\def\pgfplotscoordmathnotifydatascalesetfor@@{x}%
+	\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+\message{RESETTING DATA SCALING FOR #1}%
+		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
+	\else
+		\def\pgfplotscoordmathnotifydatascalesetfor@@{y}%
+		\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+\message{RESETTING DATA SCALING FOR #1}%
+			\pgfplotscoordmath{#1}{datascaletrafo set shift}{0}%
+		\fi
+	\fi
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@polar
 }%
 
 % #1: the "a" value on the oriented surf
@@ -129,7 +149,7 @@
 	\pgf@process{%
 		\pgfplotsmathpoltocartbasic{#1}{#2}\x\y
 		\pgfqpointxy@orig\x\y
-\message{pgfplotsqpointxy{#1}{#2} ---> (\x,\y) ---> (\the\pgf@x,\the\pgf@y)}%
+%\message{pgfplotsqpointxy{#1}{#2} ---> (\x,\y) ---> (\the\pgf@x,\the\pgf@y)}%
 	}%
 }%
 \def\pgfplots@clippath@prepare@for@axistype@polaraxis{%
@@ -232,6 +252,9 @@
 }%
 
 \def\pgfplots@initsizes@polar{%
+	% I copy-pasted most of this code, up to just one position where
+	% I introduced the modified scaling for polar axes
+	%----------------------------------
 	% INIT.
 	%
 	%
@@ -256,7 +279,6 @@
 		\def\pgfplots@tmpZscale{1pt}%
 	\else
 		\def\pgfplots@tmpZscale{0pt}%
-		% FIXME
 		\let\pgfplots@view@el=\pgfutil@empty
 		\let\pgfplots@view@az=\pgfutil@empty
 	\fi
@@ -267,14 +289,20 @@
 		\def\pgfplots@view@dir@threedim@y{0}%
 		\def\pgfplots@view@dir@threedim@z{1}%
 		%
-		% FIXME
+		% FIXME HERE COMES THE polar MODIFICATION
 		%--------------------------------------------------
 		% \pgfpointdiff
 		% 	{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
 		% 	{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
 		%-------------------------------------------------- 
-		\pgf@x=2pt
-		\pgf@y=2pt
+		% instead of scaling from (min) (max), we only need the UPPER
+		% bound -- in both, x and y directions (since we have a cycle.
+		% Furthermore, we need it twice since we are interested in the
+		% diameter, not the radius.
+		\global\pgf@x=\pgfplots@ymax pt % radius
+		\global\multiply\pgf@x by2      % diameter
+		\global\pgf@y=\pgf@x            % same for y
+		%
 		% only used temporarily in this macro to compute the correct
 		% length for unit vectors:
 		\edef\pgfplots@initsizes@axisdiag@x{\the\pgf@x}%
