@@ -7132,6 +7132,15 @@
 %  -> see also the legend image for mesh plots.
 %
 \def\pgfplotsplothandlermesh{%
+	\if0\pgfplotsplothandlermesh@matrixinput
+		\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
+		\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
+		\else
+			\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@mesh@patchtable
+			\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh@patchtable
+			\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@mesh@patchtable
+		\fi
+	\fi
 	\def\pgf@plotstreamstart{%
 %		\scope
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
@@ -7203,8 +7212,90 @@
 	}%
 }%
 
+\def\pgfplotsplothandlersurveystart@mesh@patchtable{%
+	\pgfplotsarraynewempty\pgfplots@verts
+}%
+\def\pgfplotsplothandlersurveypoint@mesh@patchtable{%
+	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{\pgfplots@current@point@z}%
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	%
+	\pgfplotsaxissurveysetpointmeta
+	%
+	\def\pgfplots@loc@TMPa{1}%
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+		\def\pgfplots@loc@TMPa{0}%
+	\else
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+			\def\pgfplots@loc@TMPa{0}%
+		\else
+			\ifx\pgfplots@current@point@z\pgfutil@empty
+				\ifpgfplots@curplot@threedim
+					\def\pgfplots@loc@TMPa{0}%
+				\fi
+			\fi
+		\fi
+	\fi
+	\if1\pgfplots@loc@TMPa
+		\edef\pgfplots@loc@TMPa{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z;\pgfplots@current@point@meta;}%
+		\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@verts
+	\fi
+}%
+\def\pgfplotsplothandlersurveyend@mesh@patchtable{%
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@default
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@default
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@default
+	\pgfplotsplothandlersurveystart
+	\expandafter\pgfplotstable@isloadedtable\expandafter{\pgfplotsplothandlermesh@patchtable}{%
+		\pgfplots@error{Sorry, 'patch table={<loaded table>}' has not been implemented; it would probably be too slow :-(. Please provide a file name or inline table data}%
+	}{%
+		\expandafter\pgfplotstableread\expandafter*\expandafter{\pgfplotsplothandlermesh@patchtable} to listener\pgfplotsplothandlermesh@patchtable@rowlistener
+	}%
+	\pgfplotsplothandlersurveyend
+}%
+\def\pgfplotsplothandlermesh@patchtable@init{%
+	\c@pgf@countb=0
+	\pgfutil@loop
+	\ifnum\c@pgf@countb<3
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplotstablereadgetptrtocolindex{\the\c@pgf@countb}{\expandafter\noexpand\csname pgfplots@table@PTR@\the\c@pgf@countb\endcsname}%
+		}%
+		\pgfplots@loc@TMPa
+		\advance\c@pgf@countb by1
+	\pgfutil@repeat
+	\let\pgfplotsplothandlermesh@patchtable@init=\relax
+}%
+\def\pgfplotsplothandlermesh@patchtable@rowlistener{%
+	\pgfplotsplothandlermesh@patchtable@init%
+	\c@pgf@countb=0
+	\pgfutil@loop
+	\ifnum\c@pgf@countb<3
+		\expandafter\pgfplotstablereadevalptr\csname pgfplots@table@PTR@\the\c@pgf@countb\endcsname\pgfplots@current@vertexindex%
+		\ifx\pgfplots@current@vertexindex\pgfutil@empty
+		\else
+			\pgfplotsarrayselect\pgfplots@current@vertexindex\of\pgfplots@verts\to\pgfplots@stored@pt
+			\expandafter\pgfplotsplothandlermesh@patchtable@stream\pgfplots@stored@pt
+		\fi
+		\advance\c@pgf@countb by1
+	\pgfutil@repeat
+}
+\def\pgfplotsplothandlermesh@patchtable@stream#1,#2,#3;#4;{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+	\def\pgfplots@current@point@meta{#4}%
+	\pgfplotsplothandlersurveypoint
+}%
+
 \def\pgfplotsplothandlermesh@init@meshkeys{%
-	\if5\pgfplotsplothandlermesh@type
+	\if1\pgfplotsplothandlermesh@matrixinput
 		% mesh/type=lattice
 		\pgfplotsautocompletemeshkeys%
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
@@ -7649,7 +7740,7 @@
 	\fi
 }%
 \def\pgfplotsplothandlermesh@init@mesh@mem{%
-	\if5\pgfplotsplothandlermesh@type
+	\if1\pgfplotsplothandlermesh@matrixinput
 		% mesh/type=lattice
 		% Init memory:
 		% in fact, this does only remember the maximum capacity;
@@ -7663,7 +7754,7 @@
 	\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 	\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
 	%
-	\if5\pgfplotsplothandlermesh@type
+	\if1\pgfplotsplothandlermesh@matrixinput
 		% mesh/type=lattice
 		\if2\pgfplotsplothandlermesh@shader
 			% shader=interp :
@@ -8117,7 +8208,7 @@
 		% only need to know whether [xy] coordinates are sorted
 		% ascending or descending. This information is already ready.
 		%
-		\if5\pgfplotsplothandlermesh@type
+		\if1\pgfplotsplothandlermesh@matrixinput
 			% mesh/type=lattice
 			\begingroup
 			\if+\pgfkeysvalueof{/pgfplots/x coord sorting}%
