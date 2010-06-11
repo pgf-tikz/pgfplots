@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Mo 24. Mai 20:33:14 CEST 2010 %%%
+%%% Date of this copy: Fri Jun 11 12:05:22 CEST 2010 %%%
 
 
 
@@ -148,7 +148,7 @@
 	mode/list only/.code		= {\def\tikzexternal@opmode{3}\tikzexternal@genfigurelisttrue},
 	mode/convert with system call/.code={%
 		\def\tikzexternal@opmode{4}%
-		\pgfkeysalso{/tikz/external/figure list=false,/pgf/images/aux in dpth=false}%
+		\pgfkeysalso{/tikz/external/figure list=false,/pgf/images/aux in dpth=true}% ATTENTION: this *can't* work if \label{} contains pictures!
 	},
 	mode/list and make/.code	= {%
 		\def\tikzexternal@opmode{5}%
@@ -341,6 +341,9 @@
 % Thus: mode=convert with system call does NOT support \ref commands
 % inside of images. You will need to call the externalization command
 % manually. In this case, it should work.
+%
+% The lock file allows to detect automatically whether an image is created by
+% 'convert with system call' or if the user issued the required command manually.
 %
 % @PRECONDITION : this command must be invoked AFTER
 % \tikzexternal@realjob has been defined but BEFORE \pgfrealjobname is
@@ -890,38 +893,6 @@
 	\fi
 }%
 
-\def\tikzexternal@externalizefig@GRAB{%
-	\iftikzexternal@optimize
-		\ifpgf@external@grabshipout
-			\tikzexternal@optimize@RESTORE
-		\fi
-	\fi
-	\def\tikzpicture{%
-		\def\tikzpicture{% make sure that nested \tikzpicture are processed normally.
-			\begingroup
-			\def\endtikzpicture{%
-				\tikzexternal@origendpicture
-				\endgroup
-			}%
-			\tikzexternal@origpicture
-		}%
-		\pgf@external@grab{\tikzexternal@curfilename}%
-		\tikzexternal@origpicture
-	}%
-	\def\endtikzpicture{%
-		\tikzexternal@origendpicture
-		\pgf@externalend
-		\let\tikzpicture=\tikzexternal@tikzpicture@replacement
-		\let\endtikzpicture=\tikzexternal@origendpicture
-		\iftikzexternal@optimize
-			\ifpgf@external@grabshipout
-				\tikzexternal@optimize@REPLACE
-			\fi
-		\fi
-	}%
-	\tikzpicture
-}%
-
 
 % Used by the optimization code.
 % It will be called if GRAB mode is on.
@@ -1331,3 +1302,12 @@
 	\fi
 }%
 
+% Overwrite error message of pgf.
+% This happens if the generated image was empty, i.e. if there was no \shipout.
+\def\pgfexternal@error@no@shipout{%
+	\begingroup
+	\tikzexternal@assemble@systemcall{\pgfactualjobname}{\pgf@tempa}%
+	\toks0=\expandafter{\pgf@tempa}%
+	\PackageError{tikz}{Sorry, image externalization failed: the resulting image was EMPTY. I tried to externalize '\pgfactualjobname', but it seems there is no such image in the document!? \if\tikzexternal@opmode4 You are currently using 'mode=convert with system call', which might fail if the image was declared inside of a \string\label{} (i.e. in the .aux file). Perhaps it helps to use 'mode=list and make' or to issue the externalization command '\the\toks0' *manually* (also check the preceeding externalized images, perhaps the file name sequence is not correct)\fi}%
+	\endgroup
+}%
