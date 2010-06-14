@@ -2020,7 +2020,7 @@
 				\fi
 			}%
 		},
-		set log basis=\pgfplotscoordmath@log@set@basis{##1},
+		set log basis=\edef\pgfmathresult{{#1}{##1}}\expandafter\pgfplotscoordmath@log@set@basis\pgfmathresult,
 		exp={%
 			% make sure the exponential can be represented:
 			\pgfmathfloatparsenumber{##1}%
@@ -2066,21 +2066,39 @@
 		\noexpand\edef\noexpand\pgfplotscoordmath@{##2}%
 		\noexpand\expandafter\noexpand\expandafter\noexpand\csname pgfmath\csname pgfpmth@#1@suffix\endcsname ##1@\noexpand\endcsname\noexpand\pgfplotscoordmath@
 	}%
-	\pgfutil@ifundefined{pgfpmth\pgfplotsdeclarecoordmath@ log}{%
+	%
+	%
+	% these log function depend on the first argument of
+	% \pgfplotscoordmath{}, which is available as
+	% \pgfplotscoordmathid.
+	\pgfplotsutilforeachcommasep{%
+		log,%
+		log to display log,%
+		log from display log,%
+		log to log 10,%
+		log unsigned int}\as\pgfplots@loc@TMPa
+	{%
+		\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@\pgfplots@loc@TMPa\endcsname{%
+			% invoke \pgfpmth@#1@@<name>@<function>
+			% for example
+			% \pgfpmth@pgfbasic@@y@log
+			\noexpand\csname pgfpmth\pgfplotsdeclarecoordmath@ @\noexpand\pgfplotscoordmathid @\pgfplots@loc@TMPa\noexpand\endcsname
+		}%
+	}%
+	%
+	\pgfutil@ifundefined{pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log}{%
 		\pgfutil@namelet
-			{pgfpmth\pgfplotsdeclarecoordmath@ log}
+			{pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log}
 			{pgfpmth\pgfplotsdeclarecoordmath@ log e}%
 	}{}%
-	% store old impl of log unsigned int:
-	\pgfutil@namelet
-		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int@orig}
-		{pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int}%
 	\pgfplotscoordmath@def@log@to@log@ten{#1}{}% empty arg
 	%
 }%
 \pgfqkeys{/pgfplots/@declare coord math}{%
 	initialise/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ initialise\endcsname{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ initialise\endcsname{#1%
+			\pgfplotscoordmath@initialise@logs
+		}},%
 	% takes a number literal as input and defines \pgfmathresult to be
 	% the parsed result.
 	parsenumber/.code=
@@ -2133,28 +2151,29 @@
 	% 'log' is special in that it accepts a number literal which may
 	% be OUTSIDE of the accepted number format. The result, however, is
 	% then in the accepted number format.
-	%
-	% The log basis can be set with 'set log basis'
-	log/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log\endcsname##1{#1}},%
-	% similar, but always uses log basis e:
 	log e/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log e\endcsname##1{#1}},%
+	%
+	% Similar, but the log basis can be set with 'set log basis'.
+	% This allows \pgfplotscoordmath{x}{log}{} to use a different log
+	% basis thatn \pgfplotscoordmath{y}{log}{} (with special handling)
+	log/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log\endcsname##1{#1}},%
 	% applies a *scale* from the actual log basis to the actual
 	% *display* log basis. The display log basis is usually 10, unless
 	% the log basis has been changed.
 	log to display log/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to display log\endcsname##1{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log to display log\endcsname##1{#1}},%
 	% applies a *scale* from the displau log basis to the actual
 	% log basis (the inverse of `log to display log').
 	log from display log/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log from display log\endcsname##1{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log from display log\endcsname##1{#1}},%
 	log to log 10/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log to log 10\endcsname##1{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log to log 10\endcsname##1{#1}},%
 	% returns log(i) where i \in {1,2,3,...,basis-1}
 	% currently, it is only invoked for log basis 10
 	log unsigned int/.code=
-		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int\endcsname##1{#1}},%
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log unsigned int\endcsname##1{#1}},%
 	% sets (changes) the actual log basis.
 	set log basis/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ set log basis\endcsname##1{#1}},%
@@ -2209,16 +2228,35 @@
 		{\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ suffix\endcsname{#1}},%
 }%
 
+\def\pgfplotscoordmath@initialise@logs{%
+	\edef\pgfplotsdeclarecoordmath@{@\pgfplotscoordmathclassfor{\pgfplotscoordmathid}@}%
+	\pgfutil@ifundefined{pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log}{%
+		\pgfplotsutilforeachcommasep{%
+			log,%
+			log to display log,%
+			log from display log,%
+			log to log 10,%
+			log unsigned int}\as\pgfplots@loc@TMPa
+		{%
+			\pgfutil@namelet
+				{pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @\pgfplots@loc@TMPa}
+				{pgfpmth\pgfplotsdeclarecoordmath@ tmpl@\pgfplots@loc@TMPa}%
+		}%
+	}{}%
+	\message{initialise@logs: ich habe \expandafter\meaning\csname pgfpmth\pgfplotsdeclarecoordmath@ log unsigned int\endcsname sowie \expandafter\meaning\csname pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log unsigned int\endcsname.}%
+}%
+
 % shared implementation for 'set log basis' It works for every
 % subclass.
-\def\pgfplotscoordmath@log@set@basis#1{%
+\def\pgfplotscoordmath@log@set@basis#1#2{%
+	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	%
-	\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{#1}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult% TMPa = log_e(#1)
+	\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{#2}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult% TMPa = log_e(#2)
 	\pgfplotscoordmath{\pgfplotscoordmathid}{op}{reciprocal}{{\pgfmathresult}}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult% TMPb = 1/log_e(#1)
+	\let\pgfplots@loc@TMPb=\pgfmathresult% TMPb = 1/log_e(#2)
 	%
-	\expandafter\edef\csname pgfpmth@\pgfplotscoordmathid @log\endcsname##1{%
+	\expandafter\edef\csname pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log\endcsname##1{%
 		\noexpand\pgfplotscoordmath{\pgfplotscoordmathid}{log e}{##1}%
 		\noexpand\ifx\noexpand\pgfmathresult\noexpand\pgfutil@empty
 		\noexpand\else
@@ -2228,15 +2266,15 @@
 			}%
 		\noexpand\fi
 	}%
-	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log to display log\endcsname##1{\edef\pgfmathresult{##1}}%
-	\expandafter\def\csname pgfpmth@\pgfplotscoordmathid @log from display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log to display log\endcsname##1{\edef\pgfmathresult{##1}}%
+	\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log from display log\endcsname##1{\edef\pgfmathresult{##1}}%
 	%
 	% compute 'log unsigned int' for the new basis.
 	%
 	% Idea: re-scale the old implementation (of basis e for i = 1,...,9)
 	% and re-compute i>=10 :
 	\begingroup
-		\expandafter\let\expandafter\logi\csname pgfpmath@\pgfplotscoordmathid @log unsigned int@orig\endcsname
+		\expandafter\let\expandafter\logi\csname pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log unsigned int\endcsname
 		\let\logscale=\pgfplots@loc@TMPb
 		%
 		\logi{1}%
@@ -2277,7 +2315,7 @@
 		%
 		\xdef\pgfplots@glob@TMPa##1{%
 			\noexpand\ifcase##1
-			\noexpand\or\noexpand\def\noexpand\pgfmathresult{}%
+			\noexpand\def\noexpand\pgfmathresult{}%
 			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@1\endcsname}%
 			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@2\endcsname}%
 			\noexpand\or\noexpand\def\noexpand\pgfmathresult{\csname logi@@3\endcsname}%
@@ -2292,24 +2330,31 @@
 			\noexpand\fi
 		}%
 	\endgroup
-	\expandafter\let\csname pgfpmth@\pgfplotscoordmathid @log unsigned int\endcsname=\pgfplots@glob@TMPa
-	\pgfplotscoordmath@def@log@to@log@ten\pgfplotscoordmathid\pgfplots@loc@TMPb
+	\expandafter\let\csname pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log unsigned int\endcsname=\pgfplots@glob@TMPa
+	\pgfplotscoordmath@def@log@to@log@ten{#1}\pgfplots@loc@TMPa
+	%
+	\pgfutil@namelet
+		{pgfpmth\pgfplotsdeclarecoordmath@ @\pgfplotscoordmathid @log to log 10}
+		{pgfpmth\pgfplotsdeclarecoordmath@ tmpl@log to log 10}%
 }%
-% #1: the id of coord math
+% #1: the coord math class
 % #2: either empty (basis e) or 1/ln(basis)
 \def\pgfplotscoordmath@def@log@to@log@ten#1#2{%
 	\csname pgfpmth@#1@parsenumber\endcsname{0.434294}%
 	\edef\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
-			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
-		}%
+		% log basis e ---> log basis 10
+		% log_10 x = log x / log(10)
 	\else
+		% log basis a ---> log basis 10
+		%
+		% log_a x = log x / log a 
+		% log_10 x =  log_a x * log a / log(10) = log x / log(10) [OK]
 		\csname pgfpmth@#1@op\endcsname{multiply}{{#2}{\pgfmathresult}}%
-		\expandafter\edef\csname pgfpmth@#1@log to log 10\endcsname##1{%
-			\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
-		}%
 	\fi
+	\expandafter\edef\csname pgfpmth@#1@tmpl@log to log 10\endcsname##1{%
+		\noexpand\pgfplotscoordmath{\noexpand\pgfplotscoordmathid}{op}{multiply}{{##1}{\pgfmathresult}}%
+	}%
 }%
 
 \pgfplotsdeclarecoordmath{pgfbasic}{%
@@ -2418,6 +2463,8 @@
 \def\pgfplotscoordmath#1#2{%
 	\edef\pgfplotscoordmathid{#1}%
 	\csname pgfpmth@\csname pgfcrdmth@#1\endcsname @#2\endcsname}%
+
+\def\pgfplotscoordmathclassfor#1{\csname pgfcrdmth@#1\endcsname}%
 
 \def\pgfplotscoordmathnotifydatascalesetfor#1{}%
 
@@ -5556,11 +5603,14 @@
 			\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@current@point@points}%
 		\fi
 		\let\pgfplots@coord@stream@end=\pgfplots@addplotimpl@graphics@@end
+		%
 		\def\pgfplots@addplotimpl@graphics@@error##1{}%
 	\fi
 	%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/xmin}{\pgfplots@current@point@x}%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/ymin}{\pgfplots@current@point@y}%
+	%
+	% these sanity checks do nothing of the 'plot graphics/points' feature has been used:
 	\ifx\pgfplots@current@point@x\pgfutil@empty\pgfplots@addplotimpl@graphics@@error{xmin}\fi
 	\ifx\pgfplots@current@point@y\pgfutil@empty\pgfplots@addplotimpl@graphics@@error{ymin}\fi
 	\ifpgfplots@curplot@threedim
