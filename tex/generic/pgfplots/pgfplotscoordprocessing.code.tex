@@ -4504,6 +4504,7 @@
 \def\pgfplots@addplotimpl@graphics@#1#2[#3]#4#5;{\pgfplots@addplotimpl@graphics@@{#1}{#2}{#3}{#4}{#5}}%
 \def\pgfplots@addplotimpl@graphics@@#1#2#3#4#5{%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2,%
+		/pgfplots/plot graphics/@prepare legend,
 		/pgfplots/plot graphics,%
 		/pgfplots/plot graphics/.cd,%
 		#3,%
@@ -5177,9 +5178,6 @@
 	\c@pgfplots@coordindex=0
 	\def\pgfplots@current@point@coordindex{\the\c@pgfplots@coordindex}% can be used inside of coordinate filters.
 	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
-	\ifpgfplots@usefpu
-		\pgfkeys{/pgf/fpu=true}%
-	\fi
 	\def\pgfplots@addplot@running{1}%
 	\def\pgfplots@colorbar@set@src{0}%
 	\pgfkeysdef{/pgfplots/colorbar source}{%
@@ -5222,10 +5220,6 @@
 	% \ifpgfplots@curplot@isirrelevant:
 	\pgfplotsset{/pgfplots/every axis plot,#1}%
 	%
-	% hooks:
-	\pgfkeysvalueof{/pgfplots/execute at begin plot@@}%
-	\pgfkeysvalueof{/pgfplots/execute at begin plot}%
-	%
 	\ifpgfplots@curplot@isirrelevant
 		\def\pgfplots@addplot@survey@@optionlist{/pgfplots/every axis plot,/pgfplots/every forget plot}%
 		\pgfplotsset{/pgfplots/every forget plot,/pgfplots/every axis plot post}%
@@ -5233,6 +5227,15 @@
 		\edef\pgfplots@addplot@survey@@optionlist{/pgfplots/every axis plot,/pgfplots/every axis plot no \the\pgfplots@numplots/.try}%
 		\pgfplotsset{/pgfplots/every axis plot no \the\pgfplots@numplots/.try,/pgfplots/every axis plot post}%
 	\fi
+	%
+	\ifpgfplots@usefpu
+		\pgfkeys{/pgf/fpu=true}%
+	\fi
+	%
+	% hooks:
+	\pgfkeysvalueof{/pgfplots/execute at begin plot@@}%
+	\pgfkeysvalueof{/pgfplots/execute at begin plot}%
+	%
 	\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,%
 		#1,/pgfplots/.cd,/pgfplots/every axis plot post}%
 	\pgfplots@validate@plot@domain@arguments
@@ -6079,6 +6082,29 @@
 	\fi
 }%
 
+% legends for plot graphics should not use 'plot graphics' themselfes
+% (for obvious reasons).
+% This key handles that. Furthermore, it remembers the plot mark for
+% the legend -- although no plot mark is allowed for plot graphics as
+% such.
+\pgfkeysdef{/pgfplots/plot graphics/@prepare legend}{%
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	\t@pgfplots@tokc=\expandafter{\pgfplots@basiclevel@plothandler}%
+	%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfkeys{/pgfplots/every legend image post/.append code={%
+				\noexpand\def\noexpand\tikz@plot@handler{\the\t@pgfplots@tokc}%
+				\ifx\tikz@plot@mark\pgfutil@empty
+				\else
+					\noexpand\pgfkeysalso{/tikz/mark=\tikz@plot@mark}%
+				\fi
+			}%
+		}%
+	}%
+	\pgfplots@loc@TMPa
+}
 
 
 % The low-level tikz plot handler for 3D mesh and surface plots.
@@ -6369,11 +6395,7 @@
 		\def\pgfplots@plothandler@unbounded@visualize@jump{%
 			\pgfplotstreampoint{\global\pgf@x=-16000.0pt \global\pgf@y=-16000.0pt }%
 		}%
-		\def\pgfplotsplothandlermesh@check@unbounded####1####2\relax{%
-			\ifdim####1=-16000pt
-				\pgfplots@loc@tmpfalse
-			\fi
-		}%
+		\let\pgfplotsplothandlermesh@check@unbounded=\pgfplotsplothandlermesh@check@unbounded@setbool
 		\if\pgfplotsplothandlermesh@ONEDIMMODE1%
 			% Special case: 1D mesh processing
 			\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@ONEDIM@draw%
@@ -6507,6 +6529,12 @@
 		\fi
 		\c@pgfplots@scanlineindex=0
 	}%
+}%
+
+\def\pgfplotsplothandlermesh@check@unbounded@setbool#1#2\relax{%
+	\ifdim#1=-16000pt
+		\pgfplots@loc@tmpfalse
+	\fi
 }%
 
 \long\def\pgfplotsplothandlermesh@defaultlegend@img#1{%
