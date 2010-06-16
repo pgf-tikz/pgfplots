@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Thu Apr 22 11:12:14 CEST 2010 %%%
+%%% Date of this copy: Wed Jun 16 16:33:38 CEST 2010 %%%
 
 
 
@@ -148,7 +148,7 @@
 	mode/list only/.code		= {\def\tikzexternal@opmode{3}\tikzexternal@genfigurelisttrue},
 	mode/convert with system call/.code={%
 		\def\tikzexternal@opmode{4}%
-		\pgfkeysalso{/tikz/external/figure list=false,/pgf/images/aux in dpth=false}%
+		\pgfkeysalso{/tikz/external/figure list=false,/pgf/images/aux in dpth=true}% ATTENTION: this *can't* work if \label{} contains pictures!
 	},
 	mode/list and make/.code	= {%
 		\def\tikzexternal@opmode{5}%
@@ -173,6 +173,31 @@
 	},
 	shell escape/.initial=-shell-escape,
 	read main aux/.is if=pgfexternalreadmainaux,
+	image discarded text/.initial={%
+		[[ {\sc Image Discarded Due To} {\tt`/tikz/external/%
+				\ifcase\tikzexternal@opmode\relax
+					mode=only graphics%
+				\or
+					mode=no graphics%
+				\or
+					mode=graphics if exists%
+				\or
+					mode=list only%
+				\or
+					mode=convert with system call%
+				\or
+					mode=list and make%
+				\fi
+		'}~]]%
+		\pgfutil@ifundefined{tikzexternal@warning@at@end}{%
+			\pgfutil@ifundefined{AtEndDocument}{}{%
+				\AtEndDocument{%
+					\message{! Package tikz Warning: Some images are not up-to-date and need to be generated. }%
+				}%
+			}%
+			\gdef\tikzexternal@warning@at@end{1}%
+		}{}%
+	},
 	optimize/.is choice,
 	optimize/true/.code={%
 		\tikzexternal@optimizetrue
@@ -245,6 +270,7 @@
 }
 
 \def\tikzsetfigurename#1{\pgfkeyssetvalue{/tikz/external/figure name}{#1}}%
+\def\tikzappendtofigurename#1{\pgfkeys{/tikz/external/figure name/.add={}{#1}}}
 
 % This method sets the file name prefix used for every import/export.
 %
@@ -341,6 +367,9 @@
 % Thus: mode=convert with system call does NOT support \ref commands
 % inside of images. You will need to call the externalization command
 % manually. In this case, it should work.
+%
+% The lock file allows to detect automatically whether an image is created by
+% 'convert with system call' or if the user issued the required command manually.
 %
 % @PRECONDITION : this command must be invoked AFTER
 % \tikzexternal@realjob has been defined but BEFORE \pgfrealjobname is
@@ -890,38 +919,6 @@
 	\fi
 }%
 
-\def\tikzexternal@externalizefig@GRAB{%
-	\iftikzexternal@optimize
-		\ifpgf@external@grabshipout
-			\tikzexternal@optimize@RESTORE
-		\fi
-	\fi
-	\def\tikzpicture{%
-		\def\tikzpicture{% make sure that nested \tikzpicture are processed normally.
-			\begingroup
-			\def\endtikzpicture{%
-				\tikzexternal@origendpicture
-				\endgroup
-			}%
-			\tikzexternal@origpicture
-		}%
-		\pgf@external@grab{\tikzexternal@curfilename}%
-		\tikzexternal@origpicture
-	}%
-	\def\endtikzpicture{%
-		\tikzexternal@origendpicture
-		\pgf@externalend
-		\let\tikzpicture=\tikzexternal@tikzpicture@replacement
-		\let\endtikzpicture=\tikzexternal@origendpicture
-		\iftikzexternal@optimize
-			\ifpgf@external@grabshipout
-				\tikzexternal@optimize@REPLACE
-			\fi
-		\fi
-	}%
-	\tikzpicture
-}%
-
 
 % Used by the optimization code.
 % It will be called if GRAB mode is on.
@@ -1101,21 +1098,7 @@
 	\tikzexternal@TEXDIALECT@collectpicture\tikzexternal@listmodepicture@@
 }
 \long\def\tikzexternal@listmodepicture@@#1{%
-	[[ {\sc Image Discarded Due To} {\tt`/tikz/external/%
-			\ifcase\tikzexternal@opmode\relax
-				mode=only graphics%
-			\or
-				mode=no graphics%
-			\or
-				mode=graphics if exists%
-			\or
-				mode=list only%
-			\or
-				mode=convert with system call%
-			\or
-				mode=list and make%
-			\fi
-	'}~]]%
+	\pgfkeysvalueof{/tikz/external/image discarded text}%
 	\tikzexternal@closeenvironments
 }
 
@@ -1331,3 +1314,12 @@
 	\fi
 }%
 
+% Overwrite error message of pgf.
+% This happens if the generated image was empty, i.e. if there was no \shipout.
+\def\pgfexternal@error@no@shipout{%
+	\begingroup
+	\tikzexternal@assemble@systemcall{\pgfactualjobname}{\pgf@tempa}%
+	\toks0=\expandafter{\pgf@tempa}%
+	\PackageError{tikz}{Sorry, image externalization failed: the resulting image was EMPTY. I tried to externalize '\pgfactualjobname', but it seems there is no such image in the document!? \if\tikzexternal@opmode4 You are currently using 'mode=convert with system call'. This problem can happen if the image (or one of the images preceeding it) was declared inside of a \string\label{} (i.e. in the .aux file): 'convert with system call' has no access to the main aux file. Perhaps it helps to use 'mode=list and make' or to issue the externalization command '\the\toks0' *manually* (also check the preceeding externalized images, perhaps the file name sequence is not correct). Repeat: the resulting image was EMPTY, your attention is required\fi}%
+	\endgroup
+}%
