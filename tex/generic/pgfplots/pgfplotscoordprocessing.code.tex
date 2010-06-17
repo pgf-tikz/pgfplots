@@ -2963,6 +2963,9 @@
 % 
 % -------------------------------------------------------------------------------
 
+
+\def\pgfplotsaxisfilteredcoordsaway{0}%
+\def\pgfplotsaxisplothasjumps{0}%
 \newif\ifpgfplotsaxisparsecoordinateok
 
 % Initialises 
@@ -3028,6 +3031,8 @@
 	\ifpgfplots@curplot@threedim
 		\global\pgfplots@threedimtrue
 	\fi
+	\def\pgfplotsaxisfilteredcoordsaway{0}%
+	\def\pgfplotsaxisplothasjumps{0}%
 	%
 	\ifpgfplots@curplot@threedim
 		\let\pgfplotsaxisupdatelimitsforcoordinate=\pgfplotsaxisupdatelimitsforcoordinatethreedim
@@ -3155,6 +3160,7 @@
 			% check whether we have UNBOUNDED or just unfiltered
 			% coords:
 			\if\pgfplots@unbounded@handler d% unbounded coords=discard
+				\E\def\E\pgfplotsaxisfilteredcoordsaway{1}%
 				\ifpgfplots@warn@for@filter@discards
 					\E\pgfplots@message{%
 						NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi)
@@ -3169,6 +3175,7 @@
 			\else
 				% unbounded coords=jump
 				\E\ifx\E\pgfplots@unbounded@dir\E\pgfutil@empty
+					\E\def\E\pgfplotsaxisfilteredcoordsaway{1}%
 					\ifpgfplots@warn@for@filter@discards
 						\E\pgfplots@message{%
 							NOTE: coordinate (\E\pgfplots@current@point@x@unfiltered,\E\pgfplots@current@point@y@unfiltered\ifpgfplots@curplot@threedim,\E\pgfplots@current@point@z@unfiltered\fi)
@@ -3176,6 +3183,7 @@
 						}%
 					\fi
 				\E\else
+					\E\def\E\pgfplotsaxisplothasjumps{1}%
 					\E\pgfplotsaxisserializedatapoint
 				\E\fi
 			\fi
@@ -3445,6 +3453,8 @@
 				\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
 				\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
 				\noexpand\def\noexpand\pgfplots@serialized@state@plothandler{\the\t@pgfplots@tokb}%
+				\noexpand\def\noexpand\pgfplotsaxisfilteredcoordsaway{\pgfplotsaxisfilteredcoordsaway}%
+				\noexpand\def\noexpand\pgfplotsaxisplothasjumps{\pgfplotsaxisplothasjumps}%
 			}%
 			{% draw command:
 				\noexpand\path%
@@ -7240,16 +7250,43 @@
 	\fi
 	\def\pgf@plotstreamstart{%
 %		\scope
+		%
+		% this shouldn't be necessary, but it doesn't hurt either.
+		\pgfplots@perpointmeta@preparetrafo
+		%
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
+		\pgfplotsplothandlermesh@init@meshkeys
+		%
+		% assign boolean:
+		\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@type}{allow matrix}%
+		\if0\pgfplotsretval
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\ifnum\pgfkeysvalueof{/pgfplots/mesh/refines}>0
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if1\pgfplotsaxisplothasjumps
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if2\pgfplotsplothandlermesh@shader
+		\else
+			% 'shader!=interp'
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if1\pgfplotsplothandlermesh@ONEDIMMODE
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		%
+		%
 		\pgfutil@ifundefined{pgfplots@drawmodes}{%
 			\let\pgfplots@drawmodes=\tikz@mode
 			\let\pgfplots@drawoptions=\tikz@options
 		}{}%
 		%
-		\pgfplotsplothandlermesh@init@meshkeys
-		%
-		% this shouldn't be necessary, but it doesn't hurt either.
-		\pgfplots@perpointmeta@preparetrafo
 		%
 		% Prepare color data source:
 		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
@@ -7303,6 +7340,30 @@
 		\fi% endif ONEDIM mode
 		\c@pgfplots@scanlineindex=0
 	}%
+}%
+
+\def\pgfplotsplothandlermesh@stream#1{%
+	\let\pgfplotsplothandlermesh@type=\pgfplotsplothandlermesh@type@input
+	\pgfplotsplothandlermesh@DECODE{#1}\then\pgfplotsplothandlermesh@CHECKJUMP%
+}%
+\def\pgfplotsplothandlermesh@CHECKJUMP{%
+	\pgfplots@loc@tmptrue
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@type}{foreach vertex}{%
+		\pgfplotsplothandlermesh@check@unbounded{##1}%
+	}%
+	\ifpgfplots@loc@tmp
+		\pgfplotsplothandlermesh@REFINE\then\pgfplotsplothandlermesh@FINISH
+	\fi
+}%
+\def\pgfplotsplothandlermesh@REFINE\then#1{%
+	#1%
+}%
+
+% #1 class name
+% #2 method
+% <any method arguments follow>
+\def\pgfplotspatchclass#1#2{%
+	\def\pgfplotsretval{1}% placeholder
 }%
 
 \def\pgfplotsplothandlersurveystart@mesh@patchtable{%
