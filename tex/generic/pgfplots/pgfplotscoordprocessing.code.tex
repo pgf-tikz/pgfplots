@@ -7132,8 +7132,9 @@
 %% Helper structs for patch plots (surfaces)
 
 \def\pgfplotspatchvertex#1#2#3#4\endvertex{%
+	\def\pgfplotspatchvertexstruct{{#1}{#2}{#3}#4}%
 	\def\pgfplotspatchvertexx{#1}%
-	\def\pgfplotspatchvertexy{#1}%
+	\def\pgfplotspatchvertexy{#2}%
 	\def\pgfplotspatchvertexmeta{#3}%
 	\def\pgfplotspatchvertexextra{#4}%
 }%
@@ -7480,6 +7481,27 @@
 	\pgfplotsplothandlermesh@usepath
 }%
 
+\def\pgfplotsplothandlermesh@VISUALIZE@interp{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{foreach vertex}{%
+		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+		\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotslibrarysurfstreamcoord{%
+			\global\pgf@x=\pgfplotspatchvertexx\space
+			\global\pgf@y=\pgfplotspatchvertexy\space
+		}{\pgfplotspointmetatransformed}%
+	}%
+}%
+
+\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE
+\def\pgfplotsplothandlermesh@VISUALIZE@faceted@interp{%
+	\pgfplotslibrarysurfstreamstart
+	\pgfplotsplothandlermesh@VISUALIZE@interp
+	\pgfplotslibrarysurfstreamend
+	\pgfplotslibrarysurfdrawinpicture
+	%
+	\pgfplotsplothandlermesh@VISUALIZE@std
+}%
+
 \def\pgfplotsplothandlermesh@PIPE@CHECKJUMP@disable{%
 	\def\pgfplotsplothandlermesh@PIPE@CHECKJUMP{\pgfplotsplothandlermesh@PIPE@REFINE}%
 }%
@@ -7656,8 +7678,8 @@
 		\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
 		\if2\pgfplotsplothandlermesh@shader
 			% shader=interp
-			\let\pgfplotsplothandlermesh@unpack=\relax % unused.
 			\let\pgfplotsplothandlermesh@definecolor=\relax
+			\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@interp%
 			\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering=x varies:
@@ -7687,6 +7709,7 @@
 			\pgfplotslibrarysurfstreamstart
 		\else
 			% shader='faceted interp'
+			\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@faceted@interp%
 			\pgfkeyssetvalue{/pgfplots/surf shading/cols}{2}%
 		\fi
 	\fi
@@ -7839,18 +7862,23 @@
 				%
 				% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
 				\def\pgfmathresult{0}%
+				\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
 				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{foreach vertex}{%
 					\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
+					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
+					\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
+						\the\t@pgfplots@toka
+						{\the\t@pgfplots@tokb}%
+					}%
 				}%
 				%
 				% assemble array element:
+				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
 				\edef\pgfplots@loc@TMPa{%
 					{\pgfmathresult}%
 					{%
-						{\pgfplotsplothandlermesh@im@jm}%
-						{\pgfplotsplothandlermesh@im@j}%
-						{\pgfplotsplothandlermesh@i@j}%
-						{\pgfplotsplothandlermesh@i@jm}%
+						\the\t@pgfplots@toka
 					}%
 				}%
 				\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
@@ -7935,6 +7963,7 @@
 		% process the z buffer:
 		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
 		\pgfkeysdef{/pgfplots/array/unscope pre}{%
+			\def\pgfplotspatchready{\pgfplotsplothandlermesh@VISUALIZE}%
 			\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
 				\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
 			}%
@@ -8051,36 +8080,15 @@
 }%
 
 \def\pgfplotsplothandlermesh@draw@zbufferelement#1#2{%
-	\pgfplotsplothandlermesh@draw@element#2\relax
-}%
-\def\pgfplotsplothandlermesh@draw@element@triangle@interp#1#2#3{%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#1\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#2\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#3\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-}%
-\def\pgfplotsplothandlermesh@draw@element@rectangle@interp#1#2#3#4{%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#1\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#2\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#3\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-	\expandafter\pgfplotsplothandlermesh@unpack@simple#4\relax%
-	\pgfplotsplothandlermesh@shader@interp{}%
-}%
-
-\def\pgfplotsplothandlermesh@draw@element@triangle@faceted@interp#1#2#3{%
-	% shader=faceted interp
-	%
-	\pgfplotslibrarysurfstreamstart
-		\pgfplotsplothandlermesh@draw@element@triangle@interp{#1}{#2}{#3}%
-	\pgfplotslibrarysurfstreamend
-	\pgfplotslibrarysurfdrawinpicture
-	%
-	\pgfplotsplothandlermesh@draw@element@triangle{#1}{#2}{#3}%
+	\pgfplotsplothandlermesh@draw@zbufferelement@#2\pgfplots@EOI
+}
+\def\pgfplotsplothandlermesh@draw@zbufferelement@#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{#1}%
+		\expandafter\pgfplotsplothandlermesh@draw@zbufferelement@
+	\fi
 }%
 
 
