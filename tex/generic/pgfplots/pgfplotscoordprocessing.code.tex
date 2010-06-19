@@ -7221,8 +7221,9 @@
 	get num vertices/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{\def\pgfplotsretval{#1}}},%
 	%
-	get pdf shading type/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{\def\pgfplotsretval{#1}}},%
+	get pdf shading type*/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{#1}},%
+	get pdf shading type/.style={get pdf shading type*={\def\pgfplotsretval{#1}}},
 }
 \pgfplotsdeclarepatchclass{line}{%
 	allow matrix=0,
@@ -7247,6 +7248,7 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex}%
 	},
 	get num vertices=2,
+	get pdf shading type=0,
 }%
 \pgfplotsdeclarepatchclass{triangle}{%
 	allow matrix=1,
@@ -7302,15 +7304,36 @@
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex #1%
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex #1%
-		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex #1% ATTENTION: the sequence is adjusted for shader=interp
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex #1%
 	},
+	stream to shader={%
+		% a 'foreach vertex' with slightly different sequence:
+		\def\pgfplots@foreachvertex@@{%
+			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+			\pgfplotsaxisvisphasetransformpointmeta
+			\pgfplotslibrarysurfstreamcoord{%
+				\global\pgf@x=\pgfplotspatchvertexx\space
+				\global\pgf@y=\pgfplotspatchvertexy\space
+			}{\pgfplotspointmetatransformed}%
+		}%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex\pgfplots@foreachvertex@@%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex\pgfplots@foreachvertex@@%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex\pgfplots@foreachvertex@@% EXCHANGED SEQUENCE
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@C\endvertex\pgfplots@foreachvertex@@%
+	},%
 	fill path={%
 		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@C\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex}%
 		\pgfpathclose
+	},
+	init shader={%
+		\if0\b@pgfplotsplothandlermesh@matrixoutput
+			\pgfplots@error{Sorry, (patch type=rectangle) and (direct matrix format for shading) is not supported.
+				Consider using 'refine()' before doing so.}%
+		\fi
 	},
 	get pdf shading type=5,
 	get num vertices=4,
@@ -7539,6 +7562,7 @@
 		\fi
 		%
 		\if1\pgfplotsplothandlermesh@ONEDIMMODE
+\message{initialised DECODE for 1d mode.^^J}%
 			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
 		\else
 			\if0\b@pgfplotsplothandlermesh@matrixoutput
@@ -7548,11 +7572,15 @@
 				\advance\c@pgfplots@scanlineindex by1
 				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
 				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+\message{initialised DECODE for patch output (from matrix).^^J}%
 			\else
 				% SPECIAL HANDLING!
 				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+\message{initialised DECODE for direct matrix output (from matrix).^^J}%
 			\fi
 		\fi
+	\else
+\message{initialised DECODE for patch output (from patch).^^J}%
 	\fi
 }%
 
@@ -7590,7 +7618,6 @@
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
 	\pgfplotsplothandlermesh@definecolor
 	\pgfplotsplothandlermesh@usepath
-\message{VISUALIZE running.}%
 }%
 
 \def\pgfplotsplothandlermesh@VISUALIZE@interp{%
