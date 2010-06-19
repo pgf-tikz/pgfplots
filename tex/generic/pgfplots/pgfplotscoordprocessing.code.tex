@@ -7170,12 +7170,16 @@
 	allow matrix/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ allow matrix\endcsname{\def\pgfplotsretval{#1}}},%
 	new/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ new\endcsname#{#1}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ new\endcsname{#1}},%
 	%
-	% sets the next vertex value of the patch and invokes \pgfplotspatchready once
-	% the patch is complete.
-	% #1 encodes the current vertex such that
-	% \pgfplotspatchvertex#1\endvertex
+	% sets the next vertex value of the patch.
+	%
+	% if the patch has all expected vertices, \pgfplotspatchready is
+	% invoked and the next call to 'set next vertex' will start a new
+	% patch.
+	%
+	% #1: encodes the current vertex such that
+	%   \pgfplotspatchvertex#1\endvertex
 	% is accepted.
 	set next vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ set next vertex\endcsname##1{#1}},%
@@ -7195,14 +7199,17 @@
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ fill path\endcsname{#1}},%
 	%
 	% expands to the number of vertices.
-	num vertices/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ num vertices\endcsname{\def\pgfplotsretval{#1}}},%
+	get num vertices/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{\def\pgfplotsretval{#1}}},%
+	%
+	get pdf shading type/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{\def\pgfplotsretval{#1}}},%
 }
 \pgfplotsdeclarepatchclass{triangle}{%
 	allow matrix=1,
 	new=\def\pgfplotsplothandlermesh@vertex@no{0},
 	set next vertex={%
-		\ifcase\pgfplotsplothandlermesh@vertex@no
+		\ifcase\pgfplotsplothandlermesh@vertex@no\relax
 			\edef\pgfplotsplothandlermesh@vertex@A{#1}%
 			\def\pgfplotsplothandlermesh@vertex@no{1}%
 		\or
@@ -7226,20 +7233,21 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@C\endvertex}%
 		\pgfpathclose
 	},
-	num vertices=3,
+	get pdf shading type=4,
+	get num vertices=3,
 }%
 \pgfplotsdeclarepatchclass{rectangle}{%
 	allow matrix=1,
 	new=\def\pgfplotsplothandlermesh@vertex@no{0},
 	set next vertex={%
-		\ifcase\c@pgfplots@scanlineindex
+		\ifcase\pgfplotsplothandlermesh@vertex@no\relax
 			\edef\pgfplotsplothandlermesh@vertex@A{#1}%
 			\def\pgfplotsplothandlermesh@vertex@no{1}%
 		\or
 			\edef\pgfplotsplothandlermesh@vertex@B{#1}%
 			\def\pgfplotsplothandlermesh@vertex@no{2}%
 		\or
-			\edef\pgfplotsplothandlermesh@vertex@B{#1}%
+			\edef\pgfplotsplothandlermesh@vertex@C{#1}%
 			\def\pgfplotsplothandlermesh@vertex@no{3}%
 		\or
 			\edef\pgfplotsplothandlermesh@vertex@D{#1}%
@@ -7251,8 +7259,8 @@
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex #1%
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex #1% ATTENTION: the sequence is adjusted for shader=interp
 		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@C\endvertex #1%
-		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex #1%
 	},
 	fill path={%
 		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex}%
@@ -7261,7 +7269,8 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex}%
 		\pgfpathclose
 	},
-	num vertices=4,
+	get pdf shading type=4,
+	get num vertices=4,
 }%
 
 % The low-level tikz plot handler for 3D mesh and surface plots.
@@ -7374,6 +7383,17 @@
 %  -> see also the legend image for mesh plots.
 %
 \def\pgfplotsplothandlermesh{%
+	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	\ifx\pgfplotsplothandlermesh@patchclass\pgfutil@empty
+		% assign default patch class.
+		\if1\pgfplotsplothandlermesh@matrixinput
+			\def\pgfplotsplothandlermesh@patchclass{rectangle}%
+		\else
+			\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\fi
+		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	\fi
+	%
 	\if0\pgfplotsplothandlermesh@matrixinput
 		\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
 		\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
@@ -7392,7 +7412,6 @@
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\pgfplotsplothandlermesh@init@meshkeys
 		%
-		\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 		\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
 		%
 		% assign boolean:
@@ -7415,8 +7434,13 @@
 			% 'shader!=interp'
 			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
 		\fi
-		\if1\pgfplotsplothandlermesh@ONEDIMMODE
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{get pdf shading type}%
+		\if4\pgfplotsretval
+		\else
+			\if5\pgfplotsretval
+			\else
+				\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+			\fi
 		\fi
 		%
 		\pgfplotsplothandlermesh@init@DECODE
@@ -7457,13 +7481,8 @@
 
 \def\pgfplotsplothandlermesh@init@DECODE{%
 	\if1\pgfplotsplothandlermesh@matrixinput
-		% mesh/type=lattice
+		% mesh input=lattice
 		% Init memory:
-		% in fact, this does only remember the maximum capacity;
-		% it doesn't fill the memory.
-		\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-		\advance\c@pgfplots@scanlineindex by1
-		\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
 		%
 		% And now finally: initialise the conversion from 
 		%  LINEARIZED COORD STREAM -> DATA MATRIX:
@@ -7476,10 +7495,20 @@
 		\fi
 		%
 		\if0\b@pgfplotsplothandlermesh@matrixoutput
+			% in fact, this does only remember the maximum capacity;
+			% it doesn't fill the memory.
+			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+			\advance\c@pgfplots@scanlineindex by1
+			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
 			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+\message{PIPE@DECODE initialised to patch output (from matrix).}
 		\else
 			% SPECIAL HANDLING!
+			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+\message{PIPE@DECODE initialised to matrix output (from matrix).}
 		\fi
+	\else
+\message{PIPE@DECODE initialised to patch output (from patch).}
 	\fi
 }%
 
@@ -7593,9 +7622,11 @@
 	\pgfplotsplothandlersurveyend
 }%
 \def\pgfplotsplothandlermesh@patchtable@init{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{get num vertices}%
+	\let\pgfplotsplothandlermesh@patchtable@numverts
 	\c@pgf@countb=0
 	\pgfutil@loop
-	\ifnum\c@pgf@countb<3
+	\ifnum\c@pgf@countb<\pgfplotsplothandlermesh@patchtable@numverts\relax
 		\edef\pgfplots@loc@TMPa{%
 			\noexpand\pgfplotstablereadgetptrtocolindex{\the\c@pgf@countb}{\expandafter\noexpand\csname pgfplots@table@PTR@\the\c@pgf@countb\endcsname}%
 		}%
@@ -7608,7 +7639,7 @@
 	\pgfplotsplothandlermesh@patchtable@init%
 	\c@pgf@countb=0
 	\pgfutil@loop
-	\ifnum\c@pgf@countb<3
+	\ifnum\c@pgf@countb<\pgfplotsplothandlermesh@patchtable@numverts\relax
 		\expandafter\pgfplotstablereadevalptr\csname pgfplots@table@PTR@\the\c@pgf@countb\endcsname\pgfplots@current@vertexindex%
 		\ifx\pgfplots@current@vertexindex\pgfutil@empty
 		\else
@@ -7628,7 +7659,7 @@
 
 \def\pgfplotsplothandlermesh@init@meshkeys{%
 	\if1\pgfplotsplothandlermesh@matrixinput
-		% mesh/type=lattice
+		% mesh input=lattice
 		\pgfplotsautocompletemeshkeys%
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
@@ -7642,7 +7673,7 @@
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
 	\else
-		% mesh/type=triangle
+		% mesh input=patches
 		\pgfkeys{/pgfplots/mesh/ordering/x varies}% disable any special handling.
 	\fi
 }%
@@ -7682,15 +7713,6 @@
 				\def\pgfplotsplothandlermesh@shader{0}%
 			}%
 	\fi
-	\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
-		\if5\pgfplotsplothandlermesh@type
-			% mesh/type=lattice
-			\if\pgfplotsplothandlermesh@shader2% 'shader=interp'
-				\pgfplots@error{Sorry, 'shader=interp' does not support 'z buffer=sort'. If you continue now, 'shader=flat' will be used.}%
-				\def\pgfplotsplothandlermesh@shader{0}% 'flat'
-			\fi
-		\fi
-	\fi
 	%
 	%
 	\ifnum\pgfplotsplothandlermesh@shader>1
@@ -7699,18 +7721,22 @@
 		% provide the mapped colordata.
 		%
 		% 'shader=3': 'faceted interp':
-		% a mix of 'faceted' and 'interp'. Very inefficient!
+		% a mix of 'faceted' and 'interp'. (might be inefficient in
+		% terms of pdf memory and rendering times)
 		%
 		% This won't be used for mesh plots, neither in one
 		% nor in two dimensions.
 		\pgfkeyssetvalue{/pgfplots/surf shading/north east corner}{\pgfplotspointbbupperright}%
 		\pgfkeyssetvalue{/pgfplots/surf shading/south west corner}{\pgfplotspointbblowerleft}%
 		\pgfkeyssetvalue{/pgfplots/surf shading/anchor}{\pgfpointorigin}%
-		\if5\pgfplotsplothandlermesh@type
-			\pgfkeys{/pgfplots/surf shading/shading type=lattice}%
+		\if1\b@pgfplotsplothandlermesh@matrixoutput
+			% this *implies* a compatible patch class, see the
+			% definition of \b@pgfplotsplothandlermesh@matrixoutput
+			\def\pgfplotsretval{5}%
 		\else
-			\pgfkeys{/pgfplots/surf shading/shading type=triangle}%
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{get pdf shading type}%
 		\fi
+		\pgfkeyslet{/pgfplots/surf shading/shading type}\pgfplotsretval%
 		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
 		\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
 		\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
@@ -7718,31 +7744,35 @@
 			% shader=interp
 			\let\pgfplotsplothandlermesh@definecolor=\relax
 			\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@interp%
-			\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@cols
-			\if\pgfplots@plot@mesh@ordering0%
-				% ordering=x varies:
-				% nothing special to do
-			\else
-				% [this happens only for mesh/type=lattice]
-				% colwise:
-				%
-				% The low level shader NEEDS rowwise ordering. So, we need to transpose the data matrix.
-				% As usual in TeX, we should save macros as much as possible. I guess we NEED at least one macro for each matrix row.
-				% Idea:
-				% while we iterate colwise through the input data, accumulate row vectors.
-				% Then, process the row vectors.
-				% Since vectors are expensive (in terms of number of macros), we use fast "append" lists instead of vectors.
-				\let\pgfplotsplothandlermesh@shader@interp=\pgfplotsplothandlermesh@shader@interp@incremental@transpose
-				%
-				% init all required row vectors:
-				\c@pgfplots@scanlineindex=0
-				\pgfutil@loop
-				\ifnum\c@pgfplots@scanlineindex<\pgfplotsplothandlermesh@rows\relax
-					\expandafter\pgfplotsapplistXnewempty\csname pgfp@transprow@\the\c@pgfplots@scanlineindex\endcsname%
-					\advance\c@pgfplots@scanlineindex by1
-				\pgfutil@repeat
-				%\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@rows
-				%\pgfplots@error{Sorry, the 'shader=interp' does not yet support 'mesh/ordering=colwise'... You can continue now, but the plot will be transposed.}%
+			\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@scanlinelength
+			%\if1\b@pgfplotsplothandlermesh@matrixoutput
+			\iffalse% FIXME : is this special handling necessary!?
+				\if\pgfplots@plot@mesh@ordering0%
+					% ordering=x varies:
+					% nothing special to do
+				\else
+					% FIXME 
+					% [this happens only for mesh input=lattice]
+					% colwise:
+					%
+					% The low level shader NEEDS rowwise ordering. So, we need to transpose the data matrix.
+					% As usual in TeX, we should save macros as much as possible. I guess we NEED at least one macro for each matrix row.
+					% Idea:
+					% while we iterate colwise through the input data, accumulate row vectors.
+					% Then, process the row vectors.
+					% Since vectors are expensive (in terms of number of macros), we use fast "append" lists instead of vectors.
+					\let\pgfplotsplothandlermesh@shader@interp=\pgfplotsplothandlermesh@shader@interp@incremental@transpose
+					%
+					% init all required row vectors:
+					\c@pgfplots@scanlineindex=0
+					\pgfutil@loop
+					\ifnum\c@pgfplots@scanlineindex<\pgfplotsplothandlermesh@rows\relax
+						\expandafter\pgfplotsapplistXnewempty\csname pgfp@transprow@\the\c@pgfplots@scanlineindex\endcsname%
+						\advance\c@pgfplots@scanlineindex by1
+					\pgfutil@repeat
+					%\pgfkeyslet{/pgfplots/surf shading/cols}\pgfplotsplothandlermesh@rows
+					%\pgfplots@error{Sorry, the 'shader=interp' does not yet support 'mesh/ordering=colwise'... You can continue now, but the plot will be transposed.}%
+				\fi
 			\fi
 			\pgfplotslibrarysurfstreamstart
 		\else
@@ -7789,7 +7819,7 @@
 					\pgfplotsaxisvisphasetransformpointmeta
 					\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
 				}%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{num vertices}%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{get num vertices}%
 				\global\divide\pgfplots@tmpa by\pgfplotsretval\relax
 				\edef\pgfplotsretval{\pgf@sys@tonumber\pgfplots@tmpa}%
 				\global\pgfplots@tmpa=0pt
@@ -7865,69 +7895,60 @@
 }%
 
 \def\pgfplotsplothandlermesh@init@zbuffer{%
-	\def\pgfplotsplothandlermesh@checkfor@zbuffer{1}%
-	\if5\pgfplotsplothandlermesh@type
-		% mesh/type=lattice
-		\if2\pgfplotsplothandlermesh@shader
-			% shader=interp  does not support z buffer=sort.
-			%\def\pgfplotsplothandlermesh@checkfor@zbuffer{0}%
-		\fi
-	\fi
-	\if1\pgfplotsplothandlermesh@checkfor@zbuffer
-		\if\pgfplotsplothandlermesh@zbuffer@choice4%
-			% z buffer=sort:
-			% create a z buffer:
-			% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
-			\pgfplotsarraynewempty\pgfplots@zbuffer@local
+	\if\pgfplotsplothandlermesh@zbuffer@choice4%
+		% z buffer=sort:
+		% create a z buffer:
+		% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+		\pgfplotsarraynewempty\pgfplots@zbuffer@local
+		%
+		\def\pgfplotsplothandlermesh@determine@streamdata{%
+			% The idea: while the coordinate stream visits every
+			% coordinate, we compute the view depth.
 			%
-			\def\pgfplotsplothandlermesh@determine@streamdata{%
-				% The idea: while the coordinate stream visits every
-				% coordinate, we compute the view depth.
-				%
-				% We store it along with
-				% {<canvasx>}{<canvasy>}{<cdata>}{<depth>}
-				% and extract it once all points of one patch element
-				% are together.
-				\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-				\edef\pgfplotsretval{{\pgfmathresult}}%
-			}%
+			% We store it along with
+			% {<canvasx>}{<canvasy>}{<cdata>}{<depth>}
+			% and extract it once all points of one patch element
+			% are together.
+			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+			\edef\pgfplotsretval{{\pgfmathresult}}%
+		}%
+		%
+		\let\pgfplotsplothandlermesh@accum@element@depth=\pgfmath@basic@add@
+		%
+		% and collect each point into the z buffer
+		% (instead of drawing it):
+		\def\pgfplotsplothandlermesh@PIPE@FINISH{%
 			%
-			\let\pgfplotsplothandlermesh@accum@element@depth=\pgfmath@basic@add@
-			%
-			% and collect each point into the z buffer
-			% (instead of drawing it):
-			\def\pgfplotsplothandlermesh@PIPE@FINISH{%
-				%
-				% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
-				\def\pgfmathresult{0}%
-				\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{foreach vertex}{%
-					\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
-					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
-					\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
-					\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
-						\the\t@pgfplots@toka
-						{\the\t@pgfplots@tokb}%
-					}%
-				}%
-				%
-				% assemble array element:
+			% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
+			\def\pgfmathresult{0}%
+			\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{foreach vertex}{%
+				\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
 				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
-				\edef\pgfplots@loc@TMPa{%
-					{\pgfmathresult}%
-					{%
-						\the\t@pgfplots@toka
-					}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
+				\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
+					\the\t@pgfplots@toka
+					{\the\t@pgfplots@tokb}%
 				}%
-				\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
 			}%
-		\fi
+			%
+			% assemble array element:
+			\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
+			\edef\pgfplots@loc@TMPa{%
+				{\pgfmathresult}%
+				{%
+					\the\t@pgfplots@toka
+				}%
+			}%
+			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
+		}%
 	\fi
 }%
 \def\pgfplotsplothandlermesh@init@mesh@stream{%
 	\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
 	\global\let\pgf@plotstreamend=\pgfplotsplothandlermesh@finish%
 	\global\let\pgf@plotstreampoint=\pgfplotsplothandlermesh@stream
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
 }
 
 \def\pgfplotsplothandlermesh@check@unbounded@text{-16000.0}%
@@ -8023,6 +8044,12 @@
 
 \def\pgfplotsplothandlermesh@determine@streamdata{\let\pgfplotsretval\pgfutil@empty}%
 
+\def\pgfplotsplothandlermesh@PIPE@DECODE@to@shader#1{%
+	\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotslibrarysurfstreamcoord
+		{#1}%
+		{\pgfplotspointmetatransformed}%
+}%
 
 % the pgf@plotstreampoint routine for the first scan line:
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
@@ -8261,7 +8288,7 @@
 		% ascending or descending. This information is already ready.
 		%
 		\if1\pgfplotsplothandlermesh@matrixinput
-			% mesh/type=lattice
+			% mesh input=lattice
 			\begingroup
 			\if+\pgfkeysvalueof{/pgfplots/x coord sorting}%
 				\def\pgfplots@minmaxvalue@x{0}%
@@ -8301,7 +8328,7 @@
 			\pgfplots@apply@zbuffer{#1}%
 			\endgroup
 		\else
-			% mesh/type=triangle
+			% mesh input=patches
 			\ifpgfplots@threedim
 				\if\pgfplots@meshmode n%
 				\else
