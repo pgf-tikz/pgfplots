@@ -7181,6 +7181,7 @@
 				}{\pgfplotspointmetatransformed}%
 			}%
 		},%
+		set edge visible=\expandafter\edef\csname pgfppatchedge@##1\endcsname{##2},
 		triangulate={%
 			\pgfplots@error{triangulate: not yet implemented for \pgfplotspatchclassname}%
 		},%
@@ -7205,6 +7206,32 @@
 	set next vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ set next vertex\endcsname##1{#1}},%
 	%
+	% declares whether a single edge is visible or not.
+	% #1: an integer denoting the edge, either 0,1,2,...,N-1 where N = num verts
+	% #2: 0 if the edge is not to be stroked and 1 if it is stroked.
+	%
+	% This command doesn't need to be called; but if it is, it needs
+	% to be called for every edge.
+	%
+	% ATTENTION: this is *only* used by 'stroke path'. You will never
+	% need 'stroke path' unless some edges are invisible. If all edges
+	% are visible, 'stroke path' and 'fill path' are the same.
+	%
+	% This is currently *only* used for triangle triangulations!
+	set edge visible/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ set edge visible\endcsname##1##2{#1}},%
+	%
+	% Defines \pgfplotsretval to be a serialized representation of
+	% this patches extra data fields, excluding vertices.
+	% This is often a NO-OP (unless 'set edge visible' has been used)
+	serialize except vertices/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ serialize except vertices\endcsname{#1}},%
+	%
+	% Restores a serialized representation from #1. Only vertices are
+	% not stored here.
+	deserialize except vertices/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ deserialize except vertices\endcsname##1{#1}},%
+	%
 	% issues \pgfplotspatchvertex{...}\endvertex for the first vertex.
 	first vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ first vertex\endcsname{#1}},%
@@ -7215,9 +7242,18 @@
 	% for the every vertex.
 	foreach vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ foreach vertex\endcsname##1{#1}},%
+	%
 	% generates a pgf path which is readily usable for filling.
 	fill path/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ fill path\endcsname{#1}},%
+	%
+	% Similar to 'fill path', this here paints the edges. It is only
+	% useful if 'set edge visible' is in use. In all other cases, it
+	% is the same as 'fill path'
+	%
+	% This is currently *only* used for triangle triangulations!
+	stroke path/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ stroke path\endcsname{#1}},%
 	%
 	init shader/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ init shader\endcsname{#1}},%
@@ -7260,12 +7296,14 @@
 		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@A\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@B\endvertex}%
 	},
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
 	get num vertices=2,
 	get pdf shading type=0,
 }%
 \pgfplotsdeclarepatchclass{triangle}{%
 	allow matrix=0,
-	new=\def\pgfplotspatchclass@tri@no{0},
+	new=\def\pgfplotspatchclass@tri@no{0}\let\pgfplotspatchclass@trie@AB\relax,
 	set next vertex={%
 		\ifcase\pgfplotspatchclass@tri@no\relax
 			\edef\pgfplotspatchclass@tri@A{#1}%
@@ -7291,7 +7329,51 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@C\endvertex}%
 		\pgfpathclose
 	},
+	stroke path={%
+		\ifx\pgfplotspatchclass@trie@AB\relax
+			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@A\endvertex}%
+			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@B\endvertex}%
+			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@C\endvertex}%
+			\pgfpathclose
+		\else
+			\if1\pgfplotspatchclass@trie@AB
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@A\endvertex}%
+				\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@B\endvertex}%
+			\fi
+			\if2\pgfplotspatchclass@trie@BC
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@B\endvertex}%
+				\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@C\endvertex}%
+			\fi
+			\if3\pgfplotspatchclass@trie@CA
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@C\endvertex}%
+				\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tri@A\endvertex}%
+			\fi
+		\fi
+	},
 	triangulate=\pgfplotspatchready,
+	set edge visible={%
+		\ifcase#1
+			\edef\pgfplotspatchclass@trie@AB{#2}%
+		\or
+			\edef\pgfplotspatchclass@trie@BC{#2}%
+		\or
+			\edef\pgfplotspatchclass@trie@CA{#2}%
+		\fi
+	},
+	serialize except vertices={%
+		\ifx\pgfplotspatchclass@trie@AB\relax
+			\let\pgfplotsretval\pgfutil@empty%
+		\else
+			\edef\pgfplotsretval{%
+				\noexpand\def\noexpand\pgfplotspatchclass@trie@AB{\pgfplotspatchclass@trie@AB}%
+				\noexpand\def\noexpand\pgfplotspatchclass@trie@BC{\pgfplotspatchclass@trie@BC}%
+				\noexpand\def\noexpand\pgfplotspatchclass@trie@CA{\pgfplotspatchclass@trie@CA}%
+			}%
+		\fi
+	},%
+	deserialize except vertices=%
+		\let\pgfplotspatchclass@trie@AB\relax
+		#1,
 	get pdf shading type=4,
 	get num vertices=3,
 }%
@@ -7355,14 +7437,22 @@
 	triangulate={%
 		\def\pgfplotsplothandlermesh@patchclass{triangle}%
 		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}10%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}21%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
 		%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}11%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}20%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
 	},%
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
 	get pdf shading type=5,
 	get num vertices=4,
 }%
@@ -7543,6 +7633,8 @@
 			\fi
 		\fi
 		%
+		% special handling: check if Type=5 shadings need to be
+		% converted to Type=4
 		\if0\b@pgfplotsplothandlermesh@matrixoutput
 			% no matrix output possible
 			\if5\pgfplotsretval
@@ -7637,6 +7729,7 @@
 \def\pgfplotsplothandlermesh@init@REFINE{%
 	\if0\pgfplotsplothandlermesh@triangulate
 \message{initiased REFINE to NOP.}%
+		\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@no@op
 	\else
 \message{initiased REFINE to triangulate.}%
 		\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@triangulate
@@ -7664,9 +7757,11 @@
 		\pgfplotsplothandlermesh@PIPE@REFINE
 	\fi
 }%
-\def\pgfplotsplothandlermesh@PIPE@REFINE{%
+\def\pgfplotsplothandlermesh@PIPE@REFINE@no@op{%
 	\pgfplotsplothandlermesh@PIPE@FINISH
 }%
+\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@no@op
+
 \def\pgfplotsplothandlermesh@PIPE@REFINE@triangulate{%
 	\let\pgfplotspatchready\pgfplotsplothandlermesh@PIPE@FINISH
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{triangulate}%
@@ -7677,17 +7772,33 @@
 	\pgfplotsplothandlermesh@VISUALIZE
 }%
 
-\def\pgfplotsplothandlermesh@VISUALIZE{%
+\def\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
 	\pgfplotsplothandlermesh@definecolor
 	\pgfplotsplothandlermesh@usepath
+}%
+\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
+
+\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@std
+
+\def\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke{%
+	\pgfplotsplothandlermesh@definecolor
+	\ifx\pgfplotsplothandlermesh@usepathfill\relax
+	\else
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
+		\pgfplotsplothandlermesh@usepathfill
+	\fi
+	\ifx\pgfplotsplothandlermesh@usepathstroke\relax
+	\else
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{stroke path}%
+		\pgfplotsplothandlermesh@usepathstroke
+	\fi
 }%
 
 \def\pgfplotsplothandlermesh@VISUALIZE@interp{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{stream to shader}%
 }%
 
-\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE
 \def\pgfplotsplothandlermesh@VISUALIZE@faceted@interp{%
 	\pgfplotslibrarysurfstreamstart
 	\pgfplotsplothandlermesh@VISUALIZE@interp
@@ -7916,6 +8027,8 @@
 			\pgfkeyssetvalue{/pgfplots/surf shading/cols}{2}%
 			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{init shader}%
 		\fi
+	\else
+		\def\pgfplotsplothandlermesh@VISUALIZE{\pgfplotsplothandlermesh@VISUALIZE@std}%
 	\fi
 }%
 
@@ -8016,6 +8129,30 @@
 			\fi
 			%
 		\fi
+		%
+		\ifx\pgfplotsplothandlermesh@PIPE@REFINE\pgfplotsplothandlermesh@PIPE@REFINE@no@op
+			\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
+		\else
+			\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke
+			%
+			\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqfill
+				\let\pgfplotsplothandlermesh@usepathfill=\pgfusepathqfillstroke
+				\let\pgfplotsplothandlermesh@usepathstroke=\relax
+			\else
+				\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqstroke
+					\let\pgfplotsplothandlermesh@usepathfill=\relax
+					\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
+				\else
+					\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqfillstroke
+						\let\pgfplotsplothandlermesh@usepathfill=\pgfusepathqfill
+						\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
+					\else
+						\let\pgfplotsplothandlermesh@usepathfill=\relax
+						\let\pgfplotsplothandlermesh@usepathstroke=\relax
+					\fi
+				\fi
+			\fi
+		\fi
 	\fi
 }%
 
@@ -8066,6 +8203,13 @@
 					\the\t@pgfplots@toka
 					{\the\t@pgfplots@tokb}%
 				}%
+			}%
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{serialize except vertices}%
+			\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
+			\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
+				{\the\t@pgfplots@toka}% first argument is meta data, then follow the vertices
+				\the\t@pgfplots@tokb%
 			}%
 			%
 			% assemble array element:
@@ -8296,11 +8440,15 @@
 	\pgfplotsplothandlermesh@draw@zbufferelement@#2\pgfplots@EOI
 }
 \def\pgfplotsplothandlermesh@draw@zbufferelement@#1{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{deserialize except vertices}{#1}%
+	\pgfplotsplothandlermesh@draw@zbufferelement@@
+}
+\def\pgfplotsplothandlermesh@draw@zbufferelement@@#1{%
 	\def\pgfplots@loc@TMPa{#1}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
 	\else
 		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{set next vertex}{#1}%
-		\expandafter\pgfplotsplothandlermesh@draw@zbufferelement@
+		\expandafter\pgfplotsplothandlermesh@draw@zbufferelement@@
 	\fi
 }%
 
