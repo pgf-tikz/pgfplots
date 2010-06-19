@@ -7154,6 +7154,7 @@
 			\pgfplots@error{INTERNAL LOGIC ERROR: the patch class '#1' has no method '#2'}%
 		}%
 	}{%
+		\edef\pgfplotspatchclassname{#1}%
 		\csname pgfpptch@#1@#2\endcsname
 	}%
 }%
@@ -7163,6 +7164,19 @@
 	\expandafter\def\csname pgfpptch@#1@\endcsname{#1}%
 	\pgfqkeys{/pgfplots/@declare patch}{%
 		allow matrix=0,
+		init shader=,
+		stream to shader={%
+%\message{\pgfplotspatchclassname: stream to shader: Starting  ^^J}%
+			\pgfplotspatchclass{\pgfplotspatchclassname}{foreach vertex}{%
+%\message{vertex (\pgfplotspatchvertexx,\pgfplotspatchvertexy[\pgfplotspatchvertexmeta]. ^^J}%
+				\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+				\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{%
+					\global\pgf@x=\pgfplotspatchvertexx\space
+					\global\pgf@y=\pgfplotspatchvertexy\space
+				}{\pgfplotspointmetatransformed}%
+			}%
+		},%
 		#2%
 	}%
 }%
@@ -7198,6 +7212,11 @@
 	fill path/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ fill path\endcsname{#1}},%
 	%
+	init shader/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ init shader\endcsname{#1}},%
+	stream to shader/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ stream to shader\endcsname{#1}},%
+	%
 	% expands to the number of vertices.
 	get num vertices/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{\def\pgfplotsretval{#1}}},%
@@ -7205,6 +7224,30 @@
 	get pdf shading type/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{\def\pgfplotsretval{#1}}},%
 }
+\pgfplotsdeclarepatchclass{line}{%
+	allow matrix=0,
+	new=\def\pgfplotsplothandlermesh@vertex@no{0},
+	set next vertex={%
+		\if0\pgfplotsplothandlermesh@vertex@no\relax
+			\edef\pgfplotsplothandlermesh@vertex@A{#1}%
+			\def\pgfplotsplothandlermesh@vertex@no{1}%
+		\else
+			\edef\pgfplotsplothandlermesh@vertex@B{#1}%
+			\def\pgfplotsplothandlermesh@vertex@no{0}%
+			\pgfplotspatchready%
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex #1%
+	},
+	fill path={%
+		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@A\endvertex}%
+		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@B\endvertex}%
+	},
+	get num vertices=2,
+}%
 \pgfplotsdeclarepatchclass{triangle}{%
 	allow matrix=1,
 	new=\def\pgfplotsplothandlermesh@vertex@no{0},
@@ -7269,7 +7312,7 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotsplothandlermesh@vertex@D\endvertex}%
 		\pgfpathclose
 	},
-	get pdf shading type=4,
+	get pdf shading type=5,
 	get num vertices=4,
 }%
 
@@ -7412,6 +7455,7 @@
 		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
 		\pgfplotsplothandlermesh@init@meshkeys
 		%
+		%
 		\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
 		%
 		% assign boolean:
@@ -7494,21 +7538,21 @@
 			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
 		\fi
 		%
-		\if0\b@pgfplotsplothandlermesh@matrixoutput
-			% in fact, this does only remember the maximum capacity;
-			% it doesn't fill the memory.
-			\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-			\advance\c@pgfplots@scanlineindex by1
-			\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
-			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
-\message{PIPE@DECODE initialised to patch output (from matrix).}
+		\if1\pgfplotsplothandlermesh@ONEDIMMODE
+			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
 		\else
-			% SPECIAL HANDLING!
-			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
-\message{PIPE@DECODE initialised to matrix output (from matrix).}
+			\if0\b@pgfplotsplothandlermesh@matrixoutput
+				% in fact, this does only remember the maximum capacity;
+				% it doesn't fill the memory.
+				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+				\advance\c@pgfplots@scanlineindex by1
+				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+			\else
+				% SPECIAL HANDLING!
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+			\fi
 		\fi
-	\else
-\message{PIPE@DECODE initialised to patch output (from patch).}
 	\fi
 }%
 
@@ -7546,17 +7590,11 @@
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
 	\pgfplotsplothandlermesh@definecolor
 	\pgfplotsplothandlermesh@usepath
+\message{VISUALIZE running.}%
 }%
 
 \def\pgfplotsplothandlermesh@VISUALIZE@interp{%
-	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{foreach vertex}{%
-		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-		\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{%
-			\global\pgf@x=\pgfplotspatchvertexx\space
-			\global\pgf@y=\pgfplotspatchvertexy\space
-		}{\pgfplotspointmetatransformed}%
-	}%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{stream to shader}%
 }%
 
 \let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE
@@ -7666,11 +7704,17 @@
 		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
 		%
 		%
-		\ifnum\pgfplotsplothandlermesh@cols=1
+		\ifnum\pgfplotsplothandlermesh@cols>1
+		\else
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
 		\fi
-		\ifnum\pgfplotsplothandlermesh@rows=1
+		\ifnum\pgfplotsplothandlermesh@rows>1
+		\else
 			\def\pgfplotsplothandlermesh@ONEDIMMODE{1}%
+		\fi
+		\if1\pgfplotsplothandlermesh@ONEDIMMODE
+			\def\pgfplotsplothandlermesh@patchclass{line}%
+			\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 		\fi
 	\else
 		% mesh input=patches
@@ -7774,11 +7818,13 @@
 					%\pgfplots@error{Sorry, the 'shader=interp' does not yet support 'mesh/ordering=colwise'... You can continue now, but the plot will be transposed.}%
 				\fi
 			\fi
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{init shader}%
 			\pgfplotslibrarysurfstreamstart
 		\else
 			% shader='faceted interp'
 			\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@faceted@interp%
 			\pgfkeyssetvalue{/pgfplots/surf shading/cols}{2}%
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{init shader}%
 		\fi
 	\fi
 }%
@@ -8033,10 +8079,11 @@
 	%
 	\if2\pgfplotsplothandlermesh@shader
 		% shader=interp:
-		\ifx\pgfplotsplothandlermesh@shader@interp\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
+		% FIXME : broken!
+		%\ifx\pgfplotsplothandlermesh@shader@interp\pgfplotsplothandlermesh@shader@interp@incremental@transpose%
 			% This is the case for 'mesh/ordering=colwise'. We need to finish the transpose procedure:
-			\pgfplotsplothandlermesh@shader@interp@transpose@finish
-		\fi
+		%	\pgfplotsplothandlermesh@shader@interp@transpose@finish
+		%\fi
 		\pgfplotslibrarysurfstreamend
 		\pgfplotslibrarysurfdrawinpicture
 	\fi
@@ -8049,6 +8096,19 @@
 	\pgfplotslibrarysurfstreamcoord
 		{#1}%
 		{\pgfplotspointmetatransformed}%
+}%
+
+\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE#1{%
+	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
+	\pgf@process{#1}%
+	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
+	\ifnum\c@pgfplots@scanlineindex>0
+		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@im}%
+		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@i}%
+	\else
+		\advance\c@pgfplots@scanlineindex by1
+	\fi
+	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
 }%
 
 % the pgf@plotstreampoint routine for the first scan line:
@@ -8068,14 +8128,17 @@
 % second.
 %
 % We perform
+% // i == y
+% // j == x
 % for i = 1  to rows (note the 1! 0 would be the first row)
 % 	for j = 0 to cols
 % 		get (i-1, j) from front of deque // remember: i: rows, j : cols. We iterate rowwise.
 % 		push (i,j) to back of deque
 % 		if j > 0
 % 			draw 
-% 				(i-1,j-1) [from last iteration]  -- (i-1,j) [from deque]
-% 			--  (  i,j-1) [from last iteration] --  (  i,j) [from #1]
+% 				(i-1,j-1) [from last iteration]  -- (i-1,j  ) [from deque]
+% 			--  (  i,j  ) [from last iteration]  -- (i  ,j-1) [from #1]
+% 			-- cycle
 % 		endif
 % 		let (i-1,j-1) := (i-1,j) // for next iteration
 % 		let (  i,j-1) := (  i,j) // for next iteration
@@ -8095,9 +8158,9 @@
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\ifnum\c@pgfplots@scanlineindex>0
 		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@im@jm}%
-		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@i@jm}%
+		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@im@j}%
 		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@i@j}%
-		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@im@jm}%
+		\expandafter\pgfplotsplothandlermesh@PIPE@DECODE@matrix@\expandafter{\pgfplotsplothandlermesh@i@jm}%
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
@@ -8108,10 +8171,6 @@
 }%
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@#1{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{#1}%
-}%
-\def\pgfplotsplothandlermesh@shader@interp#1{%
-	\pgfplotsaxisvisphasetransformpointmeta
-	\pgfplotslibrarysurfstreamcoord{#1}{\pgfplotspointmetatransformed}%
 }%
 \def\pgfplotsplothandlermesh@shader@interp@incremental@transpose#1{%
 	\pgfplotsaxisvisphasetransformpointmeta
