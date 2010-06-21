@@ -7211,6 +7211,7 @@
 		},%
 		get num cdata vertices=\pgfplotspatchclass{\pgfplotspatchclassname}{get vertices},
 		set edge visible=\expandafter\edef\csname pgfppatchedge@##1\endcsname{##2},
+		uses view depth=0,
 		triangulate={%
 			\pgfplots@error{triangulate: not yet implemented for \pgfplotspatchclassname}%
 		},%
@@ -7226,6 +7227,8 @@
 \pgfqkeys{/pgfplots/@declare patch}{%
 	allow matrix/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ allow matrix\endcsname{\def\pgfplotsretval{#1}}},%
+	uses view depth/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ uses view depth\endcsname{\def\pgfplotsretval{#1}}},%
 	new/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ new\endcsname{#1}},%
 	%
@@ -7444,8 +7447,24 @@
 	get pdf shading type=4,
 	get num vertices=3,
 }%
+
+\def\pgfplots@qtri@next@A{B}%
+\def\pgfplots@qtri@next@B{C}%
+\def\pgfplots@qtri@next@C{D}%
+\def\pgfplots@qtri@next@D{E}%
+\def\pgfplots@qtri@next@E{F}%
+\def\pgfplots@qtri@next@F{A}%
+
+\def\pgfplots@qtri@rnext@A{F}%
+\def\pgfplots@qtri@rnext@B{A}%
+\def\pgfplots@qtri@rnext@C{B}%
+\def\pgfplots@qtri@rnext@D{C}%
+\def\pgfplots@qtri@rnext@E{D}%
+\def\pgfplots@qtri@rnext@F{E}%
+
 \pgfplotsdeclarepatchclass{triangle quadr}{%
 	allow matrix=0,
+	uses view depth=1,
 	new=\def\pgfplotspatchclass@qtri@no{A}\let\pgfplotspatchclass@qtrie@AB\relax,
 	set next vertex={%
 		% defines \pgfplotspatchclass@qtri@A ... \pgfplotspatchclass@qtri@F (6 points)
@@ -7527,11 +7546,123 @@
 	stream to shader={%
 		% create a degenerate coons patch:
 		\begingroup
+%\message{EDGE INIT^^J}%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@A\endvertex
+		\ifx\pgfplotspatchvertexextra\pgfutil@empty
+			\def\Pcur{A}%
+			\def\Pnextseq{}%
+		\else
+			% ah. We have view depth. Use it!
+			% The idea here is as follows.
+			% According to pdf standard, the COONS Shading is
+			% generated in the unit cube and then mapped to the
+			% shading. If u,v in [0,1] are the coordinates in the unit
+			% cube, pixel values for v=1 overwrite values for v=0.
+			% If pixel values have the same v, u=1 overwrites u=0.
+			% In other words, the loop is
+			% for v= 0 to Nv
+			% 	for u = 0 to Nu
+			% 	   shade pixel for (u,v)
+			%
+			% BB-------CC   <--v=1
+			%  |        |
+			%  |        |
+			%  |        |
+			% AA-------DD   <--v=0
+			%  |        |
+			%  u=0      u=1
+			%
+			%
+			% IDEA: re-order the sequence of vertices such that z
+			% buffering is obtained.
+			%
+			% APPROACH:
+			%  the edge BB--CC collapses into just one point, namely
+			%  the FOREGROUND point (i.e. it is drawn on top of
+			%  everything else).
+			%
+			%  The AA point is the second nearest foreground point.
+			%  The sequence is chosen such that AA,BB is the first
+			%  edge.
+			%
+			%  What is to do (besides determining the vertices for AA
+			%  and BB)? Well, make sure, that we can arrange them in
+			%  the desired order. This involves a periodic "next vertex"
+			%  algorithm which might either go forward
+			%  A->B->C->D->E->F->A
+			%  or backward.
+			%
+			\pgf@xa=\pgfplotspatchvertexextra pt
+			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@C\endvertex
+			\pgf@xb=\pgfplotspatchvertexextra pt
+			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@E\endvertex
+			\pgf@xc=\pgfplotspatchvertexextra pt
+			%
+			\def\minsofarP{A}%
+			\pgf@ya=\pgf@xa
+			\ifdim\pgf@xb<\pgf@ya
+				\pgf@ya=\pgf@xb
+				\def\minsofarP{C}%
+			\fi
+			\ifdim\pgf@xc<\pgf@ya
+				\def\minsofarP{E}%
+			\fi
+			\if A\minsofarP
+				\ifdim\pgf@xb<\pgf@xc
+					\def\secondnearest{C}%
+				\else
+					\def\secondnearest{E}%
+				\fi
+			\else
+				\if C\minsofarP
+					\ifdim\pgf@xa<\pgf@xc
+						\def\secondnearest{A}%
+					\else
+						\def\secondnearest{E}%
+					\fi
+				\else
+					\ifdim\pgf@xb<\pgf@xa
+						\def\secondnearest{C}%
+					\else
+						\def\secondnearest{A}%
+					\fi
+				\fi
+			\fi
+%\message{FOREGROUND VERTEX = \minsofarP.^^J}%
+%\message{SECOND NEAREST VERTEX = \secondnearest.^^J}%
+			\let\Pcur=\secondnearest%
+			\edef\Pnext{\csname pgfplots@qtri@next@\Pcur\endcsname}%
+			\edef\Pnext{\csname pgfplots@qtri@next@\Pnext\endcsname}%
+			\if\Pnext\minsofarP
+				% ok, next(next(AA)) = BB.
+				% that means we have to advance forward.
+				\def\Pnextseq{}%
+			\else
+				% well, since we have a triangle, there only remains
+				% the backwards direction.
+				\def\Pnextseq{r}%
+			\fi
+		\fi
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@qtri@\Pcur}%
+		%
 		\def\pgfplots@coonsedge{%
-			\ifx\PA\pgfplotspatchclass@qtri@A
+%\message{EDGE \Pcur^^J}%
+			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@qtri@\Pnextseq next@\Pcur\endcsname}%
+%\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@qtri@\Pnextseq next@\Pcur\endcsname}%
+%\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PC\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\ifx\PA\Pstart
 				\expandafter\pgfplotspatchvertex\PA\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 					\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+				% degenerate: the edge collabses into one point.
+%\message{STREAMING COLLAPSED EDGE AT START POINT^^J}%
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
 				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
 			\fi
 			\pgfplotslibrarysurfstreamcoord{%
@@ -7544,7 +7675,7 @@
 					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
 					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
 			}{}%
-			\ifx\PC\pgfplotspatchclass@qtri@A
+			\ifx\PC\Pstart
 			\else
 				\expandafter\pgfplotspatchvertex\PC\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
@@ -7552,28 +7683,12 @@
 				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
 			\fi
 		}%
-		\let\PA=\pgfplotspatchclass@qtri@A
-		\let\PB=\pgfplotspatchclass@qtri@B
-		\let\PC=\pgfplotspatchclass@qtri@C
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@qtri@C
-		\let\PB=\pgfplotspatchclass@qtri@D
-		\let\PC=\pgfplotspatchclass@qtri@E
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@qtri@E
-		\let\PB=\pgfplotspatchclass@qtri@F
-		\let\PC=\pgfplotspatchclass@qtri@A
 		\pgfplots@coonsedge
 		%
-		% degenerate: the last edge collabses into one point.
-		\expandafter\pgfplotspatchvertex\PC\endvertex
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
 		%
 		\endgroup
 	},%
@@ -8738,61 +8853,68 @@
 	\fi
 }%
 
+% If \pgfplotsplothandlermesh@determine@streamdata is set to this
+% particular implementation, the \pgfplotspatchvertexextra macro will
+% contain the view depth.
+%
+\def\pgfplotsplothandlermesh@determine@streamdata@depth{%
+	\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+	\edef\pgfplotsretval{{\pgfmathresult}}%
+}%
+
+
 \def\pgfplotsplothandlermesh@init@zbuffer{%
-	\if\pgfplotsplothandlermesh@zbuffer@choice4%
-		% z buffer=sort:
-		% create a z buffer:
-		% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
-		\pgfplotsarraynewempty\pgfplots@zbuffer@local
+	\ifpgfplots@curplot@threedim
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{uses view depth}%
+		\if1\pgfplotsretval
+			\let\pgfplotsplothandlermesh@determine@streamdata=\pgfplotsplothandlermesh@determine@streamdata@depth%
+		\fi
 		%
-		\def\pgfplotsplothandlermesh@determine@streamdata{%
-			% The idea: while the coordinate stream visits every
-			% coordinate, we compute the view depth.
+		\if\pgfplotsplothandlermesh@zbuffer@choice4%
+			% z buffer=sort:
+			% create a z buffer:
+			% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
+			\pgfplotsarraynewempty\pgfplots@zbuffer@local
 			%
-			% We store it along with
-			% {<canvasx>}{<canvasy>}{<cdata>}{<depth>}
-			% and extract it once all points of one patch element
-			% are together.
-			\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-			\edef\pgfplotsretval{{\pgfmathresult}}%
-		}%
-		%
-		\let\pgfplotsplothandlermesh@accum@element@depth=\pgfmath@basic@add@
-		%
-		% and collect each point into the z buffer
-		% (instead of drawing it):
-		\def\pgfplotsplothandlermesh@PIPE@FINISH{%
+			\let\pgfplotsplothandlermesh@determine@streamdata=\pgfplotsplothandlermesh@determine@streamdata@depth%
 			%
-			% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
-			\def\pgfmathresult{0}%
-			\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach vertex}{%
-				\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
-				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
-				\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
+			\let\pgfplotsplothandlermesh@accum@element@depth=\pgfmath@basic@add@
+			%
+			% and collect each point into the z buffer
+			% (instead of drawing it):
+			\def\pgfplotsplothandlermesh@PIPE@FINISH{%
+				%
+				% compute DEPTH(lattice element):= min{DEPTH(A),DEPTH(B),DEPTH(C),DEPTH(D)}
+				\def\pgfmathresult{0}%
+				\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach vertex}{%
+					\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
+					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
+					\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
+						\the\t@pgfplots@toka
+						{\the\t@pgfplots@tokb}%
+					}%
+				}%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{serialize except vertices}%
+				\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
 				\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
-					\the\t@pgfplots@toka
-					{\the\t@pgfplots@tokb}%
+					{\the\t@pgfplots@toka}% first argument is meta data, then follow the vertices
+					\the\t@pgfplots@tokb%
 				}%
-			}%
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{serialize except vertices}%
-			\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
-			\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
-			\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
-				{\the\t@pgfplots@toka}% first argument is meta data, then follow the vertices
-				\the\t@pgfplots@tokb%
-			}%
-			%
-			% assemble array element:
-			\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
-			\edef\pgfplots@loc@TMPa{%
-				{\pgfmathresult}%
-				{%
-					\the\t@pgfplots@toka
+				%
+				% assemble array element:
+				\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
+				\edef\pgfplots@loc@TMPa{%
+					{\pgfmathresult}%
+					{%
+						\the\t@pgfplots@toka
+					}%
 				}%
+				\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
 			}%
-			\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPa\to\pgfplots@zbuffer@local
-		}%
+		\fi
 	\fi
 }%
 \def\pgfplotsplothandlermesh@init@mesh@stream{%
