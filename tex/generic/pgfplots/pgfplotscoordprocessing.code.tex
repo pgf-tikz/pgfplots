@@ -7776,6 +7776,16 @@
 	get num vertices=4,
 }%
 
+\def\pgfplots@rect@next@A{B}
+\def\pgfplots@rect@next@B{C}
+\def\pgfplots@rect@next@C{D}
+\def\pgfplots@rect@next@D{A}
+
+\def\pgfplots@rect@rnext@A{D}
+\def\pgfplots@rect@rnext@B{A}
+\def\pgfplots@rect@rnext@C{B}
+\def\pgfplots@rect@rnext@D{C}
+
 % bilinear is the same as 'rectangle', but it uses a different shader.
 \pgfplotsdeclarepatchclass{bilinear}{%
 	allow matrix=1,
@@ -7793,7 +7803,6 @@
 		\or
 			\edef\pgfplotspatchclass@rect@D{#1}%
 			\def\pgfplotspatchclass@rect@no{0}%
-\message{bilinear ready:^^J\pgfplotspatchclass@rect@A^^J\pgfplotspatchclass@rect@B^^J\pgfplotspatchclass@rect@C^^J\pgfplotspatchclass@rect@D^^J.^^J}%
 			\pgfplotspatchready%
 		\fi
 	},
@@ -7806,9 +7815,74 @@
 	},
 	stream to shader={%
 		% create a coons patch:
+\message{EDGE INIT^^J}%
 		\begingroup
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex
+		\ifx\pgfplotspatchvertexextra\pgfutil@empty
+			\def\Pcur{A}%
+			\def\Pnextseq{}%
+		\else
+			% Ideas: make sure that the foreground edge is the 'v=1'
+			% edge of the coons patch, i.e. that it is drawn on top of
+			% the rest.
+			%
+			% Furthermore, for fixed v, the 'u=1' point should belong
+			% to the foreground (as it is drawn on top of u=0).
+			%
+			% In other words, if the coons patch looks like 
+			%
+			% BB-------CC   <--v=1
+			%  |        |
+			%  |        |
+			%  |        |
+			% AA-------DD   <--v=0
+			%  |        |
+			%  u=0      u=1
+			%
+			% where the AA,BB,CC,DD are the corners of the coons
+			% patch, The FOREGROUND POINT of our visualization here should be CC, 
+			% the second most foreground point BB (assuming that
+			% foreground point and second most foreground point are
+			% adjacent).
+			%
+			% Thus, if 'CC' is behind of 'BB' in the A,B,C,D ordering:
+			%    start the coons patch with AA := BB-1 in forward
+			%    direction.
+			% else
+			%    start the coons patch with AA := BB+1 in reverse
+			%    direction.
+			%
+			\edef\PA{\pgfplotspatchvertexextra pt A}%
+			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex
+			\edef\PB{\pgfplotspatchvertexextra pt B}%
+			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@C\endvertex
+			\edef\PC{\pgfplotspatchvertexextra pt C}%
+			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@D\endvertex
+			\edef\PD{\pgfplotspatchvertexextra pt D}%
+			\pgfplotsutilsortfour\PA\PB\PC\PD
+			\def\toCHAR##1pt ##2{##2}% get original index
+			%
+			%
+			\edef\Pcur{\expandafter\toCHAR\PB}%%
+			\edef\Pnext{\csname pgfplots@rect@next@\Pcur\endcsname}%
+			\if\Pnext\PA
+				% ok, next(BB) = CC.
+				% that means we have to advance forward.
+				\def\Pnextseq{}%
+				\edef\Pcur{\csname pgfplots@rect@rnext@\Pcur\endcsname}%
+			\else
+				\edef\Pcur{\csname pgfplots@rect@next@\Pcur\endcsname}%
+				\def\Pnextseq{r}%
+			\fi
+		\fi
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@rect@\Pcur}%
 		\def\pgfplots@coonsedge{%
-			\ifx\PA\pgfplotspatchclass@rect@A
+\message{EDGE \Pcur^^J}%
+			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@rect@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
+\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@rect@\Pcur\endcsname
+			\ifx\PA\Pstart
 				\expandafter\pgfplotspatchvertex\PA\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 					\pgfplotsaxisvisphasetransformpointmeta
@@ -7827,7 +7901,7 @@
 					{\pgfqpointscale{0.3333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
 					{\pgfqpointscale{0.6666666}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
 			}{}%
-			\ifx\PB\pgfplotspatchclass@rect@A
+			\ifx\PB\Pstart
 			\else
 				\expandafter\pgfplotspatchvertex\PB\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
@@ -7836,20 +7910,12 @@
 			\fi
 		}%
 		%
-		\let\PA=\pgfplotspatchclass@rect@A
-		\let\PB=\pgfplotspatchclass@rect@B
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@rect@B
-		\let\PB=\pgfplotspatchclass@rect@C
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@rect@C
-		\let\PB=\pgfplotspatchclass@rect@D
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@rect@D
-		\let\PB=\pgfplotspatchclass@rect@A
 		\pgfplots@coonsedge
 		%
 		\endgroup
