@@ -2002,6 +2002,7 @@
 	\pgfqkeys{/pgfplots/@declare coord math}{%
 		initialise=,
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
+		zero=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{0},
 		log e=		\pgfmathlog@{##1},%
 		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
 		log from display log=\pgfmath@basic@multiply@{##1}{0.434294},% / log(10)
@@ -2103,6 +2104,9 @@
 	% the parsed result.
 	parsenumber/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ parsenumber\endcsname##1{#1}},%
+	%
+	zero/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ zero\endcsname{#1}},%
 	%
 	% takes a parsed number and returns a fixed point number:
 	tofixed/.code=
@@ -2359,6 +2363,7 @@
 \pgfplotsdeclarecoordmath{pgfbasic}{%
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
 	suffix=@basic@,
+	zero=\def\pgfmathresult{0},
 }
 \pgfplotsdeclarecoordmath{float}{%
 	initialise=
@@ -2367,6 +2372,7 @@
 			\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{0}%
 		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
+	zero=\pgfmathfloatcreate{0}{0.0}{0},%
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
 	max=\pgfplotsmathfloatmax{#1}{#2},%
@@ -7951,6 +7957,61 @@
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@rect@D\endvertex}%
 		\pgfpathclose
 	},
+	triangulate={%
+		\pgfplotscoordmath{meta}{parsenumber}{0.25}%
+		\let\pgfplots@loc@scale=\pgfmathresult
+		%
+		\pgf@xa=0pt
+		\pgf@ya=0pt
+		\pgf@yb=0pt
+		\pgfplotscoordmath{meta}{zero}%
+		\def\pgfplots@loc@accum@mean{%
+			\advance\pgf@xa by\pgfplotspatchvertexx\relax
+			\advance\pgf@ya by\pgfplotspatchvertexy\relax
+			\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult}{\pgfplotspatchvertexmeta}}%
+			\ifx\pgfplotspatchvertexdepth\pgfutil@empty
+			\else
+				\advance\pgf@yb by\pgfplotspatchvertexdepth pt\relax
+			\fi
+		}%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@C\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@D\endvertex \pgfplots@loc@accum@mean%
+		%
+		\divide\pgf@xa by4
+		\divide\pgf@ya by4
+		\divide\pgf@yb by4
+		\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@scale}}%
+		\edef\pgfplotspatchclass@rect@M{{\the\pgf@xa}{\the\pgf@ya}{\pgfmathresult}\ifx\pgfplotspatchvertexdepth\pgfutil@empty\else \pgf@sys@tonumber\pgf@yb\fi}%
+\message{mean:^^J\pgfplotspatchclass@rect@A^^J\pgfplotspatchclass@rect@B^^J...^^J = \pgfplotspatchclass@rect@M^^J}%
+		%
+		\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}10%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}20%
+		% Ok. Now create 4 triangles. The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+	},%
 	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
 	deserialize except vertices=,
 	get pdf shading type=6,
