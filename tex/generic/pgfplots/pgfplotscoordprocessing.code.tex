@@ -7164,7 +7164,7 @@
 	\def\pgfplotspatchvertexx{#1}%
 	\def\pgfplotspatchvertexy{#2}%
 	\def\pgfplotspatchvertexmeta{#3}%
-	\def\pgfplotspatchvertexextra{#4}%
+	\def\pgfplotspatchvertexdepth{#4}%
 }%
 \def\pgfplotspointpatchvertex#1#2#3#4\endvertex{%
 	\global\pgf@x=#1
@@ -7551,7 +7551,7 @@
 		\begingroup
 %\message{EDGE INIT^^J}%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@A\endvertex
-		\ifx\pgfplotspatchvertexextra\pgfutil@empty
+		\ifx\pgfplotspatchvertexdepth\pgfutil@empty
 			\def\Pcur{A}%
 			\def\Pnextseq{}%
 		\else
@@ -7598,11 +7598,11 @@
 			% To do so, prepare macros \PA,\PB,\PC for use in
 			% \pgfplotsutilsortthree. FORMAT:
 			% \PA={<sortkey>pt <originalindex>}
-			\edef\PA{\pgfplotspatchvertexextra pt A}%
+			\edef\PA{\pgfplotspatchvertexdepth pt A}%
 			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@B\endvertex
-			\edef\PB{\pgfplotspatchvertexextra pt B}%
+			\edef\PB{\pgfplotspatchvertexdepth pt B}%
 			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@C\endvertex
-			\edef\PC{\pgfplotspatchvertexextra pt C}%
+			\edef\PC{\pgfplotspatchvertexdepth pt C}%
 			\pgfplotsutilsortthree\PA\PB\PC
 			\def\toCHAR##1pt ##2{##2}% get original index
 			%
@@ -7786,6 +7786,86 @@
 \def\pgfplots@rect@rnext@C{B}
 \def\pgfplots@rect@rnext@D{C}
 
+% Ideas: make sure that the foreground edge is the 'v=1'
+% edge of the coons patch, i.e. that it is drawn on top of
+% the rest.
+%
+% Furthermore, for fixed v, the 'u=1' point should belong
+% to the foreground (as it is drawn on top of u=0).
+%
+% In other words, if the coons patch looks like 
+%
+% BB-------CC   <--v=1
+%  |        |
+%  |        |
+%  |        |
+% AA-------DD   <--v=0
+%  |        |
+%  u=0      u=1
+%
+% where the AA,BB,CC,DD are the corners of the coons
+% patch, The FOREGROUND POINT of our visualization here should be CC, 
+% the second most foreground point BB (assuming that
+% foreground point and second most foreground point are
+% adjacent).
+%
+% Thus, if 'CC' is behind of 'BB' in the A,B,C,D ordering:
+%    start the coons patch with AA := BB-1 in forward
+%    direction.
+% else
+%    start the coons patch with AA := BB+1 in reverse
+%    direction.
+%
+% #1: the vertex prefix for the rectangular shape.
+% Thus, \csname #1A\endcsname is the first vertex, \csname #1B\endcsname the second
+% and #1C, #1D the third and fourth.
+%
+% #2: A macro name. It will be defined to be either A,B,C or D.
+% #3: A macro name. It will be defined to be either empty or 'r'. If
+% it is empty, the coons patch shall be in the sequence
+% #2,next(#2),next(next(#2),....
+% If it is 'r', the coons patch shall be in the sequence
+% #2,prev(#2),prev(prev(#2),...
+%
+% Note that this method works also for biquadratic patches since these
+% patches also have #1A, #1B, #1C and #1D as their corners.
+% 
+\def\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth#1#2#3{%
+	\def#2{A}%
+	\def#3{}%
+	%
+	\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname #1A\endcsname\endvertex
+	\ifx\pgfplotspatchvertexdepth\pgfutil@empty
+	\else
+		% aaah -- we have z buffer information. Then we will use it!
+		\edef\PA{\pgfplotspatchvertexdepth pt A}%
+		\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname #1B\endcsname\endvertex
+		\edef\PB{\pgfplotspatchvertexdepth pt B}%
+		\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname #1C\endcsname\endvertex
+		\edef\PC{\pgfplotspatchvertexdepth pt C}%
+		\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname #1D\endcsname\endvertex
+		\edef\PD{\pgfplotspatchvertexdepth pt D}%
+		\pgfplotsutilsortfour\PA\PB\PC\PD
+		\def\toCHAR##1pt ##2{##2}% get original index
+		%
+		%
+		\edef\PA{\expandafter\toCHAR\PA}%%
+		\edef#2{\expandafter\toCHAR\PB}%%
+		\edef\Pnext{\csname pgfplots@rect@next@#2\endcsname}% this here uses only A,B,C and D (also for biquadratic patches!)
+		\if\Pnext\PA
+			% ok, next(BB) = CC.
+			% that means we have to advance forward.
+			\def#3{}%
+			\edef#2{\csname pgfplots@rect@rnext@#2\endcsname}%
+		\else
+			\edef#2{\csname pgfplots@rect@next@#2\endcsname}%
+			\def#3{r}%
+		\fi
+%\message{^^JDEPTH SEQUENCE for rectangle: \PA, \PB, \PC, \PD^^J}%
+%\message{COONS PATH ORDERING: starts with #2, direction: \ifx#3\pgfutil@empty forward\else backward\fi^^J}%
+	\fi
+}%
+
 % bilinear is the same as 'rectangle', but it uses a different shader.
 \pgfplotsdeclarepatchclass{bilinear}{%
 	allow matrix=1,
@@ -7815,74 +7895,16 @@
 	},
 	stream to shader={%
 		% create a coons patch:
-\message{EDGE INIT^^J}%
 		\begingroup
-		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex
-		\ifx\pgfplotspatchvertexextra\pgfutil@empty
-			\def\Pcur{A}%
-			\def\Pnextseq{}%
-		\else
-			% Ideas: make sure that the foreground edge is the 'v=1'
-			% edge of the coons patch, i.e. that it is drawn on top of
-			% the rest.
-			%
-			% Furthermore, for fixed v, the 'u=1' point should belong
-			% to the foreground (as it is drawn on top of u=0).
-			%
-			% In other words, if the coons patch looks like 
-			%
-			% BB-------CC   <--v=1
-			%  |        |
-			%  |        |
-			%  |        |
-			% AA-------DD   <--v=0
-			%  |        |
-			%  u=0      u=1
-			%
-			% where the AA,BB,CC,DD are the corners of the coons
-			% patch, The FOREGROUND POINT of our visualization here should be CC, 
-			% the second most foreground point BB (assuming that
-			% foreground point and second most foreground point are
-			% adjacent).
-			%
-			% Thus, if 'CC' is behind of 'BB' in the A,B,C,D ordering:
-			%    start the coons patch with AA := BB-1 in forward
-			%    direction.
-			% else
-			%    start the coons patch with AA := BB+1 in reverse
-			%    direction.
-			%
-			\edef\PA{\pgfplotspatchvertexextra pt A}%
-			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex
-			\edef\PB{\pgfplotspatchvertexextra pt B}%
-			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@C\endvertex
-			\edef\PC{\pgfplotspatchvertexextra pt C}%
-			\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@D\endvertex
-			\edef\PD{\pgfplotspatchvertexextra pt D}%
-			\pgfplotsutilsortfour\PA\PB\PC\PD
-			\def\toCHAR##1pt ##2{##2}% get original index
-			%
-\message{DEPTH SEQUENCE: \PA, \PB, \PC, \PD^^J}%
-			%
-			\edef\PA{\expandafter\toCHAR\PA}%%
-			\edef\Pcur{\expandafter\toCHAR\PB}%%
-			\edef\Pnext{\csname pgfplots@rect@next@\Pcur\endcsname}%
-			\if\Pnext\PA
-				% ok, next(BB) = CC.
-				% that means we have to advance forward.
-				\def\Pnextseq{}%
-				\edef\Pcur{\csname pgfplots@rect@rnext@\Pcur\endcsname}%
-			\else
-				\edef\Pcur{\csname pgfplots@rect@next@\Pcur\endcsname}%
-				\def\Pnextseq{r}%
-			\fi
-		\fi
+		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+			{pgfplotspatchclass@rect@}{\Pcur}{\Pnextseq}%
+		%
 		\pgfutil@namelet{Pstart}{pgfplotspatchclass@rect@\Pcur}%
 		\def\pgfplots@coonsedge{%
-\message{EDGE \Pcur^^J}%
+%\message{EDGE \Pcur^^J}%
 			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@rect@\Pcur\endcsname
 			\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
-\message{---> \Pcur^^J}%
+%\message{---> \Pcur^^J}%
 			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@rect@\Pcur\endcsname
 			\ifx\PA\Pstart
 				\expandafter\pgfplotspatchvertex\PA\endvertex
@@ -7934,6 +7956,26 @@
 	get pdf shading type=6,
 	get num vertices=4,
 }%
+
+\def\pgfplots@biquad@next@A{E}
+\def\pgfplots@biquad@next@B{F}
+\def\pgfplots@biquad@next@C{G}
+\def\pgfplots@biquad@next@D{H}
+\def\pgfplots@biquad@next@E{B}
+\def\pgfplots@biquad@next@F{C}
+\def\pgfplots@biquad@next@G{D}
+\def\pgfplots@biquad@next@H{A}
+
+
+\def\pgfplots@biquad@rnext@A{H}
+\def\pgfplots@biquad@rnext@B{E}
+\def\pgfplots@biquad@rnext@C{F}
+\def\pgfplots@biquad@rnext@D{G}
+\def\pgfplots@biquad@rnext@E{A}
+\def\pgfplots@biquad@rnext@F{B}
+\def\pgfplots@biquad@rnext@G{C}
+\def\pgfplots@biquad@rnext@H{D}
+
 \pgfplotsdeclarepatchclass{biquadratic}{%
 	allow matrix=0,
 	new=\def\pgfplotspatchclass@biquad@no{A}\let\pgfplotspatchclass@biquade@AB\relax,
@@ -8024,10 +8066,22 @@
 	%-------------------------------------------------- 
 	stream to shader={%
 		\begingroup
+		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+			{pgfplotspatchclass@biquad@}{\Pcur}{\Pnextseq}%
+		%
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@biquad@\Pcur}%
 		%
 		% create a coons patch:
 		\def\pgfplots@coonsedge{%
-			\ifx\PA\pgfplotspatchclass@biquad@A
+%\message{EDGE \Pcur^^J}%
+			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@biquad@\Pnextseq next@\Pcur\endcsname}%
+			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+%\message{---> \Pcur^^J}%
+			\edef\Pcur{\csname pgfplots@biquad@\Pnextseq next@\Pcur\endcsname}%
+			\expandafter\let\expandafter\PC\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+%\message{---> \Pcur^^J}%
+			\ifx\PA\Pstart
 				\expandafter\pgfplotspatchvertex\PA\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 					\pgfplotsaxisvisphasetransformpointmeta
@@ -8043,7 +8097,7 @@
 					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
 					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
 			}{}%
-			\ifx\PC\pgfplotspatchclass@biquad@A
+			\ifx\PC\Pstart
 			\else
 				\expandafter\pgfplotspatchvertex\PC\endvertex
 					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
@@ -8052,24 +8106,12 @@
 			\fi
 		}%
 		% 
-		\let\PA=\pgfplotspatchclass@biquad@A
-		\let\PB=\pgfplotspatchclass@biquad@E
-		\let\PC=\pgfplotspatchclass@biquad@B
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@biquad@B
-		\let\PB=\pgfplotspatchclass@biquad@F
-		\let\PC=\pgfplotspatchclass@biquad@C
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@biquad@C
-		\let\PB=\pgfplotspatchclass@biquad@G
-		\let\PC=\pgfplotspatchclass@biquad@D
 		\pgfplots@coonsedge
 		%
-		\let\PA=\pgfplotspatchclass@biquad@D
-		\let\PB=\pgfplotspatchclass@biquad@H
-		\let\PC=\pgfplotspatchclass@biquad@A
 		\pgfplots@coonsedge
 		\endgroup
 	},%
@@ -8443,6 +8485,20 @@
 	\fi
 }%
 
+% Defines \pgfplotsretval to be either empty or the current point's
+% depth according to z buffer information.
+\def\pgfplotsplothandlermesh@compute@vertex@depth{\let\pgfplotsretval\pgfutil@empty}%
+
+% If \pgfplotsplothandlermesh@compute@vertex@depth is set to this
+% particular implementation, the \pgfplotspatchvertexdepth macro will
+% contain the view depth.
+%
+\def\pgfplotsplothandlermesh@compute@vertex@depth@doit{%
+	\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
+	\edef\pgfplotsretval{\pgfmathresult}%
+}%
+
+
 % The patch visualization works like a PIPELINE:
 %
 % DECODE -> CHECK JUMP -> REFINE -> FINISH
@@ -8460,7 +8516,7 @@
 }%
 \def\pgfplotsplothandlermesh@PIPE@DECODE#1{%
 	\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
-	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
+	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	% calls \pgfplotspatchready when ready
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%%
@@ -8913,21 +8969,12 @@
 	\fi
 }%
 
-% If \pgfplotsplothandlermesh@determine@streamdata is set to this
-% particular implementation, the \pgfplotspatchvertexextra macro will
-% contain the view depth.
-%
-\def\pgfplotsplothandlermesh@determine@streamdata@depth{%
-	\pgfplotsmathviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}% FIXME relies on pgfplots macros
-	\edef\pgfplotsretval{\pgfmathresult}%
-}%
-
 
 \def\pgfplotsplothandlermesh@init@zbuffer{%
 	\ifpgfplots@curplot@threedim
 		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{uses view depth}%
 		\if1\pgfplotsretval
-			\let\pgfplotsplothandlermesh@determine@streamdata=\pgfplotsplothandlermesh@determine@streamdata@depth%
+			\let\pgfplotsplothandlermesh@compute@vertex@depth=\pgfplotsplothandlermesh@compute@vertex@depth@doit%
 		\fi
 		%
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
@@ -8936,7 +8983,7 @@
 			% the z buffer contains elements {<view depth>}{{<pt1>}{<pt2>}{<pt3>}{<pt4>}}
 			\pgfplotsarraynewempty\pgfplots@zbuffer@local
 			%
-			\let\pgfplotsplothandlermesh@determine@streamdata=\pgfplotsplothandlermesh@determine@streamdata@depth%
+			\let\pgfplotsplothandlermesh@compute@vertex@depth=\pgfplotsplothandlermesh@compute@vertex@depth@doit%
 			%
 			\let\pgfplotsplothandlermesh@accum@element@depth=\pgfmath@basic@add@
 			%
@@ -8948,7 +8995,7 @@
 				\def\pgfmathresult{0}%
 				\def\pgfplotsplothandlermesh@zbuffer@tmp{}%
 				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach vertex}{%
-					\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexextra\pgfmathresult
+					\pgfplotsplothandlermesh@accum@element@depth\pgfplotspatchvertexdepth\pgfmathresult
 					\t@pgfplots@toka=\expandafter{\pgfplotsplothandlermesh@zbuffer@tmp}%
 					\t@pgfplots@tokb=\expandafter{\pgfplotspatchvertexstruct}%
 					\edef\pgfplotsplothandlermesh@zbuffer@tmp{%
@@ -9076,7 +9123,6 @@
 	\fi
 }%
 
-\def\pgfplotsplothandlermesh@determine@streamdata{\let\pgfplotsretval\pgfutil@empty}%
 
 \def\pgfplotsplothandlermesh@PIPE@DECODE@to@shader#1{%
 	\pgfplotsaxisvisphasetransformpointmeta
@@ -9087,7 +9133,7 @@
 
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE#1{%
 	\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
-	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
+	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 	\ifnum\c@pgfplots@scanlineindex>0
@@ -9101,7 +9147,7 @@
 
 % the pgf@plotstreampoint routine for the first scan line:
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
-	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
+	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
 	\expandafter\pgfplotsdequepushback\pgfplots@loc@TMPa\to{lastscanline}%
@@ -9138,7 +9184,7 @@
 	% NOTATION: 
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
-	\pgfplotsplothandlermesh@determine@streamdata% <-- this modifies \pgfplotsretval
+	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}% FIXME relies on pgfplots macros
 %\message{##\the\c@pgfplots@scanlineindex: prepare rectangle with corner \meaning\pgfplotsplothandlermesh@i@j.}%
