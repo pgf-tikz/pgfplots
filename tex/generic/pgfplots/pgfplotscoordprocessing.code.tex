@@ -7221,6 +7221,11 @@
 		triangulate={%
 			\pgfplots@error{triangulate: not yet implemented for \pgfplotspatchclassname}%
 		},%
+		refine={%
+			\ifnum##1>0
+				\pgfplots@error{refine: not yet implemented for \pgfplotspatchclassname}%
+			\fi
+		},%
 		#2%
 	}%
 	\pgfutil@ifundefined{pgfpptch\pgfplotsdeclarepatchclass@ foreach cdata vertex}{%
@@ -7327,6 +7332,11 @@
 	% and \pgfplotsplothandlermesh@patchclass will be set to triangle.
 	triangulate/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ triangulate\endcsname{#1}},%
+	%
+	% Refines the given patch #1 times.
+	% For every finished patch, \pgfplotspatchready will be invoked.
+	refine/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ refine\endcsname##1{#1}},%
 	%
 	get pdf shading type/.style={get pdf shading type*={\def\pgfplotsretval{#1}}},
 	get pdf shading type*/.code=
@@ -7707,6 +7717,17 @@
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
 	},%
+	refine={%
+		\edef\pgfplotspatchclass@qtri@restore{%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@A{\pgfplotspatchclass@qtri@A}%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@B{\pgfplotspatchclass@qtri@B}%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@C{\pgfplotspatchclass@qtri@C}%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@D{\pgfplotspatchclass@qtri@D}%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@E{\pgfplotspatchclass@qtri@E}%
+			\noexpand\def\noexpand\pgfplotspatchclass@qtri@F{\pgfplotspatchclass@qtri@F}%
+		}%
+		\expandafter\pgfplotspatchclass@qtri@recursiverefine\expandafter{\pgfplotspatchclass@qtri@restore}{#1}%
+	},%
 	set edge visible={%
 		\ifcase#1
 			\edef\pgfplotspatchclass@qtrie@AB{#2}%
@@ -7733,6 +7754,56 @@
 	get pdf shading type=6,
 	get num vertices=6,
 }%
+
+\def\pgfplotspatchclass@qtri@recursiverefine@newnames{%
+	\let\pgfplotspatchclass@qtri@A@=\pgfplotspatchclass@qtri@A%
+	\let\pgfplotspatchclass@qtri@B@=\pgfplotspatchclass@qtri@B%
+	\let\pgfplotspatchclass@qtri@C@=\pgfplotspatchclass@qtri@C%
+	\let\pgfplotspatchclass@qtri@D@=\pgfplotspatchclass@qtri@D%
+	\let\pgfplotspatchclass@qtri@E@=\pgfplotspatchclass@qtri@E%
+	\let\pgfplotspatchclass@qtri@F@=\pgfplotspatchclass@qtri@F%
+}%
+% #1: commands to restore the variables of the actual patch.
+% #2: refine depth.
+\def\pgfplotspatchclass@qtri@recursiverefine#1#2{%
+	\pgfplotspatchclass@qtri@recursiverefine@newnames
+	%
+	\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+	%--------------------------------------------------
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
+	%-------------------------------------------------- 
+	% The ordering is not arbitrary
+	% (unless z buffer=sort is in effect). Let's assume that the
+	% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+	% this sequence here should have approximately the same depth
+	% ordering:
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@A@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+	%
+	%--------------------------------------------------
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}00%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}10%
+	%-------------------------------------------------- 
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+	%
+	%--------------------------------------------------
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+	%-------------------------------------------------- 
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@B}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+	%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
+}%
+
 \pgfplotsdeclarepatchclass{rectangle}{%
 	allow matrix=1,
 	new=\def\pgfplotspatchclass@rect@no{0},
@@ -8570,52 +8641,6 @@
 	}%
 }%
 
-\def\pgfplotsplothandlermesh@init@DECODE{%
-	\if1\pgfplotsplothandlermesh@matrixinput
-		% mesh input=lattice
-		% Init memory:
-		%
-		% And now finally: initialise the conversion from 
-		%  LINEARIZED COORD STREAM -> DATA MATRIX:
-		\if\pgfplots@plot@mesh@ordering0%
-			% x varies (=rowwise):
-			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
-		\else
-			% y varies (=colwise):
-			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
-		\fi
-		%
-		\if1\pgfplotsplothandlermesh@ONEDIMMODE
-\message{initialised DECODE for 1d mode.^^J}%
-			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
-		\else
-			\if0\b@pgfplotsplothandlermesh@matrixoutput
-				% in fact, this does only remember the maximum capacity;
-				% it doesn't fill the memory.
-				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-				\advance\c@pgfplots@scanlineindex by1
-				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
-				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
-\message{initialised DECODE for patch output (from matrix).^^J}%
-			\else
-				% SPECIAL HANDLING!
-				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
-\message{initialised DECODE for direct matrix output (from matrix).^^J}%
-			\fi
-		\fi
-	\else
-\message{initialised DECODE for patch output (from patch).^^J}%
-	\fi
-}%
-\def\pgfplotsplothandlermesh@init@REFINE{%
-	\if0\pgfplotsplothandlermesh@triangulate
-\message{initiased REFINE to NOP.}%
-		\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@no@op
-	\else
-\message{initiased REFINE to triangulate.}%
-		\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@triangulate
-	\fi
-}%
 
 % Defines \pgfplotsretval to be either empty or the current point's
 % depth according to z buffer information.
@@ -8676,6 +8701,11 @@
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{triangulate}%
 	\let\pgfplotspatchready\pgfplotspatchready@orig
 }%
+\def\pgfplotsplothandlermesh@PIPE@REFINE@recursively{%
+	\let\pgfplotspatchready\pgfplotsplothandlermesh@PIPE@FINISH
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{refine}{\pgfplotsplothandlermesh@refinecount}%
+	\let\pgfplotspatchready\pgfplotspatchready@orig
+}%
 
 \def\pgfplotsplothandlermesh@PIPE@FINISH{%
 	\pgfplotsplothandlermesh@VISUALIZE
@@ -8731,6 +8761,62 @@
 	\def\pgfplotsplothandlermesh@PIPE@CHECKJUMP{\pgfplotsplothandlermesh@PIPE@REFINE}%
 }%
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\pgfplotsplothandlermesh@init@DECODE{%
+	\if1\pgfplotsplothandlermesh@matrixinput
+		% mesh input=lattice
+		% Init memory:
+		%
+		% And now finally: initialise the conversion from 
+		%  LINEARIZED COORD STREAM -> DATA MATRIX:
+		\if\pgfplots@plot@mesh@ordering0%
+			% x varies (=rowwise):
+			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
+		\else
+			% y varies (=colwise):
+			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
+		\fi
+		%
+		\if1\pgfplotsplothandlermesh@ONEDIMMODE
+\message{initialised DECODE for 1d mode.^^J}%
+			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
+		\else
+			\if0\b@pgfplotsplothandlermesh@matrixoutput
+				% in fact, this does only remember the maximum capacity;
+				% it doesn't fill the memory.
+				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+				\advance\c@pgfplots@scanlineindex by1
+				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+\message{initialised DECODE for patch output (from matrix).^^J}%
+			\else
+				% SPECIAL HANDLING!
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+\message{initialised DECODE for direct matrix output (from matrix).^^J}%
+			\fi
+		\fi
+	\else
+\message{initialised DECODE for patch output (from patch).^^J}%
+	\fi
+}%
+\def\pgfplotsplothandlermesh@init@REFINE{%
+	\pgfkeysgetvalue{/pgfplots/mesh/refines}\pgfplotsplothandlermesh@refinecount
+	\if0\pgfplotsplothandlermesh@triangulate
+		\ifnum\pgfplotsplothandlermesh@refinecount>0
+\message{initiased REFINE to NOP.}%
+			\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@recursively
+		\else
+\message{initiased REFINE to NOP.}%
+			\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@no@op
+		\fi
+	\else
+\message{initiased REFINE to triangulate.}%
+		\let\pgfplotsplothandlermesh@PIPE@REFINE=\pgfplotsplothandlermesh@PIPE@REFINE@triangulate
+	\fi
+}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% MESH SURVEY
 \def\pgfplotsplothandlersurveystart@mesh@patchtable{%
 	\pgfplotsarraynewempty\pgfplots@verts
 }%
@@ -8824,6 +8910,8 @@
 	\def\pgfplots@current@point@meta{#4}%
 	\pgfplotsplothandlersurveypoint
 }%
+% MESH SURVEY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \def\pgfplotsplothandlermesh@init@meshkeys{%
 	\if1\pgfplotsplothandlermesh@matrixinput
