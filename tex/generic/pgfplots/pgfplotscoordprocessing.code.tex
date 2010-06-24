@@ -7255,13 +7255,38 @@
 		get num cdata vertices=\pgfplotspatchclass{\pgfplotspatchclassname}{get vertices},
 		set edge visible=\expandafter\edef\csname pgfppatchedge@##1\endcsname{##2},
 		uses view depth=0,
+		serialize={%
+			% the default serialization is not necessarily the fastest
+			% possible. But it should work.
+			\pgfplotspatchclass{\pgfplotspatchclassname}{serialize except vertices}%
+			\t@pgfplots@toka=\expandafter{\pgfplotsretval
+				\let\pgfplotspatchready@defaultserialize=\pgfplotspatchready
+				\let\pgfplotspatchready=\relax
+			}%
+			\edef\pgfplotsretval{%
+				\noexpand\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+				\the\t@pgfplots@toka
+			}%
+			\pgfplotspatchclass{\pgfplotspatchclassname}{foreach vertex}{%
+				\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+				\edef\pgfplotsretval{\the\t@pgfplots@toka
+					\noexpand\pgfplotspatchclass{\pgfplotspatchclassname}{set next vertex}{\pgfplotspatchvertexstruct}%
+				}%
+			}%
+			\expandafter\def\expandafter\pgfplotsretval\expandafter{\pgfplotsretval
+				\let\pgfplotspatchready=\pgfplotspatchready@defaultserialize
+			}%
+		},
+		deserialize=##1,
 		triangulate={%
 			\pgfplots@error{triangulate: not yet implemented for \pgfplotspatchclassname}%
 		},%
 		refine={%
-			\ifnum##1>0
-				\pgfplots@error{refine: not yet implemented for \pgfplotspatchclassname}%
-			\fi
+			\let\pgfplotsrefinedpatchready=\pgfplotspatchready
+			\pgfplotspatchclass@recursiverefine{##1}%
+		},%
+		recursive refine@={%
+			\pgfplots@error{refine: not yet implemented for \pgfplotspatchclassname}%
 		},%
 		#2%
 	}%
@@ -7314,11 +7339,18 @@
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ set edge visible\endcsname##1##2{#1}},%
 	%
 	% Defines \pgfplotsretval to be a serialized representation of
+	% this patch.
+	serialize/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ serialize\endcsname{#1}},%
+	% Defines \pgfplotsretval to be a serialized representation of
 	% this patches extra data fields, excluding vertices.
 	% This is often a NO-OP (unless 'set edge visible' has been used)
 	serialize except vertices/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ serialize except vertices\endcsname{#1}},%
 	%
+	% Restores a serialized representation from #1.
+	deserialize/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ deserialize\endcsname##1{#1}},%
 	% Restores a serialized representation from #1. Only vertices are
 	% not stored here.
 	deserialize except vertices/.code=
@@ -7381,10 +7413,56 @@
 	refine/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ refine\endcsname##1{#1}},%
 	%
+	% shared helper method which can be invoked recursively refine.
+	% the default implementation of 'refine' will invoke this one.
+	%
+	% #1: a serialized representation of the given patch. Use it to
+	% restore the current patch in intermediate steps. Note that you
+	% may not use \begingroup/\endgroup in this method; otherwise the
+	% 'z buffer' algorithm will need to be done with \global (and I
+	% don't want that. You probably neither).
+	%
+	% The refinement loop as such will be controlled by the default
+	% implementation of 'refine'. This macro is ONLY to be called by the
+	% default implementation of 'refine'! Overwriting it should
+	% automatically yield refinement facilities.
+	%
+	% the macro \pgfplotspatchready should be called for each refined
+	% element (happens automatically if you use 'set next vertex').
+	%
+	% POSTCONDITION:
+	% 	the element has been refined once.
+	recursive refine@/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ recursive refine@\endcsname##1{#1}},%
+	%
 	get pdf shading type/.style={get pdf shading type*={\def\pgfplotsretval{#1}}},
 	get pdf shading type*/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{#1}},%
 }
+
+\def\pgfplotspatchclass@recursiverefine#1{%
+	\c@pgf@counta=#1
+	\ifnum\c@pgf@counta=1
+		\let\pgfplotspatchready=\pgfplotsrefinedpatchready
+	\else
+		\advance\c@pgf@counta by-1
+		\edef\pgfplotspatchready{\noexpand\pgfplotspatchclass@recursiverefine{\the\c@pgf@counta}}%
+	\fi
+	%
+	\pgfplotspatchclass{\pgfplotspatchclassname}{serialize}%
+	\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotspatchready}%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplotspatchclass{\pgfplotspatchclassname}{deserialize}{\the\t@pgfplots@toka}%
+		\noexpand\def\noexpand\pgfplotspatchready{\the\t@pgfplots@tokc}%
+		\noexpand\def\noexpand\pgfplotspatchclassname{\pgfplotspatchclassname}% % FIXME: is that correct?
+	}%
+	\expandafter\pgfplotspatchclass@recursiverefine@\expandafter{\pgfplots@loc@TMPa}%
+}%
+\def\pgfplotspatchclass@recursiverefine@{%
+	\pgfplotspatchclass{\pgfplotspatchclassname}{recursive refine@}%
+}%
+
 
 % sequence macros preferred over integer indices.
 % using characters avoids the extensive use of \csname ...\endcsname
@@ -7762,10 +7840,6 @@
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
 		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
 	},%
-	refine={%
-		\let\pgfplotspatchclass@patchready@afterrefine=\pgfplotspatchready
-		\pgfplotspatchclass@qtri@recursiverefine{#1}%
-	},%
 	set edge visible={%
 		\ifcase#1
 			\edef\pgfplotspatchclass@qtrie@AB{#2}%
@@ -7789,6 +7863,158 @@
 	deserialize except vertices=%
 		\let\pgfplotspatchclass@qtrie@AB\relax
 		#1,
+	recursive refine@={%
+		\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		%--------------------------------------------------
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
+		%-------------------------------------------------- 
+		% The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		%
+		% I used the reference triangle and shape functions as listed in
+		% http://www.colorado.edu/engineering/CAS/courses.d/IFEM.d/
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AD
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AF
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@A@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AD}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
+		%
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
+		%
+		%
+		%--------------------------------------------------
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}00%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}10%
+		%-------------------------------------------------- 
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
+		% %
+		% %--------------------------------------------------
+		% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+		% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+		% %-------------------------------------------------- 
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DB
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@BE
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@B@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DB}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@BE}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
+		%
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EC
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@CF
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EC}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@CF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
+		%
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+	},%
 	get pdf shading type=6,
 	get num vertices=6,
 }%
@@ -7802,184 +8028,6 @@
 	\let\pgfplotspatchclass@qtri@F@=\pgfplotspatchclass@qtri@F%
 }%
 
-\def\pgfplotspatchclass@qtri@recursiverefine#1{%
-	\c@pgf@counta=#1
-	\ifnum\c@pgf@counta=1
-		\let\pgfplotspatchready=\pgfplotspatchclass@patchready@afterrefine
-	\else
-		\advance\c@pgf@counta by-1
-		\edef\pgfplotspatchready{\noexpand\pgfplotspatchclass@qtri@recursiverefine{\the\c@pgf@counta}}%
-	\fi
-	%
-	\t@pgfplots@tokc=\expandafter{\pgfplotspatchready}%
-	\edef\pgfplots@loc@TMPa{%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@A{\pgfplotspatchclass@qtri@A}%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@B{\pgfplotspatchclass@qtri@B}%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@C{\pgfplotspatchclass@qtri@C}%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@D{\pgfplotspatchclass@qtri@D}%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@E{\pgfplotspatchclass@qtri@E}%
-		\noexpand\def\noexpand\pgfplotspatchclass@qtri@F{\pgfplotspatchclass@qtri@F}%
-		\noexpand\def\noexpand\pgfplotspatchready{\the\t@pgfplots@tokc}%
-		\noexpand\def\noexpand\pgfplotspatchclassname{triangle quadr}%
-	}%
-	\expandafter\pgfplotspatchclass@qtri@recursiverefine@\expandafter{\pgfplots@loc@TMPa}{#1}%
-}%
-
-
-% #1: commands to restore the variables of the actual patch.
-% #2: refine depth.
-\def\pgfplotspatchclass@qtri@recursiverefine@#1#2{%
-	\pgfplotspatchclass@qtri@recursiverefine@newnames
-	%
-	\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
-	%--------------------------------------------------
-	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
-	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
-	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
-	%-------------------------------------------------- 
-	% The ordering is not arbitrary
-	% (unless z buffer=sort is in effect). Let's assume that the
-	% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
-	% this sequence here should have approximately the same depth
-	% ordering:
-	%
-	% I used the reference triangle and shape functions as listed in
-	% http://www.colorado.edu/engineering/CAS/courses.d/IFEM.d/
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AD
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AF
-	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@A@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AF}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AD}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
-	%
-	#1\pgfplotspatchclass@qtri@recursiverefine@newnames
-	%
-	%
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
-	%
-	%
-	%--------------------------------------------------
-	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}00%
-	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}10%
-	%-------------------------------------------------- 
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
-	% %
-	% %--------------------------------------------------
-	% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
-	% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
-	% %-------------------------------------------------- 
-	#1\pgfplotspatchclass@qtri@recursiverefine@newnames
-	%
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DB
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
-	%
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@BE
-	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@B@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DB}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@BE}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
-	%
-	#1\pgfplotspatchclass@qtri@recursiverefine@newnames
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EC
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
-	%
-	%
-	\pgfplotspatchvertexaccumstart
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
-	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
-	\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@CF
-	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EC}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@CF}%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
-	%
-	#1\pgfplotspatchclass@qtri@recursiverefine@newnames
-	%
-}%
 
 \pgfplotsdeclarepatchclass{rectangle}{%
 	allow matrix=1,
