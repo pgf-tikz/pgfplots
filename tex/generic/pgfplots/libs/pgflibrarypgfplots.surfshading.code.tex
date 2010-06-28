@@ -139,16 +139,37 @@
 	\else
 		\pgfkeysalso{/pgfplots/bin/\pgfplotslibrarysurf@filter@encode}%
 	\fi
-	\if5\pgfplotslibrarysurf@type
-		\let\pgfplotslibrarysurf@edgeflag=\pgfutil@empty
-	\else
-		\if6\pgfplotslibrarysurf@type
-			\global\let\pgfplotslibrarysurf@coons@cdata=\pgfutil@empty
-			\global\c@pgfplotslibrarysurf@no=0
-			\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@coons
-		\fi
+	\ifcase\pgfplotslibrarysurf@type\relax
+		% 0
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 1
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 2
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 3
+	\or% 4
+		% ok, triangle meshes.
 		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\or% 5 triangles in lattice form. disable edge flag:
+		\let\pgfplotslibrarysurf@edgeflag=\pgfutil@empty
+	\or% 6 coons patches:
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
+		\global\c@pgfplotslibrarysurf@no=0
+		\def\pgfplotslibrarysurf@cubicpatch@numverts{12}%
+		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
+		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\or% 7 full tensor product cubic bezier patches:
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
+		\global\c@pgfplotslibrarysurf@no=0
+		\def\pgfplotslibrarysurf@cubicpatch@numverts{16}%
+		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
+		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\else
+		\pgfplotslibrarysurf@initstream@wrongtype
 	\fi
+}%
+\def\pgfplotslibrarysurf@initstream@wrongtype{%
+	\pgfplots@error{CRITICAL: shader=interp: got unsupported pdf shading type '\pgfplotslibrarysurf@type'. This may correct your pdf!}%
 }%
 \def\pgfplotslibrarysurfstreamend{%
 	\pgfplotsapplistXgloballet\pgfplotslibrarysurf@binarystream=\pgfplotslibrarysurf@binarystream@accum
@@ -213,13 +234,14 @@
 	\pgfplotslibrarysurf@advancestreamlen{10}%
 }
 
-% special routine for coons type patches. It has FIRST all vertices,
+% special routine for coons type patches and cubic tensor product type
+% patches. It has FIRST all vertices,
 % THEN the cdata. Furthermore, it only has 4 CDATA points, but a total
 % of 12 vertices.
 %
 % #1: a pgf point.
 % #2: a color coordinate in the range [0,1000]
-\def\pgfplotslibrarysurfstreamcoord@coons#1#2{%
+\def\pgfplotslibrarysurfstreamcoord@cubicpatch#1#2{%
 	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
 	%\pgf@process{#1}% this here causes `{retaining \pgf@x}' messages and pollutes the save stack! Avoid it. See \tracingrestores=2
 	#1%
@@ -246,25 +268,25 @@
 	\pgfplotsbinaryencodedimenmaplinearly\pgf@ya
 %\message{ENCODING(y=\the\pgf@y)=\pgfplotsbinaryresult.}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotsbinaryresult}%
-	\def\pgfplotslibrarysurf@coons@hascdata{0}%
+	\def\pgfplotslibrarysurf@cubicpatch@hascdata{0}%
 	\ifnum\c@pgfplotslibrarysurf@no=0
-		\def\pgfplotslibrarysurf@coons@hascdata{1}%
+		\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
 		% prepend edge flag. it is a new patch.
 		\t@pgfplots@toka=\expandafter{\expandafter\pgfplotslibrarysurf@edgeflag\the\t@pgfplots@toka}%
 	\else
 		\ifnum\c@pgfplotslibrarysurf@no=3
-			\def\pgfplotslibrarysurf@coons@hascdata{1}%
+			\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
 		\else
 			\ifnum\c@pgfplotslibrarysurf@no=6
-				\def\pgfplotslibrarysurf@coons@hascdata{1}%
+				\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
 			\else
 				\ifnum\c@pgfplotslibrarysurf@no=9
-					\def\pgfplotslibrarysurf@coons@hascdata{1}%
+					\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
 				\fi
 			\fi
 		\fi
 	\fi
-	\if1\pgfplotslibrarysurf@coons@hascdata
+	\if1\pgfplotslibrarysurf@cubicpatch@hascdata
 		{%
 			% read fixed point input (in the range [0,1000]).
 			\pgf@xa=#2pt
@@ -288,17 +310,17 @@
 		\pgfplotsbinarysetbytes2%
 		\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
 	%\message{\pgfplotsbinaryresult.}%
-		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@coons@cdata}%
-		\xdef\pgfplotslibrarysurf@coons@cdata{%
+		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@cubicpatch@cdata}%
+		\xdef\pgfplotslibrarysurf@cubicpatch@cdata{%
 			\the\t@pgfplots@tokc
 			\pgfplotsbinaryresult
 		}%
 	\fi
 	\global\advance\c@pgfplotslibrarysurf@no by1
 	%
-	\ifnum\c@pgfplotslibrarysurf@no=12 %finalize patch.
-		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@coons@cdata}%
-		\global\let\pgfplotslibrarysurf@coons@cdata=\pgfutil@empty
+	\ifnum\pgfplotslibrarysurf@cubicpatch@numverts=\c@pgfplotslibrarysurf@no %finalize patch.
+		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@cubicpatch@cdata}%
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
 		\global\c@pgfplotslibrarysurf@no=0
 	\else
 		\t@pgfplots@tokc={}%
