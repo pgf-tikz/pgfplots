@@ -2701,7 +2701,15 @@
 			{% precommand(s):
 				\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
-				\noexpand\def\noexpand\plotnumofactualtype{\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname}%
+				%
+				% store \plotnumofactualtype
+				\noexpand\def\noexpand\plotnumofactualtype{\numplotsofactualtype}%
+				% ... and make sure that it 
+				% remains the same type even if some plot handler uses
+				% other plot handlers internally:
+				\noexpand\def\noexpand\pgfplotsplothandlername@actual{\pgfplotsplothandlername@actual}%
+				\noexpand\let\noexpand\numplotsofactualtype\noexpand\pgfplots@numplotsofactualtype@duringplot
+				%
 				\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
 				% \pgfplots@current@point@coordindex will always contain the current index.
 				% Maybe overwritten if not provided using \c@pgfplots@coordindex.
@@ -5316,6 +5324,15 @@
 		\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname
 	}%
 }%
+% use this only inside of \addplot or during the visualization phase
+% of a plot.
+\def\pgfplots@numplotsofactualtype@duringplot{%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername@actual}{%
+		0%
+	}{%
+		\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname
+	}%
+}%
 %
 % This macro may be overwritten inside of the \tikz@plot@handler
 % macro. This here is just the default implementation.
@@ -5329,14 +5346,19 @@
 	%
 	\pgfplotssurveyphase@setactiveplothandlers
 	%
-	\edef\pgfplots@loc@TMPa{\pgfplotsplothandlername}%
-	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplots@loc@TMPa}{%
+	\let\numplotsofactualtype=\pgfplots@numplotsofactualtype@duringplot
+	%
+	% Store this name during the \addplot command. Thus, even if the
+	% plot handler changes, we will keep this one.
+	\edef\pgfplotsplothandlername@actual{\pgfplotsplothandlername}%
+	%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername@actual}{%
 		% oh. This is the first time \pgfplotsplothandlername was used
 		% in this axis. Set its counter to 0 and remember that it has
 		% been initialised.
-		\expandafter\xdef\csname c@pgfplots@numplotsofactualtype@\pgfplots@loc@TMPa\endcsname{0}%
+		\expandafter\xdef\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname{0}%
 		\t@pgfplots@toka=\expandafter{\pgfplotssurveyphase@setactiveplothandlers}%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlername@actual}%
 		\xdef\pgfplotssurveyphase@setactiveplothandlers{%
 			\the\t@pgfplots@toka
 			\noexpand\expandafter\noexpand\def\noexpand\csname pgfplotssurveyphase@setactiveplothandlers@\the\t@pgfplots@tokb\noexpand\endcsname{1}%
@@ -5350,7 +5372,7 @@
 \def\pgfplots@countplots@advance{%
 	\global\advance\pgfplots@numplots by1\relax%
 	%
-	\expandafter\pgfplotsutil@advancestringcounter@global\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname
+	\expandafter\pgfplotsutil@advancestringcounter@global\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname
 }%
 
 % \addplot[#1] [#2] {#3} #4;
