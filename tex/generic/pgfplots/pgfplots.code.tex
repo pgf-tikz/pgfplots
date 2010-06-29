@@ -2364,9 +2364,9 @@
 		/pgf/bar shift={%
 				% total width = n*w + (n-1)*skip
 				% -> subtract half for centering
-				-0.5*(\numplots*\pgfplotbarwidth + (\numplots-1)*#1)  + 
+				-0.5*(\numplotsofactualtype*\pgfplotbarwidth + (\numplotsofactualtype-1)*#1)  + 
 				% the '0.5*w' is for centering
-				(.5+\plotnum)*\pgfplotbarwidth + \plotnum*#1},%
+				(.5+\plotnumofactualtype)*\pgfplotbarwidth + \plotnumofactualtype*#1},%
 		/pgfplots/error bars/draw error bar/.code 2 args={%
 % FIXME: simplify this code! It is just a replication of the default error stuff together with an xshift!
 			\pgfkeysgetvalue{/pgfplots/error bars/error mark}{\pgfplotserrorbarsmark}%
@@ -2393,9 +2393,9 @@
 		/pgf/bar shift={%
 				% total width = n*w + (n-1)*skip
 				% -> subtract half for centering
-				-0.5*(\numplots*\pgfplotbarwidth + (\numplots-1)*#1)  + 
+				-0.5*(\numplotsofactualtype*\pgfplotbarwidth + (\numplotsofactualtype-1)*#1)  + 
 				% the '0.5*w' is for centering
-				(.5+\plotnum)*\pgfplotbarwidth + \plotnum*#1},%
+				(.5+\plotnumofactualtype)*\pgfplotbarwidth + \plotnumofactualtype*#1},%
 		/pgfplots/error bars/draw error bar/.code 2 args={%
 % FIXME: simplify this code! It is just a replication of the default error stuff together with an xshift!
 			\pgfkeysgetvalue{/pgfplots/error bars/error mark}{\pgfplotserrorbarsmark}%
@@ -2422,8 +2422,8 @@
 		xtick align=outside,
 		xtick=data,
 		ybar interval legend,
-		bar interval width={#1/\numplots},
-		bar interval shift={(\plotnum+0.5)/\numplots},
+		bar interval width={#1/\numplotsofactualtype},
+		bar interval shift={(\plotnumofactualtype+0.5)/\numplotsofactualtype},
 		/tikz/ybar interval,
 	},
 	/pgfplots/ybar interval/.default=1,
@@ -2438,8 +2438,8 @@
 		ymajorgrids,
 		ytick align=outside,
 		xbar interval legend,
-		bar interval width={#1/\numplots},
-		bar interval shift={(\plotnum+0.5)/\numplots},
+		bar interval width={#1/\numplotsofactualtype},
+		bar interval shift={(\plotnumofactualtype+0.5)/\numplotsofactualtype},
 		/tikz/xbar interval,
 	},
 	/pgfplots/xbar interval/.default=1,
@@ -3941,6 +3941,7 @@
 			\t@pgfplots@tokb={\matrix[/pgfplots/every axis legend]}%
 			\xdef\pgfplots@glob@TMPa{%
 				\noexpand\def\noexpand\plotnum{0}%
+				\noexpand\def\noexpand\plotnumofactualtype{0}%
 				\the\t@pgfplots@tokb {%
 					\the\t@pgfplots@toka
 				};%
@@ -8025,6 +8026,68 @@
 	\pgfkeyslet{/pgfplots/zmax/.@cmd}\pgfplots@cant@set@in@this@context
 }%
 
+% This here is the main key filter for pgfplots.
+%
+% It sets keys if
+% ( they have an active key family)
+% OR
+% ( they have /pgfplots/ key prefix )
+% OR
+% ( they are a command key which contains \tikz@plot@handler ).
+%
+% In all other cases, the key filter will postpone the key.
+%
+% Note that \tikz@plot@handler should be defined before the survey
+% phase starts.
+\pgfkeysdef{/pgfplots/@@key filter}{%
+	\if\pgfkeyscasenumber0%
+		\pgfkeysfiltercontinuefalse
+	\else
+		\if\pgfkeyscasenumber3%
+			\pgfkeysgetfamily\pgfkeyscurrentpath\pgfkeyspred@TMP
+		\else
+			\pgfkeysgetfamily\pgfkeyscurrentkey\pgfkeyspred@TMP
+		\fi
+		\ifpgfkeyssuccess
+			% it has a family. Check it!
+			\pgfkeysisfamilyactive{\pgfkeyspred@TMP}%
+		\else% Ok, it does not belong to any family.
+			% Check if it has /pgfplots/ prefix:
+			\expandafter\pgfplots@key@filter@isdescendantof\pgfkeyscurrentkey/pgfplots/\pgf@@eov
+		\fi
+	\fi
+}
+\def\pgfplots@key@filter@isdescendantof#1/pgfplots/#2\pgf@@eov{%
+	\def\pgfkeyspred@TMP{#1}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% Ah -- it *has* /pgfplots/ prefix. Use it!
+		\pgfkeysfiltercontinuetrue
+	\else
+		% Hm. Probably a /tikz/ key, but who knows.
+		\if1\pgfkeyscasenumber
+			% It is a command key.
+			% Check if the *body* of the command key contains
+			% \tikz@plot@handler.
+			\pgfkeysgetvalue{\pgfkeyscurrentkey/.@cmd}\pgfkeyspred@TMP%
+			\expandafter\pgfplots@key@filter@isplothandler\pgfkeyspred@TMP 123456789\pgfeov\tikz@plot@handler\pgfplots@EOI
+		\else
+			% Ok, it's no command key. Skip it directly.
+			\pgfkeysfiltercontinuefalse
+		\fi
+	\fi
+}%
+\def\pgfplots@key@filter@isplothandler#1\tikz@plot@handler#2\pgfplots@EOI{%
+	\def\pgfkeyspred@TMP{#2}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% I didn't find '\tikz@plot@handler' in the key's body. Ok.
+		% key won't be processed.
+		\pgfkeysfiltercontinuefalse
+	\else
+		% Aaah -- it is something like /tikz/ybar! process it.
+		\pgfkeysfiltercontinuetrue
+	\fi
+}%
+
 \def\pgfplots@set@options#1{%
 	\pgfplots@bb@isactivetrue
 	\pgfplots@curplot@threedimfalse
@@ -8062,7 +8125,8 @@
 	%
 	% Step 2: parse any pgfplots options out of styles.
 	\pgfkeysactivatefamily{/pgfplots/style commands}%
-	\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	%\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	\pgfkeysinstallkeyfilter{/pgfplots/@@key filter}{}%
 	%
 	\pgfkeysactivatefamilies
 		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/scale}%/pgfplots/descriptions,}
@@ -8681,6 +8745,9 @@
 %   	- assigned globally.
 % - \ifpgfplots@coord@stream@isfirst
 %   	- assigned globally during \addplot.
+% - \pgfplotssurveyphase@setactiveplothandlers
+%   	A macro which is used to implement '\numplotsofactualtype'
+%   	see \pgfplots@countplots@advance for details.
 %
 %
 \def\pgfplots@environment@opt[#1]{%
@@ -8836,9 +8903,12 @@
 	%
 	\global\pgfplots@has@label@informationfalse
 	%
+	\def\numplots{\the\pgfplots@numplots}%
+	\global\let\pgfplotssurveyphase@setactiveplothandlers=\pgfutil@empty
+	\let\numplotsofactualtype=\pgfplots@numplotsofactualtype
+	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
-	\def\numplots{\the\pgfplots@numplots}%
 	\let\path=\pgfplots@replacement@for@tikz@path
 	\let\closedcycle=\pgfplots@path@closed@cycle
 	%
@@ -8851,6 +8921,7 @@
 	\let\pgfplots@orig@endscope=\endscope
 	\let\scope=\pgfplots@replacement@for@scope
 	\let\endscope=\pgfplots@replacement@for@endscope
+	%
 }
 
 % \end{axis} :
@@ -8872,6 +8943,8 @@
 	\let\plot=\pgfplots@orig@plot
 	\let\scope=\pgfplots@orig@scope
 	\let\endscope=\pgfplots@orig@endscope
+	%
+	\pgfplotssurveyphase@setactiveplothandlers
 	%
 	%\end{axis}:
 	%
