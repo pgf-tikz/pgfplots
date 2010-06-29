@@ -8268,6 +8268,68 @@
 	\pgfkeyslet{/pgfplots/zmax/.@cmd}\pgfplots@cant@set@in@this@context
 }%
 
+% This here is the main key filter for pgfplots.
+%
+% It sets keys if
+% ( they have an active key family)
+% OR
+% ( they have /pgfplots/ key prefix )
+% OR
+% ( they are a command key which contains \tikz@plot@handler ).
+%
+% In all other cases, the key filter will postpone the key.
+%
+% Note that \tikz@plot@handler should be defined before the survey
+% phase starts.
+\pgfkeysdef{/pgfplots/@@key filter}{%
+	\if\pgfkeyscasenumber0%
+		\pgfkeysfiltercontinuefalse
+	\else
+		\if\pgfkeyscasenumber3%
+			\pgfkeysgetfamily\pgfkeyscurrentpath\pgfkeyspred@TMP
+		\else
+			\pgfkeysgetfamily\pgfkeyscurrentkey\pgfkeyspred@TMP
+		\fi
+		\ifpgfkeyssuccess
+			% it has a family. Check it!
+			\pgfkeysisfamilyactive{\pgfkeyspred@TMP}%
+		\else% Ok, it does not belong to any family.
+			% Check if it has /pgfplots/ prefix:
+			\expandafter\pgfplots@key@filter@isdescendantof\pgfkeyscurrentkey/pgfplots/\pgf@@eov
+		\fi
+	\fi
+}
+\def\pgfplots@key@filter@isdescendantof#1/pgfplots/#2\pgf@@eov{%
+	\def\pgfkeyspred@TMP{#1}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% Ah -- it *has* /pgfplots/ prefix. Use it!
+		\pgfkeysfiltercontinuetrue
+	\else
+		% Hm. Probably a /tikz/ key, but who knows.
+		\if1\pgfkeyscasenumber
+			% It is a command key.
+			% Check if the *body* of the command key contains
+			% \tikz@plot@handler.
+			\pgfkeysgetvalue{\pgfkeyscurrentkey/.@cmd}\pgfkeyspred@TMP%
+			\expandafter\pgfplots@key@filter@isplothandler\pgfkeyspred@TMP 123456789\pgfeov\tikz@plot@handler\pgfplots@EOI
+		\else
+			% Ok, it's no command key. Skip it directly.
+			\pgfkeysfiltercontinuefalse
+		\fi
+	\fi
+}%
+\def\pgfplots@key@filter@isplothandler#1\tikz@plot@handler#2\pgfplots@EOI{%
+	\def\pgfkeyspred@TMP{#2}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% I didn't find '\tikz@plot@handler' in the key's body. Ok.
+		% key won't be processed.
+		\pgfkeysfiltercontinuefalse
+	\else
+		% Aaah -- it is something like /tikz/ybar! process it.
+		\pgfkeysfiltercontinuetrue
+	\fi
+}%
+
 \def\pgfplots@set@options#1{%
 	\pgfplots@bb@isactivetrue
 	\pgfplots@curplot@threedimfalse
@@ -8303,7 +8365,8 @@
 	%
 	% Step 2: parse any pgfplots options out of styles.
 	\pgfkeysactivatefamily{/pgfplots/style commands}%
-	\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	%\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	\pgfkeysinstallkeyfilter{/pgfplots/@@key filter}{}%
 	%
 	\pgfkeysactivatefamilies
 		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/scale}%/pgfplots/descriptions,}
