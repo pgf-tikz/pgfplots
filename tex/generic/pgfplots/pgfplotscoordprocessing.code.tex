@@ -2701,6 +2701,7 @@
 			{% precommand(s):
 				\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
+				\noexpand\def\noexpand\plotnumofactualtype{\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname}%
 				\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
 				% \pgfplots@current@point@coordindex will always contain the current index.
 				% Maybe overwritten if not provided using \c@pgfplots@coordindex.
@@ -5211,9 +5212,13 @@
 	% need to change the .unknown handler. See the available
 	% compatibility styles!
 	%
-	\pgfkeysdef{/pgfplots/.unknown}{%
+	% ATTENTION: starting with more recent versions (since the
+	% unstable version), I will also set /tikz keys here! This should
+	% work. It is well tested for the unstable... I hope it will also
+	% work for the master branch. 
+	%\pgfkeysdef{/pgfplots/.unknown}{%
 %\message{In \string\addplot[#1]: I am silently ignoring key `\pgfkeyscurrentkeyRAW' during the preparation phase.}%
-	}%
+	%}%
 	%
 	% it is possible that '#1' contains 'forget plot'. So, we need to
 	% set the options before checking
@@ -5231,6 +5236,7 @@
 	\ifpgfplots@usefpu
 		\pgfkeys{/pgf/fpu=true}%
 	\fi
+	\pgfplots@countplots@init
 	%
 	% hooks:
 	\pgfkeysvalueof{/pgfplots/execute at begin plot@@}%
@@ -5291,12 +5297,62 @@
 \def\pgfplots@end@plot{%
 	\ifpgfplots@curplot@isirrelevant
 	\else
-		\global\advance\pgfplots@numplots by1\relax%
+		\pgfplots@countplots@advance
 	\fi
 	\pgfkeysvalueof{/pgfplots/execute at end plot@@}%
 	\pgfkeysvalueof{/pgfplots/execute at end plot}%
 	\endgroup%<-- close the \begingroup of \pgfplots@addplotimpl@plot@withoptions
 }
+
+% \numplotsofactualtype
+% Expands to the number of plots which have been seen in the current
+% axis and which have the same type as the actual plot handler. 
+%
+% See also \plotnumofactualtype
+\def\pgfplots@numplotsofactualtype{%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername}{%
+		0%
+	}{%
+		\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname
+	}%
+}%
+%
+% This macro may be overwritten inside of the \tikz@plot@handler
+% macro. This here is just the default implementation.
+%
+% @INTERNAL HINT: I think the unstable version has another
+% implementation. make sure it's not overwritten!
+\def\pgfplotsplothandlername{\meaning\tikz@plot@handler}%
+%
+\def\pgfplots@countplots@init{%
+%
+\message{INIT: ich habe \string\tikz@plot@handler=\meaning\tikz@plot@handler^^J^^J}%
+	%
+	\pgfplotssurveyphase@setactiveplothandlers
+	%
+	\edef\pgfplots@loc@TMPa{\pgfplotsplothandlername}%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplots@loc@TMPa}{%
+		% oh. This is the first time \pgfplotsplothandlername was used
+		% in this axis. Set its counter to 0 and remember that it has
+		% been initialised.
+		\expandafter\xdef\csname c@pgfplots@numplotsofactualtype@\pgfplots@loc@TMPa\endcsname{0}%
+		\t@pgfplots@toka=\expandafter{\pgfplotssurveyphase@setactiveplothandlers}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+		\xdef\pgfplotssurveyphase@setactiveplothandlers{%
+			\the\t@pgfplots@toka
+			\noexpand\expandafter\noexpand\def\noexpand\csname pgfplotssurveyphase@setactiveplothandlers@\the\t@pgfplots@tokb\noexpand\endcsname{1}%
+		}%
+		\expandafter\def\csname pgfplotssurveyphase@setactiveplothandlers@\the\t@pgfplots@tokb\endcsname{1}%
+	}{%
+		% ok. do nothing.
+	}%
+	%
+}%
+\def\pgfplots@countplots@advance{%
+	\global\advance\pgfplots@numplots by1\relax%
+	%
+	\expandafter\pgfplotsutil@advancestringcounter@global\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname
+}%
 
 % \addplot[#1] [#2] {#3} #4;
 \long\def\pgfplots@addplotimpl@coordinates#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
