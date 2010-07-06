@@ -720,6 +720,7 @@
 	% Colorbar interface:
 	/pgfplots/colorbar/.is if=pgfplots@colorbar,
 	/pgfplots/colorbar/.default=true,
+	/pgfplots/colorbar to label/.style={/pgfplots/colorbar to name={#1}},
 	/pgfplots/colorbar to name/.initial=,
 	/pgfplots/colorbar source/.code={\pgfplots@error{Sorry, you can only set `colorbar source' inside of \string\addplot\space (or a cycle list)}},
 	/pgfplots/colorbar source/.default=true,
@@ -1403,6 +1404,7 @@
 % legend options:
 	/pgfplots/legend entries/.initial={},
 	/pgfplots/legend entries/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend to label/.style={/pgfplots/legend to name={#1}},
 	/pgfplots/legend to name/.initial=,%
 	/pgfplots/legend pos/.is choice,
 	/pgfplots/legend pos/south west/.style={/pgfplots/legend style={at={(0.03,0.03)},anchor=south west}},
@@ -3860,7 +3862,9 @@
 		% DRAW:
 		\pgfplots@already@computed@legend@node
 	\else
-		% store:
+		% apply the 'legend to name' feature:
+		%
+		% store legend contents:
 		%
 		\t@pgfplots@toka=\expandafter{\pgfplots@already@computed@legend@node}%
 		\pgfkeysgetvalue{/pgfplots/every axis legend/.@cmd}\pgfplots@loc@TMPa
@@ -3888,9 +3892,29 @@
 				\noexpand\csname pgfplots@legend@to@name@\pgfplots@createlegend@toname\noexpand\endcsname%
 					{\the\t@pgfplots@toka}%
 		}%
+		\begingroup
+		%
+		% make sure \ref{<legendname>} works:
+		\pgfplots@label{\pgfplots@createlegend@toname}{pgfplots@legend@to@name@}%
+		\endgroup
 	\fi
 }
 
+% Defines a new \label{#1}. When \ref{#1} is used, the code 
+% \csname #2#1\endcsname
+% will be invoked.
+\def\pgfplots@label#1#2{%
+	\begingroup
+	\edef\@currentlabel{%
+		\string\expandafter
+		\string\protect
+		\string\csname\space #2#1\string\endcsname
+	}%
+	\expandafter\label\expandafter{#1}%
+	\endgroup
+}%
+
+% this is deprecated. Use \ref{#1} instead.
 \def\pgfplotslegendfromname#1{%
 	\pgfplots@texdist@protect\pgfplotslegendfromname@{#1}%
 }%
@@ -3906,6 +3930,7 @@
 		\csname pgfplots@legend@to@name@#1\endcsname
 	}%
 }%
+% this is deprecated. Use \ref{#1} instead.
 \def\pgfplotscolorbarfromname#1{%
 	\pgfplots@texdist@protect\pgfplotscolorbarfromname@{#1}%
 }%
@@ -8111,11 +8136,15 @@
 	}%
 	\ifx\pgfplots@colorbar@toname\pgfutil@empty
 	\else
+		% finalize the 'colorbar to name' feature
 		\toks0=\expandafter{#1}%
 		\pgfplots@auxwrite{%
 			\noexpand\expandafter
 			\noexpand\gdef\noexpand\csname pgfplots@colorbar@to@name@\pgfplots@colorbar@toname\endcsname{\the\toks0}}%
 		\xdef#1{}% NOP.
+		% 
+		% make sure \ref{<colorbarname>} works:
+		\pgfplots@label{\pgfplots@colorbar@toname}{pgfplots@colorbar@toname}%
 	\fi
 }%
 \pgfkeysdef{/pgfplots/colorbar to name/at}{%
@@ -8738,11 +8767,8 @@
 		% 2. prepare \ref{#2} and \pageref{#2}:
 		%
 		% There are several nasty things to consider:
-		% a) macro expansion. I did not really understand what happens
-		% here... I only understand that it is enough if the new label
-		% makes it into the .aux file of latex. That is sufficient for
-		% me! So, I converted the label command to a string using the
-		% \meaning functionality.
+		% a) macro expansion. Use \string to allow a safe \write
+		% operation.
 		%
 		% b) \protect . If the resulting \ref{} command occurs within
 		% a "moving argument" like \caption or so, we need to use
@@ -8756,18 +8782,10 @@
 				\the\t@pgfplots@toka
 			}%
 		}%
-		% This here is the high-level implementation \ref{#2}.
-		% The \protect handles the cases of "moving arguments":
-		\edef\pgfplots@loc@TMPa{%
-			\noexpand\expandafter
-			\noexpand\protect
-			\noexpand\csname pgfplots@show@ref@#2\noexpand\endcsname
-		}%
-		\pgfplots@command@to@string{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPa}%
-		\global\let\pgfplots@glob@TMPb=\pgfplots@loc@TMPa
+		% create the \label command:
+		\let\label=\pgfplots@original@LaTeX@label
+		\pgfplots@label{#2}{pgfplots@show@ref@}%
 		\endgroup
-		\let\@currentlabel=\pgfplots@glob@TMPb
-		\pgfplots@original@LaTeX@label{#2}%
 	\else
 		\pgfplots@error{Can't create \string\label{#2}: it needs to be called after \string\addplot.}%
 	\fi
@@ -8845,6 +8863,9 @@
 % and #2 if not.
 \long\def\pgfplotsifinaxis#1#2{%
 	\pgfutil@ifundefined{pgfplots@is@in@axis}{#2}{#1}%
+}%
+
+\pgfutil@ifundefined{label}{\relax}{%
 }%
 
 %
