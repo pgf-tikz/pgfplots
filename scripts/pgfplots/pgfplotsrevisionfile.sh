@@ -10,6 +10,6 @@
 # This is optional and it doesn't hurt if you don't do it.
 
 echo '\def\pgfplotsrevision{%' > tex/generic/pgfplots/pgfplots.revision.tex
-git describe HEAD >> tex/generic/pgfplots/pgfplots.revision.tex
+git describe --tags HEAD >> tex/generic/pgfplots/pgfplots.revision.tex
 echo '}' >>  tex/generic/pgfplots/pgfplots.revision.tex
 exit 0

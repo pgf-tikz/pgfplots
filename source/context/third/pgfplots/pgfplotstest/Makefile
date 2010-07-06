@@ -1,4 +1,4 @@
 
 all:
-	texexec --once --pdf pgfplotstest
+	texexec --passon="--shell-escape"  --once --pdf pgfplotstest
 	for A in gnuplot/*.gnuplot; do gnuplot <$$A; done

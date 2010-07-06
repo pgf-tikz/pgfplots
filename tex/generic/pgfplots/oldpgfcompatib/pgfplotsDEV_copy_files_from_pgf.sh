@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 PGFDIR=~/code/tex/pgf_cvs/
 

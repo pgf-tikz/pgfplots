@@ -97,14 +97,14 @@
 				{\pgfqpointxy@orig{##1}{##2}}% 
 		}%
 	}%
-	\edef\pgfplotspointunitx{\pgf@x=\the\pgf@xx\space\pgf@y=\the\pgf@xy\space}%
-	\edef\pgfplotspointunity{\pgf@x=\the\pgf@yx\space\pgf@y=\the\pgf@yy\space}%
+	\edef\pgfplotspointunitx{\global\pgf@x=\the\pgf@xx\space\global\pgf@y=\the\pgf@xy\space}%
+	\edef\pgfplotspointunity{\global\pgf@x=\the\pgf@yx\space\global\pgf@y=\the\pgf@yy\space}%
 	\let\pgfplotsunitxlength=\pgfplots@x@veclength
 	\let\pgfplotsunitylength=\pgfplots@y@veclength
 	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
 	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
 	\ifpgfplots@threedim
-		\edef\pgfplotspointunitz{\pgf@x=\the\pgf@zx\space\pgf@y=\the\pgf@zy\space}%
+		\edef\pgfplotspointunitz{\global\pgf@x=\the\pgf@zx\space\global\pgf@y=\the\pgf@zy\space}%
 		\let\pgfplotsunitzlength=\pgfplots@z@veclength
 		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
 	\fi
@@ -937,7 +937,7 @@
 		\edef\pgfplots@loc@TMPa{#1}%
 		\expandafter\pgfplotspointouternormalvectorofaxis@\pgfplots@loc@TMPa\relax%
 		% \endgroup in \pgfplotspointouternormalvectorofaxis@.
-		\expandafter\xdef\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+		\expandafter\xdef\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\else
 		\csname pgfplotspointouternormalvectorofaxis@cache@#1\endcsname
 	\fi
@@ -1124,8 +1124,8 @@
 	%
 	% do not allow upside down labels:
 	\ifdim\pgf@x<0pt%   
-		\pgf@x=-\pgf@x%
-		\pgf@y=-\pgf@y%
+		\global\pgf@x=-\pgf@x%
+		\global\pgf@y=-\pgf@y%
 	\fi%
 	%
 	\pgf@ya=-\pgf@y%
@@ -1228,7 +1228,7 @@
 	%
 	% we apply the inverse CM onto it here:
 	\pgf@pos@transform\pgf@x\pgf@y
-	\edef\pgfplots@tmp@normaldir{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\edef\pgfplots@tmp@normaldir{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	% 
 	% Now:
 	% auto-determine the canonical (north, north east etc) anchor
@@ -1306,17 +1306,19 @@
 	\pgfqpointscale
 		{\csname pgfplotsunit#1invlength\endcsname}
 		{\csname pgfplotspointunit#1\endcsname}%
-	\pgf@pos@transform\pgf@x\pgf@y
+	\pgf@xa=\pgf@x 
+	\pgf@ya=\pgf@y
+	\pgf@pos@transform\pgf@xa\pgf@ya
 	%
 	\edef\pgfplots@LEQ{%
 	% solve linear system
-		{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@x}%
-		{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@y}%
+		{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@xa}%
+		{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@ya}%
 	}%
 	% 
 	% apply inverse matrix to right-hand-side (and compute RHS):
 	\pgf@sh@reanchor{#3}{center}%
-	\edef\pgfplots@loc@center{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\edef\pgfplots@loc@center{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
 		{\pgfplots@loc@center}%
 		{\pgf@sh@reanchor{#3}{\pgfplots@anchor}}%
@@ -1657,10 +1659,7 @@
 % - \csname pgfpmeta@#1@assign\endcsname{}
 % 	During the survey phase, this macro is expected to assign
 % 	\pgfplots@current@point@meta
-%	This method should prepare everything which is needed to invoke
-%	the postprocessors, i.e. it prepares the input for point meta
-%	transformations to [0,1000] or the scatter plot things. In other
-%	words: if it is a numeric input method, it should return a
+%	if it is a numeric input method, it should return a
 %	floating point number.
 %	It is allowed to return an empty string to say "there is no point
 %	meta".
@@ -1672,13 +1671,19 @@
 %		- \pgfplots@current@point@meta is ready for use:
 %		- EITHER a parsed floating point number 
 %		- OR an empty string,
-%		- OR a symbolic string (if #3=symbolic)
+%		- OR a symbolic string (if the issymbolic boolean is true)
 %	The default implementation is
 %	\let\pgfplots@current@point@meta=\pgfutil@empty
 %
 % - \csname pgfpmeta@#1@issymbolic\endcsname -> expands to either '1' or '0'
-% 		A numeric source will be processed numerically, i.e. the final map
-% 		to [0,1000] will be initialised and meta limits will be updated.
+% 		A numeric source will be processed numerically in float
+% 		arithmetics. Thus, the output of the @assign routine should be
+% 		a macro \pgfplots@current@point@meta in float format.
+%
+%		The output of a numeric point meta source will result in meta
+%		limit updates and the final map to [0,1000] will be
+%		initialised automatically.
+%
 % 		A symbolic input routine won't be processed.
 % 	Default is '0'
 %
@@ -1708,6 +1713,7 @@
 	\expandafter\def\csname pgfpmeta@#1@initfor\endcsname##1{}%
 	\expandafter\def\csname pgfpmeta@#1@issymbolic\endcsname{0}%
 	\expandafter\def\csname pgfpmeta@#1@explicitinput\endcsname{0}%
+	\expandafter\def\csname pgfpmeta@#1@activate\endcsname{}%
 	\edef\pgfplotsdeclarepointmetasource@{#1}%
 	\pgfqkeys{/pgfplots/@declare point meta src}{#2}%
 }%
@@ -1716,6 +1722,10 @@
 		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @assign\endcsname{#1}},%
 	initfor/.code=
 		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @initfor\endcsname##1{#1}},%
+	% Called during the survey phase before the first 'assign' call.
+	% It is usually empty.
+	activate/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @activate\endcsname{#1}},%
 	issymbolic/.code=
 		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @issymbolic\endcsname{#1}},%
 	explicitinput/.code=
@@ -1787,6 +1797,48 @@
 	},
 }%
 \pgfkeyssetvalue{/pgfplots/point meta/expr}{}%
+
+\pgfplotsdeclarepointmetasource{f(x)}{%
+	activate={%
+		\ifpgfplots@curplot@threedim
+			\def\pgfplotspointmetainputhandler{z}%
+		\else
+			\def\pgfplotspointmetainputhandler{y}%
+		\fi
+		\csname pgfpmeta@\pgfplotspointmetainputhandler @activate\endcsname
+	},
+}%
+
+
+\pgfplotsdeclarepointmetasource{TeX code}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\pgfmathfloatparsenumber{\pgfplotspointmeta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+}%
+\pgfplotsdeclarepointmetasource{TeX code symbolic}{%
+	assign={%
+		\begingroup
+		\let\pgfplotspointmeta=\pgfutil@empty
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/code/.@cmd}{}%
+		\let\pgfplots@current@point@meta=\pgfplotspointmeta
+		\pgfmath@smuggleone\pgfplots@current@point@meta
+		\endgroup
+	},%
+	initfor={%
+		\pgfkeysdef{/pgfplots/point meta/code}{#1}%
+	},
+	issymbolic=1%
+}%
+\pgfkeysdef{/pgfplots/point meta/code}{}%
 
 % Internal stream methods.
 %
@@ -2524,6 +2576,7 @@
 			\pgfmathfloatcreate{0}{0.0}{0}%
 		\fi
 	}%
+	\csname pgfpmeta@\pgfplotspointmetainputhandler @activate\endcsname
 	%
 	% %%%%%%%%%%%%%%
 	%
@@ -2598,6 +2651,14 @@
 			\global\let\pgfplots@axiswide@metamax=\pgfmathresult
 		\fi
 	\fi
+	\if1\pgfplots@colorbar@set@src% this 0|1 switch is set in \pgfplots@start@plot@with@behavioroptions
+		\ifx\pgfplots@metamin\pgfutil@empty
+			\pgfplotsthrow{no such element}{\pgfplots@loc@TMPa}{Sorry, `colorbar source' can't be processed: the current \string\addplot\space command doesn't have point meta. Ignoring it.}\pgfeov%
+		\else
+			\global\let\pgfplots@colorbar@src@metamin=\pgfplots@metamin
+			\global\let\pgfplots@colorbar@src@metamax=\pgfplots@metamax
+		\fi
+	\fi
 	\ifpgfplots@autocompute@all@limits
 		\global\let\pgfplots@data@xmin=\pgfplots@xmin
 		\global\let\pgfplots@data@xmax=\pgfplots@xmax
@@ -2658,6 +2719,15 @@
 			{% precommand(s):
 				\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 				\noexpand\def\noexpand\plotnum{\the\pgfplots@numplots}%
+				%
+				% store \plotnumofactualtype
+				\noexpand\def\noexpand\plotnumofactualtype{\numplotsofactualtype}%
+				% ... and make sure that it 
+				% remains the same type even if some plot handler uses
+				% other plot handlers internally:
+				\noexpand\def\noexpand\pgfplotsplothandlername@actual{\pgfplotsplothandlername@actual}%
+				\noexpand\let\noexpand\numplotsofactualtype\noexpand\pgfplots@numplotsofactualtype@duringplot
+				%
 				\noexpand\def\noexpand\numcoords{\pgfplots@current@point@coordindex}%
 				% \pgfplots@current@point@coordindex will always contain the current index.
 				% Maybe overwritten if not provided using \c@pgfplots@coordindex.
@@ -2815,7 +2885,7 @@
 						\message{PGFPlots: Scanline length is \pgfplotsscanlinelength.}%
 					\else
 						\ifnum\pgfplotsscanlinelength=-2
-							\message{PGFPlots: Scanline length could not be determined as multiple, different scan line lengths have been found.}%
+							\message{PGFPlots: Scanline length could not be determined since multiple, different scan line lengths have been found.}%
 						\else
 							\message{PGFPlots: No end-of-scanline marker found in input stream.}%
 						\fi
@@ -4377,11 +4447,11 @@
 	\pgfplots@PREPARE@COORD@STREAM{#4}%
 	\pgfplots@coord@stream@start
 	\pgfplotsscanlinelengthinitzero
-	\pgfplots@logfileopen{#3}%
 	\openin\r@pgfplots@reada=#3
 	\ifeof\r@pgfplots@reada
 		\pgfplots@error{sorry, plot file{#3} could not be opened}%
 	\else
+		\pgfplots@logfileopen{#3}%
 		\let\pgfplots@current@point@x@error=\pgfutil@empty
 		\let\pgfplots@current@point@y@error=\pgfutil@empty
 		\let\pgfplots@current@point@z@error=\pgfutil@empty
@@ -4397,6 +4467,7 @@
 				\let\pgfplots@addplotimpl@file@parsesingle=\pgfplots@addplotimpl@file@parsesingle@twodim@andmeta
 			\fi
 		\fi
+		\pgfplotstableinstallignorechars%
 		\pgfplots@addplotimpl@file@readall
 	\fi
 	\pgfplotsscanlinelengthcleanup
@@ -4557,13 +4628,18 @@
 }%
 
 \def\pgfplots@addplotimpl@table@getopts#1[#2]{%
+	% set options outside of the following group.
+	% They may contain behavior options.
+	\pgfplots@addplotimpl@table@installkeypath
+	\pgfplotstableset{#2}%
+	%
 	\pgfutil@ifnextchar s{%
 		\pgfplots@addplotimpl@table@fromshell{#1}{#2}%
 	}{%
 		\pgfutil@ifnextchar f{%
-			\pgfplots@addplotimpl@table@fromstructure{#1}{#2}%
+			\pgfplots@addplotimpl@table@fromstructure@gobble@space{#1}{#2}%
 		}{%
-			\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+			\pgfplots@addplotimpl@table@fromfile@gobble@space{#1}{#2}%
 		}%
 	}%
 }
@@ -4584,15 +4660,42 @@
 % \addplot[#1] table[#2] from {#3} #4;
 %
 % #1: arguments to \addplot[...]
-% #2: arguments to table[...]
+% #2: arguments to table[...] (already processed!)
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
+\long\def\pgfplots@addplotimpl@table@fromstructure@gobble@space#1#2from{%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplots@addplotimpl@table@fromstructure{#1}{#2}from%
+	}%
+}%
+
+\def\pgfplots@addplot@table@fromstructure@preparecolname#1#2#3#4{%
+	\pgfkeysgetvalue{/pgfplots/table/#1}{\pgfplots@loc@TMPa}%
+	%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/#1 index}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplotstablegetcolumnnamebyindex\pgfplots@loc@TMPa\of#2\to\pgfplots@loc@TMPa
+		\fi
+	\fi
+	\let#3=\pgfplots@loc@TMPa
+	%
+	% modify \pgfplots@plot@tbl@{x,y,z,meta} if there are
+	% corresponding '#1 expr' statements:
+	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for{#1}{#3}{#4}%
+}
+
+% Invokes `#1' if the command is invoked within 
+%   \addplot table {<\macro>};
+% and `#2' if not.
+\def\pgfplotsifinaddplottablestruct#1#2{%
+	\pgfutil@ifundefined{pgfplots@plot@tbl@meta}{#2}{#1}%
+}%
+
 \long\def\pgfplots@addplotimpl@table@fromstructure#1#2from#3#4;{\pgfplots@addplotimpl@table@startprocessing{#1}{#2}{#3}{#4}}%
 % \addplot[#1] table[#2] from {#3} #4 ;
 \long\def\pgfplots@addplotimpl@table@fromstructure@#1#2#3#4{%
-	% set options here. They may contain behavior options!
-	\pgfplots@addplotimpl@table@installkeypath
-	\pgfplotstableset{#2}%
 	\begingroup
 	\pgfplotstablegetscanlinelength{#3}{\pgfplotsscanlinelength}%
 	% FIXME : this thing here has runtime O(N^2) !
@@ -4600,57 +4703,28 @@
 	%
 	% well, for a lot of columns which are used in different contexts
 	% and few rows, this here IS more efficient.
-	\pgfplotstablecopy#3\to\pgfplots@table
-	\pgfkeysgetvalue{/pgfplots/table/x}{\pgfplots@plot@tbl@x}%
-	\pgfkeysgetvalue{/pgfplots/table/x index}{\pgfplots@plot@tbl@xindex}%
-	\pgfkeysgetvalue{/pgfplots/table/y}{\pgfplots@plot@tbl@y}%
-	\pgfkeysgetvalue{/pgfplots/table/y index}{\pgfplots@plot@tbl@yindex}%
-	\pgfkeysgetvalue{/pgfplots/table/z}{\pgfplots@plot@tbl@z}%
-	\pgfkeysgetvalue{/pgfplots/table/z index}{\pgfplots@plot@tbl@zindex}%
-	\pgfkeysgetvalue{/pgfplots/table/meta}{\pgfplots@plot@tbl@meta}%
-	\pgfkeysgetvalue{/pgfplots/table/meta index}{\pgfplots@plot@tbl@metaindex}%
 	%
-	\ifx\pgfplots@plot@tbl@x\pgfutil@empty
-		\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@xindex\of\pgfplots@table\to\pgfplots@plot@tbl@x
-	\fi
-	\ifx\pgfplots@plot@tbl@y\pgfutil@empty
-		\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@yindex\of\pgfplots@table\to\pgfplots@plot@tbl@y
-	\fi
+	\pgfplots@addplot@table@fromstructure@preparecolname{x}{#3}\pgfplots@plot@tbl@x\columnx
+	\pgfplots@addplot@table@fromstructure@preparecolname{y}{#3}\pgfplots@plot@tbl@y\columny
 	\ifpgfplots@curplot@threedim
-		\ifx\pgfplots@plot@tbl@z\pgfutil@empty
-			\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@zindex\of\pgfplots@table\to\pgfplots@plot@tbl@z
-		\fi
+	\pgfplots@addplot@table@fromstructure@preparecolname{z}{#3}\pgfplots@plot@tbl@z\columnz
 	\fi
-	\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
-		\ifx\pgfplots@plot@tbl@metaindex\pgfutil@empty
-		\else
-			\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@metaindex\of\pgfplots@table\to\pgfplots@plot@tbl@meta
-		\fi
-	\fi
+	\pgfplots@addplot@table@fromstructure@preparecolname{meta}{#3}\pgfplots@plot@tbl@meta\columnmeta
 	%
 	%
 	% high level user interface functions:
 	\let\lineno=\coordindex% is the same here
 	%
-	% modify \pgfplots@plot@tbl@{x,y,z,meta} if there are
-	% corresponding '#1 expr' statements:
-	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for x\columnx%
-	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for y\columny%
-	\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {meta}\columnmeta%
+	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@x}\of#3\to\addplot@tbl@x
+	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@y}\of#3\to\addplot@tbl@y
 	\ifpgfplots@curplot@threedim
-		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for z\columnz%
-	\fi
-	%
-	\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@x\of\pgfplots@table\to\addplot@tbl@x
-	\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@y\of\pgfplots@table\to\addplot@tbl@y
-	\ifpgfplots@curplot@threedim
-		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@z\of\pgfplots@table\to\addplot@tbl@z
+		\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@z}\of#3\to\addplot@tbl@z
 	\fi
 	%
 	\let\addplot@tbl@meta=\pgfutil@empty
 	\ifx\pgfplots@plot@tbl@meta\pgfutil@empty
 	\else
-		\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@meta\of\pgfplots@table\to\addplot@tbl@meta
+		\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@meta}\of#3\to\addplot@tbl@meta
 	\fi
 	%
 	%
@@ -4658,57 +4732,26 @@
 	\let\addplot@tbl@error@y=\pgfutil@empty
 	\let\addplot@tbl@error@z=\pgfutil@empty
 	\ifpgfplots@errorbars@enabled
-		\pgfkeysgetvalue{/pgfplots/table/x error index}\pgfplots@plot@tbl@error@xindex
-		\pgfkeysgetvalue{/pgfplots/table/x error}\pgfplots@plot@tbl@error@x
-		\pgfkeysgetvalue{/pgfplots/table/y error index}\pgfplots@plot@tbl@error@yindex
-		\pgfkeysgetvalue{/pgfplots/table/y error}\pgfplots@plot@tbl@error@y
-		\pgfkeysgetvalue{/pgfplots/table/z error index}\pgfplots@plot@tbl@error@zindex
-		\pgfkeysgetvalue{/pgfplots/table/z error}\pgfplots@plot@tbl@error@z
-		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
-			\ifx\pgfplots@plot@tbl@error@xindex\pgfutil@empty
-			\else
-				\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@xindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@x
-			\fi
-		\fi
-		%
-		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
-			\ifx\pgfplots@plot@tbl@error@yindex\pgfutil@empty
-			\else
-				\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@yindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@y
-			\fi
-		\fi
-		%
+		\pgfplots@addplot@table@fromstructure@preparecolname{x error}{#3}\pgfplots@plot@tbl@error@x\columnerrorx
+		\pgfplots@addplot@table@fromstructure@preparecolname{y error}{#3}\pgfplots@plot@tbl@error@y\columnerrory
 		\ifpgfplots@curplot@threedim
-			\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
-				\ifx\pgfplots@plot@tbl@error@zindex\pgfutil@empty
-				\else
-					\pgfplotstablegetcolumnnamebyindex\pgfplots@plot@tbl@error@zindex\of\pgfplots@table\to\pgfplots@plot@tbl@error@z
-				\fi
-			\fi
+			\pgfplots@addplot@table@fromstructure@preparecolname{z error}{#3}\pgfplots@plot@tbl@error@z\columnerrorz
 		\else
 			\let\pgfplots@plot@tbl@error@z=\pgfutil@empty
-		\fi
-		%
-		% modify \pgfplots@plot@tbl@{x error,y error,z error} if there are
-		% corresponding '#1 expr' statements:
-		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {x error}\columnerrorx%
-		\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {y error}\columnerrory%
-		\ifpgfplots@curplot@threedim
-			\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for {z error}\columnerrorz%
 		\fi
 		%
 		% now: load the columns:
 		\ifx\pgfplots@plot@tbl@error@x\pgfutil@empty
 		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@x\of\pgfplots@table\to\addplot@tbl@error@x
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@error@x}\of#3\to\addplot@tbl@error@x
 		\fi
 		\ifx\pgfplots@plot@tbl@error@y\pgfutil@empty
 		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@y\of\pgfplots@table\to\addplot@tbl@error@y
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@error@y}\of#3\to\addplot@tbl@error@y
 		\fi
 		\ifx\pgfplots@plot@tbl@error@z\pgfutil@empty
 		\else
-			\pgfplotstablegetcolumnbyname\pgfplots@plot@tbl@error@z\of\pgfplots@table\to\addplot@tbl@error@z
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@error@z}\of#3\to\addplot@tbl@error@z
 		\fi
 		%
 	\else
@@ -4780,13 +4823,19 @@
 % 	temporary name).
 % 	The old value of \pgfplots@plot@tbl@#1 is available as column
 % 	alias.
-% 	the high level user interface command '#2' will be set correctly.
-\def\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for#1#2{%
+% 	the high level user interface command '#3' will be set correctly.
+%
+% #1: the key name of the current entity, for example 'x' for
+% '/pgfplots/table/x'
+% #2: the low level column name representing the data which is already
+% defined somehow
+% #3: a high level user interface command
+\def\pgfplots@addplotimpl@table@fromstructure@prepareexpr@for#1#2#3{%
 	% get old column name into a register:
-	\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname pgfplots@plot@tbl@#1\endcsname}%
+	\t@pgfplots@tokb=\expandafter{#2}%
 	%
 	% high level user interface command:
-	\edef#2{\noexpand\thisrow{\the\t@pgfplots@tokb}}%
+	\edef#3{\noexpand\thisrow{\the\t@pgfplots@tokb}}%
 	%
 	\pgfkeysgetvalue{/pgfplots/table/#1 expr}{\pgfplots@loc@TMPa}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -4807,7 +4856,7 @@
 		%
 		% tell `plot table' which column should be used for '#1': the
 		% temporary column.
-		\expandafter\def\csname pgfplots@plot@tbl@#1\endcsname{#1expr@tempcol}%
+		\def#2{#1expr@tempcol}%
 	\fi
 }%
 
@@ -4820,31 +4869,30 @@
 % number of rows is less than about 110000).
 %
 % #1: arguments to \addplot[...]
-% #2: arguments to table[...]
+% #2: arguments to table[...] (already processed!)
 % #3: the argument of plot table{...}
 % #4: trailing path arguments after plot table{...}#4;
 %
+\long\def\pgfplots@addplotimpl@table@fromfile@gobble@space#1#2{%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplots@addplotimpl@table@fromfile{#1}{#2}%
+	}%
+}%
 \long\def\pgfplots@addplotimpl@table@fromfile#1#2#3#4;{\pgfplots@addplotimpl@table@startprocessing{#1}{#2}{#3}{#4}}%
 % \addplot[#1] table[#2] {#3} {#4};
 \long\def\pgfplots@addplotimpl@table@fromfile@#1#2#3#4{%
-	% set options outside of the following group.
-	% They may contain behavior options.
-	\pgfplots@addplotimpl@table@installkeypath
-	\pgfplotstableset{#2}%
-	%--------------------------------------------------
-	% \begingroup
-	% \pgfplotstableset{#2}%
-	% \pgfplotstableread{#3}\pgfplots@table
-	% \pgfplots@addplotimpl@table@fromstructure{#1}{}from{\pgfplots@table}{#4};%
-	% \endgroup
-	%-------------------------------------------------- 
-	%\begingroup
+	\if1\pgfplots@addplotimpl@readcompletely@auto
+		\pgfplots@addplotimpl@table@check@createonuse@for{x}%
+		\pgfplots@addplotimpl@table@check@createonuse@for{y}%
+		\ifpgfplots@curplot@threedim
+			\pgfplots@addplotimpl@table@check@createonuse@for{z}%
+		\fi
+		\pgfplots@addplotimpl@table@check@createonuse@for{meta}%
+	\fi
+	%
 	\ifpgfplots@addplotimpl@readcompletely
 		\pgfplotstableread{#3}\pgfplots@table
 		\pgfplots@addplotimpl@table@fromstructure@{#1}{}{\pgfplots@table}{#4}%
-	%	\pgfmath@smuggleone\pgfplotsscanlinelength
-	%	\endgroup
-	%	\pgfplotsscanlinedisablechanges
 	\else
 		\pgfplotsapplistXXglobalnewempty
 		%
@@ -4893,30 +4941,15 @@
 			\pgfplotstableread*{#3} to listener\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED
 		\fi
 		\pgfplots@coord@stream@end
-		% FIXME : i'd be glad if I could save this group: check why not
-		% perhaps because \pgfplotstableread uses several pgf
-		% variables?
-		%\pgfmath@smuggleone\pgfplotsscanlinelength
-		%\endgroup
-		%\pgfplotsscanlinedisablechanges
-		%
-		%\pgfplots@PREPARE@COORD@STREAM{#4}%
-		%\pgfplotsapplistXXgloballet\pgfplots@coordlist
-		%\pgfplotsapplistXXglobalclear
-		%\ifpgfplots@errorbars@enabled
-		%	\pgfplots@plot@coords@mathparserfalse
-		%	\ifpgfplots@curplot@threedim
-		%		\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@coordlist}%%
-		%	\else
-		%		\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@coordlist}%%
-		%	\fi
-		%\else
-			% this here is the usual case; it is faster than the error bar
-			% stuff.
-		%	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coordlist}%
-		%\fi
 	\fi
 }
+\def\pgfplots@addplotimpl@table@check@createonuse@for#1{%
+	\pgfkeysgetvalue{/pgfplots/table/#1}\pgfplots@addplotimpl@table@check@createonuse@for@
+	\expandafter\pgfplotstableifiscreateonuse\expandafter{\pgfplots@addplotimpl@table@check@createonuse@for@}{%
+		\pgfplots@addplotimpl@readcompletelytrue
+	}{%
+	}%
+}%
 \def\pgfplots@addplotimpl@table@fromfile@listener@COLLECTNORMALIZED{%
 	\pgfplots@addplotimpl@table@fromfile@listener@
 	\pgfplots@coord@stream@coord
@@ -5173,6 +5206,18 @@
 	\def\pgfplots@current@point@coordindex{\the\c@pgfplots@coordindex}% can be used inside of coordinate filters.
 	\def\coordindex{\pgfplots@current@point@coordindex}% valid inside of \addplot
 	\def\pgfplots@addplot@running{1}%
+	\def\pgfplots@colorbar@set@src{0}%
+	\pgfkeysdef{/pgfplots/colorbar source}{%
+		\pgfplotsutilifstringequal{##1}{true}{%
+			\def\pgfplots@colorbar@set@src{1}%
+		}{%
+			\pgfplotsutilifstringequal{##1}{false}{%
+				\def\pgfplots@colorbar@set@src{0}%
+			}{%
+				\pgfplots@error{Sorry, I don't know the value `colorbar source={##1}' and I am going to ignore it. Maybe you misspelled it?}%
+			}%
+		}%
+	}%
 	%
 	% these styles may contain behavior options (error bars,
 	% samples,... ) activate them!
@@ -5193,9 +5238,13 @@
 	% need to change the .unknown handler. See the available
 	% compatibility styles!
 	%
-	\pgfkeysdef{/pgfplots/.unknown}{%
+	% ATTENTION: starting with more recent versions (since the
+	% unstable version), I will also set /tikz keys here! This should
+	% work. It is well tested for the unstable... I hope it will also
+	% work for the master branch. 
+	%\pgfkeysdef{/pgfplots/.unknown}{%
 %\message{In \string\addplot[#1]: I am silently ignoring key `\pgfkeyscurrentkeyRAW' during the preparation phase.}%
-	}%
+	%}%
 	%
 	% it is possible that '#1' contains 'forget plot'. So, we need to
 	% set the options before checking
@@ -5213,6 +5262,7 @@
 	\ifpgfplots@usefpu
 		\pgfkeys{/pgf/fpu=true}%
 	\fi
+	\pgfplots@countplots@init
 	%
 	% hooks:
 	\pgfkeysvalueof{/pgfplots/execute at begin plot@@}%
@@ -5273,12 +5323,75 @@
 \def\pgfplots@end@plot{%
 	\ifpgfplots@curplot@isirrelevant
 	\else
-		\global\advance\pgfplots@numplots by1\relax%
+		\pgfplots@countplots@advance
 	\fi
 	\pgfkeysvalueof{/pgfplots/execute at end plot@@}%
 	\pgfkeysvalueof{/pgfplots/execute at end plot}%
 	\endgroup%<-- close the \begingroup of \pgfplots@addplotimpl@plot@withoptions
 }
+
+% \numplotsofactualtype
+% Expands to the number of plots which have been seen in the current
+% axis and which have the same type as the actual plot handler. 
+%
+% See also \plotnumofactualtype
+\def\pgfplots@numplotsofactualtype{%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername}{%
+		0%
+	}{%
+		\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername\endcsname
+	}%
+}%
+% use this only inside of \addplot or during the visualization phase
+% of a plot.
+\def\pgfplots@numplotsofactualtype@duringplot{%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername@actual}{%
+		0%
+	}{%
+		\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname
+	}%
+}%
+%
+% This macro may be overwritten inside of the \tikz@plot@handler
+% macro. This here is just the default implementation.
+%
+% @INTERNAL HINT: I think the unstable version has another
+% implementation. make sure it's not overwritten!
+\def\pgfplotsplothandlername{\meaning\tikz@plot@handler}%
+%
+\def\pgfplots@countplots@init{%
+%
+	%
+	\pgfplotssurveyphase@setactiveplothandlers
+	%
+	\let\numplotsofactualtype=\pgfplots@numplotsofactualtype@duringplot
+	%
+	% Store this name during the \addplot command. Thus, even if the
+	% plot handler changes, we will keep this one.
+	\edef\pgfplotsplothandlername@actual{\pgfplotsplothandlername}%
+	%
+	\pgfutil@ifundefined{pgfplotssurveyphase@setactiveplothandlers@\pgfplotsplothandlername@actual}{%
+		% oh. This is the first time \pgfplotsplothandlername was used
+		% in this axis. Set its counter to 0 and remember that it has
+		% been initialised.
+		\expandafter\xdef\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname{0}%
+		\t@pgfplots@toka=\expandafter{\pgfplotssurveyphase@setactiveplothandlers}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlername@actual}%
+		\xdef\pgfplotssurveyphase@setactiveplothandlers{%
+			\the\t@pgfplots@toka
+			\noexpand\expandafter\noexpand\def\noexpand\csname pgfplotssurveyphase@setactiveplothandlers@\the\t@pgfplots@tokb\noexpand\endcsname{1}%
+		}%
+		\expandafter\def\csname pgfplotssurveyphase@setactiveplothandlers@\the\t@pgfplots@tokb\endcsname{1}%
+	}{%
+		% ok. do nothing.
+	}%
+	%
+}%
+\def\pgfplots@countplots@advance{%
+	\global\advance\pgfplots@numplots by1\relax%
+	%
+	\expandafter\pgfplotsutil@advancestringcounter@global\csname c@pgfplots@numplotsofactualtype@\pgfplotsplothandlername@actual\endcsname
+}%
 
 % \addplot[#1] [#2] {#3} #4;
 \long\def\pgfplots@addplotimpl@coordinates#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
@@ -5409,6 +5522,16 @@
 	% Init the plot handlers:
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	%
+	\ifpgfplots@clip@limits
+	\else
+		% "clip marker paths=true" actually doesn't checks anything --
+		% it leaves the checks to the clip path. But since there is no
+		% clip path, it is adequate to use it here:
+		\pgfplots@clip@marker@pathstrue
+	\fi
+	%
+	%
 	\def\pgfplots@loc@TMPa{0}% <-- if (collectmark positions)
 	\ifpgfplots@scatterplotenabled
 		\def\pgfplots@loc@TMPa{1}% collect mark positions even if 'mark=none'! scatter might not even use markers.
@@ -5521,29 +5644,33 @@
 			\ifpgfplots@curplot@threedim
 				\E\pgf@yb=\E\pgfplots@current@point@z pt %
 			\fi
-			\E\ifdim\E\pgf@xa<\E\pgfplots@xmin@reg
-			\E\else
-				\E\ifdim\E\pgf@xa>\E\pgfplots@xmax@reg
+			\ifpgfplots@clip
+				\E\ifdim\E\pgf@xa<\E\pgfplots@xmin@reg
 				\E\else
-					\E\ifdim\E\pgf@ya<\E\pgfplots@ymin@reg
+					\E\ifdim\E\pgf@xa>\E\pgfplots@xmax@reg
 					\E\else
-						\E\ifdim\E\pgf@ya>\E\pgfplots@ymax@reg
+						\E\ifdim\E\pgf@ya<\E\pgfplots@ymin@reg
 						\E\else
-							\ifpgfplots@curplot@threedim
-								\E\ifdim\E\pgf@yb<\E\pgfplots@zmin@reg
-								\E\else
-									\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
+							\E\ifdim\E\pgf@ya>\E\pgfplots@ymax@reg
+							\E\else
+								\ifpgfplots@curplot@threedim
+									\E\ifdim\E\pgf@yb<\E\pgfplots@zmin@reg
 									\E\else
-										\pgfplots@visualize@performserizalization
+										\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
+										\E\else
+											\pgfplots@visualize@performserizalization
+										\E\fi
 									\E\fi
-								\E\fi
-							\else
-								\pgfplots@visualize@performserizalization
-							\fi
+								\else
+									\pgfplots@visualize@performserizalization
+								\fi
+							\E\fi
 						\E\fi
 					\E\fi
 				\E\fi
-			\E\fi
+			\else
+				\pgfplots@visualize@performserizalization
+			\fi
 		\fi
 		\E\pgfplotstreampoint{}% it will simply take \pgf@x and \pgf@y!
 		\advance\c@pgfplots@coordindex by1
@@ -5990,7 +6117,7 @@
 	\fi
 	\xdef\pgfplots@ZERO@x{\the\pgf@x}%
 	\xdef\pgfplots@ZERO@y{\the\pgf@y}%
-	\xdef\pgfplotspointaxisorigin{\noexpand\pgf@x=\pgfplots@ZERO@x\space\noexpand\pgf@y=\pgfplots@ZERO@y\space}%
+	\xdef\pgfplotspointaxisorigin{\noexpand\global\pgf@x=\pgfplots@ZERO@x\space\noexpand\global\pgf@y=\pgfplots@ZERO@y\space}%
 }%
 
 
@@ -6399,7 +6526,7 @@
 		\fi
 		% PREPARE THE STREAM PROCESSING:
 		\def\pgfplots@plothandler@unbounded@visualize@jump{%
-			\pgfplotstreampoint{\pgf@x=-16000.0pt \pgf@y=-16000.0pt }%
+			\pgfplotstreampoint{\global\pgf@x=-16000.0pt \global\pgf@y=-16000.0pt }%
 		}%
 		\let\pgfplotsplothandlermesh@check@unbounded=\pgfplotsplothandlermesh@check@unbounded@setbool
 		\if\pgfplotsplothandlermesh@ONEDIMMODE1%
@@ -6614,7 +6741,7 @@
 		\if\pgfplotsplothandlermesh@zbuffer@choice4%
 			% z buffer=sort:
 			% process the z buffer:
-			\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
+			\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
 			\pgfkeysdef{/pgfplots/array/unscope pre}{%
 				\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
 					\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
@@ -6699,7 +6826,7 @@
 \def\pgfplotsplothandlermesh@shader@interp@transpose@finish{%
 	% Now, "execute" each row vector:
 	\def\pgfplotsplothandlermesh@shader@interp@next##1##2##3{%
-		\pgfplotslibrarysurfstreamcoord{\pgf@x=##1 \pgf@y=##2 }{##3}%
+		\pgfplotslibrarysurfstreamcoord{\global\pgf@x=##1 \global\pgf@y=##2 }{##3}%
 	}%
 	\c@pgfplots@scanlineindex=0
 	\pgfutil@loop
@@ -6755,12 +6882,12 @@
 % #2: projected y coord
 % #3: per point meta (if any)
 \def\pgfplotsplothandlermesh@unpack@corner#1#2#3{%
-	\pgf@x=#1\relax
-	\pgf@y=#2\relax
+	\global\pgf@x=#1\relax
+	\global\pgf@y=#2\relax
 }%
 \def\pgfplotsplothandlermesh@unpack@mean@accum#1#2#3{%
-	\pgf@x=#1\relax
-	\pgf@y=#2\relax
+	\global\pgf@x=#1\relax
+	\global\pgf@y=#2\relax
 	\def\pgfplots@current@point@meta{#3}%
 	\pgfplots@perpointmeta@trafo@APPLY
 	\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
@@ -6856,7 +6983,7 @@
 				\else
 					\pgfplotsarrayresize\pgfplots@zbuffer@local{\c@pgfplots@scanlineindex}%
 				\fi
-				\pgfkeyslet{/pgfplots/array/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
+				\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
 				\pgfkeysdef{/pgfplots/array/unscope pre}{%
 					\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
 					\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%

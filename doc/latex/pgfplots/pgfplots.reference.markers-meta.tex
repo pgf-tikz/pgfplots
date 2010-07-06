@@ -560,7 +560,7 @@ The usage of the result \meta{\textbackslash macro} is a little bit low--level.
 \begin{pgfplotskeylist}{cycle list=\marg{list},cycle list name=\marg{\textbackslash macro}}
 Allows to specify a list of plot specifications which will be used for each \hbox{|\addplot|}-command without explicit plot specification. Thus, the currently active |cycle list| will be used if you write either |\addplot+|\oarg{keys}| ...;| or if you \emph{don't} use square brackets as in |\addplot|\oarg{explicit plot specification}| ...;|. 
 
-The list element with index~$i$ will be chosen where~$i$ is the index of the current |\addplot| command. This indexing does also include plot commands which don't use the |cycle list|.
+The list element with index~$i$ will be chosen where~$i$ is the index of the current |\addplot| command (see also the |cycle list shift| key which allows to use $i+n$ instead). This indexing does also include plot commands which don't use the |cycle list|.
 
 There are several possibilities to change the currently active |cycle list|:
 \begin{enumerate}
@@ -925,7 +925,7 @@ In this case, the \emph{last} entry also needs a terminating `|\\|', but one can
 \begin{axis}[
 	title={Cycle 2 marks between successive plots, then colors},
 	cycle multi list={%
-		blue,red\nextlist
+		color list\nextlist
 		[2 of]mark list
 	},
 	samples=3,
@@ -947,6 +947,20 @@ In this case, the \emph{last} entry also needs a terminating `|\\|', but one can
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{cycle list shift=\marg{integer} (initially empty)}
+	Allows to \emph{shift} the index into the |cycle list|. If \meta{integer} is $n$, the list element $i+n$ will be taken instead of the $i$'th one. Remember that $i$ is the index of the current |\addplot| command (starting with~$0$).
+
+	Since a |cycle list| is queried \emph{immediately} when |\addplot| (or |\addplot+|) is called, you can adjust the |cycle list shift| for selected plots:
+\begin{codeexample}[code only]
+\pgfplotsset{cycle list shift=3}
+\addplot ....
+
+\pgfplotsset{cycle list shift=-1}
+\addplot ....
+\end{codeexample}
+	\paragraph{Special case:} If the result is negative, $i+n <0$, the list index $-(i+n)$ will be taken. For example, |cycle list shift=-10| and $i<10$ will result in list index $10-i$. Note that you can use |reverse legend| to reverse legends, so this feature is probably never needed.
 \end{pgfplotskey}
 
 \subsubsection{Axis Background}
@@ -1086,18 +1100,22 @@ A further common idea is the use of color maps: if the point meta data is in the
 		
 		Currently, this choice can only be used for scatter plots.
 
-		\item[\declare{\meta{expression}}] This choice finally allows to compute point meta data using a mathematical expression. The \meta{expression} may depend on |x|, |y|, |z| which yield the current $x$, $y$ or $z$ coordinate, respectively. The coordinates are completely processed (transformations, logs) as mentioned above for the choice |x|. Furthermore, the \meta{expression} may depend on commands which are valid during |\addplot| like |\plotnum| or |\coordindex| (see section~\ref{pgfplots:misc} for details). Computations are performed using the floating point unit of \PGF, and all supported arithmetical operations can be used. 
+		\item[\normalfont\declare{\meta{expression}}] This choice allows to compute point meta data using a mathematical expression. The \meta{expression} may depend on |x|, |y|, |z| which yield the current $x$, $y$ or $z$ coordinate, respectively. The coordinates are completely processed (transformations, logs) as mentioned above for the choice |x|. Furthermore, the \meta{expression} may depend on commands which are valid during |\addplot| like |\plotnum| or |\coordindex| (see section~\ref{pgfplots:misc} for details). Computations are performed using the floating point unit of \PGF, and all supported arithmetical operations can be used. 
 		
-		In essence, the \meta{expression} may depend on everything which is known to all |\addplot| commands: the $x$, $y$ and (if any) $z$ coordinates. In addition, it may depend upon |rawx|, |rawy| or |rawz|. These three expressions yield the unprocessed $x$, $y$ or $z$ value as it has been found in the input stream (no logs, no user transformations). If used together with |plot table|, you may also access other table columns (for example with |\thisrow|\marg{colname}).
+		In essence, the \meta{expression} may depend on everything which is known to all |\addplot| commands: the $x$, $y$ and (if any) $z$ coordinates. In addition, it may depend upon |rawx|, |rawy| or |rawz|. These three expressions yield the unprocessed $x$, $y$ or $z$ value as it has been found in the input stream (no logs, no user transformations)%
+		\footnote{%
+		 In rare circumstances, it might be interesting to apply a math expression to another source of point meta (one of the other choices. To this end, the \meta{expression} is checked after the other possible choices have already been evaluated. In other words, the statement \texttt{point meta=explicit, point meta=meta*meta+3} will evaluate the expression with |meta| set to whatever data has been provided explicitly.}.
+		If used together with |plot table|, you may also access other table columns (for example with |\thisrow|\marg{colname}).
+
+		\item[\normalfont\declaretext{TeX code}\texttt{=}\meta{code}] A rather low level choice which allows to provide \TeX\ \meta{code} to compute a numerical value. The \meta{code} should define the macro |\pgfplotspointmeta|. It is evaluated in a locally scoped environment (it's local variables are freed afterwards). It may depend on the same values as described for \meta{expression} above, especially on |\thisrow|\marg{colname} for table input.
+
+		Note that the math parser will be configured to use the |fpu| at this time, so |\pgfmathparse| yields floats. 
+
+		\item[\normalfont\declaretext{TeX code symbolic}\texttt{=}\meta{code}] Just as |TeX code|, you can provide \meta{code} which defines the macro |\pgfplotspointmeta|, but the result is not interpreted as a number. It is like the |explicit symbolic| choice.
 		
-		 The \meta{expression} is checked after the other possible choices have already been evaluated. In other words, the statement
-
-				|point meta=explicit, point meta=meta^2+3|
-
-		will evaluate the expression with |meta| set to whatever data has been provided explicitly.
 	\end{description}
 
-	It has been mentioned several times that one application of point meta data is to determine (marker/face/edge) colors using a linear map into the range $[0,1000]$ (maybe for use in the current color map). This map works as follows: it is a function
+	As already mentioned, a main application of point meta data is to determine (marker/face/edge) colors using a linear map into the range $[0,1000]$ (maybe for use in the current color map). This map works as follows: it is a function
 	\[ \phi\colon [m_{\text{min}},m_{\text{max}}] \to [0,1000] \]
 	with
 	\[ \phi(m) = \frac{m - m_{\text{min}}} {1000} \]
@@ -1145,6 +1163,8 @@ A further common idea is the use of color maps: if the point meta data is in the
    \end{axis}
 \end{tikzpicture}
 \end{codeexample}
+
+	Note that a |colorbar| will still use the |axis wide| point meta limits. Consider the |colorbar source| key if you want the color data limits of a \emph{particular} plot for your color bar. The |point meta rel| key configures how point meta maps to colors in the |colormap|.
 \end{pgfplotskey}
 
 \begin{pgfplotskeylist}{point meta min=\marg{number},point meta max=\marg{number}}

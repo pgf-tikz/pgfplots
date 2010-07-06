@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Di 6. Jul 20:56:23 CEST 2010 %%%
+%%% Date of this copy: Mon Mar 22 16:42:03 CET 2010 %%%
 
 
 
@@ -27,17 +27,246 @@
 %
 % See the file doc/generic/pgf/licenses/LICENSE for more details.
 
-\ProvidesFileRCS $Header: /cvsroot/pgf/pgf/generic/pgf/basiclayer/pgfcoreexternal.code.tex,v 1.7 2010/07/06 08:49:03 ludewich Exp $
+\ProvidesFileRCS $Header: /cvsroot/pgf/pgf/generic/pgf/basiclayer/pgfcoreimage.code.tex,v 1.14 2010/03/19 09:50:32 ludewich Exp $
 
 
 
-\newif\ifpgfexternal@aux@in@dpth
+% Declare an image
+%
+% #1 = optional argument: width, height, page specification
+% #2 = name of the image for later use
+% #4 = filename without extension, automatic extensions are .pdf,
+%      .jpg, and .png for PDF and .ps, .eps, .epsi for postscript.
+%
+% Description:
+%
+% This command declares an image file for later use. Even if the image
+% is used several times in the document, in PDF it will only be stored
+% once. 
+%
+% Example:
+%
+% \pgfdeclareimage[width=2cm,page=2]{myimage}{imagefilename}
+
+\def\pgfdeclareimage{\pgfutil@ifnextchar[{\pgf@declareimage}{\pgf@declareimage[]}}
+\def\pgf@declareimage[#1]#2#3{%
+  \pgfqkeys{/pgf/images}{height=,width=,page=,interpolate=false,mask=,#1}%
+  % Try to find the file
+  \gdef\pgf@filename{}%
+  % If page= parameter is not empty, try that file first:
+  \ifx\pgf@imagepage\pgfutil@empty%
+  \else%
+  \expandafter\pgf@findfile\pgfsys@imagesuffixlist:+{#3.page\pgf@imagepage}%
+  \fi%
+  \ifx\pgf@filename\pgfutil@empty%
+    \expandafter\pgf@findfile\pgfsys@imagesuffixlist:+{#3}%
+  \else%
+    \pgfkeys{/pgf/images/page=}% make page empty     
+  \fi%
+  \ifx\pgf@filename\pgfutil@empty%
+    \PackageWarning{pgf}%
+    {File "#3" not found when defining image "#2".\MessageBreak
+      Tried all extensions in "\pgfsys@imagesuffixlist"}%
+    \pgf@declaredraftimage{#2}{#3}%
+  \else%
+    \ifpgf@draftmode%
+      \pgf@declaredraftimage{#2}{#3}%
+    \else%
+      \pgfsys@defineimage%
+    \fi%
+  \fi%
+  \expandafter\global\expandafter\let\csname pgf@image@#2!\endcsname=\pgf@image%
+}
+
+\newif\ifpgfexternal@allow@aux
 
 \pgfkeys{
 	/pgf/images/include external/.code={\pgfimage{#1}},
-	/pgf/images/aux in dpth/.is if=pgfexternal@aux@in@dpth,
-	/pgf/images/aux in dpth/.default=true
+	/pgf/images/aux in dpth/.is if=pgfexternal@allow@aux,
+	/pgf/images/aux in dpth/.default=true,
+	/pgf/images/draft/.is if=pgf@draftmode,
+	/pgf/images/draft/.default=true}
+\pgfkeys{/pgf/images/width/.estore in=\pgf@imagewidth}
+\pgfkeys{/pgf/images/height/.estore in=\pgf@imageheight}
+\pgfkeys{/pgf/images/page/.estore in=\pgf@imagepage}
+\pgfkeys{/pgf/images/interpolate/.cd,.code=\edef\pgf@imageinterpolate{#1},.default=true}
+\pgfkeys{/pgf/images/mask/.code=%
+  {%
+    \edef\pgf@imagemask{#1}%
+    \ifx\pgf@imagemask\pgfutil@empty%
+    \else%
+      \pgfutil@ifundefined{pgf@mask@#1}%
+      {\PackageError{pgf}{Undefined mask "#1".}{}%
+        \edef\pgf@imagemask{}}%
+      {\edef\pgf@imagemask{\csname pgf@mask@#1\endcsname}%
+      }%
+    \fi%
+  }}
+
+
+\def\pgf@findfile#1:#2+#3{%
+  \pgfutil@IfFileExists{#3#1}%
+  {\xdef\pgf@filename{#3#1}}%
+  {\def\pgf@mightbeempty{#2}%
+    \ifx\pgf@mightbeempty\pgfutil@empty\else%
+    \pgf@findfile#2+{#3}%
+    \fi}}
+
+% #1: image name
+% #2: file name
+\def\pgf@declaredraftimage#1#2{%
+  \ifx\pgf@imagewidth\pgfutil@empty%
+    \PackageWarning{pgf}{Missing width for image "#1" ("#2") in draft mode.\MessageBreak  Using 1cm instead}%
+    \edef\pgf@imagewidth{1cm}%
+  \fi%
+  \ifx\pgf@imageheight\pgfutil@empty%
+    \PackageWarning{pgf}{Missing height for image "#1" ("#2") in draft mode.\MessageBreak Using 1cm instead}%
+    \edef\pgf@imageheight{1cm}%
+  \fi%  
+  \ifx\pgf@imagepage\pgfutil@empty\else\edef\pgf@imagepagetext{ page \pgf@imagepage}\fi%
+  \edef\pgf@image{%
+    \hbox to \pgf@imagewidth{%
+      \vrule\kern-0.4pt%
+      \vbox to \pgf@imageheight{%
+        \hrule\vfil%
+        \hbox to \pgf@imagewidth{\hskip-10cm\hfil\noexpand\tiny#2\pgf@imagepage\hfil\hskip-10cm}%
+        \vfil\hrule}%
+      \kern-0.4pt\vrule}%
+  }%
 }
+
+
+
+% Declare a soft mask
+%
+% #1 = optional argument: matte specification. default matte is
+%      white. 
+% #2 = name of the mask for later use
+% #3 = filename without extension, automatic extensions are .pdf,
+%      .jpg, and .png for PDF. Postscript is not supported.
+%
+% Description:
+%
+% This command declares a soft mask for later masking an image. The
+% declared mask should be used together with an image of exactly the
+% same height/width if matte is defined. Matte should be the
+% preblended background color (see pdf spec for details).
+%
+% Example:
+%
+% \pgfdeclaremask[matte=white]{maskname}{maskfilename}
+% \pgfdeclareimage[mask=maskname]{image}{imagefilename}
+
+\def\pgfdeclaremask{\pgfutil@ifnextchar[\pgf@declaremask{\pgf@declaremask[]}}
+\def\pgf@declaremask[#1]#2#3{%
+  \pgfqkeys{/pgf/images/mask}{matte={1 1 1},#1}% defaults
+  \def\pgf@mask{}%
+  % Try to find the file
+  \gdef\pgf@filename{}%
+  \expandafter\pgf@findfile\pgfsys@imagesuffixlist:+{#3}%
+  \ifx\pgf@filename\pgfutil@empty%
+    \PackageWarning{pgf}%
+    {File "#3" not found when defining mask "#2".\MessageBreak
+      Tried all extensions in "\pgfsys@imagesuffixlist"}%
+  \else%
+    \pgfsys@definemask{#2}%
+  \fi%
+  \expandafter\global\expandafter\let\csname pgf@mask@#2\endcsname=\pgf@mask%
+}
+
+\pgfkeys{/pgf/images/mask/matte/.cd,.estore in=\pgf@maskmatte,.value required}
+
+
+
+% Create an alias name for an image
+%
+% #1 = name of the alias
+% #2 = name of the original
+%
+% Example:
+%
+% \pgfdeclareimage{image}{1cm}{1cm}{filename
+% \pgfaliasimage{alias}{image}
+% \pgfuseimage{alias}
+
+\def\pgfaliasimage#1#2{%
+  \expandafter\global\expandafter\let\expandafter\pgf@temp\expandafter=\csname pgf@image@#2!\endcsname%
+  \expandafter\global\expandafter\let\csname pgf@image@#1!\endcsname=\pgf@temp%
+  }
+
+  
+% Use an image
+%
+% #1 = name of a previously declared image
+%
+% Example:
+%
+% \pgfputat{\pgforigin}{\pgfbox[left,base]{\pgfuseimage{myimage}}}
+
+\def\pgfuseimage#1{%
+  \def\pgf@imagename{pgf@image@#1}%
+  \pgf@tryextensions{\pgf@imagename}{\pgfalternateextension}%
+  \expandafter\pgfutil@ifundefined\expandafter{\pgf@imagename}%
+  {\PackageError{pgf}{Undefined image "#1"}{}}%
+  {{\leavevmode\csname\pgf@imagename\endcsname}}}
+
+\def\pgf@tryextensions#1#2{%
+  \edef\pgf@args{[#2!]}\expandafter\pgf@@tryextensions\pgf@args{#1}}
+\def\pgf@@tryextensions[#1!#2]#3{%
+  \expandafter\pgfutil@ifundefined\expandafter{#3#1!#2}%
+  {\def\pgf@temp{#2}%
+    \ifx\pgf@temp\pgfutil@empty%
+    \edef#3{#3!}%
+    \else%
+    \pgf@@tryextensions[#2]{#3}%
+    \fi}%
+  {\edef#3{#3#1!#2}}}
+
+
+% Alternate image
+%
+% Description:
+%
+% When an image is used, pgf first attempts to use the image with the
+% alternate extension added. If this fails, the original image is
+% used. If the alternate extension contains ``!'', then the text up to
+% the ! is successively removed and the remainder is tried as an
+% alternate extension.
+%
+% Example:
+%
+% \def\pgfalternateextension{20!white}
+
+\def\pgfalternateextension{}
+
+
+
+% Directly insert an image
+%
+% #1 = optional argument: width, height, page specification
+% #2 = file name
+%
+% Description:
+%
+% Directly inserts an image without declaration. You can, however,
+% still access this image using the name pgflastimage. By using
+% pgfaliasimage, you can also save this image for later.
+%
+% Example:
+%
+% \pgfimage[height=2cm]{filename}
+
+\def\pgfimage{\pgfutil@ifnextchar[\pgf@imagecom{\pgf@imagecom[]}}
+\def\pgf@imagecom[#1]#2{%
+  \pgfdeclareimage[#1]{pgflastimage}{#2}%
+  \pgfuseimage{pgflastimage}}
+
+
+
+
+
+
+
 
 % The external read/write mechanism is used as follows:
 %
@@ -103,14 +332,14 @@
   \ifx\pgf@tempa\pgf@tempb%
   \else%
     \pgf@external@grabshipouttrue%
-	\pgfexternal@nofiles% see also \pgf@external@init@aux@in@dpth
+	\pgfexternal@nofiles
 	\ifpgfexternalreadmainaux
 		% and reset the jobname. This should allow to handle any
 		% \label/\ref constructions which are stored in \jobname.aux (and
 		% which won't be found otherwise)
 		\gdef\jobname{#1}%
 	\fi
-	\ifpgfexternal@aux@in@dpth
+	\ifpgfexternal@allow@aux
 		\csname newwrite\endcsname\w@pgfexternal@auxout
 	\fi
   \fi%
@@ -149,18 +378,6 @@
     }%
   \fi%
 }
-\AtEndDocument{%
-  \ifpgf@external@grabshipout
-    \pgfutil@ifundefined{pgfexternal@did@a@shipout}{%
-	  \pgfexternal@error@no@shipout
-	}{}%
-  \fi
-}%
-
-% This will be overwritten by the tikz external lib if it is loaded.
-\def\pgfexternal@error@no@shipout{%
-	\PackageError{pgf}{Sorry, image externalization failed: the resulting image was EMPTY. I tried to externalize '\pgfactualjobname'. Perhaps there was a typo somewhere? Please check that your document contains '\string\beginpgfgraphicnamed{\pgfactualjobname} ... \string\endpgfgraphicnamed'}%
-}%
 
 
 % "Environment" for an external graphic.
@@ -222,47 +439,21 @@
 % the first line (if any).
 \def\pgfincludeexternalgraphics#1{%
 	\begingroup
-	\pgfexternalreaddpth{#1}%
-	\pgfkeysifdefined{/pgf/images/include external/#1/.@cmd}{%
-		\pgfkeysgetvalue{/pgf/images/include external/#1/.@cmd}\pgf@tempa
-		\pgfkeysgetlet{/pgf/images/include external/.@cmd}\pgf@tempa
-	}{}%
 	\setbox1=\hbox{\pgfkeysvalueof{/pgf/images/include external/.@cmd}{#1}\pgfeov}%
-	\ifdim\pgfexternaltrimleft=0sp \else \kern\pgfexternaltrimleft\relax \fi
-	\ifdim\pgfexternaldepth=0pt
-		\box1
-	\else
-		\dimen0=\pgfexternaldepth\relax
-		\hbox{\lower\dimen0 \box1 }%
-	\fi
-	\ifdim\pgfexternaltrimright=0sp \else \kern\pgfexternaltrimright\relax \fi
-	\endgroup
-}
-
-% Defines \pgfexternaldepth to be the depth of the external picture
-% '#1' and \pgfexternaltrimleft / \pgfexternaltrimright to be the 'hbaseline' shift.
-%
-%
-% Furthermore, it handles any auxiliary information stored in the
-% .dpth file (it appends it to the main aux file).
-%
-\def\pgfexternalreaddpth#1{%
-	% no \begingroup. Handle that manually:
-	\edef\pgfexternalreaddpth@restore{%
-		\noexpand\endlinechar=\the\endlinechar\space
-		\noexpand\catcode`\noexpand\@=\the\catcode`\@\space
-	}%
 	%
-	\def\pgfexternaldepth{0sp}%
-	\def\pgfexternaltrimleft{0sp}%
-	\def\pgfexternaltrimright{0sp}%
+	\let\pgfincludeexternalgraphics@dp=\pgfutil@empty
 	\endlinechar=-1 % suppress white space at end
 	\catcode`\@=11
 	\openin\r@pgf@reada=#1.dpth
 	\pgfincludeexternalgraphics@read@dpth
-	%
-	\pgfexternalreaddpth@restore
-}%
+	\ifx\pgfincludeexternalgraphics@dp\pgfutil@empty
+		\box1
+	\else
+		\dimen0=\pgfincludeexternalgraphics@dp\relax
+		\hbox{\lower\dimen0 \box1 }%
+	\fi
+	\endgroup
+}
 %
 % The .dpth consists of 0-N lines, where each is either a single
 % dimension (the box' depth) or something which belongs to the .aux
@@ -279,49 +470,30 @@
 		\expandafter\pgfincludeexternalgraphics@read@dpth
 	\fi
 }%
-
-\def\pgfexternal@restore#1{}%
-
 \long\def\pgfincludeexternalgraphics@read@dpth@line#1#2\pgfincludeexternalgraphics@read@dpth@line@EOI{%
 	\ifcat\noexpand#1\relax
 		% Ah -- the first token is a control sequence. It belongs to
 		% the .aux file.
 		%
-		\ifx#1\pgfexternal@restore
-			#2%
-		\else
-			% do NOT execute #1#2! many LaTeX commands don't support it (\label for example)
-			\pgfutil@ifundefined{if@filesw}{%
-				% sorry, .aux file support only for latex
-			}{%
-				% append to main .aux file (for forward references)
-				\if@filesw
-					{%
-					\toks0={#1#2}%
-					% believe it or not, but the
-					% \def\dpthimport{...}\dpthimport *makes* a
-					% difference! In ensures any occuring `##' characters are properly expanded to `#'.
-					\immediate\write\@auxout{\noexpand\def\noexpand\dpthimport{\the\toks0 }\noexpand\dpthimport }%
-					}%
-				\fi				
-			}%
-		\fi
-	\else% it is the depth (which is simply a number for backwards compatibility)
-		\def\pgfexternaldepth{#1#2}%
+		% #1#2\relax% do NOT set the information! many LaTeX commands don't support it (\label for example)
+		\pgfutil@ifundefined{if@filesw}{%
+			% sorry, .aux file support only for latex
+		}{%
+			% append to main .aux file (for forward references)
+			\if@filesw
+				{%
+				\toks0={#1#2}%
+				% believe it or not, but the
+				% \def\dpthimport{...}\dpthimport *makes* a
+				% difference! In ensures any occuring `##' characters
+				% are properly expanded to `#'.
+				\immediate\write\@auxout{\noexpand\def\noexpand\dpthimport{\the\toks0 }\noexpand\dpthimport }%
+				}%
+			\fi				
+		}%
+	\else
+		\def\pgfincludeexternalgraphics@dp{#1#2}%
 	\fi
-}%
-
-% Stores '#1' into (expanded!) into the .dpth file of the currently
-% exported image. 
-%
-% Just before the image is included into the main document, '#1' will be
-% invoked.
-%
-% This command has only an effect if an image is being exported.
-\def\pgfexternalstorecommand#1{%
-}%
-\def\pgfexternalstorecommand@isexporting#1{%
-	\immediate\write\w@pgfexternal@auxout{\noexpand\pgfexternal@restore{#1}}%
 }%
 
 
@@ -332,34 +504,13 @@
 %   this method is also invoked from within the tikz external library.
 \def\pgf@external@grab#1{%
   \def\pgf@filename{#1}%
-  \ifpgfexternal@aux@in@dpth	
+  \ifpgfexternal@allow@aux	
   	\begingroup
 	\pgf@external@init@aux@in@dpth
-	\let\G@refundefinedtrue=\pgf@external@grab@refundefinedtrue
   \fi
-  \gdef\pgf@trimleft@final{0sp}%
-  \gdef\pgf@trimright@final{0sp}%
   \setbox\pgfpic=\hbox\bgroup\bgroup%
     \let\endpgfgraphicnamed=\pgf@externalend%
 }
-
-{\catcode`\^=12 \gdef\pgfexternal@hat{^}}
-
-\expandafter\let\expandafter\pgf@external@grab@refundefinedtrue@orig\csname G@refundefinedtrue\endcsname
-
-\def\pgf@external@grab@refundefinedtrue{%
-	\pgf@external@grab@refundefinedtrue@orig
-	\begingroup
-	\def\n{\pgfexternal@hat\pgfexternal@hat J}%
-	\pgfexternalstorecommand{%
-		\noexpand\immediate\noexpand\write16{\pgf@external@grab@refundefinedtrue@warning}%
-		\noexpand\G@refundefinedtrue
-	}%
-	\endgroup
-}%
-\def\pgf@external@grab@refundefinedtrue@warning{%
-	LaTeX Warning: External picture `\pgfactualjobname' contains undefined references\noexpand\on@line.\n
-}%
 
 \let\pgf@external@@protected@write@orig=\protected@write
 \long\def\pgf@external@@protected@write@immediate#1#2#3{%
@@ -371,8 +522,6 @@
 }%
 
 \def\pgf@external@init@aux@in@dpth{%
-	\let\pgfexternalstorecommand=\pgfexternalstorecommand@isexporting
-	%
 	% tell LaTeX to write aux files...
 	\csname @fileswtrue\endcsname
 	% ... but redirect output to the .dpth file!
@@ -384,38 +533,11 @@
 	\let\protected@write=\pgf@external@@protected@write@immediate
 }%
 
-\def\pgf@externalend@storeshifts#1{%
-	\immediate\write#1{\the\dp\pgfpic}%
-	\ifx\pgf@trimleft@final\pgfutil@empty\else
-		\immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternaltrimleft{\pgf@trimleft@final}}}%
-	\fi
-	\ifx\pgf@trimright@final\pgfutil@empty\else
-		\immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternaltrimright{\pgf@trimright@final}}}%
-	\fi
-}
 % REMARK:
 %   this method is also invoked from within the tikz external library.
 \def\pgf@externalend{%
   \unskip\egroup\egroup%
   {%
-  	\def\pgf@external@trim{0}%
-	\def\pgf@external@store@dpth{0}%
-	%
-	\ifdim\pgf@trimleft@final=0sp  \gdef\pgf@trimleft@final{}  \else\def\pgf@external@trim{1}\fi
-	\ifdim\pgf@trimright@final=0sp \gdef\pgf@trimright@final{} \else\def\pgf@external@trim{1}\fi
-	\if1\pgf@external@trim
-		% UNDO the trimming! export to pdf doesn't supported trimmed
-		% bounding boxes (has to do with the mediabox/trimbox etc).
-		% I'll keep the bounding box intact and store the trim information 
-		% into the .dpth file.
-		\setbox\pgfpic=\hbox{%
-			\ifx\pgf@trimleft@final\pgfutil@empty\else\kern-\pgf@trimleft@final\fi
-			\box\pgfpic
-			\ifx\pgf@trimright@final\pgfutil@empty\else\kern-\pgf@trimright@final\fi
-		}%
-		\def\pgf@external@store@dpth{1}%
-	\fi
-	%
     \parindent0pt % leave the space
 %    \leftmargin0pt%
 %    \rightmargin0pt%
@@ -423,16 +545,12 @@
     \advance\dimen0\dp\pgfpic%
 	\ifdim\dp\pgfpic=0pt\relax
 	\else% store the picture's depth. Otherwise, it would be lost.
-		\def\pgf@external@store@dpth{1}%
-	\fi
-	%
-	\if1\pgf@external@store@dpth
-		\ifpgfexternal@aux@in@dpth
-			\pgf@externalend@storeshifts\@auxout
+		\ifpgfexternal@allow@aux
+			\immediate\write\@auxout{\the\dp\pgfpic}%
 			\immediate\closeout\@auxout
 		\else
 			\immediate\openout\pgf@plotwrite=\pgf@filename.dpth
-			\pgf@externalend@storeshifts\pgf@plotwrite
+			\immediate\write\pgf@plotwrite{\the\dp\pgfpic}%
 			\immediate\closeout\pgf@plotwrite
 		\fi
 	\fi
@@ -451,9 +569,8 @@
         \kern 1truein }%
       \kern1truein }%
     \pgfexternal@originalshipout\box0 %
-	\gdef\pgfexternal@did@a@shipout{1}%
   }%
-  \ifpgfexternal@aux@in@dpth
+  \ifpgfexternal@allow@aux
   	\endgroup
   \fi
 }

@@ -50,6 +50,7 @@
 \newif\ifpgfplots@axis@equal
 \newif\ifpgfplots@axis@equal@image
 \newif\ifpgfplots@reverse@legend
+\newif\ifpgfplots@transpose@legend
 \newif\ifpgfplots@allow@reversal@of@rel@axis@cs
 \newif\ifpgfplots@scanline@verbose
 \newcount\pgfplots@numplots
@@ -240,6 +241,17 @@
 	}
 }
 
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@center\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@south west\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@south\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@south east\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@east\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@north east\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@north\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@north west\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@west\endcsname{1}
+\expandafter\def\csname pgfplots@nodesnearcoordsalign@isanchor@baseline\endcsname{1}
+
 % Sets the keys for /pgfplots/[xyz]ticklabel anchor.
 % #1: one of [xyz]
 % #2: the value
@@ -407,6 +419,50 @@
 \def\pgfplots@cycle@multi@list@finalize\pgfplots@cycle@multi@list@EOI{%
 	\pgfkeyslet{/pgfplots/cycle multi list/@dim}\pgfplots@loc@TMPb
 	\pgfplots@cycle@multi@list@finalize@
+}%
+
+\def\pgfplots@pgfkeys@set@point@meta@value#1{%
+	%
+	\pgfutil@in@{=}{#1}%
+	\ifpgfutil@in@
+		\def\pgfplots@loc@TMPa##1=##2\pgfplots@EOI{%
+			% remove spaces from ##1 and ##2:
+			\pgfkeys@spdef\pgfplots@loc@TMPa{##1}%
+			\pgfkeys@spdef\pgfplots@loc@TMPb{##2}%
+			% 
+			% check if the argument is known:
+			\pgfkeysifdefined{/pgfplots/point meta/\pgfplots@loc@TMPa/.@cmd}{%
+				\def\pgfplots@loc@TMPc{%
+					\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/\pgfplots@loc@TMPa/.@cmd}%
+				}%
+				\expandafter\pgfplots@loc@TMPc\expandafter{\pgfplots@loc@TMPb}%
+			}{%
+				\pgfplotsthrow{invalid argument}
+					{\pgfplots@loc@TMPa}%
+					{Sorry, `##1' is no valid choice for `point meta'. Maybe you misspelled it?}%
+					\pgfeov
+			}%
+		}%
+		% disassemble key'='value:
+		\pgfplots@loc@TMPa#1\pgfplots@EOI
+	\else
+		% the following code allows
+		% 'point meta=\thisrow{xcol}' even though
+		% \thisrow might be undefined in the context where keys are set.
+		% I convert the argument to a string.
+		\def\pgfplots@loc@TMPa{#1}%
+		\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		%
+		\pgfkeysifdefined{/pgfplots/point meta/\pgfplots@loc@TMPb/.@cmd}{%
+			% ok, use it!
+			\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/\pgfplots@loc@TMPb/.@cmd}{}%
+		}{%
+			% oh, then it will be a math expression.
+			\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/expr/.@cmd}{#1}%
+		}%
+	\fi
+	%
+	%
 }%
 
 \pgfkeys{%
@@ -664,8 +720,14 @@
 	% Colorbar interface:
 	/pgfplots/colorbar/.is if=pgfplots@colorbar,
 	/pgfplots/colorbar/.default=true,
+	/pgfplots/colorbar to label/.style={/pgfplots/colorbar to name={#1}},
+	/pgfplots/colorbar to name/.initial=,
+	/pgfplots/colorbar source/.code={\pgfplots@error{Sorry, you can only set `colorbar source' inside of \string\addplot\space (or a cycle list)}},
+	/pgfplots/colorbar source/.default=true,
+	/pgfplots/colorbar pos*/.initial=,% one of 'rltb' (right, left, top, bottom). for internal use, to handle checks.
 	/pgfplots/colorbar right/.style={%
 		/pgfplots/colorbar=true,
+		/pgfplots/colorbar pos*=r,
 		/pgfplots/colorbar shift/.style={xshift=0.3cm},
 		/pgfplots/every colorbar/.style={%
 			title=,
@@ -688,26 +750,28 @@
 			enlargelimits=false,
 			scale only axis,
 			height=\pgfkeysvalueof{/pgfplots/parent axis height},%
-			x=\pgfkeysvalueof{/pgfplots/colorbar/width},
+			width=\pgfkeysvalueof{/pgfplots/colorbar/width},
 			xtick=\empty,
 			xticklabel=,
 			ytick=,
 			yticklabel=,
-			yticklabel pos=right,
+			yticklabel pos=right,% ATTENTION: I check for this setting in 'colorbar sampled line', see below!
 			colorbar vertical/lowlevel,
 		}%
 	},%
 	/pgfplots/colorbar left/.style={%
 		/pgfplots/colorbar right,
+		/pgfplots/colorbar pos*=l,
 		/pgfplots/colorbar shift/.style={xshift=-0.3cm},
 		/pgfplots/every colorbar/.append style={%
 			at={(parent axis.left of north west)},
 			anchor=north east,
-			yticklabel pos=left,
+			yticklabel pos=left,% ATTENTION: I check for this setting in 'colorbar sampled line', see below!
 		}%
 	},%
 	/pgfplots/colorbar horizontal/.style={%
 		/pgfplots/colorbar=true,
+		/pgfplots/colorbar pos*=b,
 		/pgfplots/colorbar shift/.style={yshift=-0.3cm},
 		/pgfplots/every colorbar/.style={%
 			title=,
@@ -730,7 +794,7 @@
 			enlargelimits=false,
 			scale only axis,
 			width=\pgfkeysvalueof{/pgfplots/parent axis width},%
-			y=\pgfkeysvalueof{/pgfplots/colorbar/width},
+			height=\pgfkeysvalueof{/pgfplots/colorbar/width},
 			xticklabel pos=left,
 			xtick=,
 			xticklabel=,
@@ -743,6 +807,7 @@
 	% styles is incompatible with '.add code' -- and therefor also
 	% with '.append style'. This here is a work-around which works.
 	/pgfplots/colorbar vertical/lowlevel/.style={%
+		/pgfplots/colorbar addplot=\addplot graphics {};,
 		plot graphics/lowlevel draw/.code 2 args={%
 			\if\pgfkeysvalueof{/pgfplots/y dir/value}n%
 				\pgfplotscolormaptoshadingspec{\pgfkeysvalueof{/pgfplots/colormap name}}{##2}\pgfplots@loc@TMPa
@@ -755,6 +820,7 @@
 		},%
 	},
 	/pgfplots/colorbar horizontal/lowlevel/.style={%
+		/pgfplots/colorbar addplot=\addplot graphics {};,
 		plot graphics/lowlevel draw/.code 2 args={%
 			\if\pgfkeysvalueof{/pgfplots/x dir/value}n%
 				\pgfplotscolormaptoshadingspec{\pgfkeysvalueof{/pgfplots/colormap name}}{##1}\pgfplots@loc@TMPa
@@ -770,6 +836,7 @@
 	/pgfplots/colorbar=false,
 	/pgfplots/colorbar style/.style={/pgfplots/every colorbar/.append style={#1}},
 	/pgfplots/colorbar/width/.initial=0.5cm,
+	/pgfplots/colorbar addplot/.initial=\addplot graphics {};,
 	/pgfplots/colorbar/draw/.code={%
 		% FIXME : the semicolon after ';' has a fixed catcode, namely
 		% the one assigned while pgfplots.code.tex has been read.
@@ -779,9 +846,80 @@
 		% work-around for babel support.
 		\let\pgfplots@checkandpreparefor@active@semicolon=\relax
 		\axis[every colorbar,colorbar shift,colorbar=false]
-		\addplot graphics {};
+		\pgfkeysvalueof{/pgfplots/colorbar addplot}%
 		\endaxis
 	},%
+	/pgfplots/every colorbar sampled line/.style={help lines},
+	/pgfplots/colorbar sampled line style/.style={/pgfplots/every colorbar sampled line/.append style={#1}},
+	/pgfplots/colorbar sampled line/.style={%
+		colorbar,
+		/pgfplots/colorbar/draw/.code={%
+			\axis[
+				cycle list={#1\\},
+				domain=\pgfkeysvalueof{/pgfplots/point meta min}:\pgfkeysvalueof{/pgfplots/point meta max},
+				every colorbar,colorbar shift,colorbar=false]
+			\pgfkeysvalueof{/pgfplots/colorbar addplot}%
+			\endaxis
+		},%
+		/pgfplots/colorbar horizontal/lowlevel/.code={%
+			\pgfkeysgetvalue{/pgfplots/colorbar pos*}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				\def\pgfplots@loc@TMPa{b}%
+			\fi
+			\if b\pgfplots@loc@TMPa
+				\pgfkeysalso{axis x line*=bottom}% DEFAULT.
+			\else
+				\pgfkeysalso{axis x line*=top}%
+			\fi
+			\pgfkeysalso{%
+				y axis line style={/pgfplots/every colorbar sampled line},
+				/pgfplots/colorbar addplot={\addplot {0.5};},
+				point meta=x,
+			}%
+		},%
+		/pgfplots/colorbar vertical/lowlevel/.code={%
+			\pgfkeysgetvalue{/pgfplots/colorbar pos*}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				\def\pgfplots@loc@TMPa{r}%
+			\fi
+			\if l\pgfplots@loc@TMPa
+				\pgfkeysalso{axis y line*=left}%
+			\else
+				\pgfkeysalso{axis y line*=right}% DEFAULT
+			\fi
+			\pgfkeysalso{%
+				x axis line style={/pgfplots/every colorbar sampled line},
+				/pgfplots/colorbar addplot={\addplot (0.5,x);},
+				point meta=y,
+			}%
+		},%
+	},%
+	/pgfplots/colorbar sampled line/.default={scatter,only marks},
+	%
+	/pgfplots/colorbar sampled/.style={%
+		colorbar,
+		/pgfplots/colorbar/draw/.code={%
+			\axis[
+				view={0}{90},
+				cycle list={#1\\},
+				domain=\pgfkeysvalueof{/pgfplots/point meta min}:\pgfkeysvalueof{/pgfplots/point meta max},
+				samples y=2,
+				domain y=0:1,
+				zmin=0,zmax=1,
+				every colorbar,colorbar shift,colorbar=false]
+			\pgfkeysvalueof{/pgfplots/colorbar addplot}%
+			\endaxis
+		},%
+		/pgfplots/colorbar horizontal/lowlevel/.style={%
+			/pgfplots/colorbar addplot={\addplot3 {0};},
+			point meta=x,
+		},%
+		/pgfplots/colorbar vertical/lowlevel/.style={%
+			/pgfplots/colorbar addplot={\addplot3 (y,x,0);},
+			point meta=y,
+		},%
+	},%
+	/pgfplots/colorbar sampled/.default={surf,mark=none,shader=flat},
 % tick options:
 	/pgfplots/xticklabel/.store in=	\pgfplots@xticklabel,
 	/pgfplots/xticklabel/.belongs to family=/pgfplots/tick,
@@ -1266,6 +1404,8 @@
 % legend options:
 	/pgfplots/legend entries/.initial={},
 	/pgfplots/legend entries/.belongs to family=/pgfplots/legend,
+	/pgfplots/legend to label/.style={/pgfplots/legend to name={#1}},
+	/pgfplots/legend to name/.initial=,%
 	/pgfplots/legend pos/.is choice,
 	/pgfplots/legend pos/south west/.style={/pgfplots/legend style={at={(0.03,0.03)},anchor=south west}},
 	/pgfplots/legend pos/south east/.style={/pgfplots/legend style={at={(0.97,0.03)},anchor=south east}},
@@ -1303,6 +1443,10 @@
 	/pgfplots/legend image code/.belongs to family=/pgfplots/legend,
 	/pgfplots/reverse legend/.is if=pgfplots@reverse@legend,
 	/pgfplots/reverse legend/.default=true,
+	/pgfplots/transpose legend/.is if=pgfplots@transpose@legend,
+	/pgfplots/transpose legend/.default=true,
+	/pgfplots/legend transposed/.style={transpose legend=#1},
+	/pgfplots/legend reversed/.style={reverse legend=#1},
 % axis description options:
 	/pgfplots/title/.initial=,
 	/pgfplots/xlabel/.initial=,
@@ -1335,29 +1479,17 @@
 	/pgfplots/axis equal/.default=true,
 	/pgfplots/axis equal image/.is if=pgfplots@axis@equal@image,
 	/pgfplots/axis equal image/.default=true,
-	/pgfplots/xmin/.belongs to family=/pgfplots,
 	/pgfplots/xmin/.initial=,
-	/pgfplots/xmax/.belongs to family=/pgfplots,
 	/pgfplots/xmax/.initial=,
-	/pgfplots/ymin/.belongs to family=/pgfplots,
 	/pgfplots/ymin/.initial=,
-	/pgfplots/ymax/.belongs to family=/pgfplots,
 	/pgfplots/ymax/.initial=,
-	/pgfplots/zmin/.belongs to family=/pgfplots,
 	/pgfplots/zmin/.initial=,
-	/pgfplots/zmax/.belongs to family=/pgfplots,
 	/pgfplots/zmax/.initial=,
-	/pgfplots/xtickmin/.belongs to family=/pgfplots,
 	/pgfplots/xtickmin/.initial=,
-	/pgfplots/xtickmax/.belongs to family=/pgfplots,
 	/pgfplots/xtickmax/.initial=,
-	/pgfplots/ytickmin/.belongs to family=/pgfplots,
 	/pgfplots/ytickmin/.initial=,
-	/pgfplots/ytickmax/.belongs to family=/pgfplots,
 	/pgfplots/ytickmax/.initial=,
-	/pgfplots/ztickmin/.belongs to family=/pgfplots,
 	/pgfplots/ztickmin/.initial=,
-	/pgfplots/ztickmax/.belongs to family=/pgfplots,
 	/pgfplots/ztickmax/.initial=,
 	/pgfplots/stack plots/.is choice,
 	/pgfplots/stack plots/.belongs to family=/pgfplots,
@@ -1390,19 +1522,28 @@
 	/pgfplots/z filter/.code={},
 	/pgfplots/z filter/.belongs to family=/pgfplots,
 	/pgfplots/filter point/.code=,
-	/pgfplots/restrict x to domain/.style={/pgfplots/@restrict to domain={x}{}{#1}},%
-	/pgfplots/restrict y to domain/.style={/pgfplots/@restrict to domain={y}{}{#1}},%
-	/pgfplots/restrict z to domain/.style={/pgfplots/@restrict to domain={z}{}{#1}},%
-	/pgfplots/restrict expr to domain/.style 2 args={/pgfplots/@restrict to domain={x}{#1}{#2}},%
+	/pgfplots/restrict x to domain/.style={/pgfplots/@restrict to domain={x}{}{#1}{0}},%
+	/pgfplots/restrict y to domain/.style={/pgfplots/@restrict to domain={y}{}{#1}{0}},%
+	/pgfplots/restrict z to domain/.style={/pgfplots/@restrict to domain={z}{}{#1}{0}},%
+	/pgfplots/restrict expr to domain/.style 2 args={/pgfplots/@restrict to domain={x}{#1}{#2}{0}},%
+	/pgfplots/restrict x to domain*/.style={/pgfplots/@restrict to domain={x}{}{#1}{1}},%
+	/pgfplots/restrict y to domain*/.style={/pgfplots/@restrict to domain={y}{}{#1}{1}},%
+	/pgfplots/restrict z to domain*/.style={/pgfplots/@restrict to domain={z}{}{#1}{1}},%
+	/pgfplots/restrict expr to domain*/.style 2 args={/pgfplots/@restrict to domain={x}{#1}{#2}{1}},%
 	% '#1': the filter to install
 	% '#2': a mathematical expression (or empty)
 	% '#3': the interval. must be numeric currently. 
-	/pgfplots/@restrict to domain/.code args={#1#2#3}{%
-		\edef\pgfplots@loc@TMPa{#3}%
+	% '#4': bAssignLimits=0|1. if #4=1, any coordinate outside of the
+	% allowed domain will take the domain boundary as value. If #4=0,
+	% any coordinate outside of the allowed domain will get 'inf' or
+	% '-inf'.
+	/pgfplots/@restrict to domain/.code args={#1#2#3#4}{%
+		\if0#4%
+			\pgfkeysalso{/pgfplots/unbounded coords=jump}%
+		\fi
 		% when invoked, ##1 and ##2 will be floats:
 		\def\pgfplots@loc@TMPb##1:##2\relax{%
 			\pgfkeysalso{%
-				/pgfplots/unbounded coords=jump,%
 				/pgfplots/#1 filter/.append code={%
 					\let\pgfplots@restrict@to@domain@orig=\pgfmathresult
 					\def\pgfplots@restrict@to@domain@tmp{#2}%
@@ -1416,11 +1557,11 @@
 					\let\pgfplots@restrict@to@domain@tmp=\pgfmathresult
 					\pgfmathfloatlessthan@{\pgfplots@restrict@to@domain@tmp}{##1}% ##1 is the lower argument
 					\ifpgfmathfloatcomparison
-						\def\pgfmathresult{inf}%
+						\edef\pgfmathresult{\if0#4inf\else ##1\fi}%
 					\else
 						\pgfmathfloatgreaterthan@{\pgfplots@restrict@to@domain@tmp}{##2}%
 						\ifpgfmathfloatcomparison
-							\def\pgfmathresult{-inf}%
+							\edef\pgfmathresult{\if0#4-inf\else ##2\fi}%
 						\else
 							\let\pgfmathresult=\pgfplots@restrict@to@domain@orig
 						\fi
@@ -1436,6 +1577,7 @@
 			\edef\pgfplots@loc@TMPc{\pgfplots@rangea:\pgfmathresult}%
 			\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPc\relax
 		}%
+		\edef\pgfplots@loc@TMPa{#3}%
 		\expandafter\pgfplots@loc@TMPc\pgfplots@loc@TMPa\relax
 	},%
 	% -> keeps only the nth point, all other ones will get ''. 
@@ -1517,6 +1659,7 @@
 		/pgfplots/enlarge z limits=#1,%
 	},%
 	/pgfplots/enlargelimits/.default=true,
+	/pgfplots/update limits/.is if=pgfplots@bb@isactive,
 	/pgfplots/x/.initial=,% is implicitly set by 'width' and/or '\axisdefaultwidth'
 	/pgfplots/x/.belongs to family=/pgfplots,
 	/pgfplots/y/.initial=,% is implicitly set by 'width' and/or '\axisdefaultwidth'
@@ -1558,6 +1701,7 @@
 	},
 	/pgfplots/cycle list name/.belongs to family=/pgfplots,
 	/pgfplots/cycle list name=color,
+	/pgfplots/cycle list shift/.initial=,
 	% accepts arguments of the form
 	% <first list spec>\nextlist <second list spec>\nextlist ....
 	% where each list spec is EITHER a cycle list name OR a cycle list
@@ -1950,43 +2094,30 @@
 % crunch = 1
 % open = 2
 	/pgfplots/axis x discontinuity/.is choice,
-	/pgfplots/axis x discontinuity/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis x discontinuity/none/.code	={\def\pgfplots@xaxisdiscontnum{0}},
-	/pgfplots/axis x discontinuity/none/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis x discontinuity/crunch/.code	={\def\pgfplots@xaxisdiscontnum{1}},
-	/pgfplots/axis x discontinuity/crunch/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis x discontinuity/parallel/.code	={\def\pgfplots@xaxisdiscontnum{2}},
-	/pgfplots/axis x discontinuity/parallel/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis x discontinuity=none,
 % set \pgfplots@yaxisdiscontnum
 % none = 0
 % crunch = 1
 % open = 2
 	/pgfplots/axis y discontinuity/.is choice,
-	/pgfplots/axis y discontinuity/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis y discontinuity/none/.code	={\def\pgfplots@yaxisdiscontnum{0}},
-	/pgfplots/axis y discontinuity/none/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis y discontinuity/crunch/.code	={\def\pgfplots@yaxisdiscontnum{1}},
-	/pgfplots/axis y discontinuity/crunch/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis y discontinuity/parallel/.code	={\def\pgfplots@yaxisdiscontnum{2}},
-	/pgfplots/axis y discontinuity/parallel/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis y discontinuity=none,
 % set \pgfplots@yaxisdiscontnum
 % none = 0
 % crunch = 1
 % open = 2
 	/pgfplots/axis z discontinuity/.is choice,
-	/pgfplots/axis z discontinuity/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis z discontinuity/none/.code	={\def\pgfplots@zaxisdiscontnum{0}},
-	/pgfplots/axis z discontinuity/none/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis z discontinuity/crunch/.code	={\def\pgfplots@zaxisdiscontnum{1}},
-	/pgfplots/axis z discontinuity/crunch/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis z discontinuity/parallel/.code	={\def\pgfplots@zaxisdiscontnum{2}},
-	/pgfplots/axis z discontinuity/parallel/.belongs to family=/pgfplots, %/axis,
 	/pgfplots/axis z discontinuity=none,
 	/pgfplots/scale only axis/.is if=pgfplots@scale@only@axis,
 	/pgfplots/scale only axis/.default=true,
-	/pgfplots/scale only axis/.belongs to family=/pgfplots,
 	/pgfplots/scale only axis=false,
 % sets \pgfplots@xislinear to
 % normal=true
@@ -2151,6 +2282,13 @@
 							\def\pgfplots@nodes@near@coords@align{above}%
 						}%
 					\fi
+				\else
+					\pgfutil@ifundefined{pgfplots@nodesnearcoordsalign@isanchor@\pgfplots@nodes@near@coords@align}
+					{}%
+					{%
+						\t@pgfplots@toka=\expandafter{\pgfplots@nodes@near@coords@align}%
+						\edef\pgfplots@nodes@near@coords@align{anchor=\the\t@pgfplots@toka}%
+					}%
 				\fi
 			\fi
 			% ok, place the node.
@@ -2160,7 +2298,7 @@
 			{%
 				\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname%
 					% point meta=explicit symbolic
-					% do no try to invoke \pgfmathprintnumber on
+					% do not try to invoke \pgfmathprintnumber on
 					% symbolic data... this check should keep the user
 					% interface simpler.
 					\def\pgfplots@loc@TMPa{\pgfmathprintnumber\pgfplotspointmeta}%
@@ -2206,9 +2344,9 @@
 		/pgf/bar shift={%
 				% total width = n*w + (n-1)*skip
 				% -> subtract half for centering
-				-0.5*(\numplots*\pgfplotbarwidth + (\numplots-1)*#1)  + 
+				-0.5*(\numplotsofactualtype*\pgfplotbarwidth + (\numplotsofactualtype-1)*#1)  + 
 				% the '0.5*w' is for centering
-				(.5+\plotnum)*\pgfplotbarwidth + \plotnum*#1},%
+				(.5+\plotnumofactualtype)*\pgfplotbarwidth + \plotnumofactualtype*#1},%
 		/pgfplots/error bars/draw error bar/.code 2 args={%
 % FIXME: simplify this code! It is just a replication of the default error stuff together with an xshift!
 			\pgfkeysgetvalue{/pgfplots/error bars/error mark}{\pgfplotserrorbarsmark}%
@@ -2224,7 +2362,6 @@
 		/tikz/ybar,
 	},
 	/pgfplots/ybar/.default=2pt,
-	/pgfplots/ybar/.belongs to family=/pgfplots,
 	/pgfplots/xbar legend/.style={
 		/pgfplots/legend image code/.code={\draw[##1,/tikz/.cd,bar width=3pt,yshift=-0.2em,bar shift=0pt] plot coordinates {(0cm,0.8em) (2*\pgfplotbarwidth,0.6em)};},
 	},
@@ -2236,9 +2373,9 @@
 		/pgf/bar shift={%
 				% total width = n*w + (n-1)*skip
 				% -> subtract half for centering
-				-0.5*(\numplots*\pgfplotbarwidth + (\numplots-1)*#1)  + 
+				-0.5*(\numplotsofactualtype*\pgfplotbarwidth + (\numplotsofactualtype-1)*#1)  + 
 				% the '0.5*w' is for centering
-				(.5+\plotnum)*\pgfplotbarwidth + \plotnum*#1},%
+				(.5+\plotnumofactualtype)*\pgfplotbarwidth + \plotnumofactualtype*#1},%
 		/pgfplots/error bars/draw error bar/.code 2 args={%
 % FIXME: simplify this code! It is just a replication of the default error stuff together with an xshift!
 			\pgfkeysgetvalue{/pgfplots/error bars/error mark}{\pgfplotserrorbarsmark}%
@@ -2254,7 +2391,6 @@
 		/tikz/xbar,
 	},
 	/pgfplots/xbar/.default=2pt,
-	/pgfplots/xbar/.belongs to family=/pgfplots,
 	/pgfplots/ybar interval legend/.style={
 		/pgfplots/legend image code/.code={\draw[##1,/tikz/.cd,yshift=-0.2em,bar interval width=0.7,bar interval shift=0.5] plot coordinates {(0cm,0.8em) (5pt,0.6em) (10pt,0.6em)};},
 	},
@@ -2266,12 +2402,11 @@
 		xtick align=outside,
 		xtick=data,
 		ybar interval legend,
-		bar interval width={#1/\numplots},
-		bar interval shift={(\plotnum+0.5)/\numplots},
+		bar interval width={#1/\numplotsofactualtype},
+		bar interval shift={(\plotnumofactualtype+0.5)/\numplotsofactualtype},
 		/tikz/ybar interval,
 	},
 	/pgfplots/ybar interval/.default=1,
-	/pgfplots/ybar interval/.belongs to family=/pgfplots,
 	/pgfplots/xbar interval legend/.style={%
 		/pgfplots/legend image code/.code={\draw[##1,/tikz/.cd,yshift=-0.2em,bar interval width=0.7,bar interval shift=0.5] plot coordinates {(0cm,0.8em) (5pt,0.6em) (10pt,0.6em)};},
 	},
@@ -2283,12 +2418,11 @@
 		ymajorgrids,
 		ytick align=outside,
 		xbar interval legend,
-		bar interval width={#1/\numplots},
-		bar interval shift={(\plotnum+0.5)/\numplots},
+		bar interval width={#1/\numplotsofactualtype},
+		bar interval shift={(\plotnumofactualtype+0.5)/\numplotsofactualtype},
 		/tikz/xbar interval,
 	},
 	/pgfplots/xbar interval/.default=1,
-	/pgfplots/xbar interval/.belongs to family=/pgfplots,
 	/pgfplots/xbar stacked/.style={
 		/pgfplots/set point meta if empty=x,%
 		bar cycle list,
@@ -2297,7 +2431,6 @@
 		/tikz/xbar,
 	},
 	/pgfplots/xbar stacked/.default=plus,
-	/pgfplots/xbar stacked/.belongs to family=/pgfplots,
 	/pgfplots/ybar stacked/.style={
 		/pgfplots/set point meta if empty=f(x),%
 		bar cycle list,
@@ -2306,7 +2439,6 @@
 		/tikz/ybar,
 	},
 	/pgfplots/ybar stacked/.default=plus,
-	/pgfplots/ybar stacked/.belongs to family=/pgfplots,
 	/pgfplots/xbar interval stacked/.style={
 		/pgfplots/set point meta if empty=x,%
 		bar cycle list,
@@ -2315,7 +2447,6 @@
 		/tikz/xbar interval,
 	},
 	/pgfplots/xbar interval stacked/.default=plus,
-	/pgfplots/xbar interval stacked/.belongs to family=/pgfplots,
 	/pgfplots/ybar interval stacked/.style={
 		/pgfplots/set point meta if empty=f(x),%
 		bar cycle list,
@@ -2324,7 +2455,6 @@
 		/tikz/ybar interval,
 	},
 	/pgfplots/ybar interval stacked/.default=plus,
-	/pgfplots/ybar interval stacked/.belongs to family=/pgfplots,
 	/pgfplots/yticklabel interval boundaries/.style={%
 		y tick label as interval,
 		yticklabel={$\pgfmathprintnumber{\tick}$ -- $\pgfmathprintnumber{\nexttick}$}
@@ -2450,6 +2580,19 @@
 	/pgfplots/clip marker paths/.default=true,
 	/pgfplots/axis on top/.is if=pgfplots@axis@on@top,
 	/pgfplots/axis on top/.default=true,
+	/pgfplots/invoke before crossref tikzpicture/.initial={%
+		\expandafter\ifx\csname tikzappendtofigurename\endcsname\relax
+		\else
+			\begingroup
+			\tikzappendtofigurename{_crossref}%
+		\fi
+	},
+	/pgfplots/invoke after crossref tikzpicture/.initial={%
+		\expandafter\ifx\csname tikzappendtofigurename\endcsname\relax
+		\else
+			\endgroup
+		\fi
+	},%
 	/pgfplots/every crossref picture/.style={%
 		baseline,yshift=0.3em
 	},
@@ -2520,30 +2663,20 @@
 	/pgfplots/symbolic z coords/.style={symbolic coords={z}{#1}},%
 % Defines the class name \pgfplotspointmetainputhandler:
 	/pgfplots/point meta/.code={%
-		% this thing here converts control sequences to
-		% characters, they won't cause 'unknown control sequence'
-		% errors:
-		\def\pgfplots@loc@TMPa{#1}%
-		\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-		\pgfkeysifdefined{/pgfplots/point meta/\pgfplots@loc@TMPb/.@cmd}{%
-			\pgfplots@invoke@pgfkeyscode{/pgfplots/point meta/#1/.@cmd}{}%
-		}{%
-			\pgfplotssetpointmetainput{expr}{#1}%
-		}%
+		\pgfplots@pgfkeys@set@point@meta@value{#1}%
 	},%
 	/pgfplots/point meta/none/.code	={\pgfplotssetpointmetainput{}{}},%
 	/pgfplots/point meta/x/.code	={\pgfplotssetpointmetainput{x}{}},%
 	/pgfplots/point meta/y/.code	={\pgfplotssetpointmetainput{y}{}},%
 	/pgfplots/point meta/z/.code	={\pgfplotssetpointmetainput{z}{}},%
+	/pgfplots/point meta/expr/.code={\pgfplotssetpointmetainput{expr}{#1}},%
 	/pgfplots/point meta/explicit/.code={\pgfplotssetpointmetainput{explicit}{}},%
 	/pgfplots/point meta/explicit symbolic/.code={\pgfplotssetpointmetainput{explicit symbolic}{}},%
-	/pgfplots/point meta/f(x)/.code={
-		\ifpgfplots@curplot@threedim
-			\pgfplotssetpointmetainput{z}{}%
-		\else
-			\pgfplotssetpointmetainput{y}{}%
-		\fi
-	},
+	/pgfplots/point meta/f(x)/.code={\pgfplotssetpointmetainput{f(x)}{}},%
+	/pgfplots/point meta/TeX code/.code={\pgfplotssetpointmetainput{TeX code}{#1}},%
+	/pgfplots/point meta/TeX code/.value required,
+	/pgfplots/point meta/TeX code symbolic/.code={\pgfplotssetpointmetainput{TeX code symbolic}{#1}},%
+	/pgfplots/point meta/TeX code symbolic/.value required,
 	/pgfplots/set point meta if empty/.code={%
 		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
 			\pgfkeysalso{/pgfplots/point meta/#1}%
@@ -2753,9 +2886,11 @@
 	/pgfplots/xtick placement tolerance/.initial=0.05pt,
 	/pgfplots/ytick placement tolerance/.initial=0.05pt,
 	/pgfplots/ztick placement tolerance/.initial=0.05pt,
+	%
 	/pgfplots/compat/anchors/.is choice,
 	/pgfplots/compat/anchors/pre 1.3/.code={\pgfplots@deprecated@anchorstrue},% FIXME: WAS \global
 	/pgfplots/compat/anchors/1.3/.code= {\pgfplots@deprecated@anchorsfalse},%
+	/pgfplots/compat/anchors/1.4/.style= 	{/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/anchors/newest/.style= {/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/anchors/default/.style={/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/labels/.is choice,
@@ -2765,8 +2900,9 @@
 	/pgfplots/compat/labels/1.3/.style={%
 		/pgfplots/xlabel near ticks,
 		/pgfplots/ylabel near ticks},%
-	/pgfplots/compat/labels/newest/.style={/pgfplots/compat/labels/1.3},%
-	/pgfplots/compat/labels/default/.style={/pgfplots/compat/labels/pre 1.3},% maintain backwards compatibility for labels :-(
+	/pgfplots/compat/labels/1.4/.style=		{/pgfplots/compat/labels/1.3},%
+	/pgfplots/compat/labels/newest/.style=	{/pgfplots/compat/labels/1.3},%
+	/pgfplots/compat/labels/default/.style=	{/pgfplots/compat/labels/pre 1.3},% maintain backwards compatibility for labels :-(
 	/pgfplots/compat/.style={%
 		/pgfplots/compat/anchors=#1,%
 		/pgfplots/compat/labels=#1,%
@@ -2827,19 +2963,26 @@
 		\pgfprofilenewforcommand[pgfplotsapplistXX handling]{\pgfplotsapplistXXpushback}{1}%
 		\pgfprofilenewforcommand[pgfplotsapplistXX handling]{\pgfplotsapplistXXflushbuffers}{0}%
 		\pgfprofilenewforcommandpattern
-				[pgfplots(app|prepent)listX handling]{\pgfplotsapplistXpushback}{##1\to##2}{{##1}\to{##2}}%
+				[pgfplots(app|prepend)listX handling]{\pgfplotsapplistXpushback}{##1\to##2}{{##1}\to{##2}}%
 		\pgfprofilenewforcommand
-				[pgfplots(app|prepent)listX handling]{\pgfplotsapplistXflushbuffers}{1}%
+				[pgfplots(app|prepend)listX handling]{\pgfplotsapplistXflushbuffers}{1}%
 		\pgfprofilenewforcommandpattern
-				[pgfplots(app|prepent)listX handling]{\pgfplotsprependlistXpushfront}{##1\to##2}{{##1}\to{##2}}%
+				[pgfplots(app|prepend)listX handling]{\pgfplotsprependlistXpushfront}{##1\to##2}{{##1}\to{##2}}%
 		\pgfprofilenewforcommand
 				[pgfplots(app|prepend)listX handling]{\pgfplotsprependlistXflushbuffers}{1}%
+		\pgfprofilenewforcommand
+				[pgfsys buffer]{\pgfsyssoftpath@addtocurrentpath}{1}%
+		\pgfprofilenewforcommand
+				[pgfsys buffer]{\pgfsyssoftpath@flushcurrentpath}{0}%
 		\pgfprofilenewforcommand[math parser (basic)]{\pgfmathparse}{1}%
 		\pgfprofilenewforcommand[math parser (fpu)]{\pgfmathfloatparse@}{1}%
 		\pgfprofilenewforcommand[math: division (basic)]{\pgfmathdivide@}{2}%
 		\pgfprofilenewforcommand[math: division (basic)]{\pgfmath@basic@divide@}{2}%
 		\pgfprofilenewforcommand[near ticklabel anchors]{\pgfplots@borderanchor@for@axis}{3}%
 		\pgfprofilenewforcommand[ticklabel cs]{\pgfplotspointticklabelcs}{2}%
+	%	\pgfprofilenewforcommand[binary conversion]{\pgfplotsbinaryencodeunsigned}{1}%
+	%	\pgfprofilenewforcommand[binary conversion]{\pgfplotsbinaryencodesignedmaplinearly}{1}%
+	%	\pgfprofilenewforcommand[binary conversion]{\pgfplotsbinaryencodedimenmaplinearly}{1}%
 	},%
 }
 
@@ -2856,11 +2999,15 @@
 \pgfkeysdef{/pgfplots/empty command key}{}%
 \pgfkeysgetvalue{/pgfplots/empty command key/.@cmd}\pgfplots@loc@TMPa
 \global\let\pgfplots@empty@command@key=\pgfplots@loc@TMPa
+
+\pgfkeys{/empty/.style={}}%
+\pgfkeysgetvalue{/empty/.@cmd}\pgfplots@loc@TMPa
+\global\let\pgfplots@empty@style@key=\pgfplots@loc@TMPa
 }
 
 % Only define if it is undefined. It may be possible that related libraries
 % habe been loaded before pgfplots.
-\pgfkeysifdefined{/pgfplots/@backgroundpath@hook}{\relax}{%
+\pgfkeysifdefined{/pgfplots/@backgroundpath@hook/.@cmd}{\relax}{%
 	\pgfkeysdef{/pgfplots/@backgroundpath@hook}{}%
 }
 
@@ -3161,6 +3308,18 @@
 	\begingroup
 	\let#1=\pgfutil@empty
 	\pgfkeysgetvalue{/pgfplots/cycle multi list/@dim}\pgfplots@cycle@dim
+	%
+	\let\pgfplots@listindex=\pgfplots@numplots
+	\pgfkeysgetvalue{/pgfplots/cycle list shift}\pgfplots@listindex@shift
+	\ifx\pgfplots@listindex@shift\pgfutil@empty
+	\else
+		\c@pgf@counta=\pgfplots@listindex\relax
+		\advance\c@pgf@counta by\pgfplots@listindex@shift\relax
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=-\c@pgf@counta
+		\fi
+		\edef\pgfplots@listindex{\the\c@pgf@counta}%
+	\fi
 	\ifnum\pgfplots@cycle@dim>0
 		% use the 'cycle multi list' feature.
 		%
@@ -3175,8 +3334,8 @@
 		% }
 		% to get the different indices into the cycle lists.
 		%-------------------------------------------------- 
-		\c@pgf@counta=\pgfplots@cycle@dim
-		\c@pgf@countb=\pgfplots@numplots\relax
+		\c@pgf@counta=\pgfplots@cycle@dim\relax
+		\c@pgf@countb=\pgfplots@listindex\relax
 		\advance\c@pgf@counta by-1
 		\pgfplotsloop{%
 			\ifnum\c@pgf@counta<0
@@ -3202,7 +3361,7 @@
 	\else
 		% normal cycle list:
 		\pgfplotslistsize\autoplotspeclist\to\c@pgf@countd
-		\pgfplots@getautoplotspec@{\autoplotspeclist}{\c@pgf@countd}{\pgfplots@numplots}%
+		\pgfplots@getautoplotspec@{\autoplotspeclist}{\c@pgf@countd}{\pgfplots@listindex}%
 		\let#1=\pgfplotsretval
 	\fi
 	\pgfmath@smuggleone#1%
@@ -3364,6 +3523,98 @@
 	\endgroup
 }
 
+\def\pgfplots@transposelegend{%
+	\ifnum\pgfplots@legend@columns>1
+		\begingroup
+		\pgfplots@transposelegend@
+		\let\pgfplots@legend@columns=\c@pgfplots@row@end
+		\pgfmath@smuggleone\pgfplots@legend@columns
+		\endgroup
+	\fi
+}
+\def\pgfplots@transposelegend@{%
+	\let\c@pgfplots@row=\c@pgf@countb
+	\let\c@pgfplots@col=\c@pgf@countc
+	\let\c@pgfplots@no=\c@pgf@countd
+	\c@pgfplots@row=0
+	\c@pgfplots@col=0
+	\c@pgfplots@no=0
+	\pgfplotslistforeachungrouped\pgfplots@legend\as\entry{%
+		\expandafter\let\csname m@pgfplots@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname=\entry
+		\advance\c@pgfplots@col by1
+		\ifnum\pgfplots@legend@columns=\c@pgfplots@col\relax
+			\c@pgfplots@col=0
+			\advance\c@pgfplots@row by1
+		\fi
+		\advance\c@pgfplots@no by1
+	}%
+	\ifnum\c@pgfplots@col=0
+	\else
+		\advance\c@pgfplots@row by1
+	\fi
+	\edef\c@pgfplots@row@end{\the\c@pgfplots@row}%
+	\edef\c@pgfplots@no@leg{\the\c@pgfplots@no}%
+	%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\c@pgfplots@row=0
+	\c@pgfplots@col=0
+	\c@pgfplots@no=0
+	\pgfplotslistforeachungrouped\pgfplots@plotspeclist\as\entry{%
+		\expandafter\let\csname m@pgfplots@img@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname=\entry
+		\advance\c@pgfplots@col by1
+		\ifnum\pgfplots@legend@columns=\c@pgfplots@col\relax
+			\c@pgfplots@col=0
+			\advance\c@pgfplots@row by1
+		\fi
+		\advance\c@pgfplots@no by1
+	}%
+	\ifnum\c@pgfplots@col=0
+	\else
+		\advance\c@pgfplots@row by1
+	\fi
+	\ifnum\c@pgfplots@row<\c@pgfplots@row@end
+		\edef\c@pgfplots@row@end{\the\c@pgfplots@row}%
+	\fi
+	\ifnum\c@pgfplots@no<\c@pgfplots@no@leg
+		\edef\c@pgfplots@no@leg{\the\c@pgfplots@no}%
+	\fi
+	%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\c@pgfplots@col=0
+	\global\pgfplotslistnewempty\pgfplots@legend%
+	\global\pgfplotslistnewempty\pgfplots@plotspeclist%
+	\pgfplotsloop{%
+		\ifnum\pgfplots@legend@columns=\c@pgfplots@col
+			\pgfplotsloopcontinuefalse
+		\else
+			\pgfplotsloopcontinuetrue
+		\fi
+	}{%
+		\c@pgfplots@row=0
+		\pgfplotsloop{%
+			\ifnum\c@pgfplots@row@end=\c@pgfplots@row
+				\pgfplotsloopcontinuefalse
+			\else
+				\pgfplotsloopcontinuetrue
+			\fi
+		}{%
+			\pgfutil@ifundefined{m@pgfplots@\the\c@pgfplots@row,\the\c@pgfplots@col}{%
+			}{%
+				\pgfutil@ifundefined{m@pgfplots@img@\the\c@pgfplots@row,\the\c@pgfplots@col}{%
+				}{%
+					\expandafter\let\expandafter\pgfplots@legendtmp\csname m@pgfplots@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname
+					\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@legendtmp}\to\pgfplots@legend%
+					%
+					\expandafter\let\expandafter\pgfplots@legendtmp\csname m@pgfplots@img@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname
+					\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@legendtmp}\to\pgfplots@plotspeclist%
+				}%
+			}%
+			\advance\c@pgfplots@row by1
+		}%
+		\advance\c@pgfplots@col by1
+	}%
+}%
+
 
 \def\pgfplots@addlegendentryexpanded{%
 	\pgfutil@ifnextchar[{%
@@ -3427,7 +3678,7 @@
 	\fi
 }
 
-\long\def\pgfplots@show@small@legendplots#1#2{
+\long\def\pgfplots@show@small@legendplots#1#2{%
 	\begingroup
 	\pgfplots@define@currentplotstyle@as{#1,#2}%
 	\scope[/tikz/current plot style,/pgfplots/every legend image post]% this scoping construction allows plot styles to change 'legend image code'.
@@ -3457,6 +3708,7 @@
 % or it creates a legend, stores the commands into the macro named
 % above and typesets it.
 \def\pgfplots@createlegend{%
+	\pgfkeysgetvalue{/pgfplots/legend to name}\pgfplots@createlegend@toname
 	\ifx\pgfplots@already@computed@legend@node\pgfutil@empty
 		\pgfplotslistcheckempty\pgfplots@legend
 		\ifpgfplotslistempty
@@ -3471,9 +3723,29 @@
 		\ifpgfplots@reverse@legend
 			\pgfplots@reverselegend
 		\fi
+		\ifpgfplots@transpose@legend
+			\pgfplots@transposelegend
+		\fi
 		%
 		% 
 		\begingroup
+			\ifx\pgfplots@createlegend@toname\pgfutil@empty
+				% ok, draw legend.
+				\def\pgfplots@createlegend@prepareimage@to##1{%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
+					\edef##1{\noexpand\pgfplots@show@small@legendplots{\the\t@pgfplots@tokb}{\the\t@pgfplots@tokc}}%
+				}%
+			\else
+				% export legend instead of drawing it.
+				\def\pgfplots@createlegend@prepareimage@to##1{%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
+					\edef\pgfplots@loc@TMPa{\noexpand\pgfplots@export@legend@image@to@macro{\the\t@pgfplots@tokb,\the\t@pgfplots@tokc}{}}%
+					\pgfplots@loc@TMPa
+					\let##1=\pgfplotsretval
+				}%
+			\fi
 			% assemble a 
 			% \matrix {
 			% 	small plot  & legend1\\
@@ -3517,29 +3789,36 @@
 					\advance\curcolumnNum by1
 					\begingroup
 					\expandafter\pgfplots@split@opts\pgfplots@curlegend\pgfplots@result@to{\pgfplots@curlegend}{\pgfplots@curlegend@opts}%
+					\pgfplots@createlegend@prepareimage@to{\pgfplots@loc@TMPa}%
+					%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@curlegend}%
+					% ok. Now, the 
+					% - 'b' register contains the IMAGE and
+					% - 'c' register contains the TEXT
 					\ifcase\legendplotpos
 						% legend plot pos=left 
-						\t@pgfplots@tokb=\expandafter{%
-								\expandafter\pgfplots@show@small@legendplots
-								\expandafter{\pgfplots@curlegend@opts}}%
-						\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\t@pgfplots@tokb\expandafter{\pgfplots@curplotlist}%
-								\pgfmatrixnextcell\node}%
-						\t@pgfplots@tokb=\expandafter\expandafter\expandafter{%
-							\expandafter\the\expandafter\t@pgfplots@tokb
-							\expandafter{\pgfplots@curlegend};}%
+						\edef\pgfplots@matrixentry{%
+							\the\t@pgfplots@tokb
+							\noexpand\pgfmatrixnextcell
+							\noexpand\node{\the\t@pgfplots@tokc};%
+						}%
 					\or
 						% legend plot pos=right
-						\t@pgfplots@tokb=\expandafter{%
-							\expandafter\node
-							\expandafter{\pgfplots@curlegend};%
-							\pgfmatrixnextcell
-							\pgfplots@show@small@legendplots}%
-						\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\t@pgfplots@tokb\expandafter{\pgfplots@curlegend@opts}}%
-						\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\t@pgfplots@tokb\expandafter{\pgfplots@curplotlist}}%
+						\edef\pgfplots@matrixentry{%
+							\noexpand\node{\the\t@pgfplots@tokc};%
+							\noexpand\pgfmatrixnextcell
+							\the\t@pgfplots@tokb
+						}%
 					\or
 						% legend plot pos=none
-						\t@pgfplots@tokb=\expandafter{\expandafter\node\expandafter{\pgfplots@curlegend};}%
+						\edef\pgfplots@matrixentry{%
+							\noexpand\node{\the\t@pgfplots@tokc};%
+						}%
 					\fi
+					% copy it back to 'b' register:
+					\t@pgfplots@tokb=\expandafter{\pgfplots@matrixentry}%
+					%
 					\ifnum\curcolumnNum=\maxcolumnCount
 						\t@pgfplots@tokb=\expandafter{\the\t@pgfplots@tokb\\}%
 					\else
@@ -3572,6 +3851,7 @@
 			\t@pgfplots@tokb={\matrix[/pgfplots/every axis legend]}%
 			\xdef\pgfplots@glob@TMPa{%
 				\noexpand\def\noexpand\plotnum{0}%
+				\noexpand\def\noexpand\plotnumofactualtype{0}%
 				\the\t@pgfplots@tokb {%
 					\the\t@pgfplots@toka
 				};%
@@ -3581,8 +3861,105 @@
 		\fi
 	\fi
 %\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node}%
-	\pgfplots@already@computed@legend@node
+	\ifx\pgfplots@createlegend@toname\pgfutil@empty
+		% DRAW:
+		\pgfplots@already@computed@legend@node
+	\else
+		% apply the 'legend to name' feature:
+		%
+		% store legend contents:
+		%
+		\t@pgfplots@toka=\expandafter{\pgfplots@already@computed@legend@node}%
+		\pgfkeysgetvalue{/pgfplots/every axis legend/.@cmd}\pgfplots@loc@TMPa
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
+		%
+		\pgfplots@assemble@ref@picture
+			{\pgfplots@legend@to@name}
+			{\tikz[/pgfplots/every legend to name picture/.try]{\pgfplots@legend@to@name}}%
+		\t@pgfplots@tokc=\expandafter{\pgfplotsretval}%
+		%
+		\expandafter\xdef\csname pgfplots@legend@to@name@\pgfplots@createlegend@toname\endcsname{%
+			\noexpand\begingroup
+			\noexpand\def\noexpand\pgfplots@legend@to@name{%
+				\noexpand\pgfkeysdef{/pgfplots/every axis legend}{\the\t@pgfplots@tokb}%
+				\noexpand\def\noexpand\numplots{\numplots}%
+				\the\t@pgfplots@toka
+			}%
+			\the\t@pgfplots@tokc
+			\noexpand\endgroup
+		}%
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname pgfplots@legend@to@name@\pgfplots@createlegend@toname\endcsname}%
+		\pgfplots@auxwrite{%
+			\noexpand\expandafter
+			\noexpand\gdef
+				\noexpand\csname pgfplots@legend@to@name@\pgfplots@createlegend@toname\noexpand\endcsname%
+					{\the\t@pgfplots@toka}%
+		}%
+		\begingroup
+		%
+		% make sure \ref{<legendname>} works:
+		\pgfplots@label{\pgfplots@createlegend@toname}{pgfplots@legend@to@name@}%
+		\endgroup
+	\fi
 }
+
+% Defines a new \label{#1}. When \ref{#1} is used, the code 
+% \csname #2#1\endcsname
+% will be invoked.
+\def\pgfplots@label#1#2{%
+	\begingroup
+	\edef\@currentlabel{%
+		\string\expandafter
+		\string\protect
+		\string\csname\space #2#1\string\endcsname
+	}%
+	\pgfutil@ifundefined{hyper@makecurrent}{}{%
+		\hyper@makecurrent{pgfplotslink}%
+		\hyper@anchorstart{\@currentHref}{}\hyper@anchorend
+		\pgfplotsutil@advancestringcounter@global\c@pgfplots@label
+	}%
+	\expandafter\label\expandafter{#1}%
+	\endgroup
+}%
+\gdef\c@pgfplots@label{0}%
+\def\theHpgfplotslink{\theHsection.\c@pgfplots@label}%
+
+% this is deprecated. Use \ref{#1} instead.
+\def\pgfplotslegendfromname#1{%
+	\pgfplots@texdist@protect\pgfplotslegendfromname@{#1}%
+}%
+\def\pgfplotslegendfromname@#1{%
+	\pgfutil@ifundefined{pgfplots@legend@to@name@#1}{%
+		\pgfutil@ifundefined{ref}{%
+			\pgfplots@warning{There is no `legend to name=#1', sorry. I am skipping it}%
+			\string\pgfplotslegendfromname{#1}: ??%
+		}{%
+			\ref{\string\pgfplotslegendfromname{#1}}%
+		}%
+	}{%
+		\csname pgfplots@legend@to@name@#1\endcsname
+	}%
+}%
+% this is deprecated. Use \ref{#1} instead.
+\def\pgfplotscolorbarfromname#1{%
+	\pgfplots@texdist@protect\pgfplotscolorbarfromname@{#1}%
+}%
+\def\pgfplotscolorbarfromname@#1{%
+	\pgfutil@ifundefined{pgfplots@colorbar@to@name@#1}{%
+		\pgfutil@ifundefined{ref}{%
+			\pgfplots@warning{There is no `colorbar to name=#1', sorry. I am skipping it}%
+			\string\pgfplotscolorbarfromname{#1}: ??%
+		}{%
+			\ref{\string\pgfplotscolorbarfromname{#1}}%
+		}%
+	}{%
+		\csname pgfplots@colorbar@to@name@#1\endcsname
+	}%
+}%
+
+\def\pgfplots@ifintikzpicture#1#2{%
+	\pgfutil@ifundefined{filldraw}{#2}{#1}%
+}%
 
 % DEPRECATED.
 \def\skipsuffixzero#1.#2|{
@@ -5202,7 +5579,7 @@
 		\def\pgfplotspointminmaxmin{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}}%
 		\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
 	\fi
-	\xdef\pgfplotspointminminmin{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\xdef\pgfplotspointminminmin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	% ATTENTION: I re-use registers here! Make sure they won't be
 	% overwritten! \pgfpointdiff and \pgfplotsqpointxy are ok in this respect.
 	\let\pgfplots@xcoordminTEX=\pgf@xb
@@ -5237,14 +5614,14 @@
 	\pgfpointdiff
 		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
 		{\pgfplotspointmaxminmin}%
-	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\xdef\pgfplotspointxaxis{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\pgfmathveclen{\pgf@x}{\pgf@y}%
 	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
 	%
 	\pgfpointdiff
 		{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
 		{\pgfplotspointminmaxmin}%
-	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\xdef\pgfplotspointyaxis{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\pgfmathveclen{\pgf@x}{\pgf@y}%
 	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
 	%
@@ -5252,7 +5629,7 @@
 		\pgfpointdiff
 			{\pgfqpoint{\pgfplots@xcoordminTEX}{\pgfplots@ycoordminTEX}}
 			{\pgfplotsqpointxyz{\pgfplots@xmin}{\pgfplots@ymin}{\pgfplots@zmax}}%
-		\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\xdef\pgfplotspointzaxis{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 		\pgfmathveclen{\pgf@x}{\pgf@y}%
 		\xdef\pgfplotspointzaxislength{\pgfmathresult pt}%
 		%
@@ -5267,10 +5644,10 @@
 			\pgfplotspointzaxis%
 			\advance\pgf@xa by\pgf@x
 			\advance\pgf@xb by\pgf@y
-			\pgf@x=\pgf@xa
-			\pgf@y=\pgf@xb
+			\global\pgf@x=\pgf@xa
+			\global\pgf@y=\pgf@xb
 			}%
-		\xdef\pgfplotspointcenter{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\xdef\pgfplotspointcenter{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\else
 		\global\let\pgfplotspointzaxis=\pgfpointorigin
 		\gdef\pgfplotspointzaxislength{0pt}%
@@ -5280,7 +5657,7 @@
 				\pgfplotspointxaxis%
 				\pgfplotspointyaxis%
 			}%
-		\xdef\pgfplotspointcenter{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\xdef\pgfplotspointcenter{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\fi
 	\endgroup
 }
@@ -5353,8 +5730,8 @@
 \pgfdeclareshape{pgfplots@low@level@shape}{%
 	% The '(0,0)' point is the LOWER LEFT OUTER CORNER.
 	\savedanchor\upperrightcorner{
-		\pgf@x=\wd\pgfnodepartimagebox
-		\pgf@y=\ht\pgfnodepartimagebox
+		\global\pgf@x=\wd\pgfnodepartimagebox
+		\global\pgf@y=\ht\pgfnodepartimagebox
 	}%
 	\savedanchor\lowerleftinnercorner{%
 		\pgfqpoint{\pgfplots@savedanchor@inner@lowerleft@x\relax}{\pgfplots@savedanchor@inner@lowerleft@y\relax}%
@@ -5366,8 +5743,8 @@
 	%
 	\nodeparts{image}%
 	\anchor{image}{%
-		\pgf@x=0pt %
-		\pgf@y=0pt %
+		\global\pgf@x=0pt %
+		\global\pgf@y=0pt %
 	}%
 	%
 	%
@@ -5381,7 +5758,7 @@
 	\anchor{north}{%
 		\pgfpointadd
 			{\lowerleftinnercorner}
-			{\innerdiagonal\divide\pgf@x by2 }%
+			{\innerdiagonal\global\divide\pgf@x by2 }%
 	}%
 	\anchor{north east}{%
 		\pgfpointadd
@@ -5391,28 +5768,28 @@
 	\anchor{east}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\divide\pgf@y by2 }%
+			{\innerdiagonal\global\divide\pgf@y by2 }%
 	}%
 	\anchor{south east}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@y=0sp }%
+			{\innerdiagonal\global\pgf@y=0sp }%
 	}%
 	\anchor{south}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\divide\pgf@x by2 \pgf@y=0sp }%
+			{\innerdiagonal\global\divide\pgf@x by2 \global\pgf@y=0sp }%
 	}%
 	\anchor{south west}{\lowerleftinnercorner}%
 	\anchor{west}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@x=0sp \divide\pgf@y by2 }%
+			{\innerdiagonal\global\pgf@x=0sp \global\divide\pgf@y by2 }%
 	}
 	\anchor{north west}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@x=0sp }%
+			{\innerdiagonal\global\pgf@x=0sp }%
 	}%
 	%%
 	\anchor{origin}{%
@@ -5421,69 +5798,69 @@
 	\anchor{above origin}{%
 		\pgfpointintersectionoflines
 			{\origin}
-			{\pgfpointadd{\origin}{\innerdiagonal\pgf@x=0sp }}
-			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\pgf@x=0sp }}
+			{\pgfpointadd{\origin}{\innerdiagonal\global\pgf@x=0sp }}
+			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\global\pgf@x=0sp }}
 			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal}}%
 	}%
 	\anchor{left of origin}{%
 		\pgfpointintersectionoflines
 			{\origin}
-			{\pgfpointadd{\origin}{\innerdiagonal\multiply\pgf@x by-1 \pgf@y=0sp }}
+			{\pgfpointadd{\origin}{\innerdiagonal\global\multiply\pgf@x by-1 \global\pgf@y=0sp }}
 			{\lowerleftinnercorner}
-			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\pgf@x=0sp }}%
+			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\global\pgf@x=0sp }}%
 	}%
 	\anchor{right of origin}{%
 		\pgfpointintersectionoflines
 			{\origin}
-			{\pgfpointadd{\origin}{\innerdiagonal\pgf@y=0sp }}
-			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\pgf@y=0sp }}
+			{\pgfpointadd{\origin}{\innerdiagonal\global\pgf@y=0sp }}
+			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\global\pgf@y=0sp }}
 			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal}}%
 	}%
 	\anchor{below origin}{%
 		\pgfpointintersectionoflines
 			{\origin}
-			{\pgfpointadd{\origin}{\innerdiagonal\pgf@x=0sp \multiply\pgf@y by-1 }}
+			{\pgfpointadd{\origin}{\innerdiagonal\global\pgf@x=0sp \global\multiply\pgf@y by-1 }}
 			{\lowerleftinnercorner}
-			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\pgf@y=0sp }}%
+			{\pgfpointadd{\lowerleftinnercorner}{\innerdiagonal\global\pgf@y=0sp }}%
 	}%
 	%
 	%%
 	%
 	\anchor{outer north}{%
 		\upperrightcorner
-		\pgf@x=.5\pgf@x
+		\global\pgf@x=.5\pgf@x
 	}%
 	\anchor{outer north east}{\upperrightcorner}%
 	\anchor{outer east}{%
 		\upperrightcorner
-		\pgf@y=.5\pgf@y
+		\global\pgf@y=.5\pgf@y
 	}%
 	\anchor{outer south east}{%
 		\upperrightcorner
-		\pgf@y=0pt
+		\global\pgf@y=0pt
 	}%
 	\anchor{outer south}{%
 		\upperrightcorner
-		\pgf@x=.5\pgf@x
-		\pgf@y=0pt
+		\global\pgf@x=.5\pgf@x
+		\global\pgf@y=0pt
 	}%
 	\anchor{outer south west}{%
-		\pgf@x=0pt
-		\pgf@y=0pt
+		\global\pgf@x=0pt
+		\global\pgf@y=0pt
 	}%
 	\anchor{outer west}{%
 		\upperrightcorner
-		\pgf@x=0pt
-		\pgf@y=.5\pgf@y
+		\global\pgf@x=0pt
+		\global\pgf@y=.5\pgf@y
 	}%
 	\anchor{outer north west}{%
 		\upperrightcorner
-		\pgf@x=0pt
+		\global\pgf@x=0pt
 	}%
 	\anchor{outer center}{%
 		\upperrightcorner
-		\pgf@x=.5\pgf@x
-		\pgf@y=.5\pgf@y
+		\global\pgf@x=.5\pgf@x
+		\global\pgf@y=.5\pgf@y
 	}%
 	%
 	%
@@ -5495,7 +5872,7 @@
 		\pgfpointadd
 			{\lowerleftinnercorner}
 			{\innerdiagonal\divide\pgf@x by2 }%
-		\pgf@y=\pgfutil@tempdima
+		\global\pgf@y=\pgfutil@tempdima
 	}%
 	\anchor{above north east}{%
 		\upperrightcorner
@@ -5503,7 +5880,7 @@
 		\pgfpointadd
 			\lowerleftinnercorner
 			\innerdiagonal
-		\pgf@y=\pgfutil@tempdima
+		\global\pgf@y=\pgfutil@tempdima
 	}%
 	\anchor{right of north east}{%
 		\upperrightcorner
@@ -5511,63 +5888,63 @@
 		\pgfpointadd
 			\lowerleftinnercorner
 			\innerdiagonal
-		\pgf@x=\pgfutil@tempdima
+		\global\pgf@x=\pgfutil@tempdima
 	}%
 	\anchor{right of east}{%
 		\upperrightcorner
 		\pgfutil@tempdima=\pgf@x
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\divide\pgf@y by2 }%
-		\pgf@x=\pgfutil@tempdima
+			{\innerdiagonal\global\divide\pgf@y by2 }%
+		\global\pgf@x=\pgfutil@tempdima
 	}%
 	\anchor{right of south east}{%
 		\upperrightcorner
 		\pgfutil@tempdima=\pgf@x
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@y=0sp }%
-		\pgf@x=\pgfutil@tempdima
+			{\innerdiagonal\global\pgf@y=0sp }%
+		\global\pgf@x=\pgfutil@tempdima
 	}%
 	\anchor{below south east}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@y=0sp }%
-		\pgf@y=0pt
+			{\innerdiagonal\global\pgf@y=0sp }%
+		\global\pgf@y=0pt
 	}%
 	\anchor{below south}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\divide\pgf@x by2 \pgf@y=0sp }%
+			{\innerdiagonal\global\divide\pgf@x by2 \global\pgf@y=0sp }%
 		\pgf@y=0pt
 	}%
 	\anchor{below south west}{%
 		\lowerleftinnercorner
-		\pgf@y=0pt
+		\global\pgf@y=0pt
 	}%
 	\anchor{left of south west}{%
 		\lowerleftinnercorner
-		\pgf@x=0pt
+		\global\pgf@x=0pt
 	}%
 	\anchor{left of west}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@x=0sp \divide\pgf@y by2 }%
-		\pgf@x=0pt
+			{\innerdiagonal\global\pgf@x=0sp \global\divide\pgf@y by2 }%
+		\global\pgf@x=0pt
 	}%
 	\anchor{left of north west}{%
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@x=0sp }%
-		\pgf@x=0pt
+			{\innerdiagonal\global\pgf@x=0sp }%
+		\global\pgf@x=0pt
 	}%
 	\anchor{above north west}{%
 		\upperrightcorner
 		\pgfutil@tempdima=\pgf@y
 		\pgfpointadd
 			\lowerleftinnercorner
-			{\innerdiagonal\pgf@x=0sp }%
-		\pgf@y=\pgfutil@tempdima
+			{\innerdiagonal\global\pgf@x=0sp }%
+		\global\pgf@y=\pgfutil@tempdima
 	}%
 	%%
 	%%
@@ -5601,8 +5978,8 @@
 	\pgfdeclareshape{pgfplots@low@level@shape@deprecated}{%
 		% The '(0,0)' point is the LOWER LEFT OUTER CORNER.
 		\savedanchor\upperrightcorner{
-			\pgf@x=\wd\pgfnodepartimagebox
-			\pgf@y=\ht\pgfnodepartimagebox
+			\global\pgf@x=\wd\pgfnodepartimagebox
+			\global\pgf@y=\ht\pgfnodepartimagebox
 		}%
 		\savedanchor\lowerleftinnercorner{%
 			\pgfqpoint{\pgfplots@savedanchor@inner@lowerleft@x\relax}{\pgfplots@savedanchor@inner@lowerleft@y\relax}%
@@ -5615,8 +5992,8 @@
 		%
 		\nodeparts{image}%
 		\anchor{image}{%
-			\pgf@x=0pt %
-			\pgf@y=0pt %
+			\global\pgf@x=0pt %
+			\global\pgf@y=0pt %
 		}%
 		%
 		%
@@ -5698,39 +6075,39 @@
 		%
 		\anchor{outer north}{%
 			\upperrightcorner
-			\pgf@x=.5\pgf@x
+			\global\pgf@x=.5\pgf@x
 		}%
 		\anchor{outer north east}{\upperrightcorner}%
 		\anchor{outer east}{%
 			\upperrightcorner
-			\pgf@y=.5\pgf@y
+			\global\pgf@y=.5\pgf@y
 		}%
 		\anchor{outer south east}{%
 			\upperrightcorner
-			\pgf@y=0pt
+			\global\pgf@y=0pt
 		}%
 		\anchor{outer south}{%
 			\upperrightcorner
-			\pgf@x=.5\pgf@x
-			\pgf@y=0pt
+			\global\pgf@x=.5\pgf@x
+			\global\pgf@y=0pt
 		}%
 		\anchor{outer south west}{%
-			\pgf@x=0pt
-			\pgf@y=0pt
+			\global\pgf@x=0pt
+			\global\pgf@y=0pt
 		}%
 		\anchor{outer west}{%
 			\upperrightcorner
-			\pgf@x=0pt
-			\pgf@y=.5\pgf@y
+			\global\pgf@x=0pt
+			\global\pgf@y=.5\pgf@y
 		}%
 		\anchor{outer north west}{%
 			\upperrightcorner
-			\pgf@x=0pt
+			\global\pgf@x=0pt
 		}%
 		\anchor{outer center}{%
 			\upperrightcorner
-			\pgf@x=.5\pgf@x
-			\pgf@y=.5\pgf@y
+			\global\pgf@x=.5\pgf@x
+			\global\pgf@y=.5\pgf@y
 		}%
 		%
 		%
@@ -5742,7 +6119,7 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointadd{\yaxisvec}{\pgfpointscale{0.5}{\xaxisvec}}}%
-			\pgf@y=\pgfutil@tempdima
+			\global\pgf@y=\pgfutil@tempdima
 		}%
 		\anchor{above north east}{%
 			\upperrightcorner
@@ -5750,7 +6127,7 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointadd{\yaxisvec}{\xaxisvec}}%
-			\pgf@y=\pgfutil@tempdima
+			\global\pgf@y=\pgfutil@tempdima
 		}%
 		\anchor{right of north east}{%
 			\upperrightcorner
@@ -5758,7 +6135,7 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointadd{\yaxisvec}{\xaxisvec}}%
-			\pgf@x=\pgfutil@tempdima
+			\global\pgf@x=\pgfutil@tempdima
 		}%
 		\anchor{right of east}{%
 			\upperrightcorner
@@ -5766,7 +6143,7 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointadd{\xaxisvec}{\pgfpointscale{0.5}{\yaxisvec}}}%
-			\pgf@x=\pgfutil@tempdima
+			\global\pgf@x=\pgfutil@tempdima
 		}%
 		\anchor{right of south east}{%
 			\upperrightcorner
@@ -5774,39 +6151,39 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\xaxisvec}%
-			\pgf@x=\pgfutil@tempdima
+			\global\pgf@x=\pgfutil@tempdima
 		}%
 		\anchor{below south east}{%
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\xaxisvec}%
-			\pgf@y=0pt
+			\global\pgf@y=0pt
 		}%
 		\anchor{below south}{%
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointscale{0.5}{\xaxisvec}}%
-			\pgf@y=0pt
+			\global\pgf@y=0pt
 		}%
 		\anchor{below south west}{%
 			\lowerleftinnercorner
-			\pgf@y=0pt
+			\global\pgf@y=0pt
 		}%
 		\anchor{left of south west}{%
 			\lowerleftinnercorner
-			\pgf@x=0pt
+			\global\pgf@x=0pt
 		}%
 		\anchor{left of west}{%
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\pgfpointscale{0.5}{\yaxisvec}}%
-			\pgf@x=0pt
+			\global\pgf@x=0pt
 		}%
 		\anchor{left of north west}{%
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\yaxisvec}%
-			\pgf@x=0pt
+			\global\pgf@x=0pt
 		}%
 		\anchor{above north west}{%
 			\upperrightcorner
@@ -5814,7 +6191,7 @@
 			\pgfpointadd
 				{\lowerleftinnercorner}%
 				{\yaxisvec}%
-			\pgf@y=\pgfutil@tempdima
+			\global\pgf@y=\pgfutil@tempdima
 		}%
 		%%
 		%%
@@ -6529,8 +6906,8 @@
 		\begingroup
 			\pgfgettransformentries\aa\ab\ba\bb\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 			\xdef\pgfplots@savedtransformshift{%
-				\pgf@x=\pgfplots@loc@TMPa\space
-				\pgf@y=\pgfplots@loc@TMPb\space
+				\global\pgf@x=\pgfplots@loc@TMPa\space
+				\global\pgf@y=\pgfplots@loc@TMPb\space
 			}%
 			\xdef\pgfplots@glob@TMPa{{\aa}{\ab}{\ba}{\bb}}%
 		\endgroup
@@ -6782,13 +7159,13 @@
 				
 	\else
 		\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
-		\edef\pgfplots@loc@TMPa{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\edef\pgfplots@loc@TMPa{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 		\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}%
-		\edef\pgfplots@loc@TMPb{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\edef\pgfplots@loc@TMPb{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 		\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
-		\edef\pgfplots@loc@TMPc{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\edef\pgfplots@loc@TMPc{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 		\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymax}%
-		\edef\pgfplots@loc@TMPd{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\edef\pgfplots@loc@TMPd{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 		\begingroup
 		\toks0=\expandafter{\pgfplots@loc@TMPa}%
 		\toks1=\expandafter{\pgfplots@loc@TMPb}%
@@ -6844,8 +7221,8 @@
 	\expandafter\pgfplotspointbbdiagonal@\pgfplotspoint@bb@@@
 }%
 \let\pgfplotspoint@bb@@@=\relax
-\def\pgfplotspointbblowerleft@#1#2#3#4{\pgf@x=#1 \pgf@y=#2 }%
-\def\pgfplotspointbbdiagonal@#1#2#3#4{\pgf@x=#3 \pgf@y=#4 }%
+\def\pgfplotspointbblowerleft@#1#2#3#4{\global\pgf@x=#1 \global\pgf@y=#2 }%
+\def\pgfplotspointbbdiagonal@#1#2#3#4{\global\pgf@x=#3 \global\pgf@y=#4 }%
 
 % #1: a complete \pgfusepath command what to do with the clip path.
 \def\pgfplots@clippath@install#1{%
@@ -7364,55 +7741,59 @@
 		%
 		\pgfplots@change@pgfpoints@to@descriptioncs
 		%
-		\ifpgfplots@hide@x
-		\else
-                      \ifpgfplots@units@use%
-                            \pgfplots@show@label{x}{\pgfplots@label@units{x}}%
-                      \else%
-                            \pgfkeysgetvalue{/pgfplots/xlabel}{\pgfplots@label@}%
-                            \ifx\pgfplots@label@\pgfutil@empty
-                            \else
-                                  \pgfplots@show@label{x}{\pgfplots@label@}%
-                            \fi
-                      \fi
-		\fi
-		\ifpgfplots@hide@y
-		\else
-                      \ifpgfplots@units@use%
-                            \pgfplots@show@label{y}{\pgfplots@label@units{y}}%
-                      \else%
-                            \pgfkeysgetvalue{/pgfplots/ylabel}{\pgfplots@label@}%
-                            \ifx\pgfplots@label@\pgfutil@empty
-                            \else
-                                  \pgfplots@show@label{y}{\pgfplots@label@}%
-                            \fi
-                      \fi  
-		\fi
-		\ifpgfplots@threedim
-			\ifpgfplots@hide@z
-			\else
-                              \ifpgfplots@units@use%
-                                    \pgfplots@show@label{z}{\pgfplots@label@units{z}}%
-                              \else%
-                                    \pgfkeysgetvalue{/pgfplots/zlabel}{\pgfplots@label@}%
-                                    \ifx\pgfplots@label@\pgfutil@empty
-                                    \else
-                                          \pgfplots@show@label{z}{\pgfplots@label@}%
-                                    \fi
-                              \fi
-			\fi
-		\fi
-		%
-		\pgfkeysgetvalue{/pgfplots/title}\pgfplots@loc@TMPa
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		\else
-			\expandafter\pgfplots@show@title\expandafter{\pgfplots@loc@TMPa}%
-		\fi
-		\pgfplots@createlegend
-		%
-		\pgfkeysvalueof{/pgfplots/extra description/.@cmd}\pgfeov%
-		%
+		\pgfplots@create@axis@descriptions@
 	\endgroup
+}
+
+\def\pgfplots@create@axis@descriptions@{%
+	\ifpgfplots@hide@x
+	\else
+				  \ifpgfplots@units@use%
+						\pgfplots@show@label{x}{\pgfplots@label@units{x}}%
+				  \else%
+						\pgfkeysgetvalue{/pgfplots/xlabel}{\pgfplots@label@}%
+						\ifx\pgfplots@label@\pgfutil@empty
+						\else
+							  \pgfplots@show@label{x}{\pgfplots@label@}%
+						\fi
+				  \fi
+	\fi
+	\ifpgfplots@hide@y
+	\else
+				  \ifpgfplots@units@use%
+						\pgfplots@show@label{y}{\pgfplots@label@units{y}}%
+				  \else%
+						\pgfkeysgetvalue{/pgfplots/ylabel}{\pgfplots@label@}%
+						\ifx\pgfplots@label@\pgfutil@empty
+						\else
+							  \pgfplots@show@label{y}{\pgfplots@label@}%
+						\fi
+				  \fi  
+	\fi
+	\ifpgfplots@threedim
+		\ifpgfplots@hide@z
+		\else
+						  \ifpgfplots@units@use%
+								\pgfplots@show@label{z}{\pgfplots@label@units{z}}%
+						  \else%
+								\pgfkeysgetvalue{/pgfplots/zlabel}{\pgfplots@label@}%
+								\ifx\pgfplots@label@\pgfutil@empty
+								\else
+									  \pgfplots@show@label{z}{\pgfplots@label@}%
+								\fi
+						  \fi
+		\fi
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/title}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\expandafter\pgfplots@show@title\expandafter{\pgfplots@loc@TMPa}%
+	\fi
+	\pgfplots@createlegend
+	%
+	\pgfkeysvalueof{/pgfplots/extra description/.@cmd}\pgfeov%
+	%
 }
 
 \def\pgfplots@datascaletrafo@undoshift@x#1{%
@@ -7624,6 +8005,38 @@
 	\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 }
 
+% Invokes '#1' foreach key which should be saved by a color bar.
+%
+% The current key name is available as '##1', the macro under which
+% the key is / should be saved as '##2'.
+\def\pgfplots@colorbar@foreach@saved@key#1{%
+	\def\pgfplots@colorbar@foreach@saved@key@body##1##2{#1}%
+	\pgfplotsutilforeachcommasep{%
+		{/pgfplots/colorbar/draw/.@cmd}\pgfplots@savedstyle@colorbar@draw,%
+		{/pgfplots/every colorbar/.@cmd}\pgfplots@savedstyle@colorbar,%
+		{/pgfplots/colorbar shift/.@cmd}\pgfplots@savedstyle@colorbarshift,%
+		{/pgfplots/colorbar horizontal/lowlevel/.@cmd}\pgfplots@savedstyle@colorbar@horizontal,%
+		{/pgfplots/colorbar vertical/lowlevel/.@cmd}\pgfplots@savedstyle@colorbar@vertical,%
+		{/pgfplots/every tick/.@cmd}\pgfplots@savedstyle@tick,%
+		{/pgfplots/every minor tick/.@cmd}\pgfplots@savedstyle@minortick,%
+		{/pgfplots/every major tick/.@cmd}\pgfplots@savedstyle@majortick,%
+		{/pgfplots/every axis grid/.@cmd}\pgfplots@savedstyle@grid,%
+		{/pgfplots/every minor grid/.@cmd}\pgfplots@savedstyle@minorgrid,%
+		{/pgfplots/every major grid/.@cmd}\pgfplots@savedstyle@majorgrid,%
+		{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel,%
+		{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel%
+	}%
+		\as\pgfplots@colorbar@foreach@saved@key@@
+	{%
+		\expandafter\pgfplots@colorbar@foreach@saved@key@body\pgfplots@colorbar@foreach@saved@key@@
+	}%
+}%
+\def\pgfplots@colorbar@restore@saved@keys{%
+	\pgfplots@colorbar@foreach@saved@key{%
+		\pgfkeyslet{##1}##2%
+	}%
+}%
+
 % Defines '#1' to be a macro which, upon execution, draws the color
 % bar for the current axis. It also handles any required style
 % inheritance and option preparation issues.
@@ -7638,99 +8051,170 @@
 	\pgfkeyslet{/pgfplots/parent axis width}{\pgfplots@loc@TMPa}%
 	\pgfkeyslet{/pgfplots/parent axis height}{\pgfplots@loc@TMPb}%
 	%
+	\pgfkeysgetvalue{/pgfplots/colorbar to name}\pgfplots@colorbar@toname
+	%
 	\pgfnodealias{parent axis}{current axis}%
+	%
+	% FIXME : 
+	% I would really prefer to find a different way to move these
+	% variables out of the current scope. But expansion leads to
+	% mistakes with '#' characters ... :-(
+	\pgfplots@colorbar@foreach@saved@key{%
+		\pgfkeysgetvalue{##1}\pgfplots@loc@TMPa
+		\global\let##2=\pgfplots@loc@TMPa
+	}%
+	%
+	\toks1={}%
+	\ifx\pgfplots@colorbar@toname\pgfutil@empty
+	\else
+		\toks1={%
+			\pgfkeysgetvalue{/pgfplots/at/.@cmd}\pgfplots@at@orig
+			\pgfkeyslet{/pgfplots/at/orig/.@cmd}\pgfplots@at@orig
+			%
+			\pgfkeysgetvalue{/pgfplots/colorbar to name/at/.@cmd}\pgfplots@colorbar@toname@at
+			\pgfkeyslet{/pgfplots/at/.@cmd}\pgfplots@colorbar@toname@at
+		}%
+		\pgfplots@colorbar@foreach@saved@key{%
+			\pgfplots@command@with@args@to@string##2\pgfplots@loc@TMPa
+			\pgfplots@auxwrite{%
+				\noexpand\expandafter
+				\noexpand\long
+				\noexpand\expandafter
+				\noexpand\gdef
+				\noexpand\csname pgfplots@colorbar@\pgfplots@colorbar@toname @\noexpand\string\noexpand##2\noexpand\endcsname%
+					\pgfplots@loc@TMPa
+			}%
+			\edef\pgfplots@loc@TMPa{%
+				\the\toks1
+				\noexpand\expandafter
+				\noexpand\let
+				\noexpand\expandafter
+				\noexpand##2%
+					\noexpand\csname pgfplots@colorbar@\pgfplots@colorbar@toname @\noexpand\string\noexpand##2\noexpand\endcsname%
+			}%
+			\toks1=\expandafter{\pgfplots@loc@TMPa}%
+		}%
+	\fi
+	% %
 	% we have to do a lot of work to move *some* of the current
 	% settings out of the current TeX group:
 	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
 	\expandafter\pgfplotscolormapserializetomacro\expandafter{\pgfplots@loc@TMPa}{\pgfplots@serializedcolormap}%
 	\toks0=\expandafter{\pgfplots@serializedcolormap}%
 	%
-	% FIXME : 
-	% I would really prefer to find a different way to move these
-	% variables out of the current scope. But expansion lead to
-	% mistakes with '#' characters ... :-(
-	% I use these no-name globals in the hope they might be used
-	% in another place as well.
-	{\globaldefs=1
-	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@savedstyle@colorbar@draw
-	\pgfkeysgetvalue{/pgfplots/every colorbar/.@cmd}\pgfplots@savedstyle@colorbar
-	\pgfkeysgetvalue{/pgfplots/colorbar shift/.@cmd}\pgfplots@savedstyle@colorbarshift
-	\pgfkeysgetvalue{/pgfplots/every tick/.@cmd}\pgfplots@savedstyle@tick
-	\pgfkeysgetvalue{/pgfplots/every minor tick/.@cmd}\pgfplots@savedstyle@minortick
-	\pgfkeysgetvalue{/pgfplots/every major tick/.@cmd}\pgfplots@savedstyle@majortick
-	\pgfkeysgetvalue{/pgfplots/every axis grid/.@cmd}\pgfplots@savedstyle@grid
-	\pgfkeysgetvalue{/pgfplots/every minor grid/.@cmd}\pgfplots@savedstyle@minorgrid
-	\pgfkeysgetvalue{/pgfplots/every major grid/.@cmd}\pgfplots@savedstyle@majorgrid
-	\pgfkeysgetvalue{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel
-	\pgfkeysgetvalue{/pgfplots/every tick label/.@cmd}\pgfplots@savedstyle@ticklabel
-	}%
+	\pgfkeysgetvalue{/pgfplots/colorbar addplot}\pgfplots@loc@TMPa
+	\toks2=\expandafter{\pgfplots@loc@TMPa}%
+	%
+	\ifx\pgfplots@colorbar@src@metamin\pgfutil@empty
+		\global\let\pgfplots@colorbar@src@metamin=\pgfplots@axiswide@metamin
+		\global\let\pgfplots@colorbar@src@metamax=\pgfplots@axiswide@metamax
+	\fi
+	%
+	% normalize format:
+	\pgfmathfloattosci\pgfplots@colorbar@src@metamin
+	\global\let\pgfplots@colorbar@src@metamin=\pgfmathresult
+	\pgfmathfloattosci\pgfplots@colorbar@src@metamax
+	\global\let\pgfplots@colorbar@src@metamax=\pgfmathresult
+	%
+	\pgfplots@assemble@ref@picture
+		{\pgfplots@colorbar@draw}
+		{\tikz[/pgfplots/every colorbar to name picture/.try]{\pgfplots@colorbar@draw}}%
+	\toks3=\expandafter{\pgfplotsretval}%
 	%
 	\xdef#1{%
 		\noexpand\begingroup
-		\the\toks0 % restore colormap definition
-		%  restore relevant styles and variables:
-		\noexpand\pgfkeyslet{/pgfplots/colorbar/draw/.@cmd}		{\noexpand\pgfplots@savedstyle@colorbar@draw}%
-		\noexpand\pgfkeyslet{/pgfplots/colorbar shift/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbarshift}%
-		\noexpand\pgfkeyslet{/pgfplots/every colorbar/.@cmd}	{\noexpand\pgfplots@savedstyle@colorbar}%
-		\noexpand\pgfkeyslet{/pgfplots/every tick/.@cmd}		{\noexpand\pgfplots@savedstyle@tick}%
-		\noexpand\pgfkeyslet{/pgfplots/every minor tick/.@cmd}	{\noexpand\pgfplots@savedstyle@minortick}%
-		\noexpand\pgfkeyslet{/pgfplots/every major tick/.@cmd}	{\noexpand\pgfplots@savedstyle@majortick}%
-		\noexpand\pgfkeyslet{/pgfplots/every axis grid/.@cmd}	{\noexpand\pgfplots@savedstyle@grid}%
-		\noexpand\pgfkeyslet{/pgfplots/every minor grid/.@cmd}	{\noexpand\pgfplots@savedstyle@minorgrid}%
-		\noexpand\pgfkeyslet{/pgfplots/every major grid/.@cmd}	{\noexpand\pgfplots@savedstyle@majorgrid}%
-		\noexpand\pgfkeyslet{/pgfplots/every tick label/.@cmd}	{\noexpand\pgfplots@savedstyle@ticklabel}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/point meta min}{\pgfplots@axiswide@metamin}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/point meta max}{\pgfplots@axiswide@metamax}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/colormap name}{\pgfkeysvalueof{/pgfplots/colormap name}}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis width}{\pgfkeysvalueof{/pgfplots/parent axis width}}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
-		\noexpand\pgfplots@colorbar@define@hook%
-		\noexpand\pgfkeysvalueof{/pgfplots/colorbar/draw/.@cmd}\noexpand\pgfeov
+		\noexpand\def\noexpand\pgfplots@colorbar@draw{%
+			\the\toks0 % restore colormap definition
+			\noexpand\def\noexpand\pgfplots@colorbar@toname{\pgfplots@colorbar@toname}%
+			\the\toks1 % definitions for 'colorbar to name'
+			%
+			%  restore relevant styles and variables:
+			\noexpand\pgfplots@colorbar@restore@saved@keys
+			\noexpand\pgfkeyssetvalue{/pgfplots/point meta min}{\pgfplots@colorbar@src@metamin}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/point meta max}{\pgfplots@colorbar@src@metamax}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/colormap name}{\pgfkeysvalueof{/pgfplots/colormap name}}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/parent axis width}{\pgfkeysvalueof{/pgfplots/parent axis width}}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/parent axis height}{\pgfkeysvalueof{/pgfplots/parent axis height}}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar/width}{\pgfkeysvalueof{/pgfplots/colorbar/width}}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar addplot}{\the\toks2 }%
+			\noexpand\pgfkeyssetvalue{/pgfplots/colorbar pos*}{\pgfkeysvalueof{/pgfplots/colorbar pos*}}%
+			\noexpand\pgfplots@colorbar@define@hook%
+			\noexpand\pgfkeysvalueof{/pgfplots/colorbar/draw/.@cmd}\noexpand\pgfeov
+			\ifx\pgfplots@colorbar@toname\pgfutil@empty
+				\noexpand\pgfnodealias{current colorbar axis}{current axis}%
+				\noexpand\pgfnodealias{current axis}{parent axis}%
+			\fi
+		}%
+		\the\toks3
 		\noexpand\endgroup
-		\noexpand\pgfnodealias{current colorbar axis}{current axis}%
-		\noexpand\pgfnodealias{current axis}{parent axis}%
 	}%
+	\ifx\pgfplots@colorbar@toname\pgfutil@empty
+	\else
+		% finalize the 'colorbar to name' feature
+		\toks0=\expandafter{#1}%
+		\pgfplots@auxwrite{%
+			\noexpand\expandafter
+			\noexpand\gdef\noexpand\csname pgfplots@colorbar@to@name@\pgfplots@colorbar@toname\endcsname{\the\toks0}}%
+		\xdef#1{}% NOP.
+		% 
+		% make sure \ref{<colorbarname>} works:
+		\pgfplots@label{\pgfplots@colorbar@toname}{pgfplots@colorbar@to@name@}%
+	\fi
+}%
+\pgfkeysdef{/pgfplots/colorbar to name/at}{%
+	% automatically search-and-replace 'parent axis' which
+	% is not defined for a detached colorbar:
+	\pgfutil@in@{parent axis}{#1}%
+	\ifpgfutil@in@
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/at/orig/.@cmd}{(0pt,0pt)}%
+	\else
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/at/orig/.@cmd}{#1}%
+	\fi
 }%
 \let\pgfplots@colorbar@position@hook\relax
 \def\pgfplots@colorbar@define@hook{%
-	\def\pgfplots@colorbar@position@hook{%
-		% I patch \pgfplots@at...
-		\let\pgfplots@at@orig=\pgfplots@at
-		%
-		% ... and I patch \pgfplotspointdescriptionxy (but only INSIDE
-		% of \pgfplots@at) ...
-		\let\pgfplotspointdescriptionxy@orig=\pgfplotspointdescriptionxy
-		\let\pgfplotsqpointdescriptionxy@orig=\pgfplotsqpointdescriptionxy
-		\def\pgfplots@colorbar@position@prepare@CS{%
-			% ... which needs to set up ONLY \pgfplotspoint@bb@@@,
-			% nothing more.
-			\pgfpointanchor{parent axis}{south west}%
-			\edef\pgfplotspoint@bb@@@{%
-				{\the\pgf@x}%
-				{\the\pgf@y}%
-				{\pgfkeysvalueof{/pgfplots/parent axis width}}%
-				{\pgfkeysvalueof{/pgfplots/parent axis height}}%
+	\ifx\pgfplots@colorbar@toname\pgfutil@empty
+		\def\pgfplots@colorbar@position@hook{%
+			% I patch \pgfplots@at...
+			\let\pgfplots@at@orig=\pgfplots@at
+			%
+			% ... and I patch \pgfplotspointdescriptionxy (but only INSIDE
+			% of \pgfplots@at) ...
+			\let\pgfplotspointdescriptionxy@orig=\pgfplotspointdescriptionxy
+			\let\pgfplotsqpointdescriptionxy@orig=\pgfplotsqpointdescriptionxy
+			\def\pgfplots@colorbar@position@prepare@CS{%
+				% ... which needs to set up ONLY \pgfplotspoint@bb@@@,
+				% nothing more.
+				\pgfpointanchor{parent axis}{south west}%
+				\edef\pgfplotspoint@bb@@@{%
+					{\the\pgf@x}%
+					{\the\pgf@y}%
+					{\pgfkeysvalueof{/pgfplots/parent axis width}}%
+					{\pgfkeysvalueof{/pgfplots/parent axis height}}%
+				}%
+			}%
+			%
+			% Install replacements:
+			\def\pgfplots@at{%
+				\begingroup
+				\def\pgfplotspointdescriptionxy########1########2{%
+					\pgfplots@colorbar@position@prepare@CS
+					\pgfplotspointdescriptionxy@orig{########1}{########2}%
+				}%
+				\def\pgfplotsqpointdescriptionxy########1########2{%
+					\pgfplots@colorbar@position@prepare@CS
+					\pgfplotsqpointdescriptionxy@orig{########1}{########2}%
+				}%
+				\pgfplots@deprecated@anchorsfalse
+				\pgfplots@change@pgfpoints@to@descriptioncs
+				\pgf@process{\pgfplots@at@orig}%
+				\endgroup
 			}%
 		}%
-		%
-		% Install replacements:
-		\def\pgfplots@at{%
-			\begingroup
-			\def\pgfplotspointdescriptionxy########1########2{%
-				\pgfplots@colorbar@position@prepare@CS
-				\pgfplotspointdescriptionxy@orig{########1}{########2}%
-			}%
-			\def\pgfplotsqpointdescriptionxy########1########2{%
-				\pgfplots@colorbar@position@prepare@CS
-				\pgfplotsqpointdescriptionxy@orig{########1}{########2}%
-			}%
-			\pgfplots@deprecated@anchorsfalse
-			\pgfplots@change@pgfpoints@to@descriptioncs
-			\pgf@process{\pgfplots@at@orig}%
-			\endgroup
-		}%
-	}%
+	\else
+		% nothing to do for colorbar to name:
+		\let\pgfplots@colorbar@position@hook=\relax
+	\fi
 }%
 
 % Parses all options in #1 which are known in the currently active families.
@@ -7826,6 +8310,68 @@
 	\pgfkeyslet{/pgfplots/zmax/.@cmd}\pgfplots@cant@set@in@this@context
 }%
 
+% This here is the main key filter for pgfplots.
+%
+% It sets keys if
+% ( they have an active key family)
+% OR
+% ( they have /pgfplots/ key prefix )
+% OR
+% ( they are a command key which contains \tikz@plot@handler ).
+%
+% In all other cases, the key filter will postpone the key.
+%
+% Note that \tikz@plot@handler should be defined before the survey
+% phase starts.
+\pgfkeysdef{/pgfplots/@@key filter}{%
+	\if\pgfkeyscasenumber0%
+		\pgfkeysfiltercontinuefalse
+	\else
+		\if\pgfkeyscasenumber3%
+			\pgfkeysgetfamily\pgfkeyscurrentpath\pgfkeyspred@TMP
+		\else
+			\pgfkeysgetfamily\pgfkeyscurrentkey\pgfkeyspred@TMP
+		\fi
+		\ifpgfkeyssuccess
+			% it has a family. Check it!
+			\pgfkeysisfamilyactive{\pgfkeyspred@TMP}%
+		\else% Ok, it does not belong to any family.
+			% Check if it has /pgfplots/ prefix:
+			\expandafter\pgfplots@key@filter@isdescendantof\pgfkeyscurrentkey/pgfplots/\pgf@@eov
+		\fi
+	\fi
+}
+\def\pgfplots@key@filter@isdescendantof#1/pgfplots/#2\pgf@@eov{%
+	\def\pgfkeyspred@TMP{#1}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% Ah -- it *has* /pgfplots/ prefix. Use it!
+		\pgfkeysfiltercontinuetrue
+	\else
+		% Hm. Probably a /tikz/ key, but who knows.
+		\if1\pgfkeyscasenumber
+			% It is a command key.
+			% Check if the *body* of the command key contains
+			% \tikz@plot@handler.
+			\pgfkeysgetvalue{\pgfkeyscurrentkey/.@cmd}\pgfkeyspred@TMP%
+			\expandafter\pgfplots@key@filter@isplothandler\pgfkeyspred@TMP 123456789\pgfeov\tikz@plot@handler\pgfplots@EOI
+		\else
+			% Ok, it's no command key. Skip it directly.
+			\pgfkeysfiltercontinuefalse
+		\fi
+	\fi
+}%
+\def\pgfplots@key@filter@isplothandler#1\tikz@plot@handler#2\pgfplots@EOI{%
+	\def\pgfkeyspred@TMP{#2}%
+	\ifx\pgfkeyspred@TMP\pgfkeys@empty
+		% I didn't find '\tikz@plot@handler' in the key's body. Ok.
+		% key won't be processed.
+		\pgfkeysfiltercontinuefalse
+	\else
+		% Aaah -- it is something like /tikz/ybar! process it.
+		\pgfkeysfiltercontinuetrue
+	\fi
+}%
+
 \def\pgfplots@set@options#1{%
 	\pgfplots@bb@isactivetrue
 	\pgfplots@curplot@threedimfalse
@@ -7861,7 +8407,8 @@
 	%
 	% Step 2: parse any pgfplots options out of styles.
 	\pgfkeysactivatefamily{/pgfplots/style commands}%
-	\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	%\pgfkeysinstallkeyfilter{/pgf/key filters/active families or descendants of}{/pgfplots}
+	\pgfkeysinstallkeyfilter{/pgfplots/@@key filter}{}%
 	%
 	\pgfkeysactivatefamilies
 		{/pgfplots,/pgfplots/naming commands,/pgfplots/tick,/pgfplots/legend,/pgfplots/scale}%/pgfplots/descriptions,}
@@ -8110,6 +8657,101 @@
 	\let\pgfplots@already@computed@legend@node=\pgfutil@empty
 }
 
+% Takes a plot style and exports it to a self-contained drawing
+% command which can be used outside of the current context.
+%
+% This macro is used inside for \label{} / \ref{}; it tries to be
+% reasonable smart about restoring relevant flags stored in a pgfplots
+% axis. If it forgets something... well, it is not too smart. 
+%
+% #1: the style to export.
+% #2: either empty or the fully qualified name of a code key. If #2 is not empty,
+% the current value of the code key is remembered. It will be restored
+% just before the exported \tikz statement is invoked, and \tikz[#2]
+% will be called. The code key should not rely on any arguments (it
+% won't be given any)
+%
+% The exported routine autodetects whether the result is used inside of
+% a picture. In that case, the '#2' style will be set inside of a
+% scope instead of \tikz[#2].
+% 
+% Assembles a macro \pgfplotsretval which, upon execution, draws the
+% plot style.
+%
+% As a side effect, it returns the resulting plot style (nothing else) into
+% \pgfplotsretvalb
+\def\pgfplots@export@legend@image@to@macro#1#2{%
+	\begingroup
+	% I'd like to get all options which are INDEPENDENT of
+	% pgfplots. Idea: expand all /pgfplots-keys and collect
+	% everything which belongs NOT to /pgfplots. This is the
+	% completely expanded rest. At least, I hope so and it appears
+	% to work.
+	%
+	% FIXME : this was a good approach before. Now, there ARE
+	% /pgfplots keys which should be maintained. How shall I do that?
+	% I can't handle every option separately... !?
+	\pgfkeysinstallkeyfilter
+		{/pgf/key filters/and}
+			{{/pgf/key filters/is descendant of=/pgfplots}%
+			 {/pgf/key filters/defined}}%
+	\def\pgfplots@label@tikzopts{}%
+	\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@label@tikzopts}%
+	\pgfqkeysfiltered{/tikz}{#1}%
+	%
+	\pgfkeysgetvalue{/pgfplots/legend image code/.@cmd}{\pgfplots@curlegendcode}%
+	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+	\toks0=\expandafter{\pgfplots@curlegendcode\pgfeov}%
+	\toks1=\expandafter{\pgfplots@label@tikzopts}%
+	\toks3=\expandafter{\pgfplots@basiclevel@plothandler}%
+	\def\pgfplots@stylekey{#2}%
+	\ifx\pgfplots@stylekey\pgfutil@empty
+	\else
+		\pgfkeysgetvalue{\pgfplots@stylekey/.@cmd}{\pgfplots@stylekey@}%
+		\toks4=\expandafter{\pgfplots@stylekey@\pgfeov}%
+	\fi
+	\edef\pgfplots@loc@TMPa{%
+		{%
+			\ifx\pgfplots@stylekey\pgfutil@empty
+			\else
+				\noexpand\scope[#2]%
+			\fi
+			%
+			\noexpand\pgfplots@draw@image
+			%
+			\ifx\pgfplots@stylekey\pgfutil@empty
+			\else
+				\noexpand\endscope%
+			\fi
+		}{%
+			\noexpand\tikz[#2]{%
+				\noexpand\pgfplots@draw@image
+			}%
+		}%
+	}%
+	\expandafter\pgfplots@assemble@ref@picture\pgfplots@loc@TMPa
+	\toks5=\expandafter{\pgfplotsretval}%
+	%
+	\edef\pgfplotsretval{%
+		\noexpand\begingroup
+		\noexpand\def\noexpand\pgfplots@draw@image{%
+			\noexpand\def\noexpand\tikz@plot@handler{\the\toks3}%
+			\noexpand\pgfkeysdef{/pgfplots/legend image code}{\the\toks0}%
+			\ifx\pgfplots@stylekey\pgfutil@empty
+			\else
+				\noexpand\pgfkeysdef{#2}{\the\toks4}%
+			\fi
+			\noexpand\pgfplots@show@small@legendplots{\the\toks1}{}%
+		}%
+		\the\toks5
+		\noexpand\endgroup%
+	}%
+	\xdef\pgfplots@glob@TMPa{\the\toks1}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+	\let\pgfplotsretvalb=\pgfplots@glob@TMPa
+}%
+
 % The implementation for \label{foo} after \addplot. It allows to
 % \ref{foo} (it inserts the 'legend image code').
 %
@@ -8126,44 +8768,21 @@
 \def\pgfplots@plot@label@[#1]#2{%
 	\ifpgfplots@has@label@information
 		\begingroup
-		% I'd like to get all options which are INDEPENDENT of
-		% pgfplots. Idea: expand all /pgfplots-keys and collect
-		% everything which belongs NOT to /pgfplots. This is the
-		% completely expanded rest. At least, I hope so and it appears
-		% to work.
-		%
-		% FIXME : this was a good approach before. Now, there ARE
-		% /pgfplots keys which should be maintained. So: maintain all
-		% of them! Why should that pose any problems?
-		\pgfkeysinstallkeyfilter
-			{/pgf/key filters/and}
-				{{/pgf/key filters/is descendant of=/pgfplots}%
-				 {/pgf/key filters/defined}}%
-		\def\pgfplots@label@tikzopts{}%
-		\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@label@tikzopts}%
-		\def\pgfplots@loc@TMPa{\pgfqkeysfiltered{/tikz}}%
 		\expandafter\let\expandafter\pgfplots@loc@TMPb\csname pgfplots@last@plot@style@#1\endcsname
-		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPb}%
+		\expandafter\pgfplots@export@legend@image@to@macro\expandafter{\pgfplots@loc@TMPb}{/pgfplots/every crossref picture}%
 		%
-		\pgfkeysgetvalue{/pgfplots/every crossref picture/.@cmd}{\pgfplots@crossref@pic}%
-		\pgfkeysgetvalue{/pgfplots/legend image code/.@cmd}{\pgfplots@curlegendcode}%
-		\t@pgfplots@toka=\expandafter{\pgfplots@curlegendcode current plot style\pgfeov}%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@label@tikzopts}%
-		\t@pgfplots@tokc=\expandafter{\pgfplots@crossref@pic\pgfeov}%
+		\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsretvalb}%
 		% 1. prepare /pgfplots/refstyle={#2}:
-		\if@filesw
-		\immediate\write\@auxout{%
+		\pgfplots@auxwrite{%
 			\noexpand\expandafter\noexpand\gdef
 			\noexpand\csname pgfplots@labelstyle@#2\noexpand\endcsname{\the\t@pgfplots@tokb}%
 		}%
 		% 2. prepare \ref{#2} and \pageref{#2}:
 		%
 		% There are several nasty things to consider:
-		% a) macro expansion. I did not really understand what happens
-		% here... I only understand that it is enough if the new label
-		% makes it into the .aux file of latex. That is sufficient for
-		% me! So, I converted the label command to a string using the
-		% \meaning functionality.
+		% a) macro expansion. Use \string to allow a safe \write
+		% operation.
 		%
 		% b) \protect . If the resulting \ref{} command occurs within
 		% a "moving argument" like \caption or so, we need to use
@@ -8171,29 +8790,16 @@
 		%
 		% this here is the low-level implementation of \ref{#2}. Write it into
 		% the .aux file:
-		\immediate\write\@auxout{%
+		\pgfplots@auxwrite{%
 			\noexpand\expandafter\noexpand\gdef
 			\noexpand\csname pgfplots@show@ref@#2\noexpand\endcsname{%
-				\noexpand\begingroup
-				\noexpand\pgfplots@define@currentplotstyle@as{\the\t@pgfplots@tokb}%
-				\noexpand\pgfkeysdef{/pgfplots/every crossref picture}{\the\t@pgfplots@tokc}%
-				\noexpand\tikz[/pgfplots/every crossref picture]{\the\t@pgfplots@toka}%
-				\noexpand\endgroup%
+				\the\t@pgfplots@toka
 			}%
 		}%
-		\fi
-		% This here is the high-level implementation \ref{#2}.
-		% The \protect handles the cases of "moving arguments":
-		\edef\pgfplots@loc@TMPa{%
-			\noexpand\expandafter
-			\noexpand\protect
-			\noexpand\csname pgfplots@show@ref@#2\noexpand\endcsname
-		}%
-		\pgfplots@command@to@string{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPa}%
-		\global\let\pgfplots@glob@TMPb=\pgfplots@loc@TMPa
+		% create the \label command:
+		\let\label=\pgfplots@original@LaTeX@label
+		\pgfplots@label{#2}{pgfplots@show@ref@}%
 		\endgroup
-		\let\@currentlabel=\pgfplots@glob@TMPb
-		\pgfplots@original@LaTeX@label{#2}%
 	\else
 		\pgfplots@error{Can't create \string\label{#2}: it needs to be called after \string\addplot.}%
 	\fi
@@ -8221,6 +8827,9 @@
 		% \addplot[every mark/.append style={...}]
 		% or something like that is interpreted as /tikz/ key:
 		\pgfplots@invoke@pgfkeyscode{/handler config/full or existing/.@cmd}{}% restrict
+		%
+		\pgfkeysdef{/pgfplots/colorbar source}{}% make it NO-OP here. It has already been processed.
+		%
 		% set both, pgfplots and tikz keys:
 		% the draw is important since \addplot visualizes its stuff
 		% with \path coordinates ...
@@ -8262,6 +8871,15 @@
 			}%
 		}%
 	}%
+}%
+
+% Invokes #1 if the statement occurs within \begin{axis}...\end{axis}
+% and #2 if not.
+\long\def\pgfplotsifinaxis#1#2{%
+	\pgfutil@ifundefined{pgfplots@is@in@axis}{#2}{#1}%
+}%
+
+\pgfutil@ifundefined{label}{\relax}{%
 }%
 
 %
@@ -8312,6 +8930,13 @@
 %   	basis the latter to globally for the complete axis.
 %   	- will be assigned globally.
 %   	- meta data is ALWAYS collected in floating point.
+% - \pgfplots@colorbar@src@metamin
+% - \pgfplots@colorbar@src@metamax
+%   	- these keys are usually empty, unless one provides the
+%   	'colorbar source' key for an \addplot command. In that case,
+%   	they will be filled (globally) with the point meta min/max
+%   	ranges of that particular plot. The colorbar will use the
+%   	result for its ranges.
 % - \pgfplots@numplots
 %   	- A count register indexing the current plot counter. Assigned
 %   	globally.
@@ -8375,6 +9000,9 @@
 %   	- assigned globally.
 % - \ifpgfplots@coord@stream@isfirst
 %   	- assigned globally during \addplot.
+% - \pgfplotssurveyphase@setactiveplothandlers
+%   	A macro which is used to implement '\numplotsofactualtype'
+%   	see \pgfplots@countplots@advance for details.
 %
 %
 \def\pgfplots@environment@opt[#1]{%
@@ -8463,6 +9091,8 @@
 	\global\let\pgfplots@data@zmax=\pgfplots@invalidrange@zmax
 	\global\let\pgfplots@axiswide@metamin=\pgfplots@invalidrange@metamin
 	\global\let\pgfplots@axiswide@metamax=\pgfplots@invalidrange@metamax
+	\global\let\pgfplots@colorbar@src@metamin=\pgfutil@empty
+	\global\let\pgfplots@colorbar@src@metamax=\pgfutil@empty
 	%
 	\pgfplots@autocompute@all@limitstrue
 	\ifx\pgfplots@xmin\pgfutil@empty
@@ -8540,15 +9170,19 @@
 	%
 	\global\pgfplots@has@label@informationfalse
 	%
+	\def\numplots{\the\pgfplots@numplots}%
+	\global\let\pgfplotssurveyphase@setactiveplothandlers=\pgfutil@empty
+	\let\numplotsofactualtype=\pgfplots@numplotsofactualtype
+	%
 	% any \path command is invalid inside of an axis.
 	% Use \axispath instead:
-	\def\numplots{\the\pgfplots@numplots}%
 	\let\path=\pgfplots@replacement@for@tikz@path
 	\let\closedcycle=\pgfplots@path@closed@cycle
 	\let\pgfplots@orig@scope=\scope
 	\let\pgfplots@orig@endscope=\endscope
 	\let\scope=\pgfplots@replacement@for@scope
 	\let\endscope=\pgfplots@replacement@for@endscope
+	%
 }
 
 % \end{axis} :
@@ -8568,6 +9202,8 @@
 	\let\plot=\pgfplots@orig@plot
 	\let\scope=\pgfplots@orig@scope
 	\let\endscope=\pgfplots@orig@endscope
+	%
+	\pgfplotssurveyphase@setactiveplothandlers
 	%
 	%\end{axis}:
 	%
@@ -8599,6 +9235,7 @@
 		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 			\pgfplots@stored@current@data%
 		\else
+			%
 			% this code here means we REALLY have a plotting
 			% command!
 			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
@@ -8654,9 +9291,9 @@
 		\xdef\pgfplots@savedanchor@inner@lowerleft@y{\the\pgf@xa}%
 		%
 		\pgfplotspointaxisorigin
-		\advance\pgf@x by-\pgf@picminx
-		\advance\pgf@y by-\pgf@picminy
-		\xdef\pgfplotspointaxisorigin{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+		\global\advance\pgf@x by-\pgf@picminx
+		\global\advance\pgf@y by-\pgf@picminy
+		\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	\endgroup
 	\endpgfinterruptpicture
 	\egroup\egroup% end of pgfnodepartimagebox
@@ -8675,11 +9312,31 @@
 	%
     \pgftransformshift{\pgfplots@at}%
 	%
+	\edef\pgfplots@shapename{pgfplots@low@level@shape\ifpgfplots@deprecated@anchors @deprecated\fi}%
+	\pgfutil@ifundefined{pgf@anchor@\pgfplots@shapename @\pgfplots@anchorname}{%
+		% Oh. Well, suppose \pgfplots@anchorname is associated to an
+		% INNER node.
+		\def\pgfplots@loc@TMPa##1{%
+			\pgftransformshift{%
+				% So far, the inner node's position has not been
+				% corrected (that happens in 
+				% \pgfplots@finally@correct@child@node@positions).
+				% Do that here with \pgfplots@saveddimen@picminx:
+				\pgfpointdiff
+					{\pgfqpoint{\pgfplots@saveddimen@picminx}{\pgfplots@saveddimen@picminy}}
+					{##1}%
+				\global\pgf@x=-\pgf@x \global\pgf@y=-\pgf@y
+			}%
+		}%
+		\expandafter\tikz@scan@one@point\expandafter\pgfplots@loc@TMPa\expandafter(\pgfplots@anchorname)%
+		\def\pgfplots@anchorname{image}% that means: no shift!
+	}{}%
+	%
 	\ifpgfplots@deprecated@anchors
 		\pgfplots@restore@deprecated@lowlevel@shape
-		\pgfmultipartnode{pgfplots@low@level@shape@deprecated}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+		\pgfmultipartnode{\pgfplots@shapename}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
 	\else
-		\pgfmultipartnode{pgfplots@low@level@shape}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
+		\pgfmultipartnode{\pgfplots@shapename}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
 	\fi
 	\pgfplots@fig@alias
 	\pgfnodealias{current axis}{\tikz@fig@name}%
@@ -8733,8 +9390,8 @@
 		\pgf@process{\pgfqpoint{\pgfplots@saveddimen@picminx}{\pgfplots@saveddimen@picminy}}%
 		\advance\pgf@xa by-\pgf@x
 		\advance\pgf@xb by-\pgf@y
-		\pgf@x=\pgf@xa
-		\pgf@y=\pgf@xb
+		\global\pgf@x=\pgf@xa
+		\global\pgf@y=\pgf@xb
 		\edef\pgfplots@offset{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
 		%
 		\pgfutil@for\pgfplots@child@node@name:=\pgfplots@named@child@node@list\do{%
