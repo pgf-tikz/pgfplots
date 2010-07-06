@@ -149,7 +149,7 @@
 \def\pgfplots@init@scaled@tick@for#1{%
 	\global\def\pgfplots@glob@TMPa{0}%
 	\begingroup
-	\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
+	\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname\relax
 	% CASE 0 : scaled #1 ticks=false: do nothing here.
 	\or
 		% CASE 1 : scaled #1 ticks=true:
@@ -213,9 +213,9 @@
 % x-axis tick labels for #1th tick
 % #1: the axis (x,y or z)
 % #2: the value
-% #3,#4: coordinates for \pgfplotspointonorientedsurfaceab
+% #3,#4+#5: arguments for \pgfplotspointonorientedsurfaceabwithbshift
 % #5: ticknumber
-\def\pgfplots@show@ticklabel#1#2(#3,#4)#5{%
+\def\pgfplots@show@ticklabel#1#2(#3,#4+#5)#6{%
 	\begingroup%
 	\csname ifpgfplots@#1ticklabel@interval\endcsname
 		% Special case for the INTERVAL feature:
@@ -240,18 +240,19 @@
 			\let\pgfplots@show@ticklabel@coord@y=\pgfmathresult%
 			\let\ticknum=\pgfplots@show@ticklabel@num\relax%
 			\let\tick=\pgfplots@show@ticklabel@tick%
-			\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceab{\pgfplots@show@ticklabel@coord@x}{\pgfplots@show@ticklabel@coord@y}}%
+			\pgfplots@show@ticklabel@@{#1}
+				{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@show@ticklabel@coord@x}{\pgfplots@show@ticklabel@coord@y}{#5}}%
 		\fi
 		\xdef\pgfplots@show@ticklabel@LASTTICK{%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@tick{\nexttick}%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@x{\pgfplots@show@ticklabel@coord@x@new}%
 			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@y{\pgfplots@show@ticklabel@coord@y@new}%
-			\noexpand\edef\noexpand\pgfplots@show@ticklabel@num{#5}%
+			\noexpand\edef\noexpand\pgfplots@show@ticklabel@num{#6}%
 		}%
 	\else
-		\let\ticknum=#5\relax%
+		\let\ticknum=#6\relax%
 		\pgfplots@show@ticklabel@{#1}{#2}%
-		\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceab{#3}{#4}}%
+		\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceabwithbshift{#3}{#4}{#5}}%
 	\fi
 	\endgroup
 }
@@ -469,7 +470,7 @@
 % #2: tick value.
 \def\pgfplots@show@ticklabel@#1#2{%
 	\csname ifpgfplots@apply@datatrafo@#1\endcsname
-		\csname pgfplots@inverse@datascaletrafo@#1\endcsname{#2}%
+		\pgfplotscoordmath{#1}{datascaletrafo inverse}{#2}%
 		\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
 		\or
 			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
@@ -590,10 +591,10 @@
 }%
 
 % Fills the macros
-%   \pgfplots@tick@beg@a \pgfplots@tick@end@a
-%   \pgfplots@tick@beg@b \pgfplots@tick@end@b
+%   \pgfplots@tick@LOWER@b \pgfplots@tick@end@a
+%   \pgfplots@tick@UPPER@b \pgfplots@tick@end@b
 % with coordinates such that 
-%   (\pgfplots@tick@beg@a,\pgfplots@tmpa) -- (\pgfplots@tick@end@a,\pgfplots@tmpa)
+%   (\pgfplots@tick@LOWER@b,\pgfplots@tmpa) -- (\pgfplots@tick@end@a,\pgfplots@tmpa)
 % produces a correct tick line. 
 %
 % The '@b' variant is only used in case of \pgfplots@ytickposnum = 0
@@ -602,56 +603,65 @@
 % #2 : the current tick width
 %
 \def\pgfplots@prepare@tick@offsets@for@#1#2{%
+	%
 	% FIXME : this stuff was ok for 2D.
 	% For 3D, it works only for the cases of boxed axes or centered
 	% axis lines.
 	\ifcase\csname pgfplots@#1tickposnum\endcsname\relax
 		% both
 		%(\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt)
-		\edef\pgfplots@tick@beg@a{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
-		\pgfmathsubtract@{\pgfplots@tick@beg@a}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@a=\pgfmathresult
-		\pgfmathadd@{\pgfplots@tick@beg@a}{#2}%
-		\let\pgfplots@tick@end@a=\pgfmathresult
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
 		%
 		%(\pgfplots@xcoordmaxTEX+\pgfplots@tick@offset, \pgfplots@tmpa)	-- ++(-#2, 0pt)
-		\edef\pgfplots@tick@beg@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
-		\pgfmathadd@{\pgfplots@tick@beg@b}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@b=\pgfmathresult
-		\pgfmathsubtract@{\pgfplots@tick@beg@b}{#2}%
-		\let\pgfplots@tick@end@b=\pgfmathresult%
+		\edef\pgfplots@tick@UPPER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
 	\or
 		% left
 		% (\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
-		\edef\pgfplots@tick@beg@a{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
-		\pgfmathsubtract@{\pgfplots@tick@beg@a}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@a=\pgfmathresult
-		\pgfmathadd@{\pgfplots@tick@beg@a}{#2}%
-		\let\pgfplots@tick@end@a=\pgfmathresult
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
 	\or
 		% center
 		% (\pgfplots@ZERO@x      -\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
-		\pgfmathsubtract@{\csname pgfplots@logical@ZERO@\pgfplotspointonorientedsurfaceB \endcsname}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@a=\pgfmathresult
-		\pgfmathadd@{\pgfplots@tick@beg@a}{#2}%
-		\let\pgfplots@tick@end@a=\pgfmathresult%
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@logical@ZERO@\pgfplotspointonorientedsurfaceB \endcsname}%
 	\or
 		% right
 		% (\pgfplots@xcoordmaxTEX+\pgfplots@tick@offset, \pgfplots@tmpa)	-- ++(-#2, 0pt);
-		\edef\pgfplots@tick@beg@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
-		\pgfmathadd@{\pgfplots@tick@beg@b}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@b=\pgfmathresult
-		\pgfmathsubtract@{\pgfplots@tick@beg@b}{#2}%
-		\let\pgfplots@tick@end@b=\pgfmathresult%
+		\edef\pgfplots@tick@UPPER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
 	\else
 		% FALL BACK. never used, I guess?
 		% (\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
-		\edef\pgfplots@tick@beg@a{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
-		\pgfmathsubtract@{\pgfplots@tick@beg@a}{\pgfplots@tick@offset}%
-		\let\pgfplots@tick@beg@a=\pgfmathresult
-		\pgfmathadd@{\pgfplots@tick@beg@a}{#2}%
-		\let\pgfplots@tick@end@a=\pgfmathresult
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
 	\fi
+	%
+	\ifcase\csname pgfplots@#1tickalignnum\endcsname\relax
+		\def\pgfplots@tick@offset{0}%
+	\or
+		\edef\pgfplots@tick@offset{#2}%
+	\or
+		\pgfmathmultiply@{0.5}{#2}%
+		\let\pgfplots@tick@offset=\pgfmathresult%
+	\fi
+	%
+	\edef\pgfplots@tick@LOWER@shiftbeg{-\pgfplots@tick@offset}%
+	\pgfmathadd@{\pgfplots@tick@LOWER@shiftbeg}{#2}%
+	\let\pgfplots@tick@LOWER@shiftend=\pgfmathresult
+	%
+	\edef\pgfplots@tick@UPPER@shiftbeg{\pgfplots@tick@offset}%
+	\pgfmathsubtract@{\pgfplots@tick@UPPER@shiftbeg}{#2}%
+	\let\pgfplots@tick@UPPER@shiftend=\pgfmathresult
+	%
+	% Assemble the \pgfplots@drawticklines@for@placecomputedtick
+	% command.
+	\def\pgfplots@drawticklines@for@placecomputedtick{%
+		\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftbeg pt}}%
+			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftend pt}}%
+		\fi
+		\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftbeg pt}}%
+			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftend pt}}%
+		\fi
+	}%
+%\message{place computed tick: LOWEROK=\pgfplots@drawticklines@for@placecomputedtick@LOWEROK; UPPEROK=\pgfplots@drawticklines@for@placecomputedtick@UPPEROK.}%
 }%
 
 
@@ -903,10 +913,12 @@
 					\ifpgfplots@islinear
 						\pgfplots@tmpa=\pgfplots@minor@tick@dist pt %
 						\pgfplots@tmpa=\pgfplots@i\pgfplots@tmpa
+						\edef\pgfmathresult{\the\pgfplots@tmpa}%
 					\else
-						\pgfplots@tmpa=\csname pgfplotsmathlogi@#1\endcsname\pgfplots@i pt %
+						\pgfplotscoordmath{#1}{log unsigned int}{\pgfplots@i}%
+						\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+						\edef\pgfmathresult{\pgfmathresult pt}%
 					\fi
-					\edef\pgfmathresult{\the\pgfplots@tmpa}%
 					\pgfmath@smuggleone\pgfmathresult
 					\endgroup
 					\advance\pgfplots@tmpa by\pgfmathresult\relax
@@ -975,8 +987,7 @@
 						/pgfplots/every minor #1 grid]%
 					\pgfextra
 					\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curgridpos{%
-						\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\pgfplots@curgridpos}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
-						\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\pgfplots@curgridpos}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
+						\pgfplots@drawgridlines@onorientedsurf@fromto\pgfplots@curgridpos
 					}%
 					\endpgfextra;
 				}{}%
@@ -989,8 +1000,7 @@
 						/pgfplots/every major #1 grid]%
 					\pgfextra
 					\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curgridpos{%
-						\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\pgfplots@curgridpos}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
-						\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\pgfplots@curgridpos}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
+						\pgfplots@drawgridlines@onorientedsurf@fromto\pgfplots@curgridpos
 					}%
 					\endpgfextra;
 				}{}%
@@ -1001,6 +1011,11 @@
 		\endgroup
 	}%
 }
+
+\def\pgfplots@drawgridlines@onorientedsurf@fromto#1{%
+	\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
+	\pgfpathlineto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
+}%
 
 % Draws ticks on the currently active "oriented surface".
 %
@@ -1046,20 +1061,15 @@
 \def\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf#1{%
 	\pgfinterruptboundingbox%
 	\begingroup
-		\pgf@xa=5cm
-		\edef\pgfplots@loc@TMPc{\pgf@sys@tonumber{\pgf@xa}}%
 		% the case ||e_b|| == 0 should never happen here! Should be
 		% caught before entering this routine.
-		\pgfmathmultiply@{\pgfplots@loc@TMPc}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
 		\let\pgfplots@loc@LENGTH=\pgfmathresult
-		\pgfmathsubtract@{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}{\pgfplots@loc@LENGTH}%
-		\let\pgfplots@loc@MIN=\pgfmathresult
-		\pgfmathadd@{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}{\pgfplots@loc@LENGTH}%
-		\let\pgfplots@loc@MAX=\pgfmathresult
-		\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MIN}}%
-		\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MIN}}%
-		\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MAX}}%
-		\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MAX}}%
+		\expandafter\let\expandafter\pgfplots@loc@MIN\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname
+		\expandafter\let\expandafter\pgfplots@loc@MAX\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname
+		\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MIN}{-5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MIN}{-5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MAX}{5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MAX}{5cm}}%
 		\pgfusepath{clip}%
 	\endgroup
 	\endpgfinterruptboundingbox%
@@ -1112,21 +1122,6 @@
 			% never used?
 			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{0}%
 		\fi
-		\begingroup
-			% Assemble the \pgfplots@drawticklines@for@placecomputedtick
-			% command.
-			\let\E=\noexpand
-			\xdef\pgfplots@drawticklines@for@placecomputedtick{%
-				\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
-					\E\pgfpathmoveto{\E\pgfplotspointonorientedsurfaceab{\E\pgfplots@curtickpos}{\E\pgfplots@tick@beg@a}}%
-					\E\pgfpathlineto{\E\pgfplotspointonorientedsurfaceab{\E\pgfplots@curtickpos}{\E\pgfplots@tick@end@a}}%
-				\fi
-				\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
-					\E\pgfpathmoveto{\E\pgfplotspointonorientedsurfaceab{\E\pgfplots@curtickpos}{\E\pgfplots@tick@beg@b}}%
-					\E\pgfpathlineto{\E\pgfplotspointonorientedsurfaceab{\E\pgfplots@curtickpos}{\E\pgfplots@tick@end@b}}%
-				\fi
-			}%
-		\endgroup
 		\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
 		\expandafter\let\expandafter\pgfplots@prepared@tick@positions@minor@\csname pgfplots@prepared@tick@positions@minor@#1\endcsname
 		\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf#1
@@ -1140,19 +1135,11 @@
 			\pgfextra
 			\pgfmathparse{\pgfplots@subtickwidth}%
 			\let\pgfplots@subtickwidth@=\pgfmathresult
-			\pgfmathmultiply@{\pgfplots@subtickwidth@}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
 			\let\pgfplots@subtickwidth@=\pgfmathresult
 			\let\pgfplots@subtickwidth=\pgfmathresult
-			\ifcase\csname pgfplots@#1tickalignnum\endcsname\relax
-				\def\pgfplots@tick@offset{0}%
-			\or
-				\let\pgfplots@tick@offset=\pgfplots@subtickwidth@%
-			\or
-				\pgfmathmultiply@{0.5}{\pgfplots@subtickwidth@}%
-				\let\pgfplots@tick@offset=\pgfmathresult%
-			\fi
 			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@subtickwidth@}%
 			\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curtickpos{%
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
 				\pgfplots@drawticklines@for@placecomputedtick
 			}%
 			\endpgfextra;
@@ -1167,19 +1154,11 @@
 			\pgfextra
 			\pgfmathparse{\pgfplots@tickwidth}%
 			\let\pgfplots@tickwidth@=\pgfmathresult
-			\pgfmathmultiply@{\pgfplots@tickwidth@}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
 			\let\pgfplots@tickwidth@=\pgfmathresult
 			\let\pgfplots@tickwidth=\pgfmathresult
-			\ifcase\csname pgfplots@#1tickalignnum\endcsname\relax
-				\def\pgfplots@tick@offset{0}%
-			\or
-				\let\pgfplots@tick@offset=\pgfplots@tickwidth@%
-			\or
-				\pgfmathmultiply@{0.5}{\pgfplots@tickwidth@}%
-				\let\pgfplots@tick@offset=\pgfmathresult%
-			\fi
 			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@tickwidth@}%
 			\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
 				\pgfplots@drawticklines@for@placecomputedtick
 			}%
 			\endpgfextra;
@@ -1263,7 +1242,7 @@
 				\fi
 				\let\pgfplots@tick@offset=\pgfmathresult
 				\pgfplots@ticklabel@maxtickdimen@extrashift{#1}{\pgfplots@tick@offset}%
-				\pgfmathmultiply@{\pgfplots@tick@offset}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
+				%\pgfmathmultiply@{\pgfplots@tick@offset}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
 				\let\pgfplots@tick@offset=\pgfmathresult
 			}%
 			%				
@@ -1277,38 +1256,43 @@
 					\pgfmathmultiply{-1}{\pgfplots@tick@offset}%
 					\let\pgfplots@tick@offset=\pgfmathresult
 				\fi
-				\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+				\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
+				%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
 			\else
 				\if0\pgfplots@ticklabelside
 				 	\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname%
 					\pgfplots@tickposchoiceb
-					\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+					%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+					\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
 				\else
 					\if1\pgfplots@ticklabelside
 						\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname%
 						\pgfplots@tickposchoicea
-						\pgfmathadd@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+						%\pgfmathadd@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
 					\else
 						% Should never happen.
 						\pgfplots@error{Internal logic error during tick label placement (got placement character '\pgfplots@ticklabelside'). 
 								Please report this as a bug or verify your input arguments to #1ticklabel pos.}%
 						\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname%
 						\pgfplots@tickposchoiceb
-						\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+						%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+						\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
 					\fi
 				\fi
 			\fi
+			%\let\pgfplots@tick@origin=\pgfmathresult%
+			\edef\pgfplots@tick@offset{\pgfplots@tick@offset pt}%
 			%
 			% make sure the \pgfmathlogtologten method works even for
 			% non-standard 'log basis #1':
-			\expandafter\let\expandafter\pgfmathlogtologten@\csname pgfplotsmathlogtologten@#1@\endcsname
+			\def\pgfmathlogtologten@{\pgfplotscoordmath{#1}{log to log 10}}%
 			%
-			\let\pgfplots@tick@origin=\pgfmathresult%
 			\xdef\pgfplots@show@ticklabel@LASTTICK{}%
 			\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
 				\expandafter\pgfplotslistpopfront\csname pgfplots@prepared@tick@positions@major@tickindices@#1\endcsname\to\pgfplots@ticknum
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
 				\pgfplots@show@ticklabel
-					{#1}{\pgfplots@curtickpos}(\pgfplots@curtickpos,\pgfplots@tick@origin)%
+					{#1}{\pgfplots@curtickpos}(\pgfplots@curtickpos,\pgfplots@tick@origin+\pgfplots@tick@offset)%
 					{\pgfplots@ticknum}%
 			}%
 			\pgfplots@ticklabel@maxtickdimen@finish{#1}%
@@ -1394,9 +1378,21 @@
 		\let\pgfplots@loc@TMPc=\pgfmathresult
 		\ifx\pgfplots@loc@TMPc\pgfutil@empty
 		\else
-			\pgftransformshift{%
-				\pgfplotspointouternormalvectorofticklabelaxis{#1}%
-				\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
+			\pgfplotspointouternormalvectorofaxis@ifdependson@v{\pgfplotsticklabelaxisspec{#1}}{%
+				\tikzset{every node/.append code={%
+						\tikz@addtransform{%
+							\pgftransformshift{%
+								\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+								\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
+							}%
+						}%
+					}%
+				}%
+			}{%
+				\pgftransformshift{%
+					\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+					\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
+				}%
 			}%
 		\fi
 		%
@@ -1520,7 +1516,8 @@
 \def\pgfplots@compute@tick@times@logten#1\to#2#3{%
 	\global\let#2=\pgfutil@empty
 	\foreach \pgfplots@loc@TMPb in {#1} {%
-		\pgfmathmultiply@{\pgfplots@loc@TMPb}{\csname pgfplots@log@scale@todisplaylog@#3\endcsname}%
+		\pgfplotscoordmath{#3}{log to display log}{\pgfplots@loc@TMPb}%
+		\pgfplotscoordmath{#3}{tofixed}{\pgfmathresult}%
 		\ifx#2\pgfutil@empty
 			\xdef#2{\pgfmathresult}%
 		\else
@@ -1611,8 +1608,6 @@
 	% Shortcut-names:
 	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@apply@datatrafo@#1\endcsname
 	% Attention here: use UNSHIFTET scalings, see remark above
-	\expandafter\let\expandafter\pgfplots@data@scale@trafo\csname pgfplots@datascaletrafo@#1@noshift\endcsname
-	\expandafter\let\expandafter\pgfplots@data@scale@inverse@trafo\csname pgfplots@inverse@datascaletrafo@#1@noshift\endcsname
 	\expandafter\let\expandafter\ifpgfplots@cur@is@linear\csname ifpgfplots@#1islinear\endcsname
 	%
 	\let\desirednumticks=\c@pgf@countd
@@ -1639,6 +1634,18 @@
 			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
 		\fi
 	\fi
+	\ifpgfplots@cur@is@linear
+	\else
+		\pgfplotscoordmath{#1}{parsenumber}{1}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{#1}{log from display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@from@display@log@scale=\pgfmathresult
+		%
+		\pgfplotscoordmath{#1}{log to display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@to@display@log@scale=\pgfmathresult
+	\fi
 	%
 	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
 		% Ok, we have either log or linear axis and need default
@@ -1648,12 +1655,13 @@
 		\let\MAX=\pgf@ya
 		\let\MIN=\pgf@yb
 		% compute step size 'H':
-		\expandafter\MAX\csname pgfplots@#1max\endcsname pt %
+		\MAX=\csname pgfplots@#1max\endcsname pt %
 		\advance\MAX by0.001pt % avoid round errors
 		%\expandafter\MIN\the\c@pgf@counta pt
-		\expandafter\MIN\csname pgfplots@#1min\endcsname pt %
+		\MIN=\csname pgfplots@#1min\endcsname pt %
 		\H=\MAX
 		\advance\H by-\MIN
+		\ifdim\H<0pt \H=-1\H \fi
 %\message{Axis limit #1: [\the\MIN:\the\MAX], diff = \the\H.}%
 		\c@pgf@counta=\desirednumticks
 		\advance\c@pgf@counta by-1 %
@@ -1666,7 +1674,7 @@
 			% CASE LINEAR AXIS
 			\ifpgfplots@is@datascaled
 				% This here works if the scaling trafo is linear.
-				\expandafter\pgfplots@data@scale@inverse@trafo\expandafter{\Hmacro}%
+				\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{\Hmacro}%
 				\let\Hmacro=\pgfmathresult
 			\else
 				\pgfmathfloatparsenumber{\Hmacro}%
@@ -1719,9 +1727,9 @@
 			% Now, convert everything into the fixed point data
 			% range:
 			\ifpgfplots@is@datascaled
-				\csname pgfplots@datascaletrafo@#1\endcsname{\MIN@new}%
+				\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
 				\MIN=\pgfmathresult pt
-				\pgfplots@data@scale@trafo\Hmacro
+				\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
 				\H=\pgfmathresult pt
 			\else
 				\pgfmathfloattofixed\MIN@new
@@ -1742,7 +1750,7 @@
 			%
 			% And prefer j=1 if that is possible (otherwise minor
 			% ticks are not useful).
-			\pgfmathmultiply@{\Hmacro}{\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname}%
+			\pgfmath@basic@multiply@{\Hmacro}{\pgfplots@loc@log@from@display@log@scale}%
 			\let\Hmacrobaseten=\pgfmathresult
 			\expandafter\H\pgfmathresult pt
 %\message{ [ H / log(10) = \pgfmathresult ]}%
@@ -1764,7 +1772,7 @@
 				\pgfplots@isuniformtickfalse
 			\fi
 %\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
-			\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
+			\H=\pgfplots@loc@log@to@display@log@scale\H
 			% Now, we want to activate the Tick set 
 			%   {lowest, lowest+H, ..., highest}
 			%
@@ -1777,14 +1785,14 @@
 			\MINH=\MIN
 			%
 			% and compute I and I*log(10) here:
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\MIN\relax
+			\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
 			\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
 			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
 			\ifdim\MIN<0pt
 				% the truncation rounds TOWARDS 0 which is not what I want.
 				\advance\c@pgf@counta by-1
 			\fi
-			\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname pt
+			\MIN=\pgfplots@loc@log@to@display@log@scale pt
 			\multiply\MIN by\c@pgf@counta
 			\ifpgfplots@isuniformtick
 			\else
@@ -1814,7 +1822,7 @@
 				\advance\MINH by-\H
 				% 
 				\ifdim\MINH<0pt
-					\advance\MIN \csname pgfplots@log@scale@todisplaylog@#1\endcsname pt
+					\advance\MIN \pgfplots@loc@log@to@display@log@scale pt
 				\fi
 			\fi
 		\fi
@@ -1855,10 +1863,11 @@
 				% So: apply basically the SAME code as above for linear
 				% axis, just everything log 10!  And keep in mind that all
 				% coordinates are actually given as natural logarithms.
-				\expandafter\MIN\csname pgfplots@#1min\endcsname pt
+				\MIN\csname pgfplots@#1min\endcsname pt
 				\H=\MAX
 				\advance\H by-\MIN
-				\H=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname\H
+				\ifdim\H<0pt \H=-1\H \fi
+				\H=\pgfplots@loc@log@from@display@log@scale \H
 %\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
 				\c@pgf@counta=\desirednumticks\relax
 				\advance\c@pgf@counta by-1
@@ -1909,7 +1918,7 @@
 				% -> I = round(xmin/H)
 				% -> MIN = I * H
 				% BUT EVERYTHING to log(10) basis!
-				\MIN=\csname pgfplots@log@scale@todisplaylog@#1@inv\endcsname \MIN\relax
+				\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
 				\pgfmathlog@invoke@expanded\pgfmathdivide@{%
 					{\pgf@sys@tonumber\MIN}%
 					{\Hmacro}%
@@ -1923,8 +1932,8 @@
 				\multiply\MIN by\c@pgf@counta\relax
 				%
 				% convert back to basis 'e':
-				\MIN=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\MIN\relax
-				\H=\csname pgfplots@log@scale@todisplaylog@#1\endcsname\H\relax
+				\MIN=\pgfplots@loc@log@to@display@log@scale\MIN\relax
+				\H=\pgfplots@loc@log@to@display@log@scale\H\relax
 				\MINH=\MIN\relax
 				\advance\MINH by\H\relax
 			}%
@@ -1950,13 +1959,14 @@
 % Helper method for 
 %  \pgfplots@apply@data@scale@trafo@to@options@for
 % #1: the ticks
-% #2: the trafo macro name 
+% #2: the trafo routine (not necessarily a single macro, but should
+% take one arg) 
 % #3: the output macro name
 \long\def\pgfplots@apply@data@scale@trafo@to@user@ticks#1#2\to#3{%
 	\let#3=\pgfutil@empty
 	\foreach \pgfplots@loc@TMPb in {#1} {%
 		\pgfmathfloatparsenumber{\pgfplots@loc@TMPb}%
-		\expandafter#2\expandafter{\pgfmathresult}%
+		#2{\pgfmathresult}%
 		\ifx#3\pgfutil@empty
 			\xdef#3{\pgfmathresult}%
 		\else

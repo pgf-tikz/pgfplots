@@ -304,7 +304,7 @@
 		\edef\pgfmathresult{#2}%
 	\fi
 }%
-\def\pgfplotsmathlessthan#1#2{\ifdim#1 pt<#2 pt \pgfmathfloatcomparisontrue\else\pgfmathfloatcomparisonfalse\fi}
+\def\pgfplotsmathlessthan#1#2{\ifdim#1pt<#2pt \pgfmathfloatcomparisontrue\else\pgfmathfloatcomparisonfalse\fi}
 
 % Re-define two-argument function for min and max.
 % The pgfmath engine now uses a variable number of arguments.
@@ -555,6 +555,7 @@
 
 % Discards any token up to (and including) \relax.
 \def\pgfplots@gobble@until@relax#1\relax{}%
+\def\pgfplots@gobble@until@EOI#1\pgfplots@EOI{}%
 
 % A (simple) replacement for \foreach which 
 % 1. does NOT scope the argument
@@ -820,7 +821,7 @@
 \def\pgfplots@logfileopen#1{%
 	\immediate\write-1{PGFPlots: reading {#1}}%
 	\pgfutil@ifundefined{tikzifexternalizingcurrent}{%
-		% version not up-to-date!?
+		% version not up-to-date or external lib not loaded?
 	}{%
 		% adjust the .dep file only if we are externalizing.
 		% Otherwise, it may be overwritten by \pgfplotstableread
@@ -966,6 +967,81 @@
 	\def\pgfplots@strcmp@cur{#1}%
 	\def\pgfplots@strcmp@rest{#2}%
 }%
+
+% Takes two dimensional cartesian coordinates #1,#2 and 
+% defines the macros #3 and #4 to contain the associated polar
+% coordinates.
+%
+% #1: x
+% #2: y
+% #3: a macro which will be filled with the angle (in degrees)
+% #4: a macro which will be filled with the radius
+\def\pgfplotsmathcarttopol#1#2#3#4{%
+	\pgfplotsmathcarttopol@{#1}{#2}{#3}{#4}{default}%
+}%
+\def\pgfplotsmathcarttopolbasic#1#2#3#4{%
+	\pgfplotsmathcarttopol@{#1}{#2}{#3}{#4}{pgfbasic}%
+}%
+% #5: the math engine to use (\pgfplotscoordmath argument)
+\def\pgfplotsmathcarttopol@#1#2#3#4#5{%
+	\begingroup
+	\pgfplotscoordmath{#5}{parsenumber}{#1}%
+	\let\pgfplots@x=\pgfmathresult
+	\pgfplotscoordmath{#5}{parsenumber}{#2}%
+	\let\pgfplots@y=\pgfmathresult
+	\pgfplotscoordmath{#5}{op}{veclen}{{\pgfplots@x}{\pgfplots@y}}%
+	\let\pgfplots@r=\pgfmathresult
+	\pgfplotscoordmath{#5}{if is}{\pgfplots@r}{0}{%
+		\pgfplotscoordmath{#5}{parsenumber}{0}%
+	}{%
+		\pgfplotscoordmath{#5}{op}{divide}{{\pgfplots@x}{\pgfplots@r}}%
+		\let\pgfplots@quot=\pgfmathresult
+		\pgfplotscoordmath{#5}{op}{acos}{{\pgfplots@quot}}%
+		%
+		\pgfplotscoordmath{#5}{if is}{\pgfplots@y}{-}{%
+			\let\pgfplots@acos=\pgfmathresult
+			\pgfplotscoordmath{#5}{parsenumber}{-1}%
+			\pgfplotscoordmath{#5}{op}{multiply}{{\pgfmathresult}{\pgfplots@acos}}%
+		}{}%
+	}%
+	\let\pgfplots@deg=\pgfmathresult
+	\xdef\pgfplots@glob@TMPa{\noexpand\def\noexpand#3{\pgfplots@deg}\noexpand\def\noexpand#4{\pgfplots@r}}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}%
+
+% Takes two dimensional polar coordinates #1,#2 and 
+% defines the macros #3 and #4 to contain the associated cartesian
+% coordinates.
+%
+% #1: angle (in degrees)
+% #2: radius
+% #3: a macro which will be filled with the x value
+% #4: a macro which will be filled with the y value
+\def\pgfplotsmathpoltocart#1#2#3#4{%
+	\pgfplotsmathpoltocart@{#1}{#2}{#3}{#4}{default}%
+}%
+\def\pgfplotsmathpoltocartbasic#1#2#3#4{%
+	\pgfplotsmathpoltocart@{#1}{#2}{#3}{#4}{pgfbasic}%
+}%
+% #5: the math engine to use (\pgfplotscoordmath argument)
+\def\pgfplotsmathpoltocart@#1#2#3#4#5{%
+	\begingroup
+	\pgfplotscoordmath{#5}{parsenumber}{#1}%
+	\let\pgfplots@deg=\pgfmathresult
+	\pgfplotscoordmath{#5}{parsenumber}{#2}%
+	\let\pgfplots@r=\pgfmathresult
+	\pgfplotscoordmath{#5}{op}{sin}{{\pgfplots@deg}}%
+	\pgfplotscoordmath{#5}{op}{multiply}{{\pgfplots@r}{\pgfmathresult}}%
+	\let\pgfplots@y=\pgfmathresult
+	\pgfplotscoordmath{#5}{op}{cos}{{\pgfplots@deg}}%
+	\pgfplotscoordmath{#5}{op}{multiply}{{\pgfplots@r}{\pgfmathresult}}%
+	\let\pgfplots@x=\pgfmathresult
+	\xdef\pgfplots@glob@TMPa{\noexpand\def\noexpand#3{\pgfplots@x}\noexpand\def\noexpand#4{\pgfplots@y}}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}%
+
 
 
 \pgfutil@ifundefined{pgfmathdeclarefunction}{%
@@ -1184,17 +1260,17 @@
 	% #4: code to invoke in case arg1>=arg2
 	% the iflessthan method will be invoked within local scopes.
 	/pgfplots/fixed </.style={%
-		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt<##2pt\relax##3\else##4\fi},%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt<##2pt\relax##3\else ##4\fi},%
 	},
 	/pgfplots/fixed <,
 	/pgfplots/fixed >/.style={%
-		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt>##2pt\relax##3\else##4\fi},%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt>##2pt\relax##3\else ##4\fi},%
 	},
 	/pgfplots/int </.style={%
-		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1<##2\relax##3\else##4\fi},%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1<##2\relax##3\else ##4\fi},%
 	},
 	/pgfplots/int >/.style={%
-		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1>##2\relax##3\else##4\fi},%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1>##2\relax##3\else ##4\fi},%
 	},
 	/pgfplots/float </.style={%
 		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
@@ -1301,6 +1377,101 @@
 	\def\pgfplots@auxwrite#1{}%
 }{%
 	\let\pgfplots@auxwrite=\pgfplots@auxwrite@latex
+}%
+
+% sorts three elements.
+%
+% #1,#2,#3 are three macros containing the input.
+% On output, these macros are redefined to represent the sorted range.
+% The values of these macros must be a <dimen>, followed by anything
+% else (but no \relax please)
+%
+% Example:
+% \def\A{10pt furthervalues}
+% \def\B{4pt value of b}
+% \def\C{1pt value of c}
+% \pgfplotsutilsortthree\A\B\C
+% ->
+% \A={1pt value of c}
+% \B={4pt value of b}
+% \C={10pt furthervalues}
+%
+% It uses insertion sort.
+\def\pgfplotsutilsortthree#1#2#3{%
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#1\relax
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xb=#2\relax
+	\ifdim\pgf@xa>\pgf@xb
+		\let\pgfplots@loc@TMPa=#2%
+		\let#2=#1%
+		\let#1=\pgfplots@loc@TMPa%
+	\fi
+	% first two are sorted.
+	%
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#2\relax
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xb=#3\relax
+	\let\pgfplots@loc@TMPa=#3%
+	\ifdim\pgf@xa>\pgf@xb
+		\let#3=#2%
+		\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#1\relax
+		\ifdim\pgf@xa>\pgf@xb
+			\let#2=#1%
+			\let#1=\pgfplots@loc@TMPa%
+		\else
+			\let#2=\pgfplots@loc@TMPa%
+		\fi
+	\fi
+	% ok.
+}%
+
+% Like \pgfplotsutilsortthree, but for four elements (of the same
+% form, see \pgfplotsutilsortthree).
+%
+% It uses insertion sort.
+\def\pgfplotsutilsortfour#1#2#3#4{%
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#1\relax
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xb=#2\relax
+	\ifdim\pgf@xa>\pgf@xb
+		\let\pgfplots@loc@TMPa=#2%
+		\let#2=#1%
+		\let#1=\pgfplots@loc@TMPa%
+	\fi
+	% first two are sorted.
+	%
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#2\relax
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xb=#3\relax
+	\let\pgfplots@loc@TMPa=#3%
+	\ifdim\pgf@xa>\pgf@xb
+		\let#3=#2%
+		\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#1\relax
+		\ifdim\pgf@xa>\pgf@xb
+			\let#2=#1%
+			\let#1=\pgfplots@loc@TMPa%
+		\else
+			\let#2=\pgfplots@loc@TMPa%
+		\fi
+	\fi
+	% ok, first three are sorted.
+	%
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#3\relax
+	\afterassignment\pgfplots@gobble@until@relax \pgf@xb=#4\relax
+	\let\pgfplots@loc@TMPa=#4%
+	\ifdim\pgf@xa>\pgf@xb
+		\let#4=#3%
+		\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#2\relax
+		\ifdim\pgf@xa>\pgf@xb
+			\let#3=#2%
+			\afterassignment\pgfplots@gobble@until@relax \pgf@xa=#1\relax
+			\ifdim\pgf@xa>\pgf@xb
+				\let#2=#1%
+				\let#1=\pgfplots@loc@TMPa%
+			\else
+				\let#2=\pgfplots@loc@TMPa%
+			\fi
+		\else
+			\let#3=\pgfplots@loc@TMPa%
+		\fi
+	\fi
+	% ok, first four are sorted.
 }%
 
 \input pgfplotsliststructure.code.tex

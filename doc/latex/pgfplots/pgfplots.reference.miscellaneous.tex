@@ -164,6 +164,55 @@ Allows to insert \marg{commands} right after the end of the clipped drawing comm
 Please note that this feature does not affect plot marks. I think it looks unfamiliar if plot marks are crossed by axis descriptions.
 \end{pgfplotskey}
 
+
+\begin{pgfplotskeylist}{%
+	visualization depends on=\meta{\textbackslash macro} (initially empty),%
+	visualization depends on=\meta{expression}\texttt{\textbackslash as}\meta{\textbackslash macro} (initially empty)}
+	Allows to communicate data to \PGFPlots\ which is essential to perform the visualization although \PGFPlots\ isn't aware of it.
+
+	Suppose you want a scatter plot, which depends on the $(x,y)$ coordinates, the |point meta| data to draw individual colors and furthermore data which influences the |mark size|. Thus, you need a total of~$4$ coordinates for every data point, although \PGFPlots\ supports only $3$ in its initial configuration.
+	
+	Before we actually come to the main point of the problem, we'll talk about how to get a scatter plot which has individual colors \emph{and} individual sizes. It is not sufficient to set |mark size| alone, since |mark size| is evaluated only once, before markers are processed (the same holds for |every mark|). Thus, we can use |scatter| combined with
+
+	|scatter/@pre marker code/.append style={/tikz/mark size=\perpointmarksize}|.
+
+	\noindent The |@pre marker code| is installed for every marker of a scatter plot individually. Now, we come to the problem as such: where can we get the value for |mark size|, in our case called |\perpointmarksize|?
+	
+	A solution is |visualization depends on| (using the second input syntax at this point):
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[
+		scatter,
+		scatter src=y,
+		samples=40,
+		visualization depends on=
+			{5*cos(deg(x)) \as \perpointmarksize},
+		scatter/@pre marker code/.append style=
+			{/tikz/mark size=\perpointmarksize}
+	]
+		{sin(deg(x))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	
+	Here, we define |\perpointmarksize| as |5*cos(deg(x))|. The expression will be evaluated together with all other coordinates. Thus, everything which is available during the survey phase can be used here. This includes the final coordinates |x|, |y|, |z|; the constant |meta| expands to the current per point meta data. Furthermore, |\thisrow|\marg{colname} expands to the value of a table column.
+
+	The command |visualization depends on| evaluates and remembers every value in internal data structures. The remembered value is then available as \meta{\textbackslash macro} during the visualization phase. In our example, the |@pre marker code| is evaluated during the visualization phase and applies |mark size=5*cos(deg(x))|.
+	
+	The first syntax, |visualization depends on=|\meta{\textbackslash macro}, tells \PGFPlots\ to use an already defined \meta{\textbackslash macro}. The second syntax with \meta{content}|\as|\meta{\textbackslash macro} provides also the value.
+
+	There can be more than one |visualization depends on| phrase.
+
+	In case the stored value is not of numerical type\footnote{Or if it is just a constant and you'd like to improve speed.}, you can use the prefix `|value|' before the argument, i.e.
+
+	|visualization depends on=value |\meta{\textbackslash macro} or
+
+	|visualization depends on=value |\meta{content}|\as |\meta{\textbackslash macro}.
+
+	Such a value will be expanded and stored, but not parsed as number (at least not by \PGFPlots).
+\end{pgfplotskeylist}
+
 \begin{key}{/pgf/fpu=\marg{true,false} (initially true)}
 \index{Precision}
 	This key activates or deactivates the floating point unit. If it is disabled (|false|), the core \PGF\ math engine written by Mark Wibrow and Till Tantau will be used for |plot expression|.
