@@ -150,7 +150,7 @@
 }%
 
 
-% Converts an arbitrary command to a string in which all characters
+% Converts an arbitrary command (without arguments) to a string in which all characters
 % have category 12.
 %
 % #1: a macro name (which takes no arguments)
@@ -163,6 +163,30 @@
 \xdef\pgfplots@glob@TMPa{\meaning\pgfutil@empty}%
 \expandafter\def\expandafter\pgfplots@command@to@string@@\pgfplots@glob@TMPa#1\pgfplots@EOI#2{%
 	\def#2{#1}%
+}%
+
+% As \pgfplots@command@to@string, but it works for commands accepting
+% arguments. More precisely, #2 will be a string (!) of the form
+% <argument pattern>{ <body> }
+% such that you can write
+% \def\test #2
+% into a file to restore the original macro. This IGNORES \long
+% (sorry)
+\def\pgfplots@command@with@args@to@string#1#2{%
+	\expandafter\PGFPLOTS@CS@WITH@ARGS@TO@STRING\meaning#1\EOI{#2}%
+}%
+{
+\let\CATCODE=\catcode
+\let\LONG=\long
+\CATCODE`\m=12
+\CATCODE`\a=12
+\CATCODE`\c=12
+\CATCODE`\r=12
+\CATCODE`\o=12
+\CATCODE`\:=12
+\CATCODE`\-=12
+\CATCODE`\>=12
+\LONG\gdef\PGFPLOTS@CS@WITH@ARGS@TO@STRING #1macro:#2->#3\EOI#4{\def#4{#2{#3}}}%
 }%
 
 % Defines \pgfplotsretval to be '#1' but without leading and trailing
@@ -212,7 +236,9 @@
 {
 \catcode`\%=12
 \gdef\pgfplots@PERCENT@TEXT{%}
-}
+\catcode`\^^I=12
+\gdef\pgfplots@TAB{^^I}
+\catcode`\#=12 \gdef\pgfplots@ROUTE{#}}
 
 % Usage:
 % \pgfplots@if{pgfplots@scaled@ticks}{true-code}{false-code}
@@ -403,8 +429,18 @@
 % related.
 %
 % @see \pgfplotsqpointxy@orthogonal
-\let\pgfplotsqpointxy=\pgfqpointxy
-\let\pgfplotsqpointxyz=\pgfqpointxyz
+\def\pgfplotsqpointxy#1#2{%
+  \global\pgf@x=#1\pgf@xx%
+  \global\advance\pgf@x by #2\pgf@yx%
+  \global\pgf@y=#1\pgf@xy%
+  \global\advance\pgf@y by #2\pgf@yy}
+\def\pgfplotsqpointxyz#1#2#3{%
+  \global\pgf@x=#1\pgf@xx%
+  \global\advance\pgf@x by #2\pgf@yx%
+  \global\advance\pgf@x by #3\pgf@zx%
+  \global\pgf@y=#1\pgf@xy%
+  \global\advance\pgf@y by #2\pgf@yy%
+  \global\advance\pgf@y by #3\pgf@zy}
 
 % A "quick" quick variant of \pgfqpointxy which assumes that 
 % the X unit vector is ( e_xx,0 )^T  and the Y unit vector is ( 0,
@@ -413,8 +449,8 @@
 % In words, the unit vectors are orthogonal. This is the usual case
 % for two-dimensional plots and shall be optimized.
 \def\pgfplotsqpointxy@orthogonal#1#2{%
-	\pgf@x=#1\pgf@xx%
-	\pgf@y=#2\pgf@yy}
+	\global\pgf@x=#1\pgf@xx%
+	\global\pgf@y=#2\pgf@yy}
 
 
 % Takes a domain as input and generates a foreach argument which
@@ -786,6 +822,15 @@
 
 \def\pgfplots@logfileopen#1{%
 	\immediate\write-1{PGFPlots: reading {#1}}%
+	\pgfutil@ifundefined{tikzifexternalizingcurrent}{%
+		% version not up-to-date!?
+	}{%
+		% adjust the .dep file only if we are externalizing.
+		% Otherwise, it may be overwritten by \pgfplotstableread
+		% commands which are *before* the tikzpicture (and the picture
+		% will be replaced by its graphics)
+		\tikzifexternalizingcurrent{\tikzpicturedependsonfile{#1}}{}%
+	}%
 }%
 
 % Expands #2 using \edef and invokes #1 with the resulting string.
@@ -858,6 +903,74 @@
 	\fi
 }%
 
+% String comparison of '#1' and '#2'.
+% Defines 
+% \pgfplotsretval=0  if #1 == #2 
+% \pgfplotsretval=1  if #1 < #2
+% \pgfplotsretval=2  if #1 > #2
+\def\pgfplotsutilstrcmp#1#2{%
+	\begingroup
+	\def\pgfplots@strcmp@arga{#1}%
+	\pgfplots@command@to@string\pgfplots@strcmp@arga\pgfplots@strcmp@arga
+	\def\pgfplots@strcmp@argb{#2}%
+	\pgfplots@command@to@string\pgfplots@strcmp@argb\pgfplots@strcmp@argb
+	%
+	%
+	\def\pgfplotsretval{0}%
+	%
+	\pgfplotsloop{%
+		\if0\pgfplotsretval
+			% get next token of arga:
+			\expandafter\pgfplotsutilstrcmp@popfront\pgfplots@strcmp@arga\relax\relax
+			\let\pgfplots@strcmp@arga=\pgfplots@strcmp@rest
+			\let\pgfplots@strcmp@arga@=\pgfplots@strcmp@cur
+			%
+			% get next token of argb:
+			\expandafter\pgfplotsutilstrcmp@popfront\pgfplots@strcmp@argb\relax\relax
+			\let\pgfplots@strcmp@argb=\pgfplots@strcmp@rest
+			\let\pgfplots@strcmp@argb@=\pgfplots@strcmp@cur
+			%
+			% if one of them is empty: set retval and break loop.
+			\ifx\pgfplots@strcmp@arga@\pgfplotsutilstrcmp@relaxtext
+				\ifx\pgfplots@strcmp@argb@\pgfplotsutilstrcmp@relaxtext
+				\else
+					\def\pgfplotsretval{1}%
+				\fi
+				\pgfplotsloopcontinuefalse
+			\else
+				\ifx\pgfplots@strcmp@argb@\pgfplotsutilstrcmp@relaxtext
+					\def\pgfplotsretval{2}%
+					\pgfplotsloopcontinuefalse
+				\else
+					\pgfplotsloopcontinuetrue
+				\fi
+			\fi
+		\else
+			\pgfplotsloopcontinuefalse
+		\fi
+	}{%
+		%
+		\ifnum\expandafter`\pgfplots@strcmp@arga@<\expandafter`\pgfplots@strcmp@argb@
+			\def\pgfplotsretval{1}%
+			\let\pgfplots@strcmp@arga=\pgfutil@empty
+		\else
+			\ifnum\expandafter`\pgfplots@strcmp@arga@>\expandafter`\pgfplots@strcmp@argb@
+				\def\pgfplotsretval{2}%
+				\let\pgfplots@strcmp@arga=\pgfutil@empty
+			\fi
+		\fi
+	}%
+	%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+\def\pgfplotsutilstrcmp@relaxtext{\relax}%
+\def\pgfplotsutilstrcmp@popfront#1#2\relax{%
+	\def\pgfplots@strcmp@cur{#1}%
+	\def\pgfplots@strcmp@rest{#2}%
+}%
+
+
 \pgfutil@ifundefined{pgfmathdeclarefunction}{%
 	% BACKWARDS COMPATIBILITY: We have PGF 2.00 :
 	\def\pgfplotsmathdeclarepseudoconstant#1#2{%
@@ -877,6 +990,72 @@
 	}%
 }%
 
+\def\pgfplotsmathfloatln@#1{%
+	\pgfmathfloatln@{#1}%
+}
+
+% Defines a macro which computes ln(x)/ln(#2) in float.
+%
+% #1: a macro name without backslash
+% #2: the log base as fixed point number. Maybe the empty string in
+% which case the natural log is used.
+%
+% It will define the macros:
+% <macro>##1    -> calls \pgfmathfloatparsenumber and then the '@' variant:
+% <macro>@##1   -> expects and returns result in float
+% <macro>@tofixed##1 -> expects result in float, returns it in fixed (or an empty string)
+% <macro>inv@##1   -> the inverse (exponential) function, expects float, returns float
+% %
+% <macro>logbase   -> the basis as number
+% <macro>logofbasefixed -> log(#2)
+% <macro>invlogofbasefixed -> 1/log(#2)
+% <macro>logofbasefloat -> log(#2) in float
+% <macro>invlogofbasefloat -> 1/log(#2) in float
+\def\pgfplotsmathdefinemacrolnbase#1#2{%
+	\expandafter\edef\csname #1logbase\endcsname{#2}%
+	\expandafter\ifx\csname #1logbase\endcsname\pgfutil@empty
+		\expandafter\edef\csname #1logbase\endcsname{2.718281828459}%
+		\expandafter\def\csname #1logofbasefixed\endcsname{1}%
+		\expandafter\def\csname #1invlogofbasefixed\endcsname{1}%
+	\else
+		\pgfmathlog@{\csname #1logbase\endcsname}%
+		\expandafter\let\csname #1logofbasefixed\endcsname\pgfmathresult%
+		\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname #1invlogofbasefixed\endcsname\pgfmathresult%
+	\fi
+	%
+	\pgfmathfloatparsenumber{\csname #1logofbasefixed\endcsname}%
+	\expandafter\let\csname #1logofbasefloat\endcsname\pgfmathresult%
+	\pgfmathfloatparsenumber{\csname #1invlogofbasefixed\endcsname}%
+	\expandafter\let\csname #1invlogofbasefloat\endcsname\pgfmathresult%
+	%
+	\expandafter\def\csname #1@tofixed\endcsname##1{%
+		\pgfmathlog@float{##1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\expandafter\pgfmath@basic@multiply@\expandafter
+				{\pgfmathresult}%
+				{\csname #1invlogofbasefixed\endcsname}%
+		\fi
+	}%
+	\expandafter\def\csname #1@\endcsname##1{%
+		\expandafter\csname #1@tofixed\endcsname{##1}%
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfmathfloatcreate{3}{0.0}{0}%
+		\else
+			\pgfmathfloatparsenumber{\pgfmathresult}%
+		\fi
+	}%
+	\expandafter\def\csname #1\endcsname##1{%
+		\pgfmathfloatparsenumber{##1}%
+		\csname #1@\endcsname{\pgfmathresult}%
+	}%
+	%
+	\expandafter\def\csname #1inv@\endcsname##1{%
+		\expandafter\pgfmathfloatmultiply@\expandafter{##1}{\csname #1logofbasefloat\endcsname}%
+		\pgfmathfloatexp@{\pgfmathresult}%
+	}%
+}%
 
 % Usage:
 % \pgfplotsutilstrreplace{<token>}{<replacement>}{<string>}
@@ -916,10 +1095,221 @@
 % this command is in pgfplotscore.code.tex:
 % \pgfplotsiffileexists
 
+% EXPERIMENTAL OPTIMIZATION:
+\let\pgfmathparsex@orig=\pgfmathparse
+\def\pgfmathparsex#1{%
+	\begingroup
+	\message{WORKING ON #1...}%
+	\tracingmacros=2 \tracingcommands=2
+	\let\pgfmath@parse@@@operator\relax
+	\let\pgfmath@parse@@operator\relax
+	\let\pgfmath@parse@operator\relax
+	\let\pgfmath@stack@push@operand\pgfutil@gobble
+	\let\pgfmath@base=\pgfmath@empty
+	\let\pgfmath@number=\pgfmath@empty
+	\let\pgfmath@parse@number@failed=\relax
+    \edef\pgfmath@expression{#1}%
+	\expandafter\pgfmathparsex@first\pgfmath@expression\pgfmathparsex@EOI%
+	\if1\pgfmathparsex@recover@
+		\xdef\pgfmathparsex@@{\noexpand\pgfmathparsex@orig{\pgfmath@expression}}%
+	\else
+		\xdef\pgfmathparsex@@{\noexpand\def\noexpand\pgfmathresult{\pgfmathresult}}%
+	\fi
+	\endgroup
+	\pgfmathparsex@@
+}%
+\def\pgfmathparsex@first#1#2\pgfmathparsex@EOI{%
+	\def\pgfmath@token@next{#1}%
+	\pgfmath@parse@number{#2}%
+}%
+\def\pgfmathparsex@recover{\def\pgfmathparsex@recover@{1}}%
+\def\pgfmathparsex@recover@{0}%
+
+
+% compares YYYY-MM-DD < YYYY-MM-DD
+%
+% \pgfplotsutilifdatelessthan 2010-01-01\cmp 2011-01-01\relax{<true>}{<false>}
+\long\def\pgfplotsutilifdatelessthan#1-#2-#3\cmp #4-#5-#6\relax#7#8{%
+	\long\def\pgfplotsutilifdatelessthan@true{#7}%
+	\long\def\pgfplotsutilifdatelessthan@false{#8}%
+	\ifnum#1<#4\relax
+		\pgfplotsutilifdatelessthan@true
+	\else
+		\ifnum#1>#4\relax
+			\pgfplotsutilifdatelessthan@false
+		\else
+			\ifnum#2<#5\relax
+				\pgfplotsutilifdatelessthan@true
+			\else
+				\ifnum#2>#5\relax
+					\pgfplotsutilifdatelessthan@false
+				\else
+					\ifnum#3<#6\relax
+						\pgfplotsutilifdatelessthan@true
+					\else
+						\pgfplotsutilifdatelessthan@false
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+}%
+\long\def\pgfplotsutilifdategreaterthan#1-#2-#3\cmp #4-#5-#6\relax#7#8{%
+	\long\def\pgfplotsutilifdatelessthan@true{#7}%
+	\long\def\pgfplotsutilifdatelessthan@false{#8}%
+	\ifnum#1>#4\relax
+		\pgfplotsutilifdatelessthan@true
+	\else
+		\ifnum#1<#4\relax
+			\pgfplotsutilifdatelessthan@false
+		\else
+			\ifnum#2>#5\relax
+				\pgfplotsutilifdatelessthan@true
+			\else
+				\ifnum#2<#5\relax
+					\pgfplotsutilifdatelessthan@false
+				\else
+					\ifnum#3>#6\relax
+						\pgfplotsutilifdatelessthan@true
+					\else
+						\pgfplotsutilifdatelessthan@false
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+}%
+\pgfkeys{%
+	% /pgfplots/iflessthan{#1}{#2}{#3}{#4}:
+	% #1: arg1 (a macro containing the first argument)
+	% #2: arg2 (a macro containing the second argument)
+	% #3: code to invoke in case arg1<arg2
+	% #4: code to invoke in case arg1>=arg2
+	% the iflessthan method will be invoked within local scopes.
+	/pgfplots/fixed </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt<##2pt\relax##3\else##4\fi},%
+	},
+	/pgfplots/fixed <,
+	/pgfplots/fixed >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifdim##1pt>##2pt\relax##3\else##4\fi},%
+	},
+	/pgfplots/int </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1<##2\relax##3\else##4\fi},%
+	},
+	/pgfplots/int >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{\ifnum##1>##2\relax##3\else##4\fi},%
+	},
+	/pgfplots/float </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\pgfmathfloatparsenumber{##1}%
+			\let\pgfplots@iflt@arga=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{##2}%
+			\let\pgfplots@iflt@argb=\pgfmathresult
+			%
+			\pgfmathfloatlessthan@{\pgfplots@iflt@arga}{\pgfplots@iflt@argb}%
+			\ifpgfmathfloatcomparison
+				##3%
+			\else
+				##4%
+			\fi
+		}%
+	},%
+	/pgfplots/float >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\pgfmathfloatparsenumber{##1}%
+			\let\pgfplots@iflt@arga=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{##2}%
+			\let\pgfplots@iflt@argb=\pgfmathresult
+			%
+			\pgfmathfloatgreaterthan@{\pgfplots@iflt@arga}{\pgfplots@iflt@argb}%
+			\ifpgfmathfloatcomparison
+				##3%
+			\else
+				##4%
+			\fi
+		}%
+	},%
+	% 
+	% compares YYYY-MM-DD < YYYY-MM-DD
+	/pgfplots/date </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\edef\pgfplotsarray@ltdate{##1\noexpand\cmp ##2}%
+			\expandafter\pgfplotsutilifdatelessthan\pgfplotsarray@ltdate\relax{##3}{##4}%
+		}%
+	},%
+	/pgfplots/date >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\edef\pgfplotsarray@ltdate{##1\noexpand\cmp ##2}%
+			\expandafter\pgfplotsutilifdategreaterthan\pgfplotsarray@ltdate\relax{##3}{##4}%
+		}%
+	},%
+	%
+	/pgfplots/string </.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\t@pgfplots@toka=\expandafter{##1}%
+			\t@pgfplots@tokb=\expandafter{##2}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+			\expandafter\pgfplotsutilstrcmp\pgfplots@loc@TMPa
+			\if1\pgfplotsretval ##3\else ##4\fi
+		}%
+	},%
+	/pgfplots/string >/.style={%
+		/pgfplots/iflessthan/.code args={##1##2##3##4}{%
+			\t@pgfplots@toka=\expandafter{##1}%
+			\t@pgfplots@tokb=\expandafter{##2}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+			\expandafter\pgfplotsutilstrcmp\pgfplots@loc@TMPa
+			\if2\pgfplotsretval ##3\else ##4\fi
+		}%
+	},%
+}
+
+% defines \pgfplotsretval to be
+%
+% \tikzifinpicture{#1}{#2}
+%
+% and handles the '/pgfplots/invoke before crossref tikzpicture' key.
+% 
+% #1 first argument to \tikzifinpicture
+% #2 second argument to \tikzifinpicture
+\def\pgfplots@assemble@ref@picture#1#2{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/invoke before crossref tikzpicture}\pgfplots@loc@TMPa
+	\pgfkeysgetvalue{/pgfplots/invoke after crossref tikzpicture}\pgfplots@loc@TMPb
+	\toks0={#1}%
+	\toks1=\expandafter{\pgfplots@loc@TMPa}%
+	\toks2={#2}%
+	\toks3=\expandafter{\pgfplots@loc@TMPb}%
+	\xdef\pgfplots@glob@TMPa{%
+		\noexpand\tikzifinpicture
+			{\the\toks0}%
+			{%
+				\the\toks1
+				\the\toks2
+				\the\toks3
+			}%
+	}%
+	\endgroup
+	\let\pgfplotsretval=\pgfplots@glob@TMPa
+}%
+
+\def\pgfplots@auxwrite@latex#1{%
+	\if@filesw
+		\immediate\write\@auxout{#1}%
+	\fi
+}%
+\pgfutil@ifundefined{if@filesw}{%
+	\def\pgfplots@auxwrite#1{}%
+}{%
+	\let\pgfplots@auxwrite=\pgfplots@auxwrite@latex
+}%
+
 \input pgfplotsliststructure.code.tex
 \input pgfplotsliststructureext.code.tex
 \input pgfplotsarray.code.tex
-\input pgfplotstable.code.tex
+\input pgfplotstableshared.code.tex
 \input pgfplotsdeque.code.tex
 \input pgfplotsbinary.code.tex
 

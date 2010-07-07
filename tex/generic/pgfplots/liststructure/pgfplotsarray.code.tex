@@ -96,6 +96,15 @@
 	\fi
 }
 
+% #1 the array's name (a macro name
+% #2 a list created by \pgfplotslistnew 
+\def\pgfplotsarrayfrompgfplotslist#1#2{%
+	\pgfplotsarraynewempty#1%
+	\pgfplotslistforeachungrouped#2\as\pgfplotsarray@TMPa{%
+		\expandafter\pgfplotsarraypushback\expandafter{\pgfplotsarray@TMPa}\to#1%
+	}%
+}%
+
 \def\pgfplotsarraynew@backslash#1#2{%
 	\pgfplotsarraynewempty{#1}%
 	\long\def\pgfplotsarraynew@impl@rest{#2}%
@@ -199,6 +208,9 @@
 \def\pgfplotsarrayselect#1\of#2\to#3{%
 	\c@pgfplotsarray@tmp=#1\relax
 	\expandafter\let\expandafter#3\csname\string#2@\the\c@pgfplotsarray@tmp\endcsname%
+	\ifx#3\relax
+		\pgfplotsthrow{no such element}{#1}{No such element: \string\pgfplotsarrayselect\the\c@pgfplotsarray@tmp\string\of{\string#2}}\pgfeov%
+	\fi
 }
 
 % Expands to the value at index #1 of array #2.
@@ -315,12 +327,7 @@
 	\let\pgfplotsarrayforeachindex=\relax%
 }
 
-% #1: arg1 (possibly not fully expanded)
-% #2: arg2 (possibly not fully expanded)
-% #3: code to invoke in case arg1<arg2
-% #4: code to invoke in case arg1>=arg2
 \pgfkeys{%
-	/pgfplots/array/iflessthan/.code args={#1#2#3#4}{\ifnum#1<#2\relax#3\else#4\fi},%
 	/pgfplots/array/unscope pre/.code={%
 		% That's more or less efficient (although some runtime factors
 		% could be saved).
@@ -349,7 +356,8 @@
 % Sorts array '#1' using N log N time.
 % 
 % The sort key is provided as argument in
-% /pgfplots/array/iflessthan/.code args={#1#2#3#4}, see above.
+% /pgfplots/iflessthan/.code args={#1#2#3#4}, see docs in
+% pgfplotsutil.code.tex.
 %
 % Remarks:
 % - the sorting algorithm is a sub-optimal mergesort currently -
@@ -400,13 +408,22 @@
 % [\pgfplotsarrayforeach\testarray\as\elem{\elem\space}]
 % 
 %-------------------------------------------------- 
-\def\pgfplotsarraysort#1{%
+\def\pgfplotsarraysort{%
+	\pgfutil@ifnextchar[{\pgfplotsarraysort@opt}{\pgfplotsarraysort@opt[]}%
+}%
+\def\pgfplotsarraysort@opt[#1]#2{%
 	% I admit, the implementation is more-or less copy-paste of an
 	% experiment I had done at university. It does its job, but it is
-	% certainly not optimal.
+	% certainly not optimal (that means: it is slow).
 	\begingroup
-	\pgfkeysgetvalue{/pgfplots/array/iflessthan/.@cmd}\pgfplotsarraysort@iflt
-	\pgfplotsarraysize{#1}\to\c@pgfplotsarray@tmp
+	\pgfqkeys{/pgfplots/array}{#1}%
+	\pgfkeysifdefined{/pgfplots/array/iflessthan/.@cmd}{%
+		\pgfplots@warning{Warning: /pgfplots/array/iflessthan/.@cmd is deprecated. Please use /pgfplots/iflessthan/.@cmd instead.}%
+		\pgfkeysgetvalue{/pgfplots/array/iflessthan/.@cmd}\pgfplotsarraysort@iflt
+	}{%
+		\pgfkeysgetvalue{/pgfplots/iflessthan/.@cmd}\pgfplotsarraysort@iflt
+	}%
+	\pgfplotsarraysize{#2}\to\c@pgfplotsarray@tmp
 	\pgfplotsarrayresizeglobal{pgfparraytmp}{\the\c@pgfplotsarray@tmp}%
 	\countdef\c@pgfplotsarraysort@m=0
 	\countdef\c@pgfplotsarraysort@k=1
@@ -414,15 +431,15 @@
 	\countdef\c@pgfplotsarraysort@l=3
 	\countdef\c@pgfplotsarraysort@j=4
 	\countdef\c@pgfplotsarraysort@q=5
-	\def\pgfplotsarray@mergesort@{\pgfplotsarray@mergesort{#1}}%
-	\def\pgfplotsarray@mergesort@recurse@{\pgfplotsarray@mergesort@recurse{#1}}%
+	\def\pgfplotsarray@mergesort@{\pgfplotsarray@mergesort{#2}}%
+	\def\pgfplotsarray@mergesort@recurse@{\pgfplotsarray@mergesort@recurse{#2}}%
 	\edef\pgfplotsarray@mergesort@@{{0}{\the\c@pgfplotsarray@tmp}}%
 	\expandafter\pgfplotsarray@mergesort@\pgfplotsarray@mergesort@@
 	%
 	% copy the complete, sorted result outside of the current scope.
-	\pgfkeysvalueof{/pgfplots/array/unscope pre/.@cmd}#1\pgfeov
+	\pgfkeysvalueof{/pgfplots/array/unscope pre/.@cmd}#2\pgfeov
 	\endgroup
-	\pgfkeysvalueof{/pgfplots/array/unscope post/.@cmd}#1\pgfeov
+	\pgfkeysvalueof{/pgfplots/array/unscope post/.@cmd}#2\pgfeov
 }%
 
 % #1: array name,
@@ -473,20 +490,27 @@
 			\c@pgfplotsarraysort@j=\c@pgfplotsarraysort@k
 			\advance\c@pgfplotsarraysort@j by#2
 			\pgfplotsarrayselect{\c@pgfplotsarraysort@j}\of{#1}\to\pgfplotsarray@x@k
+			\begingroup
 			\pgfplotsarraysort@iflt
 				{\pgfplotsarray@x@mpl}%
 				{\pgfplotsarray@x@k}%
 				{% x[m+l] < x[k]
-					\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@mpl
-					\advance\c@pgfplotsarraysort@i by1
-					\advance\c@pgfplotsarraysort@l by1
+					\aftergroup\pgfplots@loc@tmptrue
 				}%
 				{% x[k] <= x[m+l]
-					\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@k
-					\advance\c@pgfplotsarraysort@i by1
-					\advance\c@pgfplotsarraysort@k by1
+					\aftergroup\pgfplots@loc@tmpfalse
 				}%
 				\pgfeov
+			\endgroup
+			\ifpgfplots@loc@tmp
+				\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@mpl
+				\advance\c@pgfplotsarraysort@i by1
+				\advance\c@pgfplotsarraysort@l by1
+			\else
+				\pgfplotsarrayletentryglobal\c@pgfplotsarraysort@i\of{pgfparraytmp}=\pgfplotsarray@x@k
+				\advance\c@pgfplotsarraysort@i by1
+				\advance\c@pgfplotsarraysort@k by1
+			\fi
 		\pgfutil@repeat
 		%
 		% append:
