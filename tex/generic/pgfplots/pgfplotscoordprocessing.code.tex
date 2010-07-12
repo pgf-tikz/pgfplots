@@ -6967,36 +6967,45 @@
 \def\pgfplots@plot@handler@graphics@finish{%
 	\pgfkeysgetvalue{/pgfplots/plot graphics/pointmap}\pgfplots@plot@handler@graphics@pointmap
 	\ifx\pgfplots@plot@handler@graphics@pointmap\pgfutil@empty
-		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@plot@handler@graphics@pointmap\pgfplots@EOI
-	\else
 		\pgfplots@plot@handler@graphics@usebb
+	\else
+		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@plot@handler@graphics@pointmap\pgfplots@EOI
+		\pgfplots@plot@handler@graphics@process@pointmap
 	\fi
 }%
 
+% Idea: re-use the 'points' syntax with option '=> '.
+% This allows to update the bounding box without too much overhead.
+%
 \def\pgfplots@plot@handler@graphics@parsepointmap{%
-	\let\pgfplots@plot@handler@pointmap@A@canvas\pgfutil@empty
-	\let\pgfplots@plot@handler@pointmap@A@img\pgfutil@empty
-	\let\pgfplots@plot@handler@pointmap@B@canvas\pgfutil@empty
-	\let\pgfplots@plot@handler@pointmap@B@img\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@A@canvas\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@A@img\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@B@img\pgfutil@empty
 	\pgfplots@plot@handler@graphics@parsepointmap@loop
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop{%
 	\pgfutil@ifnextchar\pgfplots@EOI{%
-		\pgfplots@plot@handler@graphics@process@pointmap
+		\pgfplots@gobble@until@EOI
 	}{%
-		\pgfplots@plot@handler@graphics@parsepointmap@loop
+		\pgfplots@plot@handler@graphics@parsepointmap@loop@
 	}%
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop@(#1,#2){%
 	\pgfutil@ifnextchar={%
 		\pgfplots@plot@handler@graphics@parsepointmap@loop@@(#1,#2)%
 	}{%
-		\pgfplots@error{Syntax error for plot graphics/pointmap: expected (#1,#2) => (...)}%
+		\pgfplots@error{Syntax error for plot graphics/pointmap: expected '(#1,#2) =>' }%
 		\pgfplots@gobble@until@EOI
 	}%
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop@@(#1,#2)=>{%
-	\pgfplots@plot@handler@graphics@parsepointmap@loop@@@(#1,#2)%
+	\pgfutil@ifnextchar({%
+		\pgfplots@plot@handler@graphics@parsepointmap@loop@@@(#1,#2)%
+	}{%
+		\pgfplots@error{Syntax error for plot graphics/pointmap: expected '(#1,#2) => (...,...)'}%
+		\pgfplots@gobble@until@EOI
+	}%
 }
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop@@@(#1,#2)(#3,#4){%
 	\pgfutil@in@,{#2}%
@@ -7008,14 +7017,122 @@
 	\else
 		\pgfplotspointaxisxy{#1}{#2}%
 	\fi
-	\ifx\pgfplots@plot@handler@pointmap@A@canvas\pgfutil@empty
-		\edef\pgfplots@plot@handler@pointmap@A@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\ifx\pgfplots@plot@handler@graphics@pointmap@A@canvas\pgfutil@empty
+		\def\pgfplots@loc@TMPa{A}%
 	\else
+		\ifx\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
+			\def\pgfplots@loc@TMPa{B}%
+		\else
+			%\pgfplots@error{Sorry, the argument '(#1,#2) => (#3,#4)' of plot graphics/pointmap is superfluos; ignoring it.}%
+			\def\pgfplots@loc@TMPa{*}%
+		\fi
 	\fi
-
+	\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @canvas\endcsname{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfmathparse{#3}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	%
+	\pgfmathparse{#4}%
+	\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @img\endcsname{\pgf@x=\pgfplots@loc@TMPb pt \pgf@y=\pgfmathresult pt }%
+	\pgfplots@plot@handler@graphics@parsepointmap@loop
 }
 
-\def\pgfplots@plot@handler@graphics@process@pointmap\pgfplots@EOI{%
+\def\pgfplots@plot@handler@graphics@process@pointmap{%
+	\begingroup
+	% determine natural size:
+	\pgfplots@invoke@pgfkeyscode{/pgfplots/plot graphics/lowlevel get natural size/.@cmd}{}%
+	\def\pgfplots@loc@TMPa##1##2{%
+		\global\pgf@x=##1
+		\global\pgf@y=##2
+	}%
+	\expandafter\pgfplots@loc@TMPa\pgfmathresult
+	\edef\pgfplots@W{\pgf@sys@tonumber\pgf@x}% natural WIDTH
+	\edef\pgfplots@H{\pgf@sys@tonumber\pgf@y}% natural HEIGHT
+	%
+	\pgfplots@plot@handler@graphics@pointmap@A@img% anchor 1 in image
+	\edef\pgfplots@Ax{\pgf@sys@tonumber\pgf@x}% call it 'A'
+	\edef\pgfplots@Ay{\pgf@sys@tonumber\pgf@y}%
+	%
+	\pgfplots@plot@handler@graphics@pointmap@A@canvas% the canvas coordinate corresponding to 'A'
+	\edef\pgfplots@ax{\pgf@sys@tonumber\pgf@x}% call it 'a'
+	\edef\pgfplots@ay{\pgf@sys@tonumber\pgf@y}%
+	%
+	% compute the CANVAS diagonal between the two anchors points a,b,
+	%  dd := b-a
+	\pgfpointdiff
+		\pgfplots@plot@handler@graphics@pointmap@A@canvas
+		\pgfplots@plot@handler@graphics@pointmap@B@canvas
+	\edef\pgfplots@ddx{\pgf@sys@tonumber\pgf@x}%
+	\edef\pgfplots@ddy{\pgf@sys@tonumber\pgf@y}%
+	%
+	% compute the IMAGE diagonal between the two image anchor points A,B,
+	%   DD := B - A
+	\pgfpointdiff
+		\pgfplots@plot@handler@graphics@pointmap@A@img
+		\pgfplots@plot@handler@graphics@pointmap@B@img
+	\edef\pgfplots@DDx{\pgf@sys@tonumber\pgf@x}%
+	\edef\pgfplots@DDy{\pgf@sys@tonumber\pgf@y}%
+	%
+	% What I need now is a shift and the CANVAS dimensions of the
+	% image. Both can be computed using the relative sizes dd/DD.
+	%
+	% The shift is needed to compute the lower left corner of the
+	% CANVAS image. thus, the lower left CANVAS image corresponds to
+	% the (0,0) coordinate in the IMAGE.
+	%
+	% Remember that 'A' is the anchor 1 in IMAGE coordinates. It is a
+	% vector from (0,0) --> (A_x,A_y) in IMAGE coordinates.
+	%
+	% Now, I want a vector (v_x,v_y)  such that q + v = a in CANVAS
+	% coordinates. Here, 'q' is the lower left corner; it corresponds
+	% to the (0,0) in IMAGE coordinates. Thus, we have
+	% v = (a-q). Taking the relative sizes of dd and DD, we find
+	%
+	%   DD_x / A_x = dd_x / v_x
+	%   DD_y / A_y = dd_y / v_y
+	%
+	% and finally q = a-v is the lower left CANVAS coordinate.
+	\pgfmath@basic@divide@{\pgfplots@Ax}{\pgfplots@DDx}%
+	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddx}%
+	\let\pgfplots@vx=\pgfmathresult
+	%
+	\pgfmath@basic@divide@{\pgfplots@Ay}{\pgfplots@DDy}%
+	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddy}%
+	\let\pgfplots@vy=\pgfmathresult
+	%
+	%
+	%
+	%
+	% now, the canvas width. It is even simpler because it holds
+	%
+	%  DD_x / dd_x = W / w
+	%  DD_y / dd_y = H / h
+	%
+	% where (W,H) is the natural size (i.e. in IMAGE coordinates) of the picture and 
+	% (w,h) is the size the picture will occupy in CANVAS coordinates.
+	%  
+	\pgfmath@basic@divide@{\pgfplots@ddx}{\pgfplots@DDx}%
+	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@W}%
+	\let\pgfplots@w=\pgfmathresult
+	%
+	\pgfmath@basic@divide@{\pgfplots@ddy}{\pgfplots@DDy}%
+	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@H}%
+	\let\pgfplots@h=\pgfmathresult
+	%
+	%
+	\edef\pgfplots@plot@handler@graphics@DRAW@{%
+		\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/plot graphics/lowlevel draw/.@cmd}{%
+			{\pgfplots@w pt}% width
+			{\pgfplots@h pt}% height
+		}%
+	}%
+	\pgf@x=\pgfplots@ax pt \advance\pgf@x by -\pgfplots@vx pt
+	\pgf@y=\pgfplots@ay pt \advance\pgf@y by -\pgfplots@vy pt
+	\pgftransformshift{}%
+	\node[/pgfplots/plot graphics/node] {%
+		\pgfplots@plot@handler@graphics@DRAW@
+	};%
+	\endgroup
 }%
 
 \def\pgfplots@plot@handler@graphics@usebb{%
@@ -7082,9 +7199,41 @@
 	\ifx\pgfplots@loc@TMPd\pgfutil@empty
 		\pgfplots@error{Error using 'plot graphics': I don't have a graphics file name! Please set the '/pgfplots/plot graphics/src' key to the image file name. Skipping this plot.}%
 	\else
+		\begingroup
+		\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPc}%
+		%
+		\def\pgfplots@loc@TMPa{#1}%
+		\def\pgfplots@loc@TMPb{#2}%
+		%
+		\edef\pgfplots@loc@TMPc{%
+			\the\t@pgfplots@toka
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty\else width=#1,\fi
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty\else height=#2,\fi
+		}%
+		\pgfmath@smuggleone\pgfplots@loc@TMPc
+		\endgroup
+		%
 		\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/plot graphics/includegraphics cmd}}%
-		\expandafter\pgfplots@loc@TMPa\expandafter[\pgfplots@loc@TMPc,width=#1,height=#2]{\pgfplots@loc@TMPd}%
+		\expandafter\pgfplots@loc@TMPa\expandafter[\pgfplots@loc@TMPc]{\pgfplots@loc@TMPd}%
 	\fi
+}%
+
+\def\pgfplots@plot@handler@graphics@getnaturalsize{%
+	\begingroup
+	\setbox0=\hbox{%
+		\pgfplots@invoke@pgfkeyscode{/pgfplots/plot graphics/lowlevel draw/.@cmd}{{}{}}%
+	}%
+	\pgf@x=\wd0
+	\pgf@y=\ht0
+	\ifdim\dp0>0pt
+		\advance\pgf@y by\dp0
+	\else
+		\ifdim\dp0<0pt
+		\advance\pgf@y by-\dp0
+	\fi
+	\xdef\pgfplots@glob@TMPb{{\the\pgf@x}{\the\pgf@y}}%
+	\endgroup
+	\let\pgfmathresult=\pgfplots@glob@TMPb
 }%
 
 % legends for plot graphics should not use 'plot graphics' themselfes
