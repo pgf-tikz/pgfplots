@@ -5424,7 +5424,9 @@
 % \addplot[#1] plot[#2] graphics[#3] {#4} #5;
 \long\def\pgfplots@addplotimpl@graphics@#1#2[#3]#4#5;{\pgfplots@addplotimpl@graphics@@{#1}{#2}{#3}{#4}{#5}}%
 \long\def\pgfplots@addplotimpl@graphics@@#1#2#3#4#5{%
-	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2,%
+	\pgfplots@start@plot@with@behavioroptions{%
+		/pgfplots/filter discard warning=false,
+		#1,/pgfplots/.cd,#2,%
 		/pgfplots/plot graphics/@prepare legend,
 		/pgfplots/plot graphics,%
 		/pgfplots/plot graphics/.cd,%
@@ -5437,15 +5439,8 @@
 	\pgfkeysgetvalue{/pgfplots/plot graphics/points}{\pgfplots@current@point@points}%
 	\ifx\pgfplots@current@point@points\pgfutil@empty
 	\else
-		\let\pgfplots@coord@stream@start=\relax
-		\let\pgfplots@addplotimpl@graphics@@end=\pgfplots@coord@stream@end
-		\let\pgfplots@coord@stream@end=\relax
-		\ifpgfplots@curplot@threedim
-			\expandafter\pgfplots@coord@stream@foreach@threedim\expandafter{\pgfplots@current@point@points}%
-		\else
-			\expandafter\pgfplots@coord@stream@foreach\expandafter{\pgfplots@current@point@points}%
-		\fi
-		\let\pgfplots@coord@stream@end=\pgfplots@addplotimpl@graphics@@end
+		\let\pgfplotsplothandlergraphicspointmappoint=\pgfplotsplothandlergraphics@survey@pointmappoint
+		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@current@point@points\pgfplots@EOI
 		%
 		\def\pgfplots@addplotimpl@graphics@@error##1{}%
 	\fi
@@ -6965,11 +6960,23 @@
 	%
 }%
 \def\pgfplots@plot@handler@graphics@finish{%
-	\pgfkeysgetvalue{/pgfplots/plot graphics/pointmap}\pgfplots@plot@handler@graphics@pointmap
+	\let\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
+	%
+	% check if we have a pointmap. If so, the pointmap should be used
+	% to place the graphics.
+	\pgfkeysgetvalue{/pgfplots/plot graphics/points}\pgfplots@plot@handler@graphics@pointmap
 	\ifx\pgfplots@plot@handler@graphics@pointmap\pgfutil@empty
-		\pgfplots@plot@handler@graphics@usebb
 	\else
 		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@plot@handler@graphics@pointmap\pgfplots@EOI
+	\fi
+	%
+	%
+	\ifx\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
+		% no pointmap. Good; then squeze graphics into the bounding
+		% box:
+		\pgfplots@plot@handler@graphics@usebb
+	\else
+		% oh, a pointmap! Process it.
 		\pgfplots@plot@handler@graphics@process@pointmap
 	\fi
 }%
@@ -6995,8 +7002,7 @@
 	\pgfutil@ifnextchar={%
 		\pgfplots@plot@handler@graphics@parsepointmap@loop@@(#1,#2)%
 	}{%
-		\pgfplots@error{Syntax error for plot graphics/pointmap: expected '(#1,#2) =>' }%
-		\pgfplots@gobble@until@EOI
+		\pgfplots@plot@handler@graphics@parsepointmap@loop@@(#1,#2)=>(,)%
 	}%
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop@@(#1,#2)=>{%
@@ -7011,31 +7017,50 @@
 	\pgfutil@in@,{#2}%
 	\ifpgfutil@in@
 		\def\pgfplots@loc@TMPa##1,##2\relax{%
-			\pgfplotspointaxisxyz{#1}{##1}{##2}%
+			\pgfplotsplothandlergraphicspointmappoint(#1,##1,##2)(#3,#4)
 		}%
 		\pgfplots@loc@TMPa#2\relax
 	\else
-		\pgfplotspointaxisxy{#1}{#2}%
+		\pgfplotsplothandlergraphicspointmappoint(#1,#2,)(#2,#4)
 	\fi
-	\ifx\pgfplots@plot@handler@graphics@pointmap@A@canvas\pgfutil@empty
-		\def\pgfplots@loc@TMPa{A}%
-	\else
-		\ifx\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
-			\def\pgfplots@loc@TMPa{B}%
-		\else
-			%\pgfplots@error{Sorry, the argument '(#1,#2) => (#3,#4)' of plot graphics/pointmap is superfluos; ignoring it.}%
-			\def\pgfplots@loc@TMPa{*}%
-		\fi
-	\fi
-	\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @canvas\endcsname{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
-	%
-	\pgfmathparse{#3}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	%
-	\pgfmathparse{#4}%
-	\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @img\endcsname{\pgf@x=\pgfplots@loc@TMPb pt \pgf@y=\pgfmathresult pt }%
 	\pgfplots@plot@handler@graphics@parsepointmap@loop
 }
+
+\def\pgfplotsplothandlergraphics@survey@pointmappoint(#1,#2,#3)(#4,#5){%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+	\pgfplots@coord@stream@coord
+}%
+\def\pgfplotsplothandlergraphicspointmappoint(#1,#2,#3)(#4,#5){%
+	\def\pgfplots@loc@TMPc{#4}%
+	\ifx\pgfplots@loc@TMPc\pgfutil@empty
+	\else
+		\def\pgfplots@loc@TMPc{#3}%
+		\ifx\pgfplots@loc@TMPc\pgfutil@empty
+			\pgfplotspointaxisxy{#1}{#2}%
+		\else
+			\pgfplotspointaxisxyz{#1}{#2}{#3}%
+		\fi
+		\ifx\pgfplots@plot@handler@graphics@pointmap@A@canvas\pgfutil@empty
+			\def\pgfplots@loc@TMPa{A}%
+		\else
+			\ifx\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
+				\def\pgfplots@loc@TMPa{B}%
+			\else
+				%\pgfplots@error{Sorry, the argument '(#1,#2) => (#3,#4)' of plot graphics/pointmap is superfluos; ignoring it.}%
+				\def\pgfplots@loc@TMPa{*}%
+			\fi
+		\fi
+		\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @canvas\endcsname{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+		%
+		\pgfmathparse{#4}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		%
+		\pgfmathparse{#5}%
+		\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @img\endcsname{\pgf@x=\pgfplots@loc@TMPb pt \pgf@y=\pgfmathresult pt }%
+	\fi
+}%
 
 \def\pgfplots@plot@handler@graphics@process@pointmap{%
 	\begingroup
@@ -7092,11 +7117,23 @@
 	%   DD_y / A_y = dd_y / v_y
 	%
 	% and finally q = a-v is the lower left CANVAS coordinate.
-	\pgfmath@basic@divide@{\pgfplots@Ax}{\pgfplots@DDx}%
+	\pgfmath@basic@reciprocal@{\pgfplots@DDx}%
+	\let\pgfplots@DDx@inv=\pgfmathresult
+	%
+	\pgfmath@basic@reciprocal@{\pgfplots@DDy}%
+	\let\pgfplots@DDy@inv=\pgfmathresult
+	%
+	\pgfmath@basic@reciprocal@{\pgfplots@ddy}%
+	\let\pgfplots@ddy@inv=\pgfmathresult
+	%
+	\pgfmath@basic@reciprocal@{\pgfplots@ddy}%
+	\let\pgfplots@ddy@inv=\pgfmathresult
+	%
+	\pgfmath@basic@multiply@{\pgfplots@Ax}{\pgfplots@DDx@inv}%
 	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddx}%
 	\let\pgfplots@vx=\pgfmathresult
 	%
-	\pgfmath@basic@divide@{\pgfplots@Ay}{\pgfplots@DDy}%
+	\pgfmath@basic@multiply@{\pgfplots@Ay}{\pgfplots@DDy@inv}%
 	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddy}%
 	\let\pgfplots@vy=\pgfmathresult
 	%
@@ -7111,11 +7148,11 @@
 	% where (W,H) is the natural size (i.e. in IMAGE coordinates) of the picture and 
 	% (w,h) is the size the picture will occupy in CANVAS coordinates.
 	%  
-	\pgfmath@basic@divide@{\pgfplots@ddx}{\pgfplots@DDx}%
+	\pgfmath@basic@multiply@{\pgfplots@ddx}{\pgfplots@DDx@inv}%
 	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@W}%
 	\let\pgfplots@w=\pgfmathresult
 	%
-	\pgfmath@basic@divide@{\pgfplots@ddy}{\pgfplots@DDy}%
+	\pgfmath@basic@multiply@{\pgfplots@ddy}{\pgfplots@DDy@inv}%
 	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@H}%
 	\let\pgfplots@h=\pgfmathresult
 	%
