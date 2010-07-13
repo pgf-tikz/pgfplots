@@ -6989,6 +6989,8 @@
 	\let\pgfplots@plot@handler@graphics@pointmap@A@img\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@B@img\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@C@canvas\pgfutil@empty
+	\let\pgfplots@plot@handler@graphics@pointmap@C@img\pgfutil@empty
 	\pgfplots@plot@handler@graphics@parsepointmap@loop
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop{%
@@ -7048,10 +7050,16 @@
 			\ifx\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
 				\def\pgfplots@loc@TMPa{B}%
 			\else
-				%\pgfplots@error{Sorry, the argument '(#1,#2) => (#3,#4)' of plot graphics/pointmap is superfluos; ignoring it.}%
-				\def\pgfplots@loc@TMPa{*}%
+				\ifx\pgfplots@plot@handler@graphics@pointmap@C@canvas\pgfutil@empty
+					\def\pgfplots@loc@TMPa{C}%
+				\else
+					%\pgfplots@error{Sorry, the argument '(#1,#2) => (#3,#4)' of plot graphics/pointmap is superfluos; ignoring it.}%
+					\def\pgfplots@loc@TMPa{*}%
+				\fi
 			\fi
 		\fi
+		\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @logical\endcsname{#1,#2,#3}%
+		%
 		\expandafter\edef\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @canvas\endcsname{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
 		%
 		\pgfmathparse{#4}%
@@ -7117,24 +7125,16 @@
 	%   DD_y / A_y = dd_y / v_y
 	%
 	% and finally q = a-v is the lower left CANVAS coordinate.
-	\pgfmath@basic@reciprocal@{\pgfplots@DDx}%
-	\let\pgfplots@DDx@inv=\pgfmathresult
+	\pgfmath@basic@divide@{\pgfplots@ddx}{\pgfplots@DDx}%
+	\let\pgfplots@x@rel=\pgfmathresult
 	%
-	\pgfmath@basic@reciprocal@{\pgfplots@DDy}%
-	\let\pgfplots@DDy@inv=\pgfmathresult
+	\pgfmath@basic@divide@{\pgfplots@ddy}{\pgfplots@DDy}%
+	\let\pgfplots@y@rel=\pgfmathresult
 	%
-	\pgfmath@basic@reciprocal@{\pgfplots@ddy}%
-	\let\pgfplots@ddy@inv=\pgfmathresult
-	%
-	\pgfmath@basic@reciprocal@{\pgfplots@ddy}%
-	\let\pgfplots@ddy@inv=\pgfmathresult
-	%
-	\pgfmath@basic@multiply@{\pgfplots@Ax}{\pgfplots@DDx@inv}%
-	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddx}%
+	\pgfmath@basic@multiply@{\pgfplots@Ax}{\pgfplots@x@rel}%
 	\let\pgfplots@vx=\pgfmathresult
 	%
-	\pgfmath@basic@multiply@{\pgfplots@Ay}{\pgfplots@DDy@inv}%
-	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@ddy}%
+	\pgfmath@basic@multiply@{\pgfplots@Ay}{\pgfplots@y@rel}%
 	\let\pgfplots@vy=\pgfmathresult
 	%
 	%
@@ -7148,12 +7148,10 @@
 	% where (W,H) is the natural size (i.e. in IMAGE coordinates) of the picture and 
 	% (w,h) is the size the picture will occupy in CANVAS coordinates.
 	%  
-	\pgfmath@basic@multiply@{\pgfplots@ddx}{\pgfplots@DDx@inv}%
-	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@W}%
+	\pgfmath@basic@multiply@{\pgfplots@x@rel}{\pgfplots@W}%
 	\let\pgfplots@w=\pgfmathresult
 	%
-	\pgfmath@basic@multiply@{\pgfplots@ddy}{\pgfplots@DDy@inv}%
-	\pgfmath@basic@multiply@{\pgfmathresult}{\pgfplots@H}%
+	\pgfmath@basic@multiply@{\pgfplots@y@rel}{\pgfplots@H}%
 	\let\pgfplots@h=\pgfmathresult
 	%
 	%
@@ -7163,12 +7161,56 @@
 			{\pgfplots@h pt}% height
 		}%
 	}%
-	\pgf@x=\pgfplots@ax pt \advance\pgf@x by -\pgfplots@vx pt
-	\pgf@y=\pgfplots@ay pt \advance\pgf@y by -\pgfplots@vy pt
-	\pgftransformshift{}%
-	\node[/pgfplots/plot graphics/node] {%
-		\pgfplots@plot@handler@graphics@DRAW@
-	};%
+	\pgfpointadd
+		{\pgfplots@plot@handler@graphics@pointmap@A@canvas}% the canvas coordinate corresponding to 'A'
+		{\pgfqpointscale{-1}
+			{\pgfpoint\pgfplots@vx\pgfplots@vy}%
+		}%
+	\edef\pgfplots@plot@handler@graphics@pointmap@lowerleft@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	\begingroup
+		\pgftransformshift{}% simply take \pgf@x and \pgf@y
+		%
+		\node[/pgfplots/plot graphics/node] {%
+			\pgfplots@plot@handler@graphics@DRAW@
+		};%
+	\endgroup
+	\ifx\pgfplots@plot@handler@graphics@pointmap@C@canvas\pgfutil@empty
+	\else
+		\pgfplots@plot@handler@graphics@pointmap@C@img% anchor 3 in image
+		\edef\pgfplots@Cx{\pgf@sys@tonumber\pgf@x}%
+		\edef\pgfplots@Cy{\pgf@sys@tonumber\pgf@y}%
+		%
+		\pgfmath@basic@multiply@{\pgfplots@Cx}{\pgfplots@x@rel}%
+		\let\pgfplots@Cx=\pgfmathresult
+		%
+		\pgfmath@basic@multiply@{\pgfplots@Cy}{\pgfplots@y@rel}%
+		\let\pgfplots@Cy=\pgfmathresult
+		\pgfpointadd
+			{\pgfplots@plot@handler@graphics@pointmap@lowerleft@canvas}%
+			{\pgfpoint\pgfplots@Cx\pgfplots@Cy}%
+		\edef\pgfplots@plot@handler@graphics@pointmap@C@canvas@check{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+\pgfpathcircle{}{5pt}%
+\pgfusepath{fill}%
+		\pgfpointdiff
+			\pgfplots@plot@handler@graphics@pointmap@C@canvas@check
+			\pgfplots@plot@handler@graphics@pointmap@C@canvas
+		\ifdim\pgf@x<0pt \pgf@x=-\pgf@x\fi
+		\ifdim\pgf@y<0pt \pgf@y=-\pgf@y\fi
+		\def\pgfplots@is@the@same@point{1}%
+		\ifdim\pgf@x>0.001pt
+			\def\pgfplots@is@the@same@point{0}%
+		\else
+			\ifdim\pgf@y>0.001pt
+				\def\pgfplots@is@the@same@point{0}%
+			\fi
+		\fi
+		\if0\pgfplots@is@the@same@point
+			\pgfplots@warning{Plot graphics: sorry, I failed to provide the correct scale for the axis. The points '(\pgfplots@plot@handler@graphics@pointmap@A@logical)' and '(\pgfplots@plot@handler@graphics@pointmap@B@logical)' are correct, but the point '(\pgfplots@plot@handler@graphics@pointmap@C@logical)' is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y)).}%
+		\fi
+\pgfpathcircle{\pgfplots@plot@handler@graphics@pointmap@C@canvas}{5pt}%
+\pgfusepath{fill}%
+	\fi
 	\endgroup
 }%
 
