@@ -48,8 +48,7 @@
 \newif\ifpgfplots@has@label@information
 \newif\ifpgfplots@yislinear
 \newif\ifpgfplots@zislinear
-\newif\ifpgfplots@axis@equal
-\newif\ifpgfplots@axis@equal@image
+\newif\ifpgfplots@unit@vector@rescale@keep@size
 \newif\ifpgfplots@reverse@legend
 \newif\ifpgfplots@transpose@legend
 \newif\ifpgfplots@allow@reversal@of@rel@axis@cs
@@ -1484,9 +1483,28 @@
 	/pgfplots/clip/.is if=pgfplots@clip,
 	% will be used if it exists:
 	%/pgfplots/axis background/.style={},
-	/pgfplots/axis equal/.is if=pgfplots@axis@equal,
+	%
+	/pgfplots/unit vector ratio/.initial=,% empty means 'disable rescale'.
+	/pgfplots/unit rescale keep size/.is if=pgfplots@unit@vector@rescale@keep@size,
+	/pgfplots/unit rescale keep size/.default=true,
+	/pgfplots/unit rescale keep size=true,
+	/pgfplots/axis equal/.is choice,
+	/pgfplots/axis equal/true/.style={
+		/pgfplots/unit vector ratio=1 1 1,
+		/pgfplots/unit rescale keep size=true
+	},
+	/pgfplots/axis equal/false/.style={
+		/pgfplots/unit vector ratio=,
+	},
 	/pgfplots/axis equal/.default=true,
-	/pgfplots/axis equal image/.is if=pgfplots@axis@equal@image,
+	/pgfplots/axis equal image/.is choice,
+	/pgfplots/axis equal image/true/.style={%
+		/pgfplots/unit vector ratio=1 1 1,
+		/pgfplots/unit rescale keep size=false
+	},
+	/pgfplots/axis equal image/false/.style={%
+		/pgfplots/unit vector ratio=,
+	},
 	/pgfplots/axis equal image/.default=true,
 	/pgfplots/xmin/.initial=,
 	/pgfplots/xmax/.initial=,
@@ -5327,81 +5345,181 @@
 % transformation. All unit vector length above are only meaningful in
 % the UNTRANSFORMED range, so we have to mingle with the scaling
 % transformation.
-\def\pgfplots@axis@equal@apply{%
-	% Step 1: compute the unit vector which STAYS CONSTANT.
-	%
-	% All other ones will be scaled to fit its length.
-	\ifpgfplots@threedim
-		\def\pgfplots@axis@equal@apply@reference{x}%
-		\pgfplots@if@unitveclenlessthan@untransformed xy{%
-			\pgfplots@if@unitveclenlessthan@untransformed xz{%
-				\def\pgfplots@axis@equal@apply@reference{x}%
-			}{}%
-		}{}%
-		\pgfplots@if@unitveclenlessthan@untransformed yx{%
-			\pgfplots@if@unitveclenlessthan@untransformed yz{%
-				\def\pgfplots@axis@equal@apply@reference{y}%
-			}{}%
-		}{}%
-		\pgfplots@if@unitveclenlessthan@untransformed zx{%
-			\pgfplots@if@unitveclenlessthan@untransformed zy{%
-				\def\pgfplots@axis@equal@apply@reference{z}%
-			}{}%
-		}{}%
+\def\pgfplots@apply@unit@ratio{%
+	\pgfkeysgetvalue{/pgfplots/unit vector ratio}\pgfplots@unit@vector@ratio
+	\ifx\pgfplots@unit@vector@ratio\pgfutil@empty
 	\else
-		\pgfplots@if@unitveclenlessthan@untransformed xy{%
-			\def\pgfplots@axis@equal@apply@reference{x}%
-		}{%
-			\def\pgfplots@axis@equal@apply@reference{y}%
-		}%
+		% Step 1: compute the unit vector which STAYS CONSTANT.
+		% I choose the smallest unit vector.
+		%
+		% All other ones will be scaled to fit its length.
+		%
+		% Choosing the smallest unit vector allows to maintain the
+		% original axis size without further attention.
+		%
+		% More precisely, 'axis equal' will *shrink* all unit vectors.
+		% Then, it enlarges the axis limits of the other axes.
+		% Consequently, the axis rectangle has the same size as before,
+		% only the limits are different.
+		%
+		% For 'axis equal image', choosing the smallest unit vector as
+		% reference means that the resulting image can only become smaller
+		% as the original axis. I guess that's also quite a good choice.
+		%
+		\ifpgfplots@threedim
+			\def\pgfplots@apply@unit@ratio@reference{x}%
+			\pgfplots@if@unitveclenlessthan@untransformed xy{%
+				\pgfplots@if@unitveclenlessthan@untransformed xz{%
+					\def\pgfplots@apply@unit@ratio@reference{x}%
+				}{}%
+			}{}%
+			\pgfplots@if@unitveclenlessthan@untransformed yx{%
+				\pgfplots@if@unitveclenlessthan@untransformed yz{%
+					\def\pgfplots@apply@unit@ratio@reference{y}%
+				}{}%
+			}{}%
+			\pgfplots@if@unitveclenlessthan@untransformed zx{%
+				\pgfplots@if@unitveclenlessthan@untransformed zy{%
+					\def\pgfplots@apply@unit@ratio@reference{z}%
+				}{}%
+			}{}%
+		\else
+			\pgfplots@if@unitveclenlessthan@untransformed xy{%
+				\def\pgfplots@apply@unit@ratio@reference{x}%
+			}{%
+				\def\pgfplots@apply@unit@ratio@reference{y}%
+			}%
+		\fi
+		\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
+\message{USING REFERENCE UNIT VECTOR FROM \pgfplots@apply@unit@ratio@reference; ratio \pgfplots@unit@ratio@x\space \pgfplots@unit@ratio@y\space \pgfplots@unit@ratio@z.^^J}%
+		\pgfplots@rescale@unit@vector@reltoreference{x}{\pgfplots@unit@ratio@x}%
+		\pgfplots@rescale@unit@vector@reltoreference{y}{\pgfplots@unit@ratio@y}%
+		\ifpgfplots@threedim
+			\pgfplots@rescale@unit@vector@reltoreference{z}{\pgfplots@unit@ratio@z}%
+		\fi
 	\fi
-%\message{USING REFERENCE UNIT VECTOR FROM \pgfplots@axis@equal@apply@reference.}%
-	\pgfplots@axis@equal@apply@for x
-	\pgfplots@axis@equal@apply@for y
+}%
+\def\pgfplots@apply@unit@ratio@prepareratios#1 #2 #3\pgfplots@EOI{%
+	\begingroup
+	\def\pgfplots@unit@ratio@max{#1}%
+	\ifdim#2pt>\pgfplots@unit@ratio@max pt
+		\def\pgfplots@unit@ratio@max{#2}%
+	\fi
 	\ifpgfplots@threedim
-		\pgfplots@axis@equal@apply@for z
+		\ifdim#3pt>\pgfplots@unit@ratio@max pt
+			\def\pgfplots@unit@ratio@max{#3}%
+		\fi
+	\fi
+	\ifdim\pgfplots@unit@ratio@max pt=1pt
+		\def\pgfmathresult{1}%
+	\else
+		\pgfmath@basic@reciprocal@\pgfplots@unit@ratio@max
+	\fi
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfmath@basic@multiply@{#1}{\pgfplots@loc@TMPa}%
+	\let\pgfplots@unit@ratio@x=\pgfmathresult
+	\pgfmath@basic@multiply@{#2}{\pgfplots@loc@TMPa}%
+	\let\pgfplots@unit@ratio@y=\pgfmathresult
+	\ifpgfplots@threedim
+		\pgfmath@basic@multiply@{#3}{\pgfplots@loc@TMPa}%
+		\let\pgfplots@unit@ratio@z=\pgfmathresult
+	\else
+		\def\pgfplots@unit@ratio@z{<unused>}%
 	\fi
 }%
 
-% Scales unit vector '#1' such that it has the same length as the unit
-% vector in direction \pgfplots@axis@equal@apply@reference.
+
+% Computes a new unit vector E_#1 for direction #1 such that
+% ||E_#1|| = #2 * ||e_reference||.
+% Here, #2 is a scaling factor and e_reference is a reference axis.
+% The reference axis is stored in
+% \pgfplots@apply@unit@ratio@reference, the macro contains one of
+% {x,y,z}.
 %
 % The data limits for '#1' will be enlarged as well (for 'axis
 % equal').
-\def\pgfplots@axis@equal@apply@for#1{%
-	\if#1\pgfplots@axis@equal@apply@reference
+%
+% #1 is the axis which should be scaled (i.e. #1 in {x,y,z}).
+% It is allowed if #1 = \pgfplots@apply@unit@ratio@reference. In this
+% case, you can provide a scale '#2' to rescale the axis.
+%
+% #2 is a desired scale, relative to
+% \pgfplots@apply@unit@ratio@reference. #2 should be a number without
+% unit.
+%
+% The parameter \pgfplots@apply@unit@ratio@reference is also one of
+% {x,y,z}.
+%
+\def\pgfplots@rescale@unit@vector@reltoreference#1#2{%
+	\def\pgfplots@loc@TMPa{0}%
+	\if#1\pgfplots@apply@unit@ratio@reference
+		\ifdim#2pt=1pt
+		\else
+			\def\pgfplots@loc@TMPa{1}%
+		\fi
 	\else
-		\pgfmathmultiply@
-			{\csname pgfplots@\pgfplots@axis@equal@apply@reference @veclength\endcsname}
-			{\csname pgfplots@#1@inverseveclength\endcsname}%
-		\global\let\pgfplots@glob@TMPa=\pgfmathresult
-		\pgfmathmultiply@
-			{\csname pgfplots@\pgfplots@axis@equal@apply@reference @inverseveclength\endcsname}
-			{\csname pgfplots@#1@veclength\endcsname}%
-		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		\def\pgfplots@loc@TMPa{1}%
+	\fi
+	\if1\pgfplots@loc@TMPa
 		% 
 		% If the datascaling transformation is active (which is almost
-		% everytime the case here), we need to respect it here.
+		% everytime the case here), we have a transformation
+		% T^{-1}(x)= 10^scale * x
+		% with different scales for every axis.
 		%
-		% We only need to respect the SCALING, translations (shifts) are
-		% not interesting.
+		% If the datascaling transformation is NOT active, scale is 0
+		% and T^{-1} = Identity.
 		%
-		% We want that || T^{-1} e_ref || = || T^{-1} E_#1 ||.
+		% Note that the datascaling transformation also has
+		% translations (shifts). These are not important here.
+		%
+		% Goal:
+		% compute E_#1 such that
+		%   #2* || T^{-1} e_ref || = || T^{-1} E_#1 ||
+		% where T^{-1} is the data scaling transformation and e_ref the
+		% reference unit vector. Keep in mind that there are
+		% *different* data scaling transformations for each axis.
+		%
+		% We are given e_ref and e_#1 and the desired aspect ratio
+		% between e_ref and E_#1, which is available as #2.
 		%
 		% So: T^{-1} E_#1 :=  s* T^{-1} e_#1 where 
-		%  s = ||T^{-1} e_ref|| / || T^{-1} e_#1 || 
-		%    = |10^{scale_ref}| / |10^{scale_#1}| * || e_ref|| / ||e_#1||.
+		%  s = #2 * ||T^{-1} e_ref|| / || T^{-1} e_#1 || 
+		%    = |10^{scale_ref}| / |10^{scale_#1}| * #2 * || e_ref|| / ||e_#1||.
 		% 
 		% Then, E_#1 = T ( T^{-1} E_#1 ) = s * e_#1.
 		%
-		% -> compute 's'! We already have the quotient of unit vectors.
-		%  Now, acquire the scale quotients.
+		% -> compute 's'! 
 		%
+		% Part 1: compute
+		% #2 * ||e_ref|| / ||e_#1||.
+		%
+		\pgfmathmultiply@
+			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
+			{\csname pgfplots@#1@inverseveclength\endcsname}%
+		\pgfmathmultiply@
+			{\pgfmathresult}%
+			{#2}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		% 
+		% also compue 1/s, required as temporary value:
+		\pgfmathmultiply@
+			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
+			{\csname pgfplots@#1@veclength\endcsname}%
+		\ifdim#2pt=1pt
+		\else
+			\pgfmathdivide@{\pgfmathresult}{#2}%
+		\fi
+		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		%
+		% Part 2: handle that data scaling trafo scales:
 		\begingroup
 			\def\pgfplots@tmp@exponentref{0}%
 			\def\pgfplots@tmp@exponentK{0}%
-			\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@axis@equal@apply@reference}{%
-				\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@axis@equal@apply@reference}%
+			\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference}{%
+				\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference}%
 			}{}%
 			\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
 				\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
@@ -5418,6 +5536,7 @@
 			\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
 		\endgroup
 		%
+\message{Rescaling '#1' by \pgfplots@glob@TMPa.^^J}%
 		\if x#1
 			\pgfsetxvec{\pgfplotsqpointxy{\pgfplots@glob@TMPa}{0}}%
 		\else
@@ -5434,14 +5553,13 @@
 		% Update auxiliary data members:
 		% This is only complicated due to the scaling transformation. If we would not have the scaling trafo, the following
 		% code would simply copy the vector length and inverse vectors length from the reference axis.
-		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@axis@equal@apply@reference @veclength\endcsname}{\pgfplots@glob@TMPc}%
+		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}{\pgfplots@glob@TMPc}%
 		\expandafter\let\csname pgfplots@#1@veclength\endcsname=\pgfmathresult
-		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@axis@equal@apply@reference @inverseveclength\endcsname}{-\pgfplots@glob@TMPc}%
+		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}{-\pgfplots@glob@TMPc}%
 		\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
 		%
 		%
-		\ifpgfplots@axis@equal@image
-		\else
+		\ifpgfplots@unit@vector@rescale@keep@size
 			%
 			% Ok, now update the axis limits such that the axis' dimensions
 			% stay the same.
@@ -5641,12 +5759,7 @@
 			\fi
 		\fi
 	\fi
-	\ifpgfplots@axis@equal@image
-		\pgfplots@axis@equaltrue
-	\fi
-	\ifpgfplots@axis@equal
-		\pgfplots@axis@equal@apply
-	\fi
+	\pgfplots@apply@unit@ratio
 	%
 	\pgfplots@axis@apply@post@scale x
 	\pgfplots@axis@apply@post@scale y
