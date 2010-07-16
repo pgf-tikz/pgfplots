@@ -5441,7 +5441,7 @@
 	\ifx\pgfplots@current@point@points\pgfutil@empty
 	\else
 		\let\pgfplotsplothandlergraphicspointmappoint=\pgfplotsplothandlergraphics@survey@pointmappoint
-		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@current@point@points\pgfplots@EOI
+		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\expandafter{\pgfplots@current@point@points}%
 		\pgfplotsplothandlergraphicspointmapcomputerequiredview
 		%
 		\ifx\pgfplotsretval\pgfutil@empty
@@ -6974,7 +6974,8 @@
 	\pgfkeysgetvalue{/pgfplots/plot graphics/points}\pgfplots@plot@handler@graphics@pointmap
 	\ifx\pgfplots@plot@handler@graphics@pointmap\pgfutil@empty
 	\else
-		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\pgfplots@plot@handler@graphics@pointmap\pgfplots@EOI
+		\let\pgfplots@plot@handler@graphics@parsepointmap@error=\relax
+		\expandafter\pgfplots@plot@handler@graphics@parsepointmap\expandafter{\pgfplots@plot@handler@graphics@pointmap}%
 	\fi
 	%
 	%
@@ -6988,10 +6989,10 @@
 	\fi
 }%
 
-% Idea: re-use the 'points' syntax with option '=> '.
-% This allows to update the bounding box without too much overhead.
+% Parses the argument of '/pgfplots/plot graphics/points'.
 %
-\def\pgfplots@plot@handler@graphics@parsepointmap{%
+% #1: the argument of the key above.
+\def\pgfplots@plot@handler@graphics@parsepointmap#1{%
 	\let\pgfplots@plot@handler@graphics@pointmap@A@canvas\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@A@img\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@B@canvas\pgfutil@empty
@@ -7000,7 +7001,17 @@
 	\let\pgfplots@plot@handler@graphics@pointmap@C@img\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@D@canvas\pgfutil@empty
 	\let\pgfplots@plot@handler@graphics@pointmap@D@img\pgfutil@empty
-	\pgfplots@plot@handler@graphics@parsepointmap@loop
+	\pgfplots@plot@handler@graphics@parsepointmap@loop#1\pgfplots@EOI
+	\ifx\pgfplots@plot@handler@graphics@pointmap@A@img\pgfutil@empty
+	\else
+		\ifx\pgfplots@plot@handler@graphics@pointmap@D@img\pgfutil@empty
+			\def\pgfplots@loc@TMPa{#1}%
+			\pgfplots@plot@handler@graphics@parsepointmap@error
+		\fi
+	\fi
+}%
+\def\pgfplots@plot@handler@graphics@parsepointmap@error{%
+	\pgfplots@error{plot graphics/points={\pgfplots@loc@TMPa} cannot be processed: I need at least *four* inner anchor points to work, i.e. 4 points of the form (x,y,z) => (imgx,imgy)}%
 }%
 \def\pgfplots@plot@handler@graphics@parsepointmap@loop{%
 	\pgfutil@ifnextchar\pgfplots@EOI{%
@@ -7124,6 +7135,8 @@
 		\pgfplotsutilforeachcommasep{A,B,C,D}\as\pgfplots@loc@TMPa{%
 			\expandafter\expandafter\expandafter\pgfplots@extractimg\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @img\endcsname
 			\expandafter\expandafter\expandafter\pgfplots@extractlogical\csname pgfplots@plot@handler@graphics@pointmap@\pgfplots@loc@TMPa @logical\endcsname
+			\ifx\pgfplots@logical@z\pgfutil@empty
+			\else
 			%
 			\pgfplotsmatrixletentry \the\c@pgfplots@coordindex,0\of\pgfplotsmatrix=\pgfplots@logical@x%
 			\pgfplotsmatrixset \the\c@pgfplots@coordindex,1\of\pgfplotsmatrix\to{0}%
@@ -7149,35 +7162,70 @@
 			\pgfplotsarrayletentry\c@pgfplots@coordindex\of\pgfplotsE=\pgfplots@img@y
 			%
 			\advance\c@pgfplots@coordindex by1
+			\fi
 		}%
-		%
-		\pgfplotsmatrixsolveLEQS\pgfplotsmatrix=\pgfplotsE
-		%
-		\pgfplotscoordmath{default}{op}{veclen}{%
-			{\pgfplotsarrayvalueofelem0\of\pgfplotsE}%
-			{\pgfplotsarrayvalueofelem1\of\pgfplotsE}%
-		}%
-		\let\pgfplotsxlen=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{veclen}{%
-			{\pgfplotsarrayvalueofelem2\of\pgfplotsE}%
-			{\pgfplotsarrayvalueofelem3\of\pgfplotsE}%
-		}%
-		\let\pgfplotsylen=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{veclen}{%
-			{\pgfplotsarrayvalueofelem4\of\pgfplotsE}%
-			{\pgfplotsarrayvalueofelem5\of\pgfplotsE}%
-		}%
-		\let\pgfplotszlen=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsxlen}{\pgfplotszlen}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		\let\pgfplotsxlen=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsylen}{\pgfplotszlen}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		\let\pgfplotsylen=\pgfmathresult
-		\edef\pgfplotsretval{unit vector ratio={\pgfplotsxlen\space\pgfplotsylen\space1}}%
+		\ifx\pgfplots@logical@z\pgfutil@empty
+		\else
+			%
+			\pgfplotsmatrixsolveLEQS\pgfplotsmatrix=\pgfplotsE
+			%
+			\pgfplotscoordmath{default}{op}{veclen}{%
+				{\pgfplotsarrayvalueofelem0\of\pgfplotsE}%
+				{\pgfplotsarrayvalueofelem1\of\pgfplotsE}%
+			}%
+			\let\pgfplotsxlen=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{veclen}{%
+				{\pgfplotsarrayvalueofelem2\of\pgfplotsE}%
+				{\pgfplotsarrayvalueofelem3\of\pgfplotsE}%
+			}%
+			\let\pgfplotsylen=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{veclen}{%
+				{\pgfplotsarrayvalueofelem4\of\pgfplotsE}%
+				{\pgfplotsarrayvalueofelem5\of\pgfplotsE}%
+			}%
+			\let\pgfplotszlen=\pgfmathresult
+			%
+			\pgfplots@loop@CONTINUEtrue
+			\pgfplotscoordmath{default}{if is}{\pgfplotsxlen}{0}{%
+				\pgfplots@loop@CONTINUEfalse
+			}{}%
+			\pgfplotscoordmath{default}{if is}{\pgfplotsylen}{0}{%
+				\pgfplots@loop@CONTINUEfalse
+			}{}%
+			\pgfplotscoordmath{default}{if is}{\pgfplotszlen}{0}{%
+				\pgfplots@loop@CONTINUEfalse
+			}{}%
+			%
+			\ifpgfplots@loop@CONTINUE
+				\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsxlen}{\pgfplotszlen}}%
+				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+				\let\pgfplotsxlenratio=\pgfmathresult
+				\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsylen}{\pgfplotszlen}}%
+				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+				\let\pgfplotsylenratio=\pgfmathresult
+				%
+				\pgfmathapproxequalto@{\pgfplotsxlenratio}{0.0}%
+				\ifpgfmathcomparison
+					\pgfplots@loop@CONTINUEfalse
+				\fi
+				\pgfmathapproxequalto@{\pgfplotsylenratio}{0.0}%
+				\ifpgfmathcomparison
+					\pgfplots@loop@CONTINUEfalse
+				\fi
+				\ifpgfplots@loop@CONTINUE
+					\edef\pgfplotsretval{unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}}%
+				\fi
+			\fi
+			%
+			\ifx\pgfplotsretval\pgfutil@empty
+				\pgfplotscoordmath{default}{tofixed}{\pgfplotsxlen}\let\pgfplotsxlen=\pgfmathresult
+				\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen=\pgfmathresult
+				\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen=\pgfmathresult
+				\pgfplots@warning{plot graphics failed to compute the 'unit vector ratio'\csname on@line\endcsname\space (it found ||ex|| =\pgfplotsxlen; ||ey||= \pgfplotsylen; ||ez|| =\pgfplotszlen). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
+			\fi
+		\fi
 	\fi
 	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
@@ -7306,9 +7354,6 @@
 }%
 
 \def\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling{%
-	\def\pgfplots@extractimgaspoint##1##2{%
-		\pgfqpoint{##1pt}{##2pt}%
-	}%
 	\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@C@img% anchor 3 in image
 	\edef\pgfplots@Cx{\pgf@sys@tonumber\pgf@x}%
 	\edef\pgfplots@Cy{\pgf@sys@tonumber\pgf@y}%
@@ -7336,24 +7381,13 @@
 		\fi
 	\fi
 	\if0\pgfplots@is@the@same@point
-\def\pgfplots@imgunit@x@len{261pt}%
-\def\pgfplots@imgunit@y@len{215pt}%
-\def\pgfplots@imgunit@z@len{65pt}%
-%
-\pgfmath@basic@reciprocal@\pgfplots@imgunit@z@len
-\let\pgfplots@loc@TMPa=\pgfmathresult
-%
-\pgfmath@basic@multiply@\pgfplots@loc@TMPa\pgfplots@imgunit@x@len
-\let\pgfplots@imgunit@x@len=\pgfmathresult
-\pgfmath@basic@multiply@\pgfplots@loc@TMPa\pgfplots@imgunit@y@len
-\let\pgfplots@imgunit@y@len=\pgfmathresult
-\edef\pgfplots@loc@TMPb{unit vector ratio={\pgfplots@imgunit@x@len\space\pgfplots@imgunit@y@len\space1}}%
-		%
 		%
 		\begingroup
 		\pgfkeysgetvalue{/pgfplots/plot graphics/src}\pgfplots@loc@TMPa
 		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
-		\pgfplots@warning{sorry, I can't fix the scaling of 'plot graphics {\the\t@pgfplots@tokc}'. The points (\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\pgfplots@plot@handler@graphics@pointmap@C@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' limits: the image has probably different min/max values. Try enlargelimits=false or try to acquire the picture's axis limits. AAH - use '\pgfplots@loc@TMPb'!}%
+		\def\pgfplots@extractcoord##1##2##3{##1,##2,##3}%
+		\pgfplots@error{sorry, I can't fix the scaling of 'plot graphics {\the\t@pgfplots@tokc}'.
+			The points (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@C@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' limits: the image has probably different min/max values. Try to acquire the picture's axis limits. If you continue now, I'll show the points in the image.}%
 		\endgroup
 		%
 		%
