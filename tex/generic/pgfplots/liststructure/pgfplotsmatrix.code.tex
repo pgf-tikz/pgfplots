@@ -150,12 +150,18 @@
 % The LU decomposition uses implicit pivoting; the pivoting
 % information is stored in a permutation array #2 and a sign macro #3.
 %
-% The algorithm is a 1:1 conversion from the LU decomposition found in
-% numerical recipes in C; that's why it is hardly documented.
+% It is to be used together with \pgfplotsmatrixsolveLEQS.
 %
-% It is to be used together with \pgfplotsmatrixLUsolve.
+% #1: the input matrix (square size)
+% #2: a macro name; will be used to store the permutation array for
+% the pivoting.
+% #3: a macro name, will contain the sign of the permutation (either
+% +1 or -1).
 %
-\def\pgfplotsmatrixLUdecomp#1\perm#2\signs#3{%
+% The algorithm has been converted from Numerical Recipes in C (I did
+% not copy the comments, though). You find the complete reference in
+% Chapter 2 of Numerical Recipes.
+\def\pgfplotsmatrixLUdecomp#1\perm#2\sign#3{%
 	\let\pgfplotsmat@i=\c@pgf@counta
 	\let\pgfplotsmat@imax=\c@pgf@countb
 	\let\pgfplotsmat@j=\c@pgf@countc
@@ -166,6 +172,10 @@
 	\let\pgfplotsmat@sum=\pgfutil@empty
 	\let\pgfplotsmat@temp=\pgfutil@empty
 	\pgfplotsmatrixsize#1\to\pgfplotsmat@n\c@pgf@countd
+	\ifnum\c@pgf@countd=\pgfplotsmat@n
+	\else
+		\pgfplots@error{Sorry, \string\pgfplotsmatrixLUdecomp\space expected an n x n matrix, but got \the\pgfplotsmat@n\space x \the\c@pgf@countd.}%
+	\fi
 	\pgfplotsarraynewempty\pgfplotsmat@vv
 	\pgfplotsarrayresize\pgfplotsmat@vv\pgfplotsmat@n
 	\pgfplotsarrayresize#2\pgfplotsmat@n
@@ -220,20 +230,16 @@
 
 \def\pgfplotsmatrixLUdecomp@mainloop@j{%
 	\ifnum\pgfplotsmat@j<\pgfplotsmat@n
-\message{main loop no \the\pgfplotsmat@j^^J}%
 		%
 		\pgfplotsmat@i=0
 		\pgfplotsmatrixLUdecomp@mainloop@j@i
-\message{STEP j@i finished^^J}%
 		%
 		\pgfplotscoordmath{default}{zero}%
 		\let\pgfplotsmat@big=\pgfmathresult
 		%
 		\pgfplotsmat@i=\pgfplotsmat@j
 		\pgfplotsmatrixLUdecomp@mainloop@j@i@second
-\message{STEP j@i@second finished^^J}%
 		%
-\message{checking for row interchange \the\pgfplotsmat@j == \the\pgfplotsmat@imax? (j==imax?)^^J}%
 		\ifnum\pgfplotsmat@j=\pgfplotsmat@imax
 		\else
 			% interchange rows...
@@ -250,7 +256,6 @@
 			%\pgfplotsarrayletentry\pgfplotsmat@j\of\pgfplotsmat@vv=\pgfplotsmat@temp
 			\pgfplotsarrayletentry\pgfplotsmat@imax\of\pgfplotsmat@vv=\pgfplotsmat@dum
 		\fi
-\message{STEP INTERCHANGe finished^^J}%
 		%
 		\edef\pgfplotsmat@dum{\the\pgfplotsmat@imax}%
 		\pgfplotsmat@letpermentry\pgfplotsmat@j=\pgfplotsmat@dum
@@ -275,7 +280,6 @@
 			\advance\pgfplotsmat@i by1
 			\pgfplotsmatrixLUdecomp@mainloop@j@i@final
 		\fi
-\message{STEP final finished^^J}%
 		\advance\pgfplotsmat@j by1
 		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j
 	\fi
@@ -317,11 +321,8 @@
 		\pgfplotscoordmath{default}{op}{abs}{{\pgfplotsmat@sum}}%
 		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplotsarrayvalueofelem\the\pgfplotsmat@i\of\pgfplotsmat@vv}}%
 		\let\pgfplotsmat@dum=\pgfmathresult
-\message{if( (dum = vv[i] * fabs(sum)) >= big ):  [ dum= \pgfplotsmat@dum ; big = \pgfplotsmat@big] :}%
 		\pgfplotscoordmath{default}{if less than}{\pgfplotsmat@dum}{\pgfplotsmat@big}{%
-\message{FALSE^^J}%
 		}{%
-\message{TRUE. -> imax = \the\pgfplotsmat@i ^^J}%
 			\let\pgfplotsmat@big=\pgfplotsmat@dum
 			\pgfplotsmat@imax=\pgfplotsmat@i
 		}%
@@ -370,6 +371,17 @@
 
 
 
+% Solves the set of n linear equations Ax = b where A = LU is given in
+% (#1,#2) and b = #3.
+%
+% #1: is a result of \pgfplotsmatrixLUdecomp
+% #2: is the permutation vector returned by \pgfplotsmatrixLUdecomp
+% #3: the right hand side. On output, it will be *overwritten* with
+% the solution.
+%
+% The algorithm has been converted from Numerical Recipes in C (I did
+% not copy the comments, though). You find the complete reference in
+% Chapter 2 of Numerical Recipes.
 \def\pgfplotsmatrixLUbacksubst#1\perm#2\inout#3{%
 	\let\pgfplotsmat@i=\c@pgf@counta
 	\let\pgfplotsmat@ii=\c@pgf@countb
@@ -377,18 +389,23 @@
 	\let\pgfplotsmat@n=\c@pgf@countd
 	\let\pgfplotsmat@sum=\pgfutil@empty
 	\pgfplotsmatrixsize#1\to\pgfplotsmat@n\c@pgf@counta
-	\def\pgfplotsmat@select##1,##2\to{\pgfplotsmatrixselect##1,##2\of#1\to}%
-	\def\pgfplotsmat@selectperm##1\to{\pgfplotsarrayselect##1\of#2\to}%
-	\def\pgfplotsmat@selectb##1\to{\pgfplotsarrayselect##1\of#3\to}%
-	\def\pgfplotsmat@letresult##1={\pgfplotsarrayletentry##1\of#3=}%
-	%
-	\pgfplotsmat@ii=0
-	\pgfplotsmat@i=0
-	\pgfplotsmatrixLUbacksubst@loop@i
-	%
-	\pgfplotsmat@i=\pgfplotsmat@n
-	\advance\pgfplotsmat@i by-1
-	\pgfplotsmatrixLUbacksubst@loop@i@backw
+	\pgfplotsarraysize#3\to\c@pgf@counta
+	\ifnum\c@pgf@counta=\pgfplotsmat@n
+		\def\pgfplotsmat@select##1,##2\to{\pgfplotsmatrixselect##1,##2\of#1\to}%
+		\def\pgfplotsmat@selectperm##1\to{\pgfplotsarrayselect##1\of#2\to}%
+		\def\pgfplotsmat@selectb##1\to{\pgfplotsarrayselect##1\of#3\to}%
+		\def\pgfplotsmat@letresult##1={\pgfplotsarrayletentry##1\of#3=}%
+		%
+		\pgfplotsmat@ii=-1
+		\pgfplotsmat@i=0
+		\pgfplotsmatrixLUbacksubst@loop@i
+		%
+		\pgfplotsmat@i=\pgfplotsmat@n
+		\advance\pgfplotsmat@i by-1
+		\pgfplotsmatrixLUbacksubst@loop@i@backw
+	\else
+		\pgfplots@error{Sorry, \string\pgfplotsmatrixLUbacksubst\space expected a vector of length \the\pgfplotsmat@n\space, not \the\c@pgf@counta}%
+	\fi
 }%
 \def\pgfplotsmatrixLUbacksubst@loop@i{%
 	\ifnum\pgfplotsmat@i<\pgfplotsmat@n
@@ -404,7 +421,7 @@
 		%
 		\pgfplotsmat@letresult\pgfplotsmat@ip=\pgfplotsmat@temp
 		%
-		\ifnum\pgfplotsmat@ii=0
+		\ifnum\pgfplotsmat@ii<0
 			\pgfplotscoordmath{default}{if is}{\pgfplotsmat@sum}{0}{%
 			}{%
 				\pgfplotsmat@ii=\pgfplotsmat@i
@@ -421,7 +438,6 @@
 }%
 \def\pgfplotsmatrixLUbacksubst@loop@i@j{%
 	\ifnum\pgfplotsmat@j<\pgfplotsmat@i
-\message{II LOOP: \the\pgfplotsmat@j^^J}%
 		%
 		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
 		\pgfplotsmat@selectb\pgfplotsmat@j\to\pgfplotsmat@temp
@@ -437,7 +453,6 @@
 \def\pgfplotsmatrixLUbacksubst@loop@i@backw{%
 	\ifnum\pgfplotsmat@i<0
 	\else
-\message{BACKW LOOP: \the\pgfplotsmat@i^^J}%
 		%
 		\pgfplotsmat@selectb\pgfplotsmat@i\to\pgfplotsmat@sum
 		\pgfplotsmat@j=\pgfplotsmat@i
@@ -454,7 +469,6 @@
 }%
 \def\pgfplotsmatrixLUbacksubst@loop@i@backw@j{%
 	\ifnum\pgfplotsmat@j<\pgfplotsmat@n
-\message{LOOP: \the\pgfplotsmat@j^^J}%
 		%
 		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
 		\pgfplotsmat@selectb\pgfplotsmat@j\to\pgfplotsmat@temp
@@ -465,4 +479,13 @@
 		\advance\pgfplotsmat@j by1
 		\expandafter\pgfplotsmatrixLUbacksubst@loop@i@backw@j
 	\fi
+}%
+
+% Solves the linear equation system Ax = b.
+% #1: the matrix A
+% #2: the right-hand-side b. On output, #2 will contain the solution
+% and A will be overwritten.
+\def\pgfplotsmatrixsolveLEQS#1=#2{%
+	\pgfplotsmatrixLUdecomp#1\perm\pgfplotsmatrix@perm\sign\pgfplotsmatrix@sign
+	\pgfplotsmatrixLUbacksubst#1\perm\pgfplotsmatrix@perm\inout#2%
 }%
