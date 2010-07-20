@@ -881,11 +881,19 @@
 	\fi
 	\if1\pgfkeysvalueof{/pgfplots/#1/#2 is expr}%
 		\def#3{%
-			\pgfmathparse{\pgfkeysvalueof{/data point/#2}}%
+			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#2}}
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathparse{\pgfmathresult}%
+			\fi
 		}%
 	\else
 		\def#3{%
-			\pgfmathfloatparsenumber{\pgfkeysvalueof{/data point/#2}}%
+			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#2}}
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+			\fi
 		}%
 	\fi
 }%
@@ -1072,6 +1080,8 @@
 	hist/data value/.code	=\pgfplots@set@source@for{hist/data}{#1}{0},%
 	hist/data/.code			=\pgfplots@set@source@for{hist/data}{#1}{1},%
 	hist/data={y},
+	hist/data min/.initial=\pgfkeysvalueof{/pgfplots/xmin},
+	hist/data max/.initial=\pgfkeysvalueof{/pgfplots/xmax},
 	hist/bins/.initial=10,
 	hist/intervals/.is if=pgfplotsplothandlerhistogram@intervals,
 	hist/intervals/.default=true,
@@ -1095,10 +1105,27 @@
 \def\pgfplotsplothandlersurveystart@hist{%
 	\pgfplots@prepare@source@parser@for{hist}{data}{\pgfplotsplothandlerhistogram@parse}%
 	%
-	\pgfmathfloatcreate{1}{1.0}{2147483645}%
-	\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
-	\pgfmathfloatcreate{2}{1.0}{2147483645}%
-	\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+	\pgfkeysgetvalue{/pgfplots/hist/data min}\pgfplotsplothandlerhistogram@datamin
+	\pgfkeysgetvalue{/pgfplots/hist/data max}\pgfplotsplothandlerhistogram@datamax
+	%
+	\ifx\pgfplotsplothandlerhistogram@datamin\pgfutil@empty
+		\pgfmathfloatcreate{1}{1.0}{2147483645}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamin@autocompute{1}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@datamin}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamin@autocompute{0}%
+	\fi
+	\ifx\pgfplotsplothandlerhistogram@datamax\pgfutil@empty
+		\pgfmathfloatcreate{2}{1.0}{2147483645}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamax@autocompute{1}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@datamax}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamax@autocompute{0}%
+	\fi
 	%
 	\edef\pgfplotsplothandlerhistogram@Nfixed{\pgfkeysvalueof{/pgfplots/hist/bins}}%
 	\c@pgf@counta=\pgfplotsplothandlerhistogram@Nfixed\relax
@@ -1112,16 +1139,23 @@
 	\def\c@pgfplotsplothandlerhistogram@num{0}%
 }%
 
+\def\pgfplotsplothandlersurveypoint@hist@limits{%
+	\if1\pgfplotsplothandlerhistogram@datamin@autocompute
+		\pgfplotsmathfloatmin{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamin}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+	\fi
+	%
+	\if1\pgfplotsplothandlerhistogram@datamax@autocompute
+		\pgfplotsmathfloatmax{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamax}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+	\fi
+}%
 \def\pgfplotsplothandlersurveypoint@hist{%
 	\pgfplotsplothandlerhistogram@parse
 	\let\pgfplots@current@point@data=\pgfmathresult
 	%
 	\pgfmathfloatiffinite\pgfplots@current@point@data{%
-		\pgfplotsmathfloatmin{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamin}%
-		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
-		%
-		\pgfplotsmathfloatmax{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamax}%
-		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		\pgfplotsplothandlersurveypoint@hist@limits
 		%
 		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlerhistogram@num
 		%
