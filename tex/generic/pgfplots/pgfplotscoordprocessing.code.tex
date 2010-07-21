@@ -7123,6 +7123,13 @@
 	\let\pgfplotsretval=\pgfutil@empty
 	\ifx\pgfplots@plot@handler@graphics@pointmap@D@img\pgfutil@empty
 	\else
+		\pgfkeysgetvalue{/pgfplots/plot graphics/debug}\pgfplots@loc@TMPa
+		\def\pgfplots@loc@TMPb{true}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\def\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug{1}%
+		\else
+			\def\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug{0}%
+		\fi
 		% The following implementation computes the 'unit vector
 		% ratio' of the IMAGE.
 		%
@@ -7209,6 +7216,10 @@
 		}%
 		\ifx\pgfplots@logical@z\pgfutil@empty
 		\else
+			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
+				\pgfplotsplothandlergraphics@debug@matrix@to@string
+			\fi
+			%
 			%
 			\pgfplotsmatrixsolveLEQS\pgfplotsmatrix=\pgfplotsE
 			%
@@ -7268,13 +7279,15 @@
 				\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
 				\pgfplots@warning{plot graphics failed to compute the 'unit vector ratio'\csname on@line\endcsname\space (it found ||ex|| =\pgfplotsxlen@; ||ey||= \pgfplotsylen@; ||ez|| =\pgfplotszlen@). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
 			\else
-				\immediate\write-1{PGFPlots plot graphics[auto adjust axis=true]\csname on@line\endcsname: using '\pgfplotsretval'.^^J}% 
+				\begingroup
+				\pgfkeysgetvalue{/pgfplots/plot graphics/src}\pgfplots@loc@TMPa
+				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+				\immediate\write-1{PGFPlots plot graphics[auto adjust axis=true] {\the\t@pgfplots@tokc} \csname on@line\endcsname: using '\pgfplotsretval'. Use 'plot graphics[debug] to generate debug output files.^^J}% 
+				\endgroup
 			\fi
 			%
-			\pgfkeysgetvalue{/pgfplots/plot graphics/debug}\pgfplots@loc@TMPa
-			\def\pgfplots@loc@TMPb{true}%
-			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-				\pgfplotsplothandlergraphicspointmapcomputerequiredview@output
+			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
+				\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output
 			\fi
 			%
 		\fi
@@ -7282,7 +7295,13 @@
 	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
 }%
-\def\pgfplotsplothandlergraphicspointmapcomputerequiredview@output{%
+\def\pgfplotsplothandlergraphics@debug@matrix@to@string{%
+	\pgfplotsmatrixtotext\pgfplotsmatrix
+	\let\pgfplotsmatrix@text=\pgfplotsretval
+	\pgfplotsarraytotext\pgfplotsE
+	\let\pgfplotsrhs@text=\pgfplotsretval
+}%
+\def\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output{%
 	\immediate\openout\w@pgf@writea=\pgfkeysvalueof{/pgfplots/plot graphics/src}.dat
 	\pgfplotsarrayselect0\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplotsarrayselect1\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPb=\pgfmathresult
@@ -7300,6 +7319,11 @@
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
 	\immediate\write\w@pgf@writea{unit length=\pgfplotsxlen@\space\pgfplotsylen@\space\pgfplotszlen@,}%
+	\begingroup
+	\def\n{^^J}%
+	\def\t{^^I}%
+	\immediate\write\w@pgf@writea{canvasmapmatrix=[\pgfplotsmatrix@text];^^Jcanvasmaprhs = [\pgfplotsrhs@text];^^J}%
+	\endgroup
 	\immediate\closeout\w@pgf@writea
 }%
 
@@ -7343,6 +7367,12 @@
 	\pgfpointdiff
 		{\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@A@img}
 		{\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@B@img}%
+	\ifnum\pgf@x=0pt
+		\pgfplots@error{Sorry, the first two points with '=>' in plot graphics[points={}] are expected to have different image X coordinates. Please reorder the sequence.}%
+	\fi
+	\ifnum\pgf@y=0pt
+		\pgfplots@error{Sorry, the first two points with '=>' in plot graphics[points={}] are expected to have different image Y coordinates. Please reorder the sequence.}%
+	\fi
 	\edef\pgfplots@DDx{\pgf@sys@tonumber\pgf@x}%
 	\edef\pgfplots@DDy{\pgf@sys@tonumber\pgf@y}%
 	%
@@ -7459,7 +7489,10 @@
 		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
 		\def\pgfplots@extractcoord##1##2##3{##1,##2,##3}%
 		\pgfplots@error{sorry, I can't fix the scaling of 'plot graphics {\the\t@pgfplots@tokc}'.
-			The points (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@C@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' unit vectors because the view is incorrect. Please refer to the pgfplots manual for details. If you continue now, I'll show the points in the image.}%
+			The points (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@C@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' unit vectors because the view is incorrect.^^J
+			- Is the 'view' argument correct (matlab: [h,v] = view)? ^^J
+			- Does your image have a non-trivial 'plot box ratio' (matlab: get(gca,'PlotBoxAspectRatio') )?^^J
+			Please refer to the pgfplots manual for details. If you continue now, I'll show the points in the image}%
 		\endgroup
 		%
 		%

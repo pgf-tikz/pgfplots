@@ -110,7 +110,8 @@
 
 % During the loop, \pgfplotsmatrixforeachrowindex expands to the
 % current row index and \pgfplotsmatrixforeachcolindex to the actual
-% col index.
+% col index. It invokes \pgfplotsmatrixforeachrowend after each
+% complete row.
 %
 % This macro uses
 % \c@pgf@counta,\c@pgf@countb,\c@pgf@countc,\c@pgf@countd
@@ -126,10 +127,13 @@
 	\let\pgfplotsmatrixforeachcolindex\relax
 	\let\pgfplotsmatrixforeachrowindex\relax%
 }%
+\let\pgfplotsmatrixforeachrowend=\relax
 \def\pgfplotsmatrixforeach@loop{%
 	\ifnum\c@pgf@counta<\c@pgf@countc
 		\c@pgf@countb=0
 		\pgfplotsmatrixforeach@loop@
+		%
+		\pgfplotsmatrixforeachrowend
 		%
 		\advance\c@pgf@counta by1
 		\expandafter\pgfplotsmatrixforeach@loop
@@ -146,6 +150,26 @@
 	\fi
 }%
 
+% Defines \pgfplotsretval to be a text-representation of the matrix.
+% It will contain '\n' as newline macro and \t to separate cells.
+%
+\def\pgfplotsmatrixtotext#1{%
+	\begingroup
+	\pgfplotsapplistXnewempty\pgfplotsretval@
+	\def\pgfplotsmatrixforeachrowend{%
+		\pgfplotsapplistXpushback\n\to\pgfplotsretval@
+	}%
+	\pgfplotsmatrixforeach#1\as\entry{%
+		\pgfmathfloatparsenumber\entry
+		\pgfmathfloattosci\pgfmathresult
+		\edef\entry{\pgfmathresult\noexpand\t}%
+		\expandafter\pgfplotsapplistXpushback\entry\to\pgfplotsretval@
+	}%
+	\pgfplotsapplistXlet\pgfplotsretval=\pgfplotsretval@
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
+
 % Takes a matrix #1 and replaces it by its LU decomposition.
 % The LU decomposition uses implicit pivoting; the pivoting
 % information is stored in a permutation array #2 and a sign macro #3.
@@ -161,6 +185,11 @@
 % The algorithm has been converted from Numerical Recipes in C (I did
 % not copy the comments, though). You find the complete reference in
 % Chapter 2 of Numerical Recipes.
+%
+% If the matrix is singular, an exception will be raised.
+% If the matrix is singular up to working precision,
+% \pgfplotsmatrixLUdecompwarnsingular will be invoked and the
+% algorithm continues with a small threshold.
 %
 % All arithmetics is computed with \pgfplotscoordmath{default} (which
 % is float in the initial configuration). Use
@@ -278,6 +307,7 @@
 		\pgfplotsmat@select\the\pgfplotsmat@j,\the\pgfplotsmat@j\to\pgfplotsmat@Ajj
 		\pgfplotscoordmath{default}{if is}{\pgfplotsmat@Ajj}{0}{%
 			\pgfplotscoordmath{default}{parsenumber}{1e-15}%
+			\pgfplotsmatrixLUdecompwarnsingular
 			\pgfplotsmat@letentry\the\pgfplotsmat@j,\the\pgfplotsmat@j=\pgfmathresult
 		}{%
 		}%
@@ -298,6 +328,9 @@
 		\advance\pgfplotsmat@j by1
 		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j
 	\fi
+}%
+\def\pgfplotsmatrixLUdecompwarnsingular{%
+	\pgfplots@warning{Linear system is singular up to machine precision! Continuing with small threshold.}%
 }%
 \def\pgfplotsmatrixLUdecomp@mainloop@j@i{%
 	\ifnum\pgfplotsmat@i<\pgfplotsmat@j
