@@ -1440,6 +1440,8 @@
 	/pgfplots/legend plot pos/none/.belongs to family=/pgfplots/legend,
 	/pgfplots/legend plot pos=left,
 	/pgfplots/every legend image post/.code={},%
+	/pgfplots/legend image post style/.style={/pgfplots/every legend image post/.append style={#1}},
+	/pgfplots/empty legend/.style={/pgfplots/legend image code/.code=},
 	/pgfplots/line legend/.style={%
 		/pgfplots/legend image code/.code={%
 			\draw[mark repeat=2,mark phase=2,##1] 
@@ -1477,6 +1479,22 @@
 		\pgfplots@assert@tikzinternal@exists{tikz@scan@one@point}%
 		\tikz@scan@one@point\pgfplots@set@at#1},
 	/pgfplots/at/.belongs to family=/pgfplots,
+	/pgfplots/trim axis left/.code={%
+		\pgfutil@ifundefined{pgfsettrimleft}{%
+			\pgfplots@error{Sorry, the 'trim axis left' requires a more recent PGF version. At the time of this writing, only the experimental PGF version available from texexample.net supports it.}%
+		}{%
+			\pgfkeysalso{/tikz/trim left=(current axis.south west)}%
+		}%
+	},%
+	/tikz/trim axis left/.style={/pgfplots/trim axis left},
+	/pgfplots/trim axis right/.code={%
+		\pgfutil@ifundefined{pgfsettrimleft}{%
+			\pgfplots@error{Sorry, the 'trim axis right' requires a more recent PGF version. At the time of this writing, only the experimental PGF version available from texexample.net supports it.}%
+		}{%
+			\pgfkeysalso{/tikz/trim right=(current axis.south east)}%
+		}%
+	},%
+	/tikz/trim axis right/.style={/pgfplots/trim axis right},
 	/pgfplots/clip limits/.is if=pgfplots@clip@limits,
 	/pgfplots/clip limits/.default=true,
 	/pgfplots/clip limits=true,
@@ -3782,6 +3800,7 @@
 	\pgfplots@rememberplotspec[#1]{/pgfplots/every axis plot,#2,/pgfplots/.cd,/pgfplots/every axis plot post}%
 }%
 
+% This implements \addlegendentry
 \def\pgfplots@addlegendentry{%
 	\pgfutil@ifnextchar[{%
 		\pgfplots@addlegendentry@opts
@@ -3823,6 +3842,8 @@
 	\fi
 }
 
+% #1: DEPRECATED. Unused.
+% #2: plot style
 \long\def\pgfplots@show@small@legendplots#1#2{%
 	\begingroup
 	\pgfplots@define@currentplotstyle@as{#1,#2}%
@@ -3877,16 +3898,14 @@
 			\ifx\pgfplots@createlegend@toname\pgfutil@empty
 				% ok, draw legend.
 				\def\pgfplots@createlegend@prepareimage@to##1{%
-					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
 					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
-					\edef##1{\noexpand\pgfplots@show@small@legendplots{\the\t@pgfplots@tokb}{\the\t@pgfplots@tokc}}%
+					\edef##1{\noexpand\pgfplots@show@small@legendplots{}{\the\t@pgfplots@tokc}}%
 				}%
 			\else
 				% export legend instead of drawing it.
 				\def\pgfplots@createlegend@prepareimage@to##1{%
-					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
 					\t@pgfplots@tokc=\expandafter{\pgfplots@curplotlist}%
-					\edef\pgfplots@loc@TMPa{\noexpand\pgfplots@export@legend@image@to@macro{\the\t@pgfplots@tokb,\the\t@pgfplots@tokc}{}}%
+					\edef\pgfplots@loc@TMPa{\noexpand\pgfplots@export@legend@image@to@macro{\the\t@pgfplots@tokc}{}}%
 					\pgfplots@loc@TMPa
 					\let##1=\pgfplotsretval
 				}%
@@ -3933,11 +3952,23 @@
 				\else
 					\advance\curcolumnNum by1
 					\begingroup
+					% \pgfplots@curlegend@opts are any options for
+					% this single legend text, provided as
+					% \addlegendentry[<options>]{<text>}
+					% or
+					% legend entries={...,[<options>]<text>, ....}
 					\expandafter\pgfplots@split@opts\pgfplots@curlegend\pgfplots@result@to{\pgfplots@curlegend}{\pgfplots@curlegend@opts}%
-					\pgfplots@createlegend@prepareimage@to{\pgfplots@loc@TMPa}%
+					\pgfplots@createlegend@prepareimage@to{\pgfplotsretval}%
 					%
-					\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+					\t@pgfplots@tokb=\expandafter{\pgfplots@curlegend@opts}%
 					\t@pgfplots@tokc=\expandafter{\pgfplots@curlegend}%
+					%
+					% prepare the \node[<options>] {<text>} into \t@pgfplots@tokc
+					\edef\pgfplots@loc@TMPa{\noexpand\node[\the\t@pgfplots@tokb]{\the\t@pgfplots@tokc};}%
+					\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+					%
+					% and the legend image into \t@pgfplots@tokb:
+					\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
 					% ok. Now, the 
 					% - 'b' register contains the IMAGE and
 					% - 'c' register contains the TEXT
@@ -3946,19 +3977,19 @@
 						\edef\pgfplots@matrixentry{%
 							\the\t@pgfplots@tokb
 							\noexpand\pgfmatrixnextcell
-							\noexpand\node{\the\t@pgfplots@tokc};%
+							\the\t@pgfplots@tokc%
 						}%
 					\or
 						% legend plot pos=right
 						\edef\pgfplots@matrixentry{%
-							\noexpand\node{\the\t@pgfplots@tokc};%
+							\the\t@pgfplots@tokc%
 							\noexpand\pgfmatrixnextcell
 							\the\t@pgfplots@tokb
 						}%
 					\or
 						% legend plot pos=none
 						\edef\pgfplots@matrixentry{%
-							\noexpand\node{\the\t@pgfplots@tokc};%
+							\the\t@pgfplots@tokc%
 						}%
 					\fi
 					% copy it back to 'b' register:
@@ -4005,7 +4036,7 @@
 		\let\pgfplots@already@computed@legend@node=\pgfplots@glob@TMPa
 		\fi
 	\fi
-%\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node}%
+%\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node^^J}%
 	\ifx\pgfplots@createlegend@toname\pgfutil@empty
 		% DRAW:
 		\pgfplots@already@computed@legend@node
@@ -8094,6 +8125,14 @@
 	\ifx\pgfplots@colorbar@src@metamin\pgfutil@empty
 		\global\let\pgfplots@colorbar@src@metamin=\pgfplots@axiswide@metamin
 		\global\let\pgfplots@colorbar@src@metamax=\pgfplots@axiswide@metamax
+	\fi
+	%
+	\ifx\pgfplots@colorbar@src@metamax\pgfplots@invalidrange@metamax
+		\pgfplots@warning{Sorry, the colorbar is uninitialised - your axis has no color data. Consider using 'point meta=f(x)' or something like that. I am using a color range of [0,1] for the colorbar.}%
+		\pgfmathfloatparsenumber{0}%
+		\global\let\pgfplots@colorbar@src@metamin=\pgfmathresult
+		\pgfmathfloatparsenumber{1}%
+		\global\let\pgfplots@colorbar@src@metamax=\pgfmathresult
 	\fi
 	%
 	% normalize format:

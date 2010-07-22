@@ -1628,3 +1628,199 @@
 \def\pgfplotstablecreatecol@opt[#1]#2#3{%
 	\pgfplotstable@error@pkg{Please load \string\usepackage{pgfplotstable} before using \string\pgfplotstablecreatecol}%
 }%
+
+% Iterates through every column of table '#1' and invokes the code
+% '#3' for each column. The current column name will be available as
+% '#2' and the current column index as |\pgfplotstablecol| (starting
+% with 0).
+%
+% Example:
+% \pgfplotstableforeachcolumn{\table}\as\colname{%
+% 	The column name is `\colname'; its index \pgfplotstablecol.\par
+% }%
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumn#1\as#2#3{%
+	\def\pgfplotstablecol{0}%
+	\pgfplotslistforeachungrouped#1\as#2{%
+		#3\relax%
+		\pgfplotsutil@advancestringcounter\pgfplotstablecol
+	}%
+	\let\pgfplotstablecol=\relax
+}%
+% A variant of \pgfplotstableforeachcolumn which is used inside of
+% \pgfplotstableread to listener.
+%
+% It is used as \pgfplotstableforeachcolumn\as\cur{<do something with \cur>}
+\long\def\pgfplotstableforeachcolumn@listener\as#1#2{%
+	\def\pgfplotstablecol{0}%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as#1{%
+		#2\relax%
+		\pgfplotsutil@advancestringcounter\pgfplotstablecol
+	}%
+	\let\pgfplotstablecol=\relax
+}%
+
+% Reports every element t_{ij} for a fixed column j (in read-only
+% mode).
+%
+% For every cell, the code '#4' will be executed where '#3' will
+% contain the cell's value. During code '#4', the macro
+% \pgfplotstablerow will contain the current row index.
+%
+% #1: either a column name or the string '[index]' followed by a
+% number denoting a column index Access by column name is much faster..
+% #2: the table (macro or file name)
+% #3: the macro in which the cell values shall be written
+% #4: the code to execute.
+%
+% Example:
+% \pgfplotstableforeachcolumnelement{colname}\of\table\as\cellelem{%
+% 	I have now cell element `\cellelem' at row index
+% 	`\pgfplotstablerow'.
+% 	\par
+% }
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstableforeachcolumnelement@list
+	\pgfplotslistforeachungrouped\pgfplotstableforeachcolumnelement@list\as#3{%
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
+	}%
+	\let\pgfplotstablerow=\relax
+}%
+% helper method to allow nesting. It copies \pgfplotstablerow.
+% #1: the expanded value of \pgfplotstablerow. 
+\long\def\pgfplotstableforeachcolumnelement@#1#2{%
+	#2\relax
+	\def\pgfplotstablerow{#1}% restore to old value.
+	% advance.
+	\pgfplotsutil@advancestringcounter\pgfplotstablerow
+}%
+
+% A routine which is similar to \pgfplotstableforeachcolumnelement,
+% but this here checks for changes in \pgfplotsretval and writes them
+% back into the respected cell.
+%
+% The runtime is quadratic in the number of rows.
+\long\def\pgfplotstablemodifyeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	%
+	% Step 0: get the REAL column name for '#1'.
+	% This needs modifications if '#1' is [index]<integer>.
+	% -> store the colname to \pgfplotstable@loc@TMPc:
+	\def\pgfplotstable@loc@TMPc{#1}%
+	\pgfplotstable@is@colname{\pgfplotstable@loc@TMPc}%%
+	\ifpgfplotstableread@foundcolnames
+	\else
+		\expandafter\pgfplotstablegetcolumnnamebyindex\pgfplotstable@loc@TMPc\of{#2}\to\pgfplotstable@loc@TMPc
+	\fi
+	% Step 0.1: prepare a command which re-assembles column '#1'
+	% (using the real column name).
+	% The re-assemblation command will be invoked at the end of each
+	% iteration. This complicated macro preparation allows nested
+	% calls to \pgfplotstablemodifyeachcolumnelement.
+	\t@pgfplots@toka={\expandafter\pgfplotslistpushback\expandafter{#3}\to}%
+	\edef\pgfplotstable@loc@TMPd{%
+		\the\t@pgfplots@toka{\expandafter\noexpand\csname\string#2@\pgfplotstable@loc@TMPc\endcsname}}%
+	% Step 1: copy the column data to \pgfplotstable@loc@TMPb
+	\expandafter\pgfplotstablegetcolumnbyname\pgfplotstable@loc@TMPc\of#2\to\pgfplotstable@loc@TMPb%
+	%
+	% clear the original column:
+	\expandafter\pgfplotslistnewempty\csname\string#2@\pgfplotstable@loc@TMPc\endcsname
+	%
+	% Call loop. The prepared re-assemble macro will be provided as macro argument
+	% to allow nested calls:
+	\expandafter\pgfplotstablemodifyeachcolumnelement@\expandafter{\pgfplotstable@loc@TMPd}
+		{\pgfplotstable@loc@TMPb}{#3}{#4}%
+	\let\pgfplotstablerow=\relax
+}%
+% #1: post-iteration code
+% #2: the row list
+% #3: the loop macro to assign
+% #4: the loop body
+\long\def\pgfplotstablemodifyeachcolumnelement@#1#2#3#4{%
+	\pgfplotslistforeachungrouped{#2}\as#3{%
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
+		#1%
+	}%
+}
+
+% Selects a single table element at row #1 and column #2 from table
+% #3.
+%
+% #1: a row index.
+% #2: a column name or the string '[index]' followed by a number
+% denoting a column index. Access by column name is much faster.
+% #3: the table (macro or file name).
+%
+% The cell value will be written into the macro \pgfplotsretval.
+%
+% REMARK:
+% this routine is supposed to be very slow: it needs time O(N) where N
+% is the number of rows. This may change in future versions.
+%
+% Example:
+% \pgfplotstablegetelem{0}{[index]2}\of\table
+% The elem is `\pgfplotsretval'.
+\def\pgfplotstablegetelem#1#2\of#3{%
+	\begingroup
+	\pgfplotstablegetcolumn{#2}\of{#3}\to\pgfplotstable@loc@TMPa
+	\def\pgfplotsexceptionmsg{Sorry, row `#1' does not exist in table \pgfplotstablenameof{#3}}%
+	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotsretval
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+
+\def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
+
+% Defines \pgfmathresult (and now also \pgfplotsretval) to be the number of rows in table #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\long\def\pgfplotstablegetrowsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistfront#1\to\pgfplotstablegetrows@@
+		\expandafter\pgfplotslistsize\csname\string#1@\pgfplotstablegetrows@@\endcsname\to\c@pgfplotstable@counta
+		\edef\pgfmathresult{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplotstablegetrows@
+			\pgfplotstablegetrowsof{\pgfplotstablegetrows@}%
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}%
+	\let\pgfplotsretval=\pgfmathresult
+}%
+
+% Defines \pgfplotsretval to contain the number of columns in table
+% #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\long\def\pgfplotstablegetcolsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistsize#1\to\c@pgfplotstable@counta
+		\edef\pgfplotsretval{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplots@table
+			\pgfplotstablegetcolsof{\pgfplots@table}%
+			\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}%
+	\let\pgfmathresult=\pgfplotsretval
+}
