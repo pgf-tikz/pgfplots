@@ -2557,6 +2557,8 @@
 	/pgfplots/plot graphics/points/.initial=,
 	/pgfplots/plot graphics/auto adjust axis/.is if=pgfplots@plot@graphics@autoadjustaxis,
 	/pgfplots/plot graphics/auto adjust axis=true,
+	/pgfplots/plot graphics/debug/.initial=,
+	/pgfplots/plot graphics/debug/.default=true,
 	/pgfplots/plot graphics/squeeze tol/.initial=2pt,
 	%
 	% this command key should defined \pgfmathresult to be
@@ -5394,51 +5396,21 @@
 		\edef\pgfplots@unit@vector@ratio{\pgfplots@unit@vector@ratio\space1 1 }%
 		%
 		% Step 1: compute the unit vector which STAYS CONSTANT.
-		% I choose the smallest unit vector.
-		%
-		% All other ones will be scaled to fit its length.
-		%
-		% Choosing the smallest unit vector allows to maintain the
-		% original axis size without further attention.
-		%
-		% More precisely, 'axis equal' will *shrink* all unit vectors.
-		% Then, it enlarges the axis limits of the other axes.
-		% Consequently, the axis rectangle has the same size as before,
-		% only the limits are different.
-		%
-		% For 'axis equal image', choosing the smallest unit vector as
-		% reference means that the resulting image can only become smaller
-		% as the original axis. I guess that's also quite a good choice.
 		%
 		\pgfkeysgetvalue{/pgfplots/unit vector ratio axis}\pgfplots@apply@unit@ratio@reference
 		\ifx\pgfplots@apply@unit@ratio@reference\pgfutil@empty
-			\ifpgfplots@threedim
-				\def\pgfplots@apply@unit@ratio@reference{x}%
-				\pgfplots@if@unitveclenlessthan@untransformed xy{%
-					\pgfplots@if@unitveclenlessthan@untransformed xz{%
-						\def\pgfplots@apply@unit@ratio@reference{x}%
-					}{}%
-				}{}%
-				\pgfplots@if@unitveclenlessthan@untransformed yx{%
-					\pgfplots@if@unitveclenlessthan@untransformed yz{%
-						\def\pgfplots@apply@unit@ratio@reference{y}%
-					}{}%
-				}{}%
-				\pgfplots@if@unitveclenlessthan@untransformed zx{%
-					\pgfplots@if@unitveclenlessthan@untransformed zy{%
-						\def\pgfplots@apply@unit@ratio@reference{z}%
-					}{}%
-				}{}%
-			\else
-				\pgfplots@if@unitveclenlessthan@untransformed xy{%
-					\def\pgfplots@apply@unit@ratio@reference{x}%
-				}{%
-					\def\pgfplots@apply@unit@ratio@reference{y}%
-				}%
-			\fi
+			\pgfplots@apply@unit@ratio@find@reference%
 		\fi
+		%
+		% FIXME : I could spent some attention here to save work: 
+		% both, unit ratios and the resulting scales are computed at
+		% least twice (once in \pgfplots@apply@unit@ratio@find@reference and once in the
+		% following).
 		\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
+		%
 \message{USING REFERENCE UNIT VECTOR FROM \pgfplots@apply@unit@ratio@reference; ratio \pgfplots@unit@ratio@x\space \pgfplots@unit@ratio@y\space \pgfplots@unit@ratio@z.^^J}%
+		%
+		% Step 2: apply the scaling:
 		\pgfplots@rescale@unit@vector@reltoreference{x}{\pgfplots@unit@ratio@x}%
 		\pgfplots@rescale@unit@vector@reltoreference{y}{\pgfplots@unit@ratio@y}%
 		\ifpgfplots@threedim
@@ -5446,6 +5418,157 @@
 		\fi
 	\fi
 }%
+
+% This macro determines the reference axis for unit vector rescaling.
+% The reference axis remains unscaled (it gets scaling factor 1 if you
+% want it this way).
+% 
+% The other axis are scaled such that the desired unit vector ratios
+% are fulfilled.
+%
+% The idea to select a reference axis is as follows:
+% 1. Every unit vector scaling factor s should fulfill  s  <= 1.
+% 2. Choose the reference axis such that the minimal amount of scaling
+% is performed.
+%
+% The motivation for (1) is: if all involved scaling factors are at
+% most 1, the resulting picture will only become *smaller*.
+% Consequently, we can simply enlarge axis limits to restore the
+% original width/height!
+%
+% The motivation for (2) is: a huge amount of scaling might reduce the
+% size of the image too much. Of course, the figure will be enlarged
+% to fit the original width/height, but most of it will be empty. So,
+% use the smallest scaling.
+%
+% @POSTCONDITION The reference axis is stored in
+% \pgfplots@apply@unit@ratio@reference .
+%
+% @see the key 'unit vector ratio axis=y' which allows to manually
+% select the reference axis. This will illustrate what happens here.
+\def\pgfplots@apply@unit@ratio@find@reference{%
+	%
+	\begingroup
+	\let\pgfplots@ONE=\pgf@x
+	\global\pgfplots@ONE=1.002pt
+	%
+	\def\pgfplots@optimum@sofar@axis{}%
+	\let\pgfplots@optimum@sofar@value=\pgf@y
+	\global\pgfplots@optimum@sofar@value=16000pt
+	%
+	%\pgfplots@apply@unit@ratio@find@reference@checkexplicitlimits
+	%
+	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
+		\ifpgfplots@threedim
+			% 3D is more complicated than 2D:
+			% for every fixed reference axis, we have to check *two*
+			% scaling factors.
+			%
+			% Furthermore, the optimality condition (2) needs to be
+			% performed on the maximum max{1-s_a, 1-s_b} provided both of
+			% these numbers are positive.
+			%
+			\def\pgfplots@check@##1##2{%
+				% PRECONDITION: \pgfplots@apply@unit@ratio@reference is defined.
+				%
+				% renormalize \pgfplots@unit@[xyz] :
+				\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
+				%
+				% compute s_a :
+				\pgfplots@getscale@unit@vector@reltoreference ##1{\csname pgfplots@unit@ratio@##1\endcsname}%
+				\let\pgfplots@scale@a=\pgfmathresult
+				%
+				% compute s_b :
+				\pgfplots@getscale@unit@vector@reltoreference ##2{\csname pgfplots@unit@ratio@##2\endcsname}%
+				\let\pgfplots@scale@b=\pgfmathresult
+				%
+				% check if the actual choice of
+				% \pgfplots@apply@unit@ratio@reference is FEASIBLE.
+				% That is the case if s_a <= 1  && s_b <= 1.
+				% We check
+				%  (1 - s_a >= 0 )  && ( 1 - s_b >= 0 )
+				% instead, since I need the value 
+				%   max( 1-s_a, 1-s_b )
+				% anyway.
+				\def\pgfplots@ref@is@feasible{1}%
+				\pgf@xa=\pgfplots@ONE \advance\pgf@xa by-\pgfplots@scale@a pt
+				\ifdim\pgf@xa<0sp
+					\def\pgfplots@ref@is@feasible{0}%
+				\else
+					\pgf@xb=\pgfplots@ONE \advance\pgf@xb by-\pgfplots@scale@b pt
+					\ifdim\pgf@xb<0sp
+						\def\pgfplots@ref@is@feasible{0}%
+					\fi
+				\fi
+				% compute max(1-s_a,1-s_b) into \pgf@xa:
+				% pgf@xa= max(pgf@xa,pgf@xb):
+				\ifdim\pgf@xb>\pgf@xa	\pgf@xa=\pgf@xb	\fi
+				\if1\pgfplots@ref@is@feasible
+					\ifdim\pgf@xa<\pgfplots@optimum@sofar@value
+						% Ah, ok. The actual choice is BETTER as it
+						% involves less scaling.
+						%
+						% Remember it!
+						\let\pgfplots@optimum@sofar@axis=\pgfplots@apply@unit@ratio@reference
+						\global\pgfplots@optimum@sofar@value=\pgf@xa
+					\fi
+				\fi
+\message{^^Junit vector ratio 3D searching reference: checking \pgfplots@apply@unit@ratio@reference. feasable=\pgfplots@ref@is@feasible. \if1\pgfplots@ref@is@feasible max=\the\pgf@xa. \fi Optimum so far: value =\the\pgfplots@optimum@sofar@value\space for axis \pgfplots@optimum@sofar@axis.^^J}%
+			}%
+			%
+			% Check 'x' as reference :
+			\def\pgfplots@apply@unit@ratio@reference{x}%
+			\pgfplots@check@ yz%
+			%
+			% Check 'y' as reference :
+			\def\pgfplots@apply@unit@ratio@reference{y}%
+			\pgfplots@check@ xz%
+			%
+			% Check 'z' as reference :
+			\def\pgfplots@apply@unit@ratio@reference{z}%
+			\pgfplots@check@ xy%
+			%
+		\else
+			% 2D is much simpler: find the scale s which fulfills s <= 1.
+			% One of them MUST fulfill it.
+			% 
+			% try 'x' axis as reference:
+			\def\pgfplots@apply@unit@ratio@reference{x}%
+			%
+			% renormalize:
+			\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
+			%
+			% compute scaling factor: 
+			\pgfplots@getscale@unit@vector@reltoreference y\pgfplots@unit@ratio@y%
+			% 
+\message{^^Junit vector ratio 2D searching reference: checking \pgfplots@apply@unit@ratio@reference. feasable=\pgfmathresult < 1: \ifdim\pgfmathresult pt <\pgfplots@ONE YES-> use x\else NO->use y\fi^^J}%
+			% and check (1). The condition (2) is irrelevant; it is met
+			% anyway.
+			\ifdim\pgfmathresult pt<\pgfplots@ONE
+				\def\pgfplots@optimum@sofar@axis{x}%
+			\else
+				\def\pgfplots@optimum@sofar@axis{y}%
+			\fi
+		\fi
+	\else
+\message{^^Junit vector ratio chose \pgfplots@optimum@sofar@axis\space to fulfill explicitly provided limits (at least partially).^^J}%
+	\fi
+	%
+	\let\pgfplots@apply@unit@ratio@reference=\pgfplots@optimum@sofar@axis
+	\pgfmath@smuggleone\pgfplots@apply@unit@ratio@reference
+	\endgroup
+}%
+\def\pgfplots@apply@unit@ratio@find@reference@checkexplicitlimits{%
+	\ifpgfplots@autocompute@ymax \else \def\pgfplots@optimum@sofar@axis{y}\fi
+	\ifpgfplots@autocompute@ymin \else \def\pgfplots@optimum@sofar@axis{y}\fi
+	\ifpgfplots@autocompute@xmax \else \def\pgfplots@optimum@sofar@axis{x}\fi
+	\ifpgfplots@autocompute@xmin \else \def\pgfplots@optimum@sofar@axis{x}\fi
+	\ifpgfplots@threedim
+		\ifpgfplots@autocompute@zmax \else \def\pgfplots@optimum@sofar@axis{z}\fi
+		\ifpgfplots@autocompute@zmin \else \def\pgfplots@optimum@sofar@axis{z}\fi
+	\fi
+}%
+
 \def\pgfplots@apply@unit@ratio@prepareratios#1 #2 #3 #4\pgfplots@EOI{%
 	\def\pgfplots@unit@ratio@x{#1}%
 	\def\pgfplots@unit@ratio@y{#2}%
@@ -5454,60 +5577,40 @@
 	% 'unit vector ratio' is measured relative to the y axis for 2d
 	% and relative to the z axis for 3d plots.
 	% renormalize such that it is relative to
-	% \pgfplots@apply@unit@ratio@reference:
+	% \pgfplots@apply@unit@ratio@reference.
+	%
+	% Furthermore, renormalize such that
+	% unit@ratio@\pgfplots@apply@unit@ratio@reference is 1.
+	\pgfmathreciprocal@{\csname pgfplots@unit@ratio@\pgfplots@apply@unit@ratio@reference\endcsname}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\ifpgfplots@threedim
 		\if z\pgfplots@apply@unit@ratio@reference
 		\else
-			\pgfmathdivide@{\pgfplots@unit@ratio@z}{\csname pgfplots@unit@ratio@\pgfplots@apply@unit@ratio@reference\endcsname}%
-			\let\pgfplots@loc@TMPa=\pgfmathresult
-			%
-			\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@x}%
-			\let\pgfplots@unit@ratio@x=\pgfmathresult
-			%
-			\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@y}%
-			\let\pgfplots@unit@ratio@y=\pgfmathresult
-			%
 			\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@z}%
-			\let\pgfplots@unit@ratio@z=\pgfmathresult
+			\let\pgfplots@loc@TMPa=\pgfmathresult
 		\fi
+		%
+		\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@x}%
+		\let\pgfplots@unit@ratio@x=\pgfmathresult
+		%
+		\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@y}%
+		\let\pgfplots@unit@ratio@y=\pgfmathresult
+		%
+		\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@z}%
+		\let\pgfplots@unit@ratio@z=\pgfmathresult
 	\else
 		\if y\pgfplots@apply@unit@ratio@reference
 		\else
-			\pgfmathdivide@{\pgfplots@unit@ratio@y}{\csname pgfplots@unit@ratio@\pgfplots@apply@unit@ratio@reference\endcsname}%
-			\let\pgfplots@loc@TMPa=\pgfmathresult
-			%
-			\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@x}%
-			\let\pgfplots@unit@ratio@x=\pgfmathresult
-			%
 			\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@y}%
-			\let\pgfplots@unit@ratio@y=\pgfmathresult
+			\let\pgfplots@loc@TMPa=\pgfmathresult
 		\fi
-	\fi
-	%
-	% Normalize such that the largest weight is 1:
-	\let\pgfplots@unit@ratio@max\pgfplots@unit@ratio@x
-	\ifdim\pgfplots@unit@ratio@y pt>\pgfplots@unit@ratio@max pt
-		\let\pgfplots@unit@ratio@max=\pgfplots@unit@ratio@y
-	\fi
-	\ifpgfplots@threedim
-		\ifdim\pgfplots@unit@ratio@z pt>\pgfplots@unit@ratio@max pt
-			\let\pgfplots@unit@ratio@max=\pgfplots@unit@ratio@z
-		\fi
-	\fi
-	\ifdim\pgfplots@unit@ratio@max pt=1pt
-		\def\pgfmathresult{1}%
-	\else
-		\pgfmath@basic@reciprocal@\pgfplots@unit@ratio@max
-	\fi
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfmath@basic@multiply@{\pgfplots@unit@ratio@x}{\pgfplots@loc@TMPa}%
-	\let\pgfplots@unit@ratio@x=\pgfmathresult
-	\pgfmath@basic@multiply@{\pgfplots@unit@ratio@y}{\pgfplots@loc@TMPa}%
-	\let\pgfplots@unit@ratio@y=\pgfmathresult
-	\ifpgfplots@threedim
-		\pgfmath@basic@multiply@{\pgfplots@unit@ratio@z}{\pgfplots@loc@TMPa}%
-		\let\pgfplots@unit@ratio@z=\pgfmathresult
-	\else
+		%
+		\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@x}%
+		\let\pgfplots@unit@ratio@x=\pgfmathresult
+		%
+		\pgfmathmultiply@{\pgfplots@loc@TMPa}{\pgfplots@unit@ratio@y}%
+		\let\pgfplots@unit@ratio@y=\pgfmathresult
+		%
 		\def\pgfplots@unit@ratio@z{<unused>}%
 	\fi
 	%
@@ -5538,86 +5641,17 @@
 \def\pgfplots@rescale@unit@vector@reltoreference#1#2{%
 	\def\pgfplots@loc@TMPa{0}%
 	\if#1\pgfplots@apply@unit@ratio@reference
-		\ifdim#2pt=1pt
-		\else
+		\pgfplotsmath@ifapproxequal@dim{#2pt}{1pt}{0.0002pt}{%
+		}{%
 			\def\pgfplots@loc@TMPa{1}%
-		\fi
+		}%
 	\else
 		\def\pgfplots@loc@TMPa{1}%
 	\fi
 	\if1\pgfplots@loc@TMPa
-		% 
-		% If the datascaling transformation is active (which is almost
-		% everytime the case here), we have a transformation
-		% T^{-1}(x)= 10^scale * x
-		% with different scales for every axis.
 		%
-		% If the datascaling transformation is NOT active, scale is 0
-		% and T^{-1} = Identity.
-		%
-		% Note that the datascaling transformation also has
-		% translations (shifts). These are not important here.
-		%
-		% Goal:
-		% compute E_#1 such that
-		%   #2* || T^{-1} e_ref || = || T^{-1} E_#1 ||
-		% where T^{-1} is the data scaling transformation and e_ref the
-		% reference unit vector. Keep in mind that there are
-		% *different* data scaling transformations for each axis.
-		%
-		% We are given e_ref and e_#1 and the desired aspect ratio
-		% between e_ref and E_#1, which is available as #2.
-		%
-		% So: T^{-1} E_#1 :=  s* T^{-1} e_#1 where 
-		%  s = #2 * ||T^{-1} e_ref|| / || T^{-1} e_#1 || 
-		%    = |10^{scale_ref}| / |10^{scale_#1}| * #2 * || e_ref|| / ||e_#1||.
-		% 
-		% Then, E_#1 = T ( T^{-1} E_#1 ) = s * e_#1.
-		%
-		% -> compute 's'! 
-		%
-		% Part 1: compute
-		% #2 * ||e_ref|| / ||e_#1||.
-		%
-		\pgfmathmultiply@
-			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
-			{\csname pgfplots@#1@inverseveclength\endcsname}%
-		\pgfmathmultiply@
-			{\pgfmathresult}%
-			{#2}%
+		\pgfplots@getscale@unit@vector@reltoreference{#1}{#2}%
 		\global\let\pgfplots@glob@TMPa=\pgfmathresult
-		% 
-		% also compute 1/s, required as temporary value:
-		\pgfmathmultiply@
-			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
-			{\csname pgfplots@#1@veclength\endcsname}%
-		\ifdim#2pt=1pt
-		\else
-			\pgfmathdivide@{\pgfmathresult}{#2}%
-		\fi
-		\global\let\pgfplots@glob@TMPb=\pgfmathresult
-		%
-		% Part 2: handle data scaling trafo scales:
-		\begingroup
-			\def\pgfplots@tmp@exponentref{0}%
-			\def\pgfplots@tmp@exponentK{0}%
-			\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference}{%
-				\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference}%
-			}{}%
-			\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-				\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
-			}{}%
-			\c@pgf@counta=\pgfplots@tmp@exponentref
-			\advance\c@pgf@counta by-\pgfplots@tmp@exponentK
-			\ifnum\c@pgf@counta=0
-			\else
-				\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
-				\global\let\pgfplots@glob@TMPa=\pgfmathresult
-				\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
-				\global\let\pgfplots@glob@TMPb=\pgfmathresult
-			\fi
-			\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
-		\endgroup
 		%
 \message{Rescaling '#1' by \pgfplots@glob@TMPa.^^J}%
 		\if x#1
@@ -5632,14 +5666,15 @@
 			\fi
 		\fi
 		%
-		% 
-		% Update auxiliary data members:
-		% This is only complicated due to the scaling transformation. If we would not have the scaling trafo, the following
-		% code would simply copy the vector length and inverse vectors length from the reference axis.
-		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}{\pgfplots@glob@TMPc}%
+		\pgfmathmultiply@{\csname pgfplots@#1@veclength\endcsname}{\pgfplots@glob@TMPa}%
 		\expandafter\let\csname pgfplots@#1@veclength\endcsname=\pgfmathresult
-		\pgfplotsmathmultiplypowten@{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}{-\pgfplots@glob@TMPc}%
+		%
+		\pgfmathreciprocal@\pgfplots@glob@TMPa
+		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		%
+		\pgfmathmultiply@{\csname pgfplots@#1@inverseveclength\endcsname}{\pgfplots@glob@TMPb}%
 		\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
+		% 
 		%
 		%
 		\ifpgfplots@unit@vector@rescale@keep@size
@@ -5673,6 +5708,84 @@
 	\fi
 }
 
+% #1: an axis which should be scaled
+% #2: the desired final ratio  ||e_#1||/||e_ref||
+\def\pgfplots@getscale@unit@vector@reltoreference#1#2{%
+	% 
+	% If the datascaling transformation is active (which is almost
+	% everytime the case here), we have a transformation
+	% T^{-1}(x)= 10^scale * x
+	% with different scales for every axis.
+	%
+	% If the datascaling transformation is NOT active, scale is 0
+	% and T^{-1} = Identity.
+	%
+	% Note that the datascaling transformation also has
+	% translations (shifts). These are not important here.
+	%
+	% Goal:
+	% compute E_#1 such that
+	%   #3* || T^{-1} e_ref || = || T^{-1} E_#1 ||
+	% where T^{-1} is the data scaling transformation and e_ref the
+	% reference unit vector. Keep in mind that there are
+	% *different* data scaling transformations for each axis.
+	%
+	% We are given e_ref and e_#1 and the desired aspect ratio
+	% between e_ref and E_#1, which is available as #3.
+	%
+	% So: T^{-1} E_#1 :=  s* T^{-1} e_#1 where 
+	%  s = #3 * ||T^{-1} e_ref|| / || T^{-1} e_#1 || 
+	%    = |10^{scale_ref}| / |10^{scale_#1}| * #3 * || e_ref|| / ||e_#1||.
+	% 
+	% Then, E_#1 = T ( T^{-1} E_#1 ) = s * e_#1.
+	%
+	% -> compute 's'! 
+	%
+	% Part 1: compute
+	% #3 * ||e_ref|| / ||e_#1||.
+	%
+	\pgfmathmultiply@
+		{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
+		{\csname pgfplots@#1@inverseveclength\endcsname}%
+	\pgfmathmultiply@
+		{\pgfmathresult}%
+		{#2}%
+	\global\let\pgfplots@glob@TMPa=\pgfmathresult
+	% 
+	% also compute 1/s, required as temporary value:
+	%\pgfmathmultiply@
+	%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
+	%	{\csname pgfplots@#1@veclength\endcsname}%
+	%\ifdim#3pt=1pt
+	%\else
+	%	\pgfmathdivide@{\pgfmathresult}{#3}%
+	%\fi
+	%\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	%
+	% Part 2: handle data scaling trafo scales:
+	\begingroup
+		\def\pgfplots@tmp@exponentref{0}%
+		\def\pgfplots@tmp@exponentK{0}%
+		\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference }{%
+			\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference }%
+		}{}%
+		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+			\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
+		}{}%
+		\c@pgf@counta=\pgfplots@tmp@exponentref
+		\advance\c@pgf@counta by-\pgfplots@tmp@exponentK
+		\ifnum\c@pgf@counta=0
+		\else
+			\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
+			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		%	\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
+		%	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		\fi
+		\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
+	\endgroup
+	\let\pgfmathresult=\pgfplots@glob@TMPa
+}
+
 % should be invoked whenever \pgfplots@#1min or \pgfplots@#1max have
 % been changed during the visualization phase (for example, axis equal
 % or enlargelimits)
@@ -5687,7 +5800,7 @@
 	}{}%
 }%
 
-% Invokes #3 if ||D_#1||  < ||D_#2||  and #4 if that is not the case.
+% Invokes #3 if ||D_#1||_CANVAS  < ||D_#2||_CANVAS  and #4 if that is not the case.
 % Here D_x = (1,0,0) , D_y = (0,1,0) and D_z=(0,0,1).
 %
 % Due to the data scaling transformation,
@@ -5717,7 +5830,7 @@
 		\pgfplots@letcsname{pgfplots@loc@TMPb}={pgfplots@data@scale@trafo@EXPONENT@#2}%
 	}{}%
 	\begingroup
-\message{[comparison: [#1] < [#2]: 10^\pgfplots@loc@TMPa\space * \csname pgfplots@#1@veclength\endcsname < 10^\pgfplots@loc@TMPb\space * \csname pgfplots@#2@veclength\endcsname]^^J}%
+%\message{[comparison: [#1] < [#2]: 10^\pgfplots@loc@TMPa\space * \csname pgfplots@#1@veclength\endcsname < 10^\pgfplots@loc@TMPb\space * \csname pgfplots@#2@veclength\endcsname]^^J}%
 	\pgf@xb=\csname pgfplots@#2@veclength\endcsname pt
 	%
 	\c@pgf@counta=\pgfplots@loc@TMPa
