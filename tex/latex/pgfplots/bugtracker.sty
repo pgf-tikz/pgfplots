@@ -1,0 +1,160 @@
+\ProvidesPackage{bugtracker}[2010/07/23 Version 0.1]
+
+\RequirePackage{pgfplotstable}
+
+\ifx\scantokens\@undefined
+  \PackageError{pgfmanual-macros}{You need to use extended latex
+    (elatex) or (pdfelatex) to process this document}{}
+\fi
+
+\def\bugtracker@init@items{%
+}%
+
+{
+\catcode`\[=1
+\catcode`\]=2
+\catcode`\{=12
+\catcode`\}=12
+\gdef\bugtracker@lbrace[{]
+\gdef\bugtracker@rbrace[}]
+]
+{
+\catcode`\|=0
+|catcode`\\=12
+|gdef|bugtracker@bslash{\}
+}
+
+\def\declarebugtrackeritem#1{%
+	\expandafter\def\expandafter\bugtracker@init@items\expandafter{%
+		\bugtracker@init@items
+		\expandafter\gdef\csname c@bugtracker@#1\endcsname{0}%
+	}%
+	\expandafter\edef\csname bugtracker@end@#1\endcsname{\bugtracker@bslash end\bugtracker@lbrace #1\bugtracker@rbrace}%
+	\expandafter\def\csname #1\endcsname{\bugtracker@collect{#1}}%
+	\expandafter\def\csname end#1\endcsname{\relax}%
+}%
+
+\newenvironment{bugtracker}{%
+	\let\bugtracker@enqueue=\bugtracker@enqueue@ACTIVE
+	\pgfplotsarraynewemptyglobal\bugtrackeritems
+}{%
+	\bugtracker@typeset
+}%
+
+\def\bugtrackerset{\pgfqkeys{/bugtracker}}%
+
+
+\def\bugtracker@collect#1{%
+	\pgfutil@ifnextchar[{%
+		\bugtracker@collect@status{#1}%
+	}{%
+		\bugtracker@collect@status{#1}[open]%
+	}%
+}%
+\def\bugtracker@collect@status#1[#2]{%
+	\pgfutil@ifnextchar[{%
+		\bugtracker@collect@status@opt{#1}[#2]%
+	}{%
+		\bugtracker@collect@status@opt{#1}[#2][]%
+	}%
+}%
+\def\bugtracker@collect@status@opt#1[#2][#3]{%
+	\begingroup
+	\bugtrackerset{#3}%
+	\def\bugtracker@temp{#2}%
+	\ifx\bugtracker@temp\pgfutil@empty
+	\else
+		\bugtrackerset{status=#2}%
+	\fi
+	\expandafter\let\expandafter\bugtracker@temp\csname bugtracker@end@#1\endcsname
+	\expandafter\def\expandafter\bugtracker@collect@until\expandafter##\expandafter1\bugtracker@temp{\bugtracker@enqueue{#1}{##1}}%
+\message{HIER mit \meaning\bugtracker@temp^^Jund entspreched \string\bugtracker@collect@until=\meaning\bugtracker@collect@until^^J}%
+	\def\do##1{\catcode`##1=12 }\dospecials
+	\bugtracker@collect@until
+}%
+
+\long\def\bugtracker@enqueue#1#2{%
+	\toks0={#2}%
+	\edef\bugtracker@entry{{#1}{\bugtracker@status}{\pgfkeysvalueof{/bugtracker/prio}}{\the\toks0}}%
+	\expandafter\pgfplotsarraypushbackglobal\expandafter{\bugtracker@entry}\to\bugtrackeritems
+	\endgroup
+	\end{#1}%
+}%
+\let\bugtracker@enqueue@ACTIVE=\bugtracker@enqueue
+\long\def\bugtracker@enqueue#1#2{%
+	\PackageError{bugtracker}{Sorry, bug tracker elements can only be used inside of \string\begin{bugtracker} ... \string\end{bugtracker}. Discarding this element}{}%
+}%
+
+\long\def\bugtracker@unpack#1#2#3#4{%
+	\bugtrackerset{name={#1},status=#2,prio=#3}%
+	\def\bugtracker@content{#4}%
+}%
+
+\long\def\bugtracker@typeset@#1#2{%
+	\pgfkeysvalueof{/bugtracker/typeset/.@cmd}{#1}{#2}\pgfeov
+}%
+
+\def\bugtracker@typeset{%
+	\pgfkeysvalueof{/bugtracker/font}%
+	\bugtracker@init@items
+	\gdef\bugtracker@isfirst{1}%
+	\pgfplotsarrayforeach\bugtrackeritems\as\entry{%
+		\if1\bugtracker@isfirst
+		\else
+			\vskip\pgfkeysvalueof{/bugtracker/vskip}
+		\fi
+		\expandafter\bugtracker@unpack\entry
+		%
+		\edef\c@bugtracker{\csname c@bugtracker@\pgfkeysvalueof{/bugtracker/name}\endcsname}%
+		\expandafter\pgfplotsutil@advancestringcounter@global\csname c@bugtracker@\pgfkeysvalueof{/bugtracker/name}\endcsname
+		%
+		\expandafter\bugtracker@typeset@\expandafter{\expandafter\scantokens\expandafter{\bugtracker@content}}{\c@bugtracker}%%
+		\gdef\bugtracker@isfirst{0}%
+	}%
+}%
+
+\bugtrackerset{
+	name/.initial=,
+	typeset name/.code={%
+		\pgfkeysifdefined{/bugtracker/name text/#1}{%
+			\pgfkeysvalueof{/bugtracker/name text/#1}%
+		}{%
+			#1%
+		}%
+	},
+	prio/.initial=5,
+	status/.is choice,
+	status/open/.initial=	{\def\bugtracker@status{open}},
+	status/closed/.initial=	{\def\bugtracker@status{closed}},
+	status/partially/.initial=	{\def\bugtracker@status{partially}},
+	status/-/.initial=	{\def\bugtracker@status{open}},
+	status/+/.initial=	{\def\bugtracker@status{closed}},
+	vskip/.initial=\baselineskip,
+	font/.initial={%
+		\parindent=0pt
+	},
+	typeset/.code 2 args={%
+		\noindent
+		\paragraph{%
+			\protect\bugtrackerset{/bugtracker/typeset name={\pgfkeysvalueof{/bugtracker/name}}}
+			\##2}
+			[\bugtracker@status, Priority \pgfkeysvalueof{/bugtracker/prio}] 
+		\vskip4pt
+		{%
+			\noindent
+			\parskip=\baselineskip
+			#1%
+			\par
+		}%
+	}%
+}
+
+\declarebugtrackeritem{feature}
+\declarebugtrackeritem{bug}
+\declarebugtrackeritem{doctodo}
+\bugtrackerset{
+	name text/feature/.initial=Feature Request,
+	name text/bug/.initial=Bug,
+	name text/doctodo/.initial=Documentation Todo,
+}
+\endinput
