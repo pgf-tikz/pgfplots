@@ -26,6 +26,8 @@
 \ProvidesPackage{bugtracker}[2010/07/23 Version 0.1]
 
 \RequirePackage{pgfplotstable}
+\RequirePackage{listings}
+\RequirePackage{hyperref}
 
 \ifx\scantokens\@undefined
   \PackageError{pgfmanual-macros}{You need to use extended latex
@@ -70,7 +72,6 @@
 }{%
 	\ifbugtracker@sort
 		\begingroup
-\tracingmacros=2 \tracingcommands=2
 		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\bugtracker@iflessthan
 		\pgfkeysdef{/pgfplots/array/unscope pre}{\bugtracker@typeset}%
 		\pgfkeysdef{/pgfplots/array/unscope post}{}%
@@ -112,13 +113,13 @@
 	\bugtracker@collect@until
 }%
 
+
 \def\bugtracker@prepare@collect{%
 	\def\do##1{\catcode`##1=12 }\dospecials
 	\catcode`\^^M=12
 	\catcode`\^^J=12
 	\catcode`\^^I=12
 }%
-
 
 \def\bugtracker@restore@catcodes{%
 	\catcode`\^^M=5
@@ -196,6 +197,9 @@
 }%
 
 \def\bugtracker@typeset{%
+	\let\minimal=\bugtracker@minimal@env
+	\def\endminimal{\relax}%
+	%
 	\pgfkeysvalueof{/bugtracker/font}%
 	\bugtracker@init@items
 	\gdef\bugtracker@isfirst{1}%
@@ -243,6 +247,10 @@
 	status order/closed/.initial=10,
 	status order/cancelled/.initial=7,
 	status order/partially/.initial=1,
+	shell escape/.initial=-shell-escape,
+	prefix/.initial=\jobname-,
+	file ext/.initial=pdf,
+	system call/.initial={pdflatex \bugtracker@checkshellescape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource"},
 	vskip/.initial=\baselineskip,
 	font/.initial={%
 		\parindent=0pt
@@ -275,4 +283,119 @@
 	name text/bug/.initial=Bug,
 	name text/doctodo/.initial=Documentation Todo,
 }
+
+
+% a 
+% \begin{minimal}
+% \end{minimal}
+% environment which is executed automatically :
+\newcount\c@bugtracker@minimal
+\c@bugtracker@minimal=0
+
+\def\bugtracker@minimal@env{%
+	\begingroup
+	\bugtracker@prepare@collect
+	\bugtracker@minimal@collect
+}%
+\expandafter\edef\csname bugtracker@temp\endcsname{\bugtracker@bslash end\bugtracker@lbrace minimal\bugtracker@rbrace}%
+\expandafter\long\expandafter\def\expandafter\bugtracker@minimal@collect\expandafter#\expandafter1\bugtracker@temp{%
+	\endgroup
+	\edef\bugtracker@minimal@filename{\pgfkeysvalueof{/bugtracker/prefix}\the\c@bugtracker@minimal}%
+	\edef\bugtracker@minimal@filename@{\bugtracker@minimal@filename.\pgfkeysvalueof{/bugtracker/file ext}}%
+	\global\advance\c@bugtracker@minimal by1
+	%
+	\IfFileExists{\bugtracker@minimal@filename@}{}{%
+		\bugtracker@minimal@create{#1}%
+	}%
+	\begingroup
+		\bugtracker@restore@catcodes
+		\edef\bugtracker@temp##1{%
+			\bugtracker@bslash begin{lstlisting}%
+			##1%
+			\bugtracker@bslash end{lstlisting}%
+		}%
+		\expandafter\bugtracker@minimal@typeset\expandafter{\bugtracker@temp{#1}}%
+	\endgroup
+	\end{minimal}%
+}%
+\long\def\bugtracker@minimal@typeset#1{%
+	\ifvmode
+		\noindent
+	\fi
+	\href{file:\bugtracker@minimal@filename@}{%
+		\vbox{%
+			\bugtracker@minimal@typeset@{#1}%
+		}%
+	}%
+}%
+\long\def\bugtracker@minimal@typeset@#1{%
+	\scantokens{#1}%
+}%
+\long\def\bugtracker@minimal@create#1{%
+	%
+	\immediate\openout\w@pgf@writea=\bugtracker@minimal@filename\relax
+	\immediate\write\w@pgf@writea{#1}%
+	\immediate\closeout\w@pgf@writea
+	%
+	\bugtracker@assemble@systemcall\bugtracker@minimal@filename\bugtracker@temp
+\message{Issuing system-call^^J$ \bugtracker@temp^^J}%
+	\immediate\write18{\bugtracker@temp}%
+	\IfFileExists{\bugtracker@minimal@filename@}{}{%
+		\PackageError{bugtracker}{Sorry, the system call '\bugtracker@temp' did NOT result in a usable output file '\bugtracker@minimal@filename@' (adjust '/bugtracker/file ext' if needed). Please verify that you have enabled system calls. For pdflatex, this is 'pdflatex -shell-escape'. Sometimes it is also named 'write 18' or something like that. Or maybe the command simply failed? Error messages can be found in '\bugtracker@minimal@filename.log'}{}%
+	}%
+}
+
+{
+\catcode`\"=12
+\catcode`\'=12
+\catcode`\;=12
+\catcode`\&=12
+\catcode`\-=12
+\xdef\bugtracker@normal@dq{"}
+\xdef\bugtracker@normal@sq{'}
+\xdef\bugtracker@normal@semic{;}
+\xdef\bugtracker@normal@and{&}
+\xdef\bugtracker@normal@dash{-}
+\catcode`\"=13
+\catcode`\'=13
+\catcode`\;=13
+\catcode`\&=13
+\catcode`\-=13
+\gdef\bugtracker@activate@normal@dq{\let"=\bugtracker@normal@dq}
+\gdef\bugtracker@activate@normal@sq{\let'=\bugtracker@normal@sq}
+\gdef\bugtracker@activate@normal@semic{\let;=\bugtracker@normal@semic}
+\gdef\bugtracker@activate@normal@and{\let&=\bugtracker@normal@and}
+\gdef\bugtracker@activate@normal@dash{\let-=\bugtracker@normal@dash}
+\catcode`\|=0
+\catcode`\\=12
+|xdef|bugtracker@normal@backslash{\}%
+}
+% Creates the '/bugtracker/system call' command as string and
+% returns it into the (global!) macro #2.
+% #1: the output file name 
+% #2: the global return value macro
+%
+\def\bugtracker@assemble@systemcall#1#2{%
+	\begingroup
+		\def\image{#1}%
+		\let\texsource=\image
+		\ifnum\the\catcode`\"=13 \bugtracker@activate@normal@dq\fi
+		\ifnum\the\catcode`\'=13 \bugtracker@activate@normal@sq\fi
+		\ifnum\the\catcode`\;=13 \bugtracker@activate@normal@semic\fi
+		\ifnum\the\catcode`\-=13 \bugtracker@activate@normal@dash\fi
+		\let\\=\bugtracker@normal@backslash
+		\xdef#2{\pgfkeysvalueof{/bugtracker/system call}}%
+	\endgroup
+}%
+
+\pgfutil@ifundefined{pdfshellescape}{%
+	\def\bugtracker@checkshellescape{}%
+}{%
+	\ifnum\pdfshellescape=1
+		\def\bugtracker@checkshellescape{\pgfkeysvalueof{/bugtracker/shell escape}\space}%
+	\else
+		\def\bugtracker@checkshellescape{}%
+	\fi
+}%
+
 \endinput
