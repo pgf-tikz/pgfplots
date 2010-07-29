@@ -363,8 +363,30 @@
 			\else
 				\let\pgfplots@radius=\pgfplots@signedradius
 			\fi
+			% this here is the correct, complete circle -- together
+			% with a clip path, you get what you want:
+			%\pgfpathellipse
+			%	{\pgfpointxy@orig{1}{\pgfplots@signedradius}}
+			%	{\pgfpointxy@orig{\pgfplots@signedradius}{0}}
+			%	{\pgfpointxy@orig{0}{\pgfplots@signedradius}}%
+			% But I only want the arc (probably stopped earlier to
+			% improve qualtity of the chart)
 			%
-			% compute start point for the arc:
+			% compute start point for the arc.
+			%
+			% To do so, we need to compute the intersection between
+			% the circle for fixed x=0  and the circle for y=#1.
+			%
+			% In general, the intersection between the circle for
+			% fixed x=A and fixed y=B is given by
+			%
+			% p + j * q = (A + j * B -1 ) / ( A + j*B +1)
+			% see http://www.siart.de/lehre/tutorien.xhtml#smishort
+			%
+			% inserting A = 0 and B = #1 yields the result
+			% p=\pgfplots@start
+			% q=\pgfplots@startim
+			% as follows:
 			\pgfplotscoordmath{default}{one}%
 			\let\pgfplots@one=\pgfmathresult
 			\pgfplotscoordmath{default}{parsenumber}{-1}%
@@ -377,21 +399,28 @@
 			\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
 			\let\pgfplots@startim=\pgfmathresult
 			%
-			% comput end angle:
+			% compute end angle.
+			% The "0 degree" angle in my circles is in the direction
+			% of (1,0) .
 			\ifdim\pgfplots@startim pt>0pt
+				% ok; this arc belongs to the upper hemisphere.
 				\def\pgfplots@endangle{270}%
 			\else
+				% ok; this arc belongs to the lower hemisphere.
 				\def\pgfplots@endangle{90}%
 			\fi
 			% 
 			%
-			% compute diff vector from center=(1,\pgfplots@signedradius) to start:
+			% Now, compute the start angle. this involves linear
+			% algebra:
+			%
+			% 1. compute diff vector from center=(1,\pgfplots@signedradius) to start:
 			\pgfmathsubtract@{\pgfplots@start}{1}%
 			\let\pgfplots@D\pgfmathresult
 			\pgfmathsubtract@{\pgfplots@startim}{\pgfplots@signedradius}%
 			\let\pgfplots@Dim\pgfmathresult
 			%
-			% compute the start angle.
+			% 2. compute the start angle.
 			% It is related to the angle between the point (1,0) and
 			% diff, which, in turn is given by
 			%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
@@ -401,6 +430,10 @@
 			\pgfmathdivide@{\pgfplots@D}{\pgfmathresult}%
 			\pgfmathacos@{-\pgfmathresult}% the '-' comes from D<0 .
 			\let\pgfplots@tmpangle\pgfmathresult%
+			% ok. tmpangle is per definition less than 180; it is the
+			% smaller angle between (1,0) and (D,Dim).
+			%
+			% compute the angle relate to (1,0):
 			\ifdim\pgfplots@Dim pt<0pt
 				\pgfmathadd@{180}{\pgfplots@tmpangle}%
 			\else
@@ -409,19 +442,16 @@
 			\let\pgfplots@startangle=\pgfmathresult
 			%
 \message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space( start angle \pgfplots@startangle, end angle \pgfplots@endangle)^^J}%
-			%\pgfpathellipse
-			%	{\pgfpointxy@orig{1}{\pgfplots@signedradius}}
-			%	{\pgfpointxy@orig{\pgfplots@signedradius}{0}}
-			%	{\pgfpointxy@orig{0}{\pgfplots@signedradius}}%
+			%
+			% Now, compute the arc.
+			%
+			% first, compute the absolute x/y radii:
 			\pgf@xa=\pgfplots@radius\pgf@xx
 			\pgf@xb=\pgfplots@radius\pgf@yy
-			\ifdim\pgfplots@startangle pt<\pgfplots@endangle pt
-				\pgfpathmoveto{\pgfpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
-				\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
-			\else
-				\pgfpathmoveto{\pgfpointxy@orig{1}{0}}%
-				\edef\pgfplots@loc@TMPa{{\pgfplots@endangle}{\pgfplots@startangle}{\the\pgf@xa\space and \the\pgf@xb}}%
-			\fi
+			\pgfpathmoveto{\pgfpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
+			% note that the case startangle > endangle is
+			% automatically correct; patharc handles that.
+			\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
 			\expandafter\pgfpatharc\pgfplots@loc@TMPa
 		}%
 	\fi
