@@ -49,7 +49,7 @@
 \newif\ifpgfplots@smithchartaxis@rellimits
 
 \pgfplotsset{
-	/pgfplots/grid line limits/.initial=,
+	/pgfplots/arc limits/.initial=,
 	/pgfplots/every smithchart axis/.style={
 		grid=major,
 		xmin=0,
@@ -323,6 +323,214 @@
 
 \def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
 	%\pgfplots@clippath@install{\pgfusepath{clip}}%
+	\pgfkeysgetvalue{/pgfplots/arc limits}\pgfplots@arclimits
+	\ifx\pgfplots@arclimits\pgfutil@empty
+	\else
+		\pgfplots@gridlines@init@arc@limits
+	\fi
+}%
+
+% Initialises the 'arc limits' feature. All it does is to prepare the
+% method \pgfplots@get@current@arc@limit. 
+%
+% The method is quite involved. Please refer to the manual for what it
+% is supposed to do, and refer to the code comments below for
+% implementational details.
+\def\pgfplots@gridlines@init@arc@limits{%
+	%
+	% we have no "xticknum -> xtickpos" lookup table yet.
+	\def\b@pgfplots@xticknum@to@pos@lookup{0}%
+	%
+	% normalise the argument for 'arc limits': each list element
+	% should be of the form '<xtickpos>:<n>' where <n> means that each
+	% <n>th arc can pass.
+	\pgfplotslistnewempty\pgfplots@arclimits@normalised
+	\expandafter\pgfplotsutilforeachcommasep\pgfplots@arclimits\as\entry{%
+		\expandafter\pgfplots@gridlines@init@arc@limits@normalise\entry\relax
+		\expandafter\pgfplotslistpushback\entry\to\pgfplots@arclimits@normalised
+	}%
+	%
+	% Ok. 
+	%
+	% Now, the 'arc limits' feature relies *crucially* on grid line
+	% indices (for the 'each nth' feature).
+	%
+	% I sort the arcs according to their absolute magnitude and assign
+	% indices into the resulting arrays to normalize that stuff.
+	%
+	% The array is of the form 
+	%   A[i] = entry of \pgfplots@prepared@tick@positions@*
+	% and contains *both*, major and minor grid lines.
+	\pgfplotsarraynewempty\pgfplots@ygridlines
+	\pgfplotscoordmath{default}{zero}%
+	\edef\elem{{-1}{\pgfmathresult}}% require 0 to be zero for symmetry even if there is no such tick pos
+	\expandafter\pgfplotsarraypushback\elem\to\pgfplots@ygridlines
+	\ifpgfplots@ymajorgrids
+		% insert all major tick positions, using their absolute value.
+		\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@y\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}%
+			\pgfplotscoordmath{default}{op}{abs}{{\pgfmathresult}}%
+			\edef\elem{{\pgfplots@ticknum}{\pgfmathresult}}%
+			\expandafter\pgfplotsarraypushback\elem\to\pgfplots@ygridlines
+		}%
+	\fi
+	\ifpgfplots@yminorgrids
+		% now the same for minor grid positions:
+		\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@minor@y\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}%
+			\pgfplotscoordmath{default}{op}{abs}{{\pgfmathresult}}%
+			\edef\elem{{\pgfplots@ticknum}{\pgfmathresult}}%
+			\expandafter\pgfplotsarraypushback\elem\to\pgfplots@ygridlines
+		}%
+	\fi
+	% sort the array!
+	\pgfkeysgetvalue{/pgfplots/smithchart@sortlt/.@cmd}\pgfplots@loc@TMPa
+	\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplots@loc@TMPa
+	\pgfplotsarraysort\pgfplots@ygridlines
+	%
+	% ok. Now it is sorted. 
+	%
+	% I finally need a lookup 
+	%   \pgfplots@ticknum --> sort index.
+	% If the associated values have the same absolute value, the same
+	% sort index should be assigned.
+	%
+	% For example, the array might be associated to the following tick
+	% positions, sorted by absolute value:
+	% 0.0, 1.0, -1.0, 3.0, -3.0, 4.0, -4.0, 5.0, -5.0
+	% What I want is that 
+	% 0.0 gets sort index -1
+	% 1.0 and -1.0 get sort index 0
+	% 3.0 and -3.0 get sort index 1
+	% 4.0 and -4.0 get sort index 2
+	% and so on. The array contains only absolute values, so that's
+	% not too difficult to check.
+	%
+	% The reason why the '0.0' line gets index -1 is to start the each
+	% nth stuff with the first arc -- the '0.0' line is no arc and
+	% should be treated specially.
+	%
+	% Since each of the tick positions can be (uniquely) identified by
+	% its associated \pgfplots@ticknum value, I map \pgfplots@ticknum
+	% to the sort index.
+	\countdef\c@sortindex=\c@pgf@counta
+	\c@sortindex=-1 % this is assigned to the '0.0' ygridline (if any)
+	\def\pgfplots@lasttickpos{}%
+	\pgfplotsarrayforeachungrouped\pgfplots@ygridlines\as\elem{%
+		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+		\ifx\pgfplots@lasttickpos\pgfutil@empty
+		\else
+			\ifx\pgfplots@lasttickpos\pgfplots@tick
+			\else
+				\advance\c@sortindex by1
+			\fi
+		\fi
+		\expandafter\edef\csname pgfplots@tickpos@to@sortidx@\pgfplots@ticknum\endcsname{\the\c@sortindex}%
+\message{\pgfplots@ticknum\space(abs(tickpos) = \pgfplots@tick) ---> sort index \csname pgfplots@tickpos@to@sortidx@\pgfplots@ticknum\endcsname^^J}%
+		\let\pgfplots@lasttickpos=\pgfplots@tick
+	}%
+}%
+
+\pgfkeysdefargs{/pgfplots/smithchart@sortlt}{#1#2#3#4}{%
+	\expandafter\pgfplots@prepared@tick@pos@unpack#1%
+	\let\pgfplots@A=\pgfplots@tick
+	\expandafter\pgfplots@prepared@tick@pos@unpack#2%
+	\let\pgfplots@B=\pgfplots@tick
+	\pgfplotscoordmath{default}{if less than}{\pgfplots@A}{\pgfplots@B}{#3}{#4}%
+}%
+
+% initialise a lookuptable from ticknumber -> tick position (sort
+% of an array)
+%
+% This is only invoked if it is needed (if 'arc
+% limits={[index]4,[index]2}' or something like that is used, see the
+% manual).
+%
+\def\pgfplots@gridlines@init@arc@limits@init@ticknum@lookup{%
+	\c@pgf@counta=0
+	\ifpgfplots@ymajorgrids
+		\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@x\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\expandafter\let\csname pgfplots@xtick@num@to@pos@\the\c@pgf@counta\endcsname=\pgfplots@tick
+			\advance\c@pgf@counta by1
+		}%
+	\fi
+	\ifpgfplots@yminorgrids
+		\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@minor@x\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\expandafter\let\csname pgfplots@xtick@num@to@pos@\the\c@pgf@counta\endcsname=\pgfplots@tick
+			\advance\c@pgf@counta by1
+		}%
+	\fi
+	\def\b@pgfplots@xticknum@to@pos@lookup{1}%
+}%
+\def\pgfplots@gridlines@init@arc@limits@normalise#1\relax{%
+	\pgfutil@in@:{#1}%
+	\ifpgfutil@in@
+	\else
+		\edef\entry{\entry:2}%
+	\fi
+	%
+	\pgfutil@in@{[index]}{#1}%
+	\ifpgfutil@in@
+		\if0\b@pgfplots@xticknum@to@pos@lookup
+			\pgfplots@gridlines@init@arc@limits@init@ticknum@lookup
+		\fi
+		\expandafter\pgfplots@gridlines@arc@limits@unpack\entry\relax
+		\pgfutil@ifundefined{pgfplots@xtick@num@to@pos@\pgfplots@arclimit}{%
+			\pgfplots@warning{There is no xtick with index '\pgfplots@arclimit'. Skipping it.}%
+			\let\entry=\pgfutil@empty
+		}{%
+			\edef\entry{\csname pgfplots@xtick@num@to@pos@\pgfplots@arclimit\endcsname:\pgfplots@arcskipeachnth}%
+		}%
+	\fi
+}%
+\def\pgfplots@gridlines@arc@limits@unpack#1:#2\relax{%
+	\def\pgfplots@arclimit{#1}%
+	\def\pgfplots@arcskipeachnth{#2}%
+}%
+
+% Returns the xtick position which should end the current arc.
+%
+% Note that arcs correspond to ygrid lines.
+%
+% #1 is a macro which will be filled with the result. If the result is
+% empty, no restriction is imposed. Otherwise, it contains the xtick
+% value at which the current arc shall end.
+%
+% The method relies on the 'arc limits' feature, more specifically the
+% stuff prepared by \pgfplots@gridlines@init@arc@limits
+\def\pgfplots@get@current@arc@limit#1{%
+	\def#1{}%
+	\ifx\pgfplots@arclimits\pgfutil@empty
+	\else
+		% \pgfplots@ticknum is defined in this context here.
+		\pgfutil@ifundefined{pgfplots@tickpos@to@sortidx@\pgfplots@ticknum}{%
+			\pgfplots@warning{Sorry, I can't get the current arc limit for \pgfplots@ticknum\space (seems like an internal error).}%
+		}{%
+			% get the sort index for the current tick (which is
+			% uniquely identified by its \pgfplots@ticknum)
+			\expandafter\let\expandafter\pgfplots@k\csname pgfplots@tickpos@to@sortidx@\pgfplots@ticknum\endcsname
+			%
+			\pgfplotslistforeachungrouped\pgfplots@arclimits@normalised\as\pgfplots@loc@TMPa{%
+				\ifx#1\pgfutil@empty
+					% we found no final limit so far. proceed.
+					\expandafter\pgfplots@gridlines@arc@limits@unpack\pgfplots@loc@TMPa\relax
+					\pgfplotsmathmodint\pgfplots@k\pgfplots@arcskipeachnth
+					\ifnum\pgfmathresult=0
+						\c@pgf@counta=\pgfplots@k
+						\divide\c@pgf@counta by\pgfplots@arcskipeachnth\relax
+						\edef\pgfplots@k{\the\c@pgf@counta}%
+					\else
+						% found the final limit. 
+						\let#1=\pgfplots@arclimit
+					\fi
+				\fi
+			}%
+		}%
+	\fi
 }%
 
 \def\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart#1{%
@@ -399,49 +607,53 @@
 			\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
 			\let\pgfplots@startim=\pgfmathresult
 			%
+			\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{1}{\pgfplots@signedradius}%
+			\let\pgfplots@startangle=\pgfmathresult
+			%
+			%
 			% compute end angle.
-			% The "0 degree" angle in my circles is in the direction
-			% of (1,0) .
-			\ifdim\pgfplots@startim pt>0pt
-				% ok; this arc belongs to the upper hemisphere.
-				\def\pgfplots@endangle{270}%
+			\pgfplots@get@current@arc@limit\pgfplots@arc@ends@at@x@circle@value%
+			%
+			\ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty
+				% Ok. There is no specific end point -- simply use the
+				% (1,0) point (i.e. draw the full arc).
+				%
+				% The "0 degree" angle in my circles is in the direction
+				% of (1,0) .
+				\ifdim\pgfplots@startim pt>0pt
+					% ok; this arc belongs to the upper hemisphere.
+					\def\pgfplots@endangle{270}%
+				\else
+					% ok; this arc belongs to the lower hemisphere.
+					\def\pgfplots@endangle{90}%
+				\fi
 			\else
-				% ok; this arc belongs to the lower hemisphere.
-				\def\pgfplots@endangle{90}%
+				% Ok. The arc should end before it reaches the (1,0)
+				% point. Determine the exact position and the
+				% corresponding arc end angle.
+				\pgfplotscoordmath{default}{parsenumber}{\pgfplots@arc@ends@at@x@circle@value}%
+				\let\pgfplots@arc@ends@at@x@circle@value=\pgfmathresult
+				\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@mone}}%
+				\let\pgfplots@A@mone=\pgfmathresult
+				\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@one}}%
+				\let\pgfplots@A@one=\pgfmathresult
+				% oh - we should only draw a partial arc.
+				% Well, then compute its end point and the
+				% corresponding end angle.
+				\pgfplotscoordmathcomplexdivision{\pgfplots@A@mone}{\pgfplots@y}{\pgfplots@A@one}{\pgfplots@y}%
+				\let\pgfplots@end=\pgfmathresult
+				\let\pgfplots@endim=\pgfmathresultim
+				\pgfplotscoordmath{default}{tofixed}{\pgfplots@end}%
+				\let\pgfplots@end=\pgfmathresult
+				\pgfplotscoordmath{default}{tofixed}{\pgfplots@endim}%
+				\let\pgfplots@endim=\pgfmathresult
+				%
+				\pgfplots@compute@angle@of@point@in@circle\pgfplots@end\pgfplots@endim{1}{\pgfplots@signedradius}%
+				\let\pgfplots@endangle=\pgfmathresult
 			\fi
 			% 
 			%
-			% Now, compute the start angle. this involves linear
-			% algebra:
-			%
-			% 1. compute diff vector from center=(1,\pgfplots@signedradius) to start:
-			\pgfmathsubtract@{\pgfplots@start}{1}%
-			\let\pgfplots@D\pgfmathresult
-			\pgfmathsubtract@{\pgfplots@startim}{\pgfplots@signedradius}%
-			\let\pgfplots@Dim\pgfmathresult
-			%
-			% 2. compute the start angle.
-			% It is related to the angle between the point (1,0) and
-			% diff, which, in turn is given by
-			%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
-			%  < (1,0), (D,Dim) > = D
-			% Note that PER DEFINITION  D < 0. 
-			\pgfmathveclen\pgfplots@D\pgfplots@Dim
-			\pgfmathdivide@{\pgfplots@D}{\pgfmathresult}%
-			\pgfmathacos@{-\pgfmathresult}% the '-' comes from D<0 .
-			\let\pgfplots@tmpangle\pgfmathresult%
-			% ok. tmpangle is per definition less than 180; it is the
-			% smaller angle between (1,0) and (D,Dim).
-			%
-			% compute the angle relate to (1,0):
-			\ifdim\pgfplots@Dim pt<0pt
-				\pgfmathadd@{180}{\pgfplots@tmpangle}%
-			\else
-				\pgfmathsubtract@{180}{\pgfplots@tmpangle}%
-			\fi
-			\let\pgfplots@startangle=\pgfmathresult
-			%
-\message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space( start angle \pgfplots@startangle, end angle \pgfplots@endangle)^^J}%
+\message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space( start angle \pgfplots@startangle, end angle \pgfplots@endangle,  arc limit: \ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty NONE\else \pgfplots@arc@ends@at@x@circle@value\fi)^^J}%
 			%
 			% Now, compute the arc.
 			%
@@ -454,6 +666,46 @@
 			\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
 			\expandafter\pgfpatharc\pgfplots@loc@TMPa
 		}%
+	\fi
+}%
+
+% Given a circle with center point (#3,#4), we search for the angle
+% of the point (#1,#2). The point is expected to be on the circle.
+% The resulting angle is returned in \pgfmathresult
+%
+% #1  x coordinate of the point for which an angle is searched
+% #2  y coordinate of the point for which an angle is searched
+% #3  x coordinate of the circle's center point
+% #4  y coordinate of the circle's center point
+%
+% All coordinates are expected in standard TeX precision (numbers
+% without unit)
+\def\pgfplots@compute@angle@of@point@in@circle#1#2#3#4{%
+	%
+	% 1. compute diff vector from center=(1,\pgfplots@signedradius) to start:
+	\pgfmathsubtract@{#1}{#3}%
+	\let\pgfplots@D\pgfmathresult
+	\pgfmathsubtract@{#2}{#4}%
+	\let\pgfplots@Dim\pgfmathresult
+	%
+	% 2. compute the start angle.
+	% It is related to the angle between the point (1,0) and
+	% diff, which, in turn is given by
+	%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
+	%  < (1,0), (D,Dim) > = D
+	% Note that PER DEFINITION  D < 0. 
+	\pgfmathveclen\pgfplots@D\pgfplots@Dim
+	\pgfmathdivide@{\pgfplots@D}{\pgfmathresult}%
+	\pgfmathacos@{-\pgfmathresult}% the '-' comes from D<0 .
+	\let\pgfplots@tmpangle\pgfmathresult%
+	% ok. tmpangle is per definition less than 180; it is the
+	% smaller angle between (1,0) and (D,Dim).
+	%
+	% compute the angle relate to (1,0):
+	\ifdim\pgfplots@Dim pt<0pt
+		\pgfmathadd@{180}{\pgfplots@tmpangle}%
+	\else
+		\pgfmathsubtract@{180}{\pgfplots@tmpangle}%
 	\fi
 }%
 
