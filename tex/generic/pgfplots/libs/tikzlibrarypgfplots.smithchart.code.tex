@@ -49,6 +49,7 @@
 \newif\ifpgfplots@smithchartaxis@rellimits
 
 \pgfplotsset{
+	/pgfplots/grid line limits/.initial=,
 	/pgfplots/every smithchart axis/.style={
 		grid=major,
 		xmin=0,
@@ -142,61 +143,104 @@
 		}%
 }
 
+\newif\ifpgfplotspointisinsmithchartCS
+
+% Computes the complex division
+% (A + j B) / (C + j D) = (A C + B D  + j (B C - A D) ) / (C^2 + D^2)
+% and assigns the result to \pgfmathresult and \pgfmathresultim . Here
+% 'j = sqrt{-1}' is the imaginary unit.
+%
+% #1 : A
+% #2 : B
+% #3 : C
+% #4 : D
+%
+% The arithmetics is performed in \pgfplotscoordmath{default} (which
+% uses the floating point unit in the initial configuration)
+%
+% Numbers are expected to be already parsed (i.e. you need to invoke 
+%  \pgfplotscoordmath{default}{parsenumber}{#1}%
+% 	\let\A=\pgfmathresult
+% before)
+\def\pgfplotscoordmathcomplexdivision#1#2#3#4{%
+	\begingroup
+	\edef\pgfplots@A{#1}%
+	\edef\pgfplots@B{#2}%
+	\edef\pgfplots@C{#3}%
+	\edef\pgfplots@D{#4}%
+	%
+	%
+	% ok, compute it:
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@C}}%
+	\let\pgfplots@AC=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@D}}%
+	\let\pgfplots@AD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@D}}%
+	\let\pgfplots@BD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@C}}%
+	\let\pgfplots@BC=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@C}{\pgfplots@C}}%
+	\let\pgfplots@CC=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@D}{\pgfplots@D}}%
+	\let\pgfplots@DD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@CC}{\pgfplots@DD}}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\let\pgfplots@scale=\pgfmathresult
+	%
+	%
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@AC}{\pgfplots@BD}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
+	\let\pgfplots@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@BC}{\pgfplots@AD}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
+	\let\pgfplots@y=\pgfmathresult
+	%
+	\xdef\pgfplots@glob@TMPa{%
+		\noexpand\def\noexpand\pgfmathresult{\pgfplots@x}%
+		\noexpand\def\noexpand\pgfmathresultim{\pgfplots@y}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}%
 
 \def\pgfplotsqpointxy@smithchartaxis#1#2{%
 	\pgf@process{%
-		% compute rx + j* ry = (#1 + j * #2 -1) / (#1 + j*#2 + 1)
-		%
-		% I write
-		% #1 - 1 + j * #2 = A + j * B
-		% 1 + #1 + j * #2 = C + j * D
-		%
-		% -> rx + j * ry = (A C + B D  + j (B C - A D) ) / (C^2 + D^2)
-		\pgfplotscoordmath{default}{parsenumber}{#1}%
-		\let\pgfplots@x=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{parsenumber}{#2}%
-		\let\pgfplots@D=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{parsenumber}{1}%
-		\let\pgfplots@one=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@one}{\pgfplots@x}}%
-		\let\pgfplots@C=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@x}{\pgfplots@one}}%
-		\let\pgfplots@A=\pgfmathresult
-		%
-		\let\pgfplots@B=\pgfplots@D
-		%
-		% ok, compute it:
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@C}}%
-		\let\pgfplots@AC=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@D}}%
-		\let\pgfplots@AD=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@D}}%
-		\let\pgfplots@BD=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@C}}%
-		\let\pgfplots@BC=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@C}{\pgfplots@C}}%
-		\let\pgfplots@CC=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@D}{\pgfplots@D}}%
-		\let\pgfplots@DD=\pgfmathresult
-		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@CC}{\pgfplots@DD}}%
-		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-		\let\pgfplots@scale=\pgfmathresult
-		%
-		%
-		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@AC}{\pgfplots@BD}}%
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		\let\pgfplots@x=\pgfmathresult
-		%
-		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@BC}{\pgfplots@AD}}%
-		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		\let\pgfplots@y=\pgfmathresult
+		\ifpgfplotspointisinsmithchartCS
+			\def\pgfplots@x{#1}%
+			\def\pgfplots@y{#2}%
+		\else
+			% compute rx + j* ry = (#1 + j * #2 -1) / (#1 + j*#2 + 1)
+			%
+			% I write
+			% #1 - 1 + j * #2 = A + j * B
+			% 1 + #1 + j * #2 = C + j * D
+			%
+			% -> rx + j * ry = (A + j B) / (C + j D) = (A C + B D  + j (B C - A D) ) / (C^2 + D^2)
+			\pgfplotscoordmath{default}{parsenumber}{#1}%
+			\let\pgfplots@x=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{parsenumber}{#2}%
+			\let\pgfplots@D=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{one}%
+			\let\pgfplots@one=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@one}{\pgfplots@x}}%
+			\let\pgfplots@C=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@x}{\pgfplots@one}}%
+			\let\pgfplots@A=\pgfmathresult
+			%
+			\let\pgfplots@B=\pgfplots@D
+			%
+			\pgfplotscoordmathcomplexdivision\pgfplots@A\pgfplots@B\pgfplots@C\pgfplots@D
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@x=\pgfmathresult
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresultim}%
+			\let\pgfplots@y=\pgfmathresult
+		\fi
 		%
 		\pgfqpointxy@orig\pgfplots@x\pgfplots@y
 %\message{pgfplotsqpointxy{#1}{#2} ---> (\pgfplots@x,\pgfplots@y) ---> (\the\pgf@x,\the\pgf@y)}%
@@ -278,12 +322,12 @@
 }%
 
 \def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
-	\pgfplots@clippath@install{\pgfusepath{clip}}%
+	%\pgfplots@clippath@install{\pgfusepath{clip}}%
 }%
 
 \def\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart#1{%
 	\if x\pgfplotspointonorientedsurfaceA
-		\pgfplotscoordmath{default}{parsenumber}{1}%
+		\pgfplotscoordmath{default}{one}%
 		\let\pgfplots@loc@TMPa=\pgfmathresult
 		%
 		\pgfplotscoordmath{default}{parsenumber}{#1}%
@@ -299,7 +343,7 @@
 		\pgfplotscoordmath{default}{tofixed}{\pgfplots@radius}%
 		\let\pgfplots@radius=\pgfmathresult
 		%
-\message{X grid line at '#1': center = (\pgfplots@center,0); radius = \pgfplots@radius.^^J}%
+\message{X grid line \#\csname pgfplots@ticknum\endcsname \space at '#1': center = (\pgfplots@center,0); radius = \pgfplots@radius.^^J}%
 		\pgfpathellipse
 			{\pgfpointxy@orig{\pgfplots@center}{0}}
 			{\pgfpointxy@orig{\pgfplots@radius}{0}}
@@ -310,15 +354,75 @@
 			\pgfpathlineto{\pgfpointxy@orig{1}{0}}%
 		}{%
 			\pgfplotscoordmath{default}{parsenumber}{#1}%
+			\let\pgfplots@y\pgfmathresult
 			\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
 			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-			\let\pgfplots@radius=\pgfmathresult
+			\let\pgfplots@signedradius=\pgfmathresult
+			\ifdim\pgfplots@signedradius pt<0pt
+				\edef\pgfplots@radius{-\pgfplots@signedradius}%
+			\else
+				\let\pgfplots@radius=\pgfplots@signedradius
+			\fi
 			%
-\message{Y grid line at '#1': center = (1,\pgfplots@radius); radius = \pgfplots@radius.^^J}%
-			\pgfpathellipse
-				{\pgfpointxy@orig{1}{\pgfplots@radius}}
-				{\pgfpointxy@orig{\pgfplots@radius}{0}}
-				{\pgfpointxy@orig{0}{\pgfplots@radius}}%
+			% compute start point for the arc:
+			\pgfplotscoordmath{default}{one}%
+			\let\pgfplots@one=\pgfmathresult
+			\pgfplotscoordmath{default}{parsenumber}{-1}%
+			\let\pgfplots@mone=\pgfmathresult
+			\pgfplotscoordmathcomplexdivision{\pgfplots@mone}{\pgfplots@y}{\pgfplots@one}{\pgfplots@y}%
+			\let\pgfplots@start=\pgfmathresult
+			\let\pgfplots@startim=\pgfmathresultim
+			\pgfplotscoordmath{default}{tofixed}{\pgfplots@start}%
+			\let\pgfplots@start=\pgfmathresult
+			\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
+			\let\pgfplots@startim=\pgfmathresult
+			%
+			% comput end angle:
+			\ifdim\pgfplots@startim pt>0pt
+				\def\pgfplots@endangle{270}%
+			\else
+				\def\pgfplots@endangle{90}%
+			\fi
+			% 
+			%
+			% compute diff vector from center=(1,\pgfplots@signedradius) to start:
+			\pgfmathsubtract@{\pgfplots@start}{1}%
+			\let\pgfplots@D\pgfmathresult
+			\pgfmathsubtract@{\pgfplots@startim}{\pgfplots@signedradius}%
+			\let\pgfplots@Dim\pgfmathresult
+			%
+			% compute the start angle.
+			% It is related to the angle between the point (1,0) and
+			% diff, which, in turn is given by
+			%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
+			%  < (1,0), (D,Dim) > = D
+			% Note that PER DEFINITION  D < 0. 
+			\pgfmathveclen\pgfplots@D\pgfplots@Dim
+			\pgfmathdivide@{\pgfplots@D}{\pgfmathresult}%
+			\pgfmathacos@{-\pgfmathresult}% the '-' comes from D<0 .
+			\let\pgfplots@tmpangle\pgfmathresult%
+			\ifdim\pgfplots@Dim pt<0pt
+				\pgfmathadd@{180}{\pgfplots@tmpangle}%
+			\else
+				\pgfmathsubtract@{180}{\pgfplots@tmpangle}%
+			\fi
+			\let\pgfplots@startangle=\pgfmathresult
+			%
+\message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space( start angle \pgfplots@startangle, end angle \pgfplots@endangle)^^J}%
+			%\pgfpathellipse
+			%	{\pgfpointxy@orig{1}{\pgfplots@signedradius}}
+			%	{\pgfpointxy@orig{\pgfplots@signedradius}{0}}
+			%	{\pgfpointxy@orig{0}{\pgfplots@signedradius}}%
+			\pgf@xa=\pgfplots@radius\pgf@xx
+			\pgf@xb=\pgfplots@radius\pgf@yy
+			\ifdim\pgfplots@startangle pt<\pgfplots@endangle pt
+				\pgfpathmoveto{\pgfpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
+				\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
+			\else
+				\pgfpathmoveto{\pgfpointxy@orig{1}{0}}%
+				\edef\pgfplots@loc@TMPa{{\pgfplots@endangle}{\pgfplots@startangle}{\the\pgf@xa\space and \the\pgf@xb}}%
+			\fi
+			\expandafter\pgfpatharc\pgfplots@loc@TMPa
 		}%
 	\fi
 }%
@@ -501,7 +605,7 @@
 	%
 	\pgfplotscoordmath{y}{parsenumber}{0}%
 	\global\let\pgfplots@ymin=\pgfmathresult
-	\pgfplotscoordmath{y}{parsenumber}{1}%
+	\pgfplotscoordmath{y}{one}%
 	\global\let\pgfplots@ymax=\pgfmathresult
 	\global\let\pgfplots@data@ymin=\pgfplots@ymin
 	\global\let\pgfplots@data@ymax=\pgfplots@ymax
