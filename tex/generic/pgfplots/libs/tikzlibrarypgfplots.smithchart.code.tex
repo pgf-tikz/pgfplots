@@ -363,6 +363,7 @@
 \def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
 	%\pgfplots@clippath@install{\pgfusepath{clip}}%
 	\pgfplots@gridlines@init@grid@stop@points@for yx%
+	\pgfplots@gridlines@init@grid@stop@points@for xy%
 }%
 
 % Initialises the '#1grid stop at #2' feature. All it does is to prepare the
@@ -376,7 +377,7 @@
 % #2 either x or y
 \def\pgfplots@gridlines@init@grid@stop@points@for#1#2{%
 	%
-	\expandafter\let\csname pgfplots@#1grid@stop@points\endcsname=\pgfutil@empty
+	\expandafter\let\csname pgfplots@#1grid@stop@points\endcsname=\relax
 	%
 	\pgfkeysgetvalue{/pgfplots/#1grid stop at #2}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -554,7 +555,7 @@
 % stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
 \def\pgfplots@get@current@grid@stop@point#1#2{%
 	\def\pgfplotsretval{}%
-	\ifx\pgfplots@ygrid@stop@points\pgfutil@empty
+	\expandafter\ifx\csname pgfplots@#1grid@stop@points\endcsname\relax
 	\else
 		% \pgfplots@ticknum is defined in this context here.
 		\pgfutil@ifundefined{pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum}{%
@@ -564,7 +565,7 @@
 			% uniquely identified by its \pgfplots@ticknum)
 			\expandafter\let\expandafter\pgfplots@k\csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname
 			%
-			\pgfplotslistforeachungrouped\pgfplots@ygrid@stop@points\as\pgfplots@loc@TMPa{%
+			\expandafter\pgfplotslistforeachungrouped\csname pgfplots@#1grid@stop@points\endcsname\as\pgfplots@loc@TMPa{%
 				\ifx\pgfplotsretval\pgfutil@empty
 					% we found no final limit so far. proceed.
 					\expandafter\pgfplots@gridlines@stop@at@unpack\pgfplots@loc@TMPa\relax
@@ -588,23 +589,97 @@
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	%
 	\pgfplotscoordmath{default}{parsenumber}{#1}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\let\pgfplots@x=\pgfmathresult
 	%
-	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}}%
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@loc@TMPa}{\pgfplots@x}}%
+	\let\pgfplots@radius@inverse=\pgfmathresult
 	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
 	\let\pgfplots@radius=\pgfmathresult
-	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@TMPb}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@x}}%
 	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 	\let\pgfplots@center=\pgfmathresult
 	%
 	\pgfplotscoordmath{default}{tofixed}{\pgfplots@radius}%
 	\let\pgfplots@radius=\pgfmathresult
 	%
-%\message{X grid line \#\csname pgfplots@ticknum\endcsname \space at '#1': center = (\pgfplots@center,0); radius = \pgfplots@radius.^^J}%
-	\pgfpathellipse
-		{\pgfpointxy@orig{\pgfplots@center}{0}}
-		{\pgfpointxy@orig{\pgfplots@radius}{0}}
-		{\pgfpointxy@orig{0}{\pgfplots@radius}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfplots@radius@inverse}%
+	\let\pgfplots@radius@inverse=\pgfmathresult
+	%
+	% This here would suffice in case 'xgrid stop at y={}':
+%	\pgfpathellipse
+%		{\pgfpointxy@orig{\pgfplots@center}{0}}
+%		{\pgfpointxy@orig{\pgfplots@radius}{0}}
+%		{\pgfpointxy@orig{0}{\pgfplots@radius}}%
+	%
+	% but we also check for the 'xgrid stop at y' feature:
+	\pgfplots@get@current@grid@stop@point xy%
+	\let\pgfplots@arc@ends@at@y@arc@value\pgfplotsretval%
+	%
+	\ifx\pgfplots@arc@ends@at@y@arc@value\pgfutil@empty
+		% Ok. There is no specific end point -- simply use the
+		% (1,0) point (i.e. draw the full circle).
+		%
+		\pgfmathadd@{\pgfplots@center}{\pgfplots@radius}%
+		\let\pgfplots@start=\pgfmathresult%
+		\def\pgfplots@startim{0}%
+		\def\pgfplots@startangle{0}%
+		\def\pgfplots@endangle{360}%
+	\else
+		% Ok. The arc should end before it reaches the (1,0)
+		% point. Determine the exact position and the
+		% corresponding arc end angle.
+		%
+		% In general, the intersection between the circle for
+		% fixed x=A and fixed y=B is given by
+		%
+		% p + j * q = (A + j * B -1 ) / ( A + j*B +1)
+		% see http://www.siart.de/lehre/tutorien.xhtml#smishort
+		\pgfplotscoordmath{default}{one}%
+		\let\pgfplots@one=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{-1}%
+		\let\pgfplots@mone=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@arc@ends@at@y@arc@value}%
+		\let\pgfplots@arc@ends@at@y@arc@value=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@mone}}%
+		\let\pgfplots@A@mone=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@one}}%
+		\let\pgfplots@A@one=\pgfmathresult
+		% oh - we should only draw a partial arc.
+		% Well, then compute its end point and the
+		% corresponding end angle.
+		\pgfplotscoordmathcomplexdivision
+			{\pgfplots@A@mone}{\pgfplots@arc@ends@at@y@arc@value}%
+			{\pgfplots@A@one}{\pgfplots@arc@ends@at@y@arc@value}%
+		\let\pgfplots@start=\pgfmathresult
+		\let\pgfplots@startim=\pgfmathresultim
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@start}%
+		\let\pgfplots@start=\pgfmathresult
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
+		\let\pgfplots@startim=\pgfmathresult
+		%
+		\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{\pgfplots@center}{\pgfplots@radius}{\pgfplots@radius@inverse}%
+		\let\pgfplots@startangle=\pgfmathresult
+		\pgfmathsubtract@{360}{\pgfplots@startangle}%
+		\let\pgfplots@endangle=\pgfmathresult
+		\ifdim\pgfplots@startangle pt>\pgfplots@endangle pt
+			\let\pgfplots@loc@TMPa=\pgfplots@startangle
+			\let\pgfplots@startangle=\pgfplots@endangle
+			\let\pgfplots@endangle=\pgfplots@loc@TMPa
+		\fi
+	\fi
+	% 
+%\message{X grid line \#\csname pgfplots@ticknum\endcsname \space at '#1': center = (\pgfplots@center,0);  radius = \pgfplots@radius\space(start angle \pgfplots@startangle, end angle = \pgfplots@endangle; stops at y = \pgfplots@arc@ends@at@y@arc@value).^^J}%
+	%
+	% Now, compute the arc.
+	%
+	% first, compute the absolute x/y radii:
+	\pgf@xa=\pgfplots@radius\pgf@xx
+	\pgf@xb=\pgfplots@radius\pgf@yy
+	\pgfpathmoveto{\pgfpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
+	% note that the case startangle > endangle is
+	% automatically correct; patharc handles that.
+	\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
+	\expandafter\pgfpatharc\pgfplots@loc@TMPa
 }
 
 \def\pgfplots@smithchart@draw@yarc#1{%
