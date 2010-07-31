@@ -66,6 +66,9 @@
 	/pgfplots/ygrid stop each nth at x/.initial=,
 	/pgfplots/ygrid stop each nth at x start/.initial=0,
 	%
+	/pgfplots/xgrid stop at y map/.initial=,
+	/pgfplots/ygrid stop at x map/.initial=,
+	%
 	% this boolean may only be used inside of \addplot. It will be
 	% ignored otherwise.
 	/pgfplots/is smithchart cs/.is if=pgfplotspointisinsmithchartCS,
@@ -366,7 +369,8 @@
 	\pgfplots@gridlines@init@grid@stop@points@for xy%
 }%
 
-% Initialises the '#1grid stop each nth at #2' feature. All it does is to prepare the
+% Initialises the '#1grid stop each nth at #2' and '#1grid stop at #2
+% map' features. All it does is to prepare the
 % method \pgfplots@get@current@grid@stop@point. 
 %
 % The method is quite involved. Please refer to the manual for what it
@@ -478,6 +482,43 @@
 		% unfortunately, I can't free the \pgfplots@gridlines array
 		% without extensive overhead :-(
 	\fi
+	%
+	\expandafter\let\csname b@pgfplots@#1gridline@stopmap\endcsname\relax
+	\pgfkeysgetvalue{/pgfplots/#1grid stop at #2 map}\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa\space}% this inserts the final space and handles any active ':' sign (for french babel)
+	\def\pgfplots@loc@TMPb{\pgfplots@gridlines@init@stop@maps #1#2}%
+	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI%
+}%
+
+\def\pgfplots@gridlines@init@stop@maps#1#2{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfutil@gobble
+	}{%
+		\pgfplots@gridlines@init@stop@maps@next#1#2%
+	}%
+}%
+\def\pgfplots@gridlines@init@stop@maps@next#1#2#3:#4 {%
+	\pgfplots@gridlines@stopmap@prepare{#3}%
+	\expandafter\edef\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname{#4}%
+	\if#1y%
+		% support symmetry:
+		% add -\pgfmathresult to the map.
+		% To disable this symmetry, use 'ygrid stop at x map={0.2:4 -0.2:5}
+		% you can also use an empty value '-0.2:{}', that's also ok.
+		\expandafter\edef\csname pgfplots@#1gridline@stopmap@-\pgfmathresult\endcsname{#4}%
+	\fi
+	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
+	%
+	\pgfplots@gridlines@init@stop@maps #1#2%
+}
+
+\def\pgfplots@gridlines@stopmap@prepare#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\pgfmathfloattofixed\pgfmathresult
+	\expandafter\pgfplots@gridlines@stopmap@trunc@\pgfmathresult00\relax
+}%
+\def\pgfplots@gridlines@stopmap@trunc@#1.#2#3#4\relax{%
+	\def\pgfmathresult{#1.#2#3}%
 }%
 
 \pgfkeysdefargs{/pgfplots/smithchart@sortlt}{#1#2#3#4}{%
@@ -547,40 +588,60 @@
 %
 % Note that arcs correspond to ygrid lines.
 %
+% #1 either x or y
+% #2 either x or y
+% #3 the value of the current grid line
+%
 % @POSTCONDITION On output, \pgfplotsretval will be filled with the
 % result. If the result is empty, no restriction is imposed.
 % Otherwise, it contains the #2tick value at which the current #1grid shall end.
 %
 % The method relies on the 'ygrid stop each nth at x' feature, more specifically the
 % stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
-\def\pgfplots@get@current@grid@stop@point#1#2{%
+\def\pgfplots@get@current@grid@stop@point#1#2#3{%
 	\def\pgfplotsretval{}%
-	\expandafter\ifx\csname pgfplots@#1grid@stop@points\endcsname\relax
+	%
+	% first: check the '#1grid stop at #2 map':
+	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
+		% ok. there is no such thing.
 	\else
-		% \pgfplots@ticknum is defined in this context here.
-		\pgfutil@ifundefined{pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum}{%
-			\pgfplots@warning{Sorry, I can't get the current arc limit for \pgfplots@ticknum\space (seems like an internal error).}%
+		% ah - process it!
+		\pgfplots@gridlines@stopmap@prepare{#3}%
+		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfmathresult}{%
 		}{%
-			% get the sort index for the current tick (which is
-			% uniquely identified by its \pgfplots@ticknum)
-			\expandafter\let\expandafter\pgfplots@k\csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname
-			%
-			\expandafter\pgfplotslistforeachungrouped\csname pgfplots@#1grid@stop@points\endcsname\as\pgfplots@loc@TMPa{%
-				\ifx\pgfplotsretval\pgfutil@empty
-					% we found no final limit so far. proceed.
-					\expandafter\pgfplots@gridlines@stop@at@unpack\pgfplots@loc@TMPa\relax
-					\pgfplotsmathmodint\pgfplots@k\pgfplots@grid@stop@at@eachnth
-					\ifnum\pgfmathresult=0
-						\c@pgf@counta=\pgfplots@k
-						\divide\c@pgf@counta by\pgfplots@grid@stop@at@eachnth\relax
-						\edef\pgfplots@k{\the\c@pgf@counta}%
-					\else
-						% found the final limit. 
-						\let\pgfplotsretval=\pgfplots@grid@stop@at
-					\fi
-				\fi
-			}%
+			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname}%
 		}%
+	\fi
+	%
+	\ifx\pgfplotsretval\pgfutil@empty
+		% the individual map failed. Ok, then check for the '#1grid stop each nth at #2'
+		\expandafter\ifx\csname pgfplots@#1grid@stop@points\endcsname\relax
+		\else
+			% \pgfplots@ticknum is defined in this context here.
+			\pgfutil@ifundefined{pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum}{%
+				\pgfplots@warning{Sorry, I can't get the current arc limit for \pgfplots@ticknum\space (seems like an internal error).}%
+			}{%
+				% get the sort index for the current tick (which is
+				% uniquely identified by its \pgfplots@ticknum)
+				\expandafter\let\expandafter\pgfplots@k\csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname
+				%
+				\expandafter\pgfplotslistforeachungrouped\csname pgfplots@#1grid@stop@points\endcsname\as\pgfplots@loc@TMPa{%
+					\ifx\pgfplotsretval\pgfutil@empty
+						% we found no final limit so far. proceed.
+						\expandafter\pgfplots@gridlines@stop@at@unpack\pgfplots@loc@TMPa\relax
+						\pgfplotsmathmodint\pgfplots@k\pgfplots@grid@stop@at@eachnth
+						\ifnum\pgfmathresult=0
+							\c@pgf@counta=\pgfplots@k
+							\divide\c@pgf@counta by\pgfplots@grid@stop@at@eachnth\relax
+							\edef\pgfplots@k{\the\c@pgf@counta}%
+						\else
+							% found the final limit. 
+							\let\pgfplotsretval=\pgfplots@grid@stop@at
+						\fi
+					\fi
+				}%
+			}%
+		\fi
 	\fi
 }%
 
@@ -612,7 +673,7 @@
 %		{\pgfpointxy@orig{0}{\pgfplots@radius}}%
 	%
 	% but we also check for the 'xgrid stop each nth at y' feature:
-	\pgfplots@get@current@grid@stop@point xy%
+	\pgfplots@get@current@grid@stop@point xy{#1}%
 	\let\pgfplots@arc@ends@at@y@arc@value\pgfplotsretval%
 	%
 	\ifx\pgfplots@arc@ends@at@y@arc@value\pgfutil@empty
@@ -742,7 +803,7 @@
 		%
 		%
 		% compute end angle.
-		\pgfplots@get@current@grid@stop@point yx%
+		\pgfplots@get@current@grid@stop@point yx{#1}%
 		\let\pgfplots@arc@ends@at@x@circle@value\pgfplotsretval%
 		%
 		\ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty
