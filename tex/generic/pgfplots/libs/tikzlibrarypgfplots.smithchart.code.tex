@@ -600,9 +600,13 @@
 		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
 		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 		\let\pgfplots@signedradius=\pgfmathresult
+		%
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@y}%
 		\ifdim\pgfplots@signedradius pt<0pt
+			\edef\pgfplots@radius@inverse{-\pgfmathresult}%
 			\edef\pgfplots@radius{-\pgfplots@signedradius}%
 		\else
+			\edef\pgfplots@radius@inverse{\pgfmathresult}%
 			\let\pgfplots@radius=\pgfplots@signedradius
 		\fi
 		% this here is the correct, complete circle -- together
@@ -641,7 +645,7 @@
 		\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
 		\let\pgfplots@startim=\pgfmathresult
 		%
-		\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{1}{\pgfplots@signedradius}%
+		\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{1}{\pgfplots@signedradius}{\pgfplots@radius@inverse}%
 		\let\pgfplots@startangle=\pgfmathresult
 		%
 		%
@@ -667,7 +671,7 @@
 			% corresponding arc end angle.
 			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@arc@ends@at@x@circle@value}%
 			\let\pgfplots@arc@ends@at@x@circle@value=\pgfmathresult
-			\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@mone}}%
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@mone}}%
 			\let\pgfplots@A@mone=\pgfmathresult
 			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@one}}%
 			\let\pgfplots@A@one=\pgfmathresult
@@ -682,7 +686,7 @@
 			\pgfplotscoordmath{default}{tofixed}{\pgfplots@endim}%
 			\let\pgfplots@endim=\pgfmathresult
 			%
-			\pgfplots@compute@angle@of@point@in@circle\pgfplots@end\pgfplots@endim{1}{\pgfplots@signedradius}%
+			\pgfplots@compute@angle@of@point@in@circle\pgfplots@end\pgfplots@endim{1}{\pgfplots@signedradius}{\pgfplots@radius@inverse}%
 			\let\pgfplots@endangle=\pgfmathresult
 		\fi
 		% 
@@ -718,10 +722,13 @@
 % #2  y coordinate of the point for which an angle is searched
 % #3  x coordinate of the circle's center point
 % #4  y coordinate of the circle's center point
+% #5  is either empty or it is expected to contain the inverse radius, 1/r
+% this information is available in my context, so I don't recompute
+% it.
 %
 % All coordinates are expected in standard TeX precision (numbers
 % without unit)
-\def\pgfplots@compute@angle@of@point@in@circle#1#2#3#4{%
+\def\pgfplots@compute@angle@of@point@in@circle#1#2#3#4#5{%
 	%
 	% 1. compute diff vector from center=(1,\pgfplots@signedradius) to start:
 	\pgfmathsubtract@{#1}{#3}%
@@ -734,9 +741,22 @@
 	% diff, which, in turn is given by
 	%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
 	%  < (1,0), (D,Dim) > = D
-	% Note that PER DEFINITION  D <= 0. 
-	\pgfmathveclen\pgfplots@D\pgfplots@Dim
-	\pgfmathdivide@{\pgfplots@D}{\pgfmathresult}%
+	% 
+	% Note that ||(D,Dim)|| = r, the radius of the involved circle
+	% around (#3,#4). If 1/r is already available, use it! Saves a lot
+	% of time.
+	%
+	\def\pgfplots@loc@TMPa{#5}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfmathveclen\pgfplots@D\pgfplots@Dim
+		\let\pgfplots@veclen=\pgfmathresult
+		\pgfmathreciprocal@\pgfplots@veclen
+		\let\pgfplots@inverseveclen=\pgfmathresult
+	\else
+		% oh, good -- we already have 1/||(D,Dim)||. Use it.
+		\def\pgfplots@inverseveclen{#5}%
+	\fi
+	\pgfmathmultiply@{\pgfplots@D}{\pgfplots@inverseveclen}%
 	\pgfmathacos@{\pgfmathresult}% the '-' comes from D<0 .
 	\let\pgfplots@tmpangle\pgfmathresult%
 	% ok. tmpangle is per definition less than 180; it is the
