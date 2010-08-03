@@ -407,7 +407,7 @@
 		% should be of the form '<xtickpos>:<n>' where <n> means that each
 		% <n>th arc can pass.
 		\expandafter\pgfplotsutilforeachcommasep\pgfplots@loc@TMPa\as\entry{%
-			\expandafter\pgfplots@gridlines@init@grid@stop@points@for@normalise\expandafter #1\expandafter #2\entry\relax
+			\expandafter\pgfplots@gridlines@init@grid@stop@points@for@normalise\entry\relax#1#2%
 			\expandafter\pgfplotslistpushback\entry\to\pgfplots@loc@TMPd
 		}%
 		\expandafter\let\csname pgfplots@#1grid@stop@points\endcsname=\pgfplots@loc@TMPd
@@ -511,14 +511,16 @@
 	}%
 }%
 \def\pgfplots@gridlines@init@stop@maps@next#1#2#3:#4 {%
+	\pgfplotscoordmath{default}{parsenumber}{#4}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@gridlines@stopmap@prepare{#3}%
-	\expandafter\edef\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname{#4}%
+	\expandafter\let\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname\pgfplots@loc@TMPa%
 	\if#1y%
 		% support symmetry:
 		% add -\pgfmathresult to the map.
 		% To disable this symmetry, use 'ygrid stop at x={0.2:4 -0.2:5}
 		% you can also use an empty value '-0.2:{}', that's also ok.
-		\expandafter\edef\csname pgfplots@#1gridline@stopmap@-\pgfmathresult\endcsname{#4}%
+		\expandafter\let\csname pgfplots@#1gridline@stopmap@-\pgfmathresult\endcsname\pgfplots@loc@TMPa%
 	\fi
 	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
 	%
@@ -571,26 +573,30 @@
 	}{}%
 	\expandafter\def\csname b@pgfplots@#2ticknum@to@pos@lookup\endcsname{1}%
 }%
-\def\pgfplots@gridlines@init@grid@stop@points@for@normalise#1#2#3\relax{%
-	\pgfutil@in@:{#3}%
+\def\pgfplots@gridlines@init@grid@stop@points@for@normalise#1\relax#2#3{%
+	\pgfutil@in@:{#1}%
 	\ifpgfutil@in@
 	\else
 		\edef\entry{\entry:2}%
 	\fi
 	%
-	\pgfutil@in@{[index]}{#3}%
+	\pgfutil@in@{[index]}{#1}%
 	\ifpgfutil@in@
-		\if0\csname b@pgfplots@#2ticknum@to@pos@lookup\endcsname
-			\pgfplots@gridlines@init@grid@stop@points@for@init@ticknum@lookup#1#2%
+		\if0\csname b@pgfplots@#3ticknum@to@pos@lookup\endcsname
+			\pgfplots@gridlines@init@grid@stop@points@for@init@ticknum@lookup#2#3%
 		\fi
 		\expandafter\pgfplots@gridlines@stop@at@unpack\entry\relax
-		\pgfutil@ifundefined{pgfplots@#2tick@num@to@pos@\pgfplots@grid@stop@at}{%
-			\pgfplots@warning{There is no #2tick with index '\pgfplots@grid@stop@at'. Skipping it.}%
+		\pgfutil@ifundefined{pgfplots@#3tick@num@to@pos@\pgfplots@grid@stop@at}{%
+			\pgfplots@warning{There is no #3tick with index '\pgfplots@grid@stop@at'. Skipping it.}%
 			\let\entry=\pgfutil@empty
 		}{%
-			\edef\entry{\csname pgfplots@#2tick@num@to@pos@\pgfplots@grid@stop@at\endcsname:\pgfplots@grid@stop@at@eachnth}%
+			\edef\entry{\csname pgfplots@#3tick@num@to@pos@\pgfplots@grid@stop@at\endcsname:\pgfplots@grid@stop@at@eachnth}%
 		}%
 	\fi
+	%
+	\expandafter\pgfplots@gridlines@stop@at@unpack\entry\relax
+	\pgfplotscoordmath{default}{parsenumber}\pgfplots@grid@stop@at
+	\edef\entry{\pgfmathresult:\pgfplots@grid@stop@at@eachnth}%
 }%
 \def\pgfplots@gridlines@stop@at@unpack#1:#2\relax{%
 	\def\pgfplots@grid@stop@at{#1}%
@@ -608,6 +614,8 @@
 % @POSTCONDITION On output, \pgfplotsretval will be filled with the
 % result. If the result is empty, no restriction is imposed.
 % Otherwise, it contains the #2tick value at which the current #1grid shall end.
+% The result is already processed with
+% \pgfplotscoordmath{default}{parsenumber}{<value>}
 %
 % The method relies on the 'ygrid stop each nth at x' feature, more specifically the
 % stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
@@ -650,6 +658,9 @@
 						\else
 							% found the final limit. 
 							\let\pgfplotsretval=\pgfplots@grid@stop@at
+							\if#1x%
+							\else
+							\fi
 						\fi
 					\fi
 				}%
@@ -714,8 +725,6 @@
 		\let\pgfplots@one=\pgfmathresult
 		\pgfplotscoordmath{default}{parsenumber}{-1}%
 		\let\pgfplots@mone=\pgfmathresult
-		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@arc@ends@at@y@arc@value}%
-		\let\pgfplots@arc@ends@at@y@arc@value=\pgfmathresult
 		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@mone}}%
 		\let\pgfplots@A@mone=\pgfmathresult
 		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@one}}%
@@ -855,8 +864,6 @@
 			% Ok. The arc should end before it reaches the (1,0)
 			% point. Determine the exact position and the
 			% corresponding arc end angle.
-			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@arc@ends@at@x@circle@value}%
-			\let\pgfplots@arc@ends@at@x@circle@value=\pgfmathresult
 			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@mone}}%
 			\let\pgfplots@A@mone=\pgfmathresult
 			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@one}}%
