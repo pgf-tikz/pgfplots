@@ -378,8 +378,8 @@
 
 \def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
 	%\pgfplots@clippath@install{\pgfusepath{clip}}%
-	\pgfplots@gridlines@init@grid@stop@points@for yx%
-	\pgfplots@gridlines@init@grid@stop@points@for xy%
+	\edef\pgfplots@loc@TMPa{\pgfplotspointonorientedsurfaceA\pgfplotspointonorientedsurfaceB}%
+	\expandafter\pgfplots@gridlines@init@grid@stop@points@for\pgfplots@loc@TMPa
 }%
 
 % Initialises the '#1grid stop each nth at #2' and '#1grid stop at #2'
@@ -528,9 +528,12 @@
 }
 
 \def\pgfplots@gridlines@stopmap@prepare#1{%
+	\begingroup
 	\pgfmathfloatparsenumber{#1}%
-	\pgfmathfloattofixed\pgfmathresult
-	\expandafter\pgfplots@gridlines@stopmap@trunc@\pgfmathresult00\relax
+	\def\pgfmathfloat@round@precision{2}%
+	\pgfmathfloatround\pgfmathresult
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
 }%
 \def\pgfplots@gridlines@stopmap@trunc@#1.#2#3#4\relax{%
 	\def\pgfmathresult{#1.#2#3}%
@@ -622,15 +625,17 @@
 \def\pgfplots@get@current@grid@stop@point#1#2#3{%
 	\def\pgfplotsretval{}%
 	%
+	\pgfplots@gridlines@stopmap@prepare{#3}%
+	\let\pgfplots@tick@prepared=\pgfmathresult
+	%
 	% first: check the '#1grid stop at #2':
 	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
 		% ok. there is no such thing.
 	\else
 		% ah - process it!
-		\pgfplots@gridlines@stopmap@prepare{#3}%
-		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfmathresult}{%
+		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared}{%
 		}{%
-			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname}%
+			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared\endcsname}%
 		}%
 	\fi
 	%
@@ -657,14 +662,51 @@
 							\edef\pgfplots@k{\the\c@pgf@counta}%
 						\else
 							% found the final limit. 
+							%
+							% Now, check the constraints which couple
+							% X and Y.
 							\let\pgfplotsretval=\pgfplots@grid@stop@at
-							\if#1x%
-							\else
+							\if#1y%
+								%
+								\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
+\message{checking ending 'y=#3' at 'x=\pgfplotsretval'. 'x=\pgfmathresult' stops}%
+								\pgfutil@ifundefined{pgfplots@final@stop@point@for@xtick@\pgfmathresult}{%
+									% no constraint. Ok.
+\message{ nowhere. No contraint.^^J}%
+								}{%
+\message{ at \pgfplots@loc@TMPa. Feasible: }%
+									% Oh, a constraint. That means
+									% further work.
+									\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@xtick@\pgfmathresult\endcsname
+									\pgfplotscoordmath{default}{op}{abs}{{#3}}%
+									\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+										% ok, we can use the found
+										% stop value.
+\message{YES.^^J}%
+									}{%
+\message{NO.^^J}%
+										% no, the stop value is
+										% invalid; it would stop in
+										% white space!
+										\let\pgfplotsretval=\pgfutil@empty
+									}%
+								}%
 							\fi
 						\fi
 					\fi
 				}%
 			}%
+		\fi
+	\fi
+	\if#1x%
+		\ifx\pgfplotsretval\pgfutil@empty
+		\else
+			%
+			% FIXME : this pollutes the global
+			% namespace with inherently local
+			% information!
+			\expandafter\global\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
+\message{#1 grid line: storing end value for '#3' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
 		\fi
 	\fi
 }%
@@ -697,7 +739,7 @@
 %		{\pgfpointxy@orig{0}{\pgfplots@radius}}%
 	%
 	% but we also check for the 'xgrid stop each nth at y' feature:
-	\pgfplots@get@current@grid@stop@point xy{#1}%
+	\pgfplots@get@current@grid@stop@point xy{\pgfplots@x}%
 	\let\pgfplots@arc@ends@at@y@arc@value\pgfplotsretval%
 	%
 	\ifx\pgfplots@arc@ends@at@y@arc@value\pgfutil@empty
@@ -842,7 +884,7 @@
 		%
 		%
 		% compute end angle.
-		\pgfplots@get@current@grid@stop@point yx{#1}%
+		\pgfplots@get@current@grid@stop@point yx{\pgfplots@y}%
 		\let\pgfplots@arc@ends@at@x@circle@value\pgfplotsretval%
 		%
 		\ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty
