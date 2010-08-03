@@ -627,6 +627,8 @@
 	%
 	\pgfplots@gridlines@stopmap@prepare{#3}%
 	\let\pgfplots@tick@prepared=\pgfmathresult
+	\pgfmathfloatabs@\pgfplots@tick@prepared
+	\let\pgfplots@tick@prepared@abs=\pgfmathresult
 	%
 	% first: check the '#1grid stop at #2':
 	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
@@ -667,30 +669,7 @@
 							% X and Y.
 							\let\pgfplotsretval=\pgfplots@grid@stop@at
 							\if#1y%
-								%
-								\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
-\message{checking ending 'y=#3' at 'x=\pgfplotsretval'. 'x=\pgfmathresult' stops}%
-								\pgfutil@ifundefined{pgfplots@final@stop@point@for@xtick@\pgfmathresult}{%
-									% no constraint. Ok.
-\message{ nowhere. No contraint.^^J}%
-								}{%
-\message{ at \pgfplots@loc@TMPa. Feasible: }%
-									% Oh, a constraint. That means
-									% further work.
-									\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@xtick@\pgfmathresult\endcsname
-									\pgfplotscoordmath{default}{op}{abs}{{#3}}%
-									\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
-										% ok, we can use the found
-										% stop value.
-\message{YES.^^J}%
-									}{%
-\message{NO.^^J}%
-										% no, the stop value is
-										% invalid; it would stop in
-										% white space!
-										\let\pgfplotsretval=\pgfutil@empty
-									}%
-								}%
+								\pgfplots@get@current@grid@stop@point@handle@yconstraints{#3}%
 							\fi
 						\fi
 					\fi
@@ -701,13 +680,116 @@
 	\if#1x%
 		\ifx\pgfplotsretval\pgfutil@empty
 		\else
-			%
-			% FIXME : this pollutes the global
-			% namespace with inherently local
-			% information!
-			\expandafter\global\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
-\message{#1 grid line: storing end value for '#3' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
+			\pgfplots@get@current@grid@stop@point@handle@xconstraints{#3}%
 		\fi
+	\fi
+}%
+
+% PRECONDITION
+%   \pgfplotsretval contains a non-zero contraint for the xgrid at #1.
+%
+% POSTCONDITION
+% 	- the value of \pgfplotsretval is not changed.
+%   - several values required to evaluate
+%   \pgfplots@get@current@grid@stop@point@handle@yconstraints
+%   are initialised.
+%
+% @see \pgfplots@get@current@grid@stop@point@handle@yconstraints
+\def\pgfplots@get@current@grid@stop@point@handle@xconstraints#1{%
+	%
+	% FIXME : this pollutes the global
+	% namespace with inherently local
+	% information!
+	\expandafter\global\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
+\message{x grid line: storing end value for '#1' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
+	%
+	\let\pgfplotsretval@@=\pgfplotsretval
+	\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfutil@ifundefined{pgfplots@minimal@abslength@for@ytick@\pgfplots@loc@TMPa}{%
+		\pgfplotscoordmath{default}{zero}%
+	}{%
+		\expandafter\let\expandafter\pgfmathresult\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@loc@TMPa\endcsname
+	}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfplotscoordmath{default}{max}{\pgfplots@loc@TMPb}{#1}%
+	\expandafter\global\expandafter\let\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@loc@TMPa\endcsname=\pgfmathresult
+\message{y grid line: updating minimal abs length[\pgfplots@loc@TMPa] = \pgfmathresult.^^J}%
+	\let\pgfplotsretval=\pgfplotsretval@@
+}%
+
+
+% PRECONDITION
+%   \pgfplotsretval contains a non-zero constraint for the ygrid at #1.
+%
+% POSTCONDITION
+% 	either \pgfplotsretval is unchanged, or it is reset to
+% 	\pgfutil@empty if constraints are violated.
+%
+% The constraints are ONLY effective if BOTH, incomplete x- and y grid
+% lines are in effect. In that case, it should never happen that a
+% single  grid line ends in a dead-end somewhere in white space.
+%
+% I enforce two constraints which apply only to ygrid to fix this
+% issue (this may be improved later).
+%
+% The idea is simple:
+%  1. suppose the grid line 'x=1' stops at 'y=5'.
+%     Suppose further that the y grid line 'y=0.95' should stop at 'x=1'.
+%     Is that acceptable? Yes, because |y| < 5.
+%     Now, suppose an y grid line with |y| > 5 should stop at 'x=1'.
+%     Is this allowed? NO! Because it would become a dead end since
+%     the 'x=1' line ends at 'y=5'!
+%
+%     So, whenever we consider ygrids and stop point candidates "x=X",
+%     acquire the value Q where the x (!) grid line "x=X" stops.
+%     If |y| > Q, the candidate "x=X" is rejected.
+%
+%  2. There might still be the case that x grid lines have dead-ends.
+%  	  The current solution checks the minimal absolute length of y
+%  	  grid lines to avoid these dead-ends.
+%
+% Uncomment the routine(s) and run the test cases to see what happens.
+\def\pgfplots@get@current@grid@stop@point@handle@yconstraints#1{%
+	% check for first constraint:
+	% FIXME this one turns out to be
+	% correct, but it is ugly
+	\pgfutil@ifundefined{pgfplots@minimal@abslength@for@ytick@\pgfplots@tick@prepared@abs}{%
+	}{%
+		\pgfplotscoordmath{default}{if less than}
+			{\pgfplotsretval}
+			{\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@tick@prepared@abs\endcsname}
+			{\let\pgfplotsretval=\pgfutil@empty}
+			{}%
+	}%
+	%
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		%
+\message{checking ending 'y=#1' at 'x=\pgfplotsretval'. 'x=\pgfplots@loc@TMPa' stops}%
+		\pgfutil@ifundefined{pgfplots@final@stop@point@for@xtick@\pgfplots@loc@TMPa}{%
+		% no constraint. Ok.
+\message{ nowhere. No contraint.^^J}%
+		}{%
+\message{ at \pgfplots@loc@TMPa. Feasible: }%
+			% Oh, a constraint. That means
+			% further work.
+			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@xtick@\pgfmathresult\endcsname
+			\pgfplotscoordmath{default}{op}{abs}{{#1}}%
+			\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+				% ok, we can use the found
+				% stop value.
+\message{YES.^^J}%
+			}{%
+\message{NO.^^J}%
+				% no, the stop value is
+				% invalid; it would stop in
+				% white space!
+				\let\pgfplotsretval=\pgfutil@empty
+			}%
+		}%
 	\fi
 }%
 
