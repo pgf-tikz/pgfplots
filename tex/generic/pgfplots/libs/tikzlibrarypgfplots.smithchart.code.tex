@@ -385,6 +385,10 @@
 \def\pgfplots@draw@axis@is@prepared@smithchartaxis{%
 	\pgfplots@gridlines@init@grid@stop@points@for xy%
 	\pgfplots@gridlines@init@grid@stop@points@for yx%
+	%
+	% and finalize x:
+	\def\pgfplots@finalize@constraints{1}%
+	\pgfplots@gridlines@init@grid@stop@points@for@computethem{x}{y}{\pgfplots@finalize@constraints}%
 }%
 
 
@@ -513,20 +517,35 @@
 	% dependencies between x grids and y grids here (such that there
 	% is no grid line stopping in white space)
 	%
+	\if#1x%
+		\def\pgfplots@finalize@constraints{0}% we have to wait until y stop points are known.
+	\else
+		\def\pgfplots@finalize@constraints{1}%
+	\fi
+	\pgfplots@gridlines@init@grid@stop@points@for@computethem{#1}{#2}{\pgfplots@finalize@constraints}%
+}%
+% #1,#2,#3 the arguments for
+% \pgfplots@gridlines@preparation@get@current@grid@stop@point
+\def\pgfplots@gridlines@init@grid@stop@points@for@computethem#1#2#3{%
+	%
 	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@major@#1\endcsname\as\elem{%
 		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
 		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
-		\pgfplots@gridlines@preparation@get@current@grid@stop@point #1#2\pgfplots@tick
-		\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point{#1}{#2}{\pgfplots@tick}{#3}%
+		\if1#3%
+			\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\fi
 	}%
 	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@minor@#1\endcsname\as\elem{%
 		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
 		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
-		\pgfplots@gridlines@preparation@get@current@grid@stop@point #1#2\pgfplots@tick
-		\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point{#1}{#2}{\pgfplots@tick}{#3}%
+		\if1#3%
+			\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\fi
 	}%
 	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
-}%
+}
 
 \def\pgfplots@gridlines@init@stop@maps#1#2{%
 	\pgfutil@ifnextchar\pgfplots@EOI{%
@@ -644,6 +663,9 @@
 % #1 either x or y
 % #2 either x or y
 % #3 the value of the current grid line
+% #4 a boolean which expands either to 0 or to 1.
+% The \pgfplots@get@current@grid@stop@point@handle@constraints method
+% will be invoked if and only if #4=1
 %
 % @POSTCONDITION On output, 
 % - \pgfplotsretval will be filled with the
@@ -655,7 +677,7 @@
 %
 % The method relies on the 'ygrid stop each nth at x' feature, more specifically the
 % stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
-\def\pgfplots@gridlines@preparation@get@current@grid@stop@point#1#2#3{%
+\def\pgfplots@gridlines@preparation@get@current@grid@stop@point#1#2#3#4{%
 	\def\pgfplotsretval{}%
 	%
 	\pgfplots@gridlines@stopmap@prepare{#3}%
@@ -701,8 +723,8 @@
 							% Now, check the constraints which couple
 							% X and Y.
 							\let\pgfplotsretval=\pgfplots@grid@stop@at
-							\if#1y%
-								\pgfplots@get@current@grid@stop@point@handle@yconstraints{#3}%
+							\if1#4%
+								\pgfplots@get@current@grid@stop@point@handle@constraints #1#2{#3}%
 							\fi
 						\fi
 					\fi
@@ -710,6 +732,12 @@
 			}%
 		\fi
 	\fi
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\expandafter\let\csname pgfplots@final@stop@point@for@#1tick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
+\message{#1 grid line: storing end value for '#3' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
+	\fi
+	%
 	\if#1x%
 		\ifx\pgfplotsretval\pgfutil@empty
 		\else
@@ -729,8 +757,6 @@
 %
 % @see \pgfplots@get@current@grid@stop@point@handle@yconstraints
 \def\pgfplots@get@current@grid@stop@point@handle@xconstraints#1{%
-	\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
-\message{x grid line: storing end value for '#1' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
 	%
 	\let\pgfplotsretval@@=\pgfplotsretval
 	\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
@@ -780,6 +806,9 @@
 %
 % Uncomment the routine(s) and run the test cases to see what happens.
 \def\pgfplots@get@current@grid@stop@point@handle@yconstraints#1{%
+	\pgfplots@get@current@grid@stop@point@handle@constraints yx{#1}%
+}%
+\def\pgfplots@get@current@grid@stop@point@handle@constraints#1#2#3{%
 	% check for first constraint:
 	% FIXME this one turns out to be
 	% correct, but it is ugly
@@ -789,7 +818,7 @@
 			{\pgfplotsretval}
 			{\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@tick@prepared@abs\endcsname}
 			{%
-				\let\pgfplotsretval=\pgfutil@empty
+		%		\let\pgfplotsretval=\pgfutil@empty
 			}
 			{}%
 	}%
@@ -799,16 +828,16 @@
 		\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
 		\let\pgfplots@loc@TMPa=\pgfmathresult
 		%
-\message{checking ending 'y=#1' at 'x=\pgfplotsretval'. 'x=\pgfplots@loc@TMPa' stops}%
-		\pgfutil@ifundefined{pgfplots@final@stop@point@for@xtick@\pgfplots@loc@TMPa}{%
+\message{checking ending '#1=#3' at '#2=\pgfplotsretval'. '#2=\pgfplots@loc@TMPa' stops}%
+		\pgfutil@ifundefined{pgfplots@final@stop@point@for@#2tick@\pgfplots@loc@TMPa}{%
 		% no constraint. Ok.
-\message{ nowhere. No contraint.^^J}%
+\message{ nowhere. No constraint.^^J}%
 		}{%
 \message{ at \pgfplots@loc@TMPa. Feasible: }%
 			% Oh, a constraint. That means
 			% further work.
-			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@xtick@\pgfmathresult\endcsname
-			\pgfplotscoordmath{default}{op}{abs}{{#1}}%
+			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@#2tick@\pgfmathresult\endcsname
+			\pgfplotscoordmath{default}{op}{abs}{{#3}}%
 			\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
 				% ok, we can use the found
 				% stop value.
