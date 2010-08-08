@@ -107,6 +107,7 @@
 	\let\pgfplots@clippath@prepare@for@axistype=\pgfplots@clippath@prepare@for@axistype@smithchartaxis
 	\let\pgfplots@handle@invalid@range@defaultlimits=\pgfplots@handle@invalid@range@defaultlimits@smithchart%
 	\let\pgfplotspointonorientedsurfaceabwithbshift=\pgfplotspointonorientedsurfaceabwithbshift@smithchartaxis
+	\let\pgfplots@draw@axis@is@prepared=\pgfplots@draw@axis@is@prepared@smithchartaxis
 	\let\pgfplots@drawgridlines@onorientedsurf@fromto=\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart
 	\let\pgfplots@drawaxis@innerlines@onorientedsurf=\pgfplots@drawaxis@innerlines@onorientedsurf@smithchart
 	\let\pgfplots@drawaxis@outerlines@separate@onorientedsurf=\pgfplots@drawaxis@outerlines@separate@onorientedsurf@smithchartaxis
@@ -378,9 +379,14 @@
 
 \def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
 	%\pgfplots@clippath@install{\pgfusepath{clip}}%
-	\edef\pgfplots@loc@TMPa{\pgfplotspointonorientedsurfaceA\pgfplotspointonorientedsurfaceB}%
-	\expandafter\pgfplots@gridlines@init@grid@stop@points@for\pgfplots@loc@TMPa
 }%
+
+% At this time, the minor/major tick lists are initialised.
+\def\pgfplots@draw@axis@is@prepared@smithchartaxis{%
+	\pgfplots@gridlines@init@grid@stop@points@for xy%
+	\pgfplots@gridlines@init@grid@stop@points@for yx%
+}%
+
 
 % Initialises the '#1grid stop each nth at #2' and '#1grid stop at #2'
 % features. All it does is to prepare the
@@ -501,6 +507,25 @@
 	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa\space}% this inserts the final space and handles any active ':' sign (for french babel)
 	\def\pgfplots@loc@TMPb{\pgfplots@gridlines@init@stop@maps #1#2}%
 	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI%
+	%
+	%
+	% Now, compute all final stop positions. Also prepare the cross
+	% dependencies between x grids and y grids here (such that there
+	% is no grid line stopping in white space)
+	%
+	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@major@#1\endcsname\as\elem{%
+		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point #1#2\pgfplots@tick
+		\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+	}%
+	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@minor@#1\endcsname\as\elem{%
+		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point #1#2\pgfplots@tick
+		\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+	}%
+	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
 }%
 
 \def\pgfplots@gridlines@init@stop@maps#1#2{%
@@ -514,18 +539,21 @@
 	\pgfplotscoordmath{default}{parsenumber}{#4}%
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@gridlines@stopmap@prepare{#3}%
-	\expandafter\let\csname pgfplots@#1gridline@stopmap@\pgfmathresult\endcsname\pgfplots@loc@TMPa%
+	\pgfplots@gridlines@let{#1}{\pgfmathresult}=\pgfplots@loc@TMPa
+	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
+	%
+	\pgfplots@gridlines@init@stop@maps #1#2%
+}
+\def\pgfplots@gridlines@let#1#2=#3{%
+	\expandafter\let\csname pgfplots@#1gridline@stopmap@#2\endcsname=#3%
 	\if#1y%
 		% support symmetry:
 		% add -\pgfmathresult to the map.
 		% To disable this symmetry, use 'ygrid stop at x={0.2:4 -0.2:5}
 		% you can also use an empty value '-0.2:{}', that's also ok.
-		\expandafter\let\csname pgfplots@#1gridline@stopmap@-\pgfmathresult\endcsname\pgfplots@loc@TMPa%
+		\expandafter\let\csname pgfplots@#1gridline@stopmap@-#2\endcsname=#3%
 	\fi
-	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
-	%
-	\pgfplots@gridlines@init@stop@maps #1#2%
-}
+}%
 
 \def\pgfplots@gridlines@stopmap@prepare#1{%
 	\begingroup
@@ -608,21 +636,26 @@
 
 % Returns the xtick position which should end the current arc.
 %
+% This is an INTERNAL preparation method. See
+% \pgfplots@get@current@grid@stop@point for the final one.
+%
 % Note that arcs correspond to ygrid lines.
 %
 % #1 either x or y
 % #2 either x or y
 % #3 the value of the current grid line
 %
-% @POSTCONDITION On output, \pgfplotsretval will be filled with the
+% @POSTCONDITION On output, 
+% - \pgfplotsretval will be filled with the
 % result. If the result is empty, no restriction is imposed.
 % Otherwise, it contains the #2tick value at which the current #1grid shall end.
 % The result is already processed with
 % \pgfplotscoordmath{default}{parsenumber}{<value>}
+% - \pgfplots@tick@prepared contains a rounded representation of #3.
 %
 % The method relies on the 'ygrid stop each nth at x' feature, more specifically the
 % stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
-\def\pgfplots@get@current@grid@stop@point#1#2#3{%
+\def\pgfplots@gridlines@preparation@get@current@grid@stop@point#1#2#3{%
 	\def\pgfplotsretval{}%
 	%
 	\pgfplots@gridlines@stopmap@prepare{#3}%
@@ -696,11 +729,7 @@
 %
 % @see \pgfplots@get@current@grid@stop@point@handle@yconstraints
 \def\pgfplots@get@current@grid@stop@point@handle@xconstraints#1{%
-	%
-	% FIXME : this pollutes the global
-	% namespace with inherently local
-	% information!
-	\expandafter\global\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
+	\expandafter\let\csname pgfplots@final@stop@point@for@xtick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
 \message{x grid line: storing end value for '#1' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
 	%
 	\let\pgfplotsretval@@=\pgfplotsretval
@@ -713,7 +742,7 @@
 	}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
 	\pgfplotscoordmath{default}{max}{\pgfplots@loc@TMPb}{#1}%
-	\expandafter\global\expandafter\let\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@loc@TMPa\endcsname=\pgfmathresult
+	\expandafter\let\csname pgfplots@minimal@abslength@for@ytick@\pgfplots@loc@TMPa\endcsname=\pgfmathresult
 \message{y grid line: updating minimal abs length[\pgfplots@loc@TMPa] = \pgfmathresult.^^J}%
 	\let\pgfplotsretval=\pgfplotsretval@@
 }%
@@ -794,6 +823,52 @@
 		}%
 	\fi
 }%
+
+% Returns the xtick position which should end the current arc.
+%
+% Note that arcs correspond to ygrid lines.
+%
+% #1 either x or y
+% #2 either x or y
+% #3 the value of the current grid line
+%
+% @POSTCONDITION On output, \pgfplotsretval will be filled with the
+% result. If the result is empty, no restriction is imposed.
+% Otherwise, it contains the #2tick value at which the current #1grid shall end.
+% The result is already processed with
+% \pgfplotscoordmath{default}{parsenumber}{<value>}
+%
+% The method relies on the 'ygrid stop each nth at x' feature, more specifically the
+% stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
+%
+% Note that all work has already been done by
+% \pgfplots@gridlines@init@grid@stop@points@for. We only need to query
+% the result at this point.
+% @see \pgfplots@gridlines@init@grid@stop@points@for
+% @see \pgfplots@gridlines@preparation@get@current@grid@stop@point
+\def\pgfplots@get@current@grid@stop@point#1#2#3{%
+	\def\pgfplotsretval{}%
+	%
+	% check the '#1grid stop at #2':
+	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
+		% ok. there is no such thing.
+	\else
+		%
+		\pgfplots@gridlines@stopmap@prepare{#3}%
+		\let\pgfplots@tick@prepared=\pgfmathresult
+		\pgfmathfloatabs@\pgfplots@tick@prepared
+		\let\pgfplots@tick@prepared@abs=\pgfmathresult
+		%
+		% ah - process it!
+		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared}{%
+			\let\pgfplotsretval\pgfutil@empty
+		}{%
+			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared\endcsname}%
+		}%
+	\fi
+	%
+}%
+
 
 \def\pgfplots@smithchart@draw@xcircle#1{%
 	\pgfplotscoordmath{default}{one}%
