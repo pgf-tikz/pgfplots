@@ -4346,135 +4346,6 @@
 		% initialise data scale transformation 
 		%   T(x) = 10^{q-m} * x
 		%
-		\begingroup
-			\let\data@max@order=\c@pgf@counta
-			\let\data@cur@order=\c@pgf@countb
-			\let\data@dimen=\pgf@xa
-			\let\data@tmp=\pgf@xb
-			\let\data@dimen@order=\c@pgf@countc
-			\let\data@EXPONENT=\c@pgf@countd
-			\expandafter\let\expandafter\pgfplots@display@min@float\csname pgfplots@#1min\endcsname
-			\expandafter\let\expandafter\pgfplots@display@max@float\csname pgfplots@#1max\endcsname
-			\expandafter\let\expandafter\pgfplots@data@min@float\csname pgfplots@data@#1min\endcsname
-			\expandafter\let\expandafter\pgfplots@data@max@float\csname pgfplots@data@#1max\endcsname
-			\ifpgfplots@autocompute@all@limits
-			\else
-				\pgfplotscoordmath{#1}{max}{\pgfplots@display@max@float}{\pgfplots@data@max@float}%
-				\let\pgfplots@data@max@float=\pgfmathresult
-				\pgfplotscoordmath{#1}{min}{\pgfplots@display@min@float}{\pgfplots@data@min@float}%
-				\let\pgfplots@data@min@float=\pgfmathresult
-			\fi
-			%
-%\message{minmax = [\pgfplots@data@min@float,\pgfplots@data@max@float]}%
-			% Step 1: compute 'm', the data order
-			\pgfplots@compute@number@order@for@trafo@isfloat
-				\pgfplots@data@min@float
-				\tocount\data@cur@order
-			%
-			\data@max@order=\data@cur@order
-			%
-			\pgfplots@compute@number@order@for@trafo@isfloat
-				\pgfplots@data@max@float
-				\tocount\data@cur@order
-			%
-			\ifnum\data@cur@order>\data@max@order
-				\data@max@order=\data@cur@order
-			\fi
-			%
-			% Step 2: compute 'q', the #1-size of the axis.
-			\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
-				% We have 'width' or 'height'.
-				%
-				% Use the order of these parameters.
-				\def\pgfplots@loc@TMPa{#1}%
-				\def\pgfplots@loc@TMPb{x}%
-				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-					\data@dimen=\pgfplots@width\relax
-				\else
-					\def\pgfplots@loc@TMPb{y}%
-					\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-						\data@dimen=\pgfplots@height\relax
-					\fi
-				\fi
-				\pgfplots@compute@number@order@for@trafo@isdimen
-					\data@dimen
-					\tocount\data@dimen@order
-				% This here is to avoid inaccuracies in the final
-				% axis rectangle size, see \pgfplots@initsizes:
-				%\advance\data@dimen@order by-1
-			\else
-				% FIXME:
-				% we have either the 'x=1cm' or 'y=1cm' option!
-				% How should I initialise the trafo!?
-				\data@dimen@order=3
-			\fi
-			%
-%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
-			\data@EXPONENT=\data@dimen@order
-			\advance\data@EXPONENT by-\data@max@order
-			% Now, I introduce a loop which shall avoid cancellation of
-			% significant digits.
-			%
-			% Harmless Example: 
-			%  if we have data shift = -3 and 
-			%  max = 2e6, min = 1e6, then max-min = 1e6; T(max)-T(min) = 1e3 which is ok.
-			%  In this case, the loop won't change anything.
-			%
-			% Critical Example:
-			%  if we have data shift = -3 and
-			%  max = 1980, min = 1930 then 
-			%    T(max) = 1.98 and T(min) = 1.93
-			%  and thus T(max)-T(min) = 0.05 . 
-			%  Considering that this is the axis range
-			%  in which tick labels and plot points need to be computed, we
-			%  only have two or three digits left! That happens because the
-			%  prefix '19' is common and is cancelled in the subtraction.
-			%  Idea: while T(max)-T(min) < O(10^2) -> increase shift by +1
-			%  (and make sure that T(max) < MAX_VALID_TEX_NUMBER).
-			%
-			\def\pgfplotscoordmathnotifydatascalesetfor##1{}% disable temporarily. We are just testing it.
-			\pgfplots@loop@CONTINUEtrue
-			\pgfutil@loop
-			\pgfplotscoordmath{#1}{datascaletrafo set params}{\the\data@EXPONENT}{0}%
-			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@min@float}%
-			\let\pgfplots@min@fixed=\pgfmathresult
-			\ifpgfplots@loop@CONTINUE
-				\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@max@float}%
-				\let\pgfplots@max@fixed=\pgfmathresult
-				\data@tmp=\pgfplots@max@fixed pt
-%\message{Current trafo EXPONENT for #1 direction: \the\data@EXPONENT; original #1 data limits: [\pgfplots@data@min@float:\pgfplots@data@max@float]; current transformed #1 limits: [\pgfplots@min@fixed:\pgfplots@max@fixed]; cancellation check max-min running...}%
-				\ifdim\data@tmp<0pt
-					% I need absolute values here:
-					\multiply\data@tmp by-1\relax
-				\fi
-				\pgfmathsubtract@{\pgfplots@max@fixed}{\pgfplots@min@fixed}%
-				\data@dimen=\pgfmathresult pt
-				\pgfplots@loop@CONTINUEfalse
-				\ifdim\data@tmp<1500pt % a multiplication with '10' results in max = 15000 which is the upper limit.
-					\ifdim\data@dimen<100pt % I guess if max-min = O(100), we have quite good accuracy
-						\ifdim\data@dimen<0.0001pt
-						\else
-							\advance\data@EXPONENT by1
-							\pgfplots@loop@CONTINUEtrue
-						\fi
-					\fi
-				\fi
-				%--------------------------------------------------
-				% \ifdim\data@dimen>1200pt% FIXME : is this here ok!? CHECK IT!
-				% 	\ifdim\data@dimen>7999pt
-				% 		\advance\data@EXPONENT by-2
-				% 	\else
-				% 		\advance\data@EXPONENT by-1
-				% 	\fi
-				% 	\pgfplots@loop@CONTINUEfalse
-				% \fi
-				%-------------------------------------------------- 
-			\pgfutil@repeat
-			\xdef\pgfplots@glob@TMPa{\the\data@EXPONENT}%
-			\xdef\pgfplots@glob@TMPb{\pgfplots@min@fixed}%
-		\endgroup
-%\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@glob@TMPa*#1 - \pgfplots@glob@TMPb...}%
-		% COMPLETE INITIALISATION:
 		\ifpgfplots@disabledatascaling
 			% this here is a waste of time, I know it. One could really
 			% safe a lot of CPU time when disabledatascaling is enabled...
@@ -4482,7 +4353,137 @@
 			% that!
 			\gdef\pgfplots@glob@TMPa{0}%
 			\gdef\pgfplots@glob@TMPb{0}%
+		\else
+			\begingroup
+				\let\data@max@order=\c@pgf@counta
+				\let\data@cur@order=\c@pgf@countb
+				\let\data@dimen=\pgf@xa
+				\let\data@tmp=\pgf@xb
+				\let\data@dimen@order=\c@pgf@countc
+				\let\data@EXPONENT=\c@pgf@countd
+				\expandafter\let\expandafter\pgfplots@display@min@float\csname pgfplots@#1min\endcsname
+				\expandafter\let\expandafter\pgfplots@display@max@float\csname pgfplots@#1max\endcsname
+				\expandafter\let\expandafter\pgfplots@data@min@float\csname pgfplots@data@#1min\endcsname
+				\expandafter\let\expandafter\pgfplots@data@max@float\csname pgfplots@data@#1max\endcsname
+				\ifpgfplots@autocompute@all@limits
+				\else
+					\pgfplotscoordmath{#1}{max}{\pgfplots@display@max@float}{\pgfplots@data@max@float}%
+					\let\pgfplots@data@max@float=\pgfmathresult
+					\pgfplotscoordmath{#1}{min}{\pgfplots@display@min@float}{\pgfplots@data@min@float}%
+					\let\pgfplots@data@min@float=\pgfmathresult
+				\fi
+				%
+%\message{minmax = [\pgfplots@data@min@float,\pgfplots@data@max@float]}%
+				% Step 1: compute 'm', the data order
+				\pgfplots@compute@number@order@for@trafo@isfloat
+					\pgfplots@data@min@float
+					\tocount\data@cur@order
+				%
+				\data@max@order=\data@cur@order
+				%
+				\pgfplots@compute@number@order@for@trafo@isfloat
+					\pgfplots@data@max@float
+					\tocount\data@cur@order
+				%
+				\ifnum\data@cur@order>\data@max@order
+					\data@max@order=\data@cur@order
+				\fi
+				%
+				% Step 2: compute 'q', the #1-size of the axis.
+				\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
+					% We have 'width' or 'height'.
+					%
+					% Use the order of these parameters.
+					\def\pgfplots@loc@TMPa{#1}%
+					\def\pgfplots@loc@TMPb{x}%
+					\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+						\data@dimen=\pgfplots@width\relax
+					\else
+						\def\pgfplots@loc@TMPb{y}%
+						\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+							\data@dimen=\pgfplots@height\relax
+						\fi
+					\fi
+					\pgfplots@compute@number@order@for@trafo@isdimen
+						\data@dimen
+						\tocount\data@dimen@order
+					% This here is to avoid inaccuracies in the final
+					% axis rectangle size, see \pgfplots@initsizes:
+					%\advance\data@dimen@order by-1
+				\else
+					% FIXME:
+					% we have either the 'x=1cm' or 'y=1cm' option!
+					% How should I initialise the trafo!?
+					\data@dimen@order=3
+				\fi
+				%
+%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
+				\data@EXPONENT=\data@dimen@order
+				\advance\data@EXPONENT by-\data@max@order
+				% Now, I introduce a loop which shall avoid cancellation of
+				% significant digits.
+				%
+				% Harmless Example: 
+				%  if we have data shift = -3 and 
+				%  max = 2e6, min = 1e6, then max-min = 1e6; T(max)-T(min) = 1e3 which is ok.
+				%  In this case, the loop won't change anything.
+				%
+				% Critical Example:
+				%  if we have data shift = -3 and
+				%  max = 1980, min = 1930 then 
+				%    T(max) = 1.98 and T(min) = 1.93
+				%  and thus T(max)-T(min) = 0.05 . 
+				%  Considering that this is the axis range
+				%  in which tick labels and plot points need to be computed, we
+				%  only have two or three digits left! That happens because the
+				%  prefix '19' is common and is cancelled in the subtraction.
+				%  Idea: while T(max)-T(min) < O(10^2) -> increase shift by +1
+				%  (and make sure that T(max) < MAX_VALID_TEX_NUMBER).
+				%
+				\def\pgfplotscoordmathnotifydatascalesetfor##1{}% disable temporarily. We are just testing it.
+				\pgfplots@loop@CONTINUEtrue
+				\pgfutil@loop
+				\pgfplotscoordmath{#1}{datascaletrafo set params}{\the\data@EXPONENT}{0}%
+				\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@min@float}%
+				\let\pgfplots@min@fixed=\pgfmathresult
+				\ifpgfplots@loop@CONTINUE
+					\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@max@float}%
+					\let\pgfplots@max@fixed=\pgfmathresult
+					\data@tmp=\pgfplots@max@fixed pt
+%\message{Current trafo EXPONENT for #1 direction: \the\data@EXPONENT; original #1 data limits: [\pgfplots@data@min@float:\pgfplots@data@max@float]; current transformed #1 limits: [\pgfplots@min@fixed:\pgfplots@max@fixed]; cancellation check max-min running...}%
+					\ifdim\data@tmp<0pt
+						% I need absolute values here:
+						\multiply\data@tmp by-1\relax
+					\fi
+					\pgfmathsubtract@{\pgfplots@max@fixed}{\pgfplots@min@fixed}%
+					\data@dimen=\pgfmathresult pt
+					\pgfplots@loop@CONTINUEfalse
+					\ifdim\data@tmp<1500pt % a multiplication with '10' results in max = 15000 which is the upper limit.
+						\ifdim\data@dimen<100pt % I guess if max-min = O(100), we have quite good accuracy
+							\ifdim\data@dimen<0.0001pt
+							\else
+								\advance\data@EXPONENT by1
+								\pgfplots@loop@CONTINUEtrue
+							\fi
+						\fi
+					\fi
+					%--------------------------------------------------
+					% \ifdim\data@dimen>1200pt% FIXME : is this here ok!? CHECK IT!
+					% 	\ifdim\data@dimen>7999pt
+					% 		\advance\data@EXPONENT by-2
+					% 	\else
+					% 		\advance\data@EXPONENT by-1
+					% 	\fi
+					% 	\pgfplots@loop@CONTINUEfalse
+					% \fi
+					%-------------------------------------------------- 
+				\pgfutil@repeat
+				\xdef\pgfplots@glob@TMPa{\the\data@EXPONENT}%
+				\xdef\pgfplots@glob@TMPb{\pgfplots@min@fixed}%
+			\endgroup
 		\fi
+		% COMPLETE INITIALISATION:
+%\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@glob@TMPa*#1 - \pgfplots@glob@TMPb...}%
 		\pgfplotscoordmath{#1}{datascaletrafo set params}{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
 		%
 		% ... and apply transformation to any user input

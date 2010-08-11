@@ -76,21 +76,30 @@
 	/pgfplots/every smithchart axis/.style={
 		grid=both,
 		xmin=0,
-		xmax=16000,% FIXME : more is not possible because some code uses the \pgfplots@xmin@reg registers... (ticks)
-		ymin=-16000,ymax=16000,
+		%xmax=1e324,% FIXME : more is not possible because some code uses the \pgfplots@xmin@reg registers... (ticks)
+		%ymin=-1e324,ymax=1e324,
 		scaled ticks=false,
 		xtick pos=left,
 		ytick pos=left,
 		xtick style={draw=black},
 		xtick align=center,
 		ytick align=center,
+	},
+	/pgfplots/few smithchart ticks/.style={
 		xtick={0.2,0.5,1,2,5},
 		ytick={%
 			0,%
 			 0.2, 0.5, 1, 2, 5,%
 			-0.2,-0.5,-1,-2,-5},
 	},
-	yticklabel in circle/.style={
+	/pgfplots/many smithchart ticks/.style={
+		xtick={0.2,0.5,1,2,5},
+		ytick={%
+			0,%
+			 0.2, 0.5, 1, 2, 5,%
+			-0.2,-0.5,-1,-2,-5},
+	},
+	/pgfplots/yticklabel in circle/.style={
 		ytick align=inside,
 		yticklabel style={
 			rotate=90,
@@ -118,8 +127,19 @@
 	\def\pgfplots@visphase@notify@changeofcanvaslimits##1{}%
 	\def\pgfplots@avoid@empty@axis@range@for##1{}%
 	\def\pgfplotsaxisifcontainspoint##1##2{##1}%
+	\let\pgfplots@set@default@size@options=\pgfplots@set@default@size@options@smithchart%
+	\let\pgfplots@assign@default@tick@foraxis=\pgfplots@assign@default@tick@foraxis@smithchart
+	\def\pgfplots@checkisuniformLINEARtick##1##2{%
+		% don't do anything here. I suppose it is useless and is a
+		% waste of time for many ticks.
+		\global\pgfplots@isuniformtickfalse
+	}%
 	\let\pgfplots@clippath@prepare@for@axistype=\pgfplots@clippath@prepare@for@axistype@smithchartaxis
+	%
+	% invalid range: do not clear plots. simply assign default limits.
 	\let\pgfplots@handle@invalid@range@defaultlimits=\pgfplots@handle@invalid@range@defaultlimits@smithchart%
+	\def\pgfplots@handle@invalid@range{\pgfplots@handle@invalid@range@defaultlimits}%
+	%
 	\let\pgfplotspointonorientedsurfaceabwithbshift=\pgfplotspointonorientedsurfaceabwithbshift@smithchartaxis
 	\let\pgfplots@draw@axis@is@prepared=\pgfplots@draw@axis@is@prepared@smithchartaxis
 	\let\pgfplots@drawgridlines@onorientedsurf@fromto=\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart
@@ -164,6 +184,43 @@
 	% cartesian cs
 	\tikzdeclarecoordinatesystem{cartesian}{\edef\pgfplots@loc@TMPa{##1}\expandafter\pgfplotspointcartesian@\pgfplots@loc@TMPa\pgfplots@coord@end}%
 	%
+	%
+	% Special treatment for
+	% \pgfplots@prepare@tick@coordlists@for: make sure we don't need
+	% to use the register arithmetics in \pgfplots@xmin@reg and its
+	% variants! I want an UNRESTRICTED max data range!
+	\def\pgfplots@prepare@tick@coordlists@for@assign##1=##2{\edef##1{##2}}%
+	\def\pgfplots@prepare@tick@coordlists@for@advance##1by##2{%
+		% THIS IS NEVER USED (at the time of this writing).
+		\edef\pgfplots@loc@TMPa{##2}%
+		\pgfplotscoordmath{default}{parsenumber}{##1}%
+		\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+		\let##1=\pgfmathresult
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@tofixed##1{\edef\pgfmathresult{##1}}%
+	\def\pgfplots@prepare@tick@coordlists@for@handletolerance##1{}% does not apply to smithcharts.
+	\def\pgfplots@prepare@tick@coordlists@for@checktickmin##1{%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tmpa}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1tickmin\endcsname}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{default}{if less than}{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{%
+			\pgfplots@tickshowfalse
+		}{%
+		}%
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@checktickmax##1{%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tmpa}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1tickmin\endcsname}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{default}{if less than}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPa}{%
+			\pgfplots@tickshowfalse
+		}{%
+		}%
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@checkdatalimits##1{}% I won't do this here. Smithcharts are somewhat special.
 }%
 
 \def\pgfplotspointcartesian@#1,#2\pgfplots@coord@end{%
@@ -1243,13 +1300,23 @@
 	% INIT.
 	%
 	%
-	\pgfplots@xmin@reg=\pgfplots@xmin pt %
-	\pgfplots@xmax@reg=\pgfplots@xmax pt %
-	\pgfplots@ymin@reg=\pgfplots@ymin pt %
-	\pgfplots@ymax@reg=\pgfplots@ymax pt %
-	\ifpgfplots@threedim
-		\pgfplots@zmin@reg=\pgfplots@zmin pt %
-		\pgfplots@zmax@reg=\pgfplots@zmax pt %
+	\def\pgfplots@minmax@reg@forbidden{\pgfplots@error{Sorry, an internal logic error occured during smithchart processing (a routine tried to access \string\pgfplots@xmin@reg\space or its variants). Please report this as bug, sorry}}%
+	\iffalse
+		\pgfplots@xmin@reg=\pgfplots@xmin pt %
+		\pgfplots@xmax@reg=\pgfplots@xmax pt %
+		\pgfplots@ymin@reg=\pgfplots@ymin pt %
+		\pgfplots@ymax@reg=\pgfplots@ymax pt %
+		\ifpgfplots@threedim
+			\pgfplots@zmin@reg=\pgfplots@zmin pt %
+			\pgfplots@zmax@reg=\pgfplots@zmax pt %
+		\fi
+	\else
+		\let\pgfplots@xmin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@xmax@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@ymin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@ymax@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@zmin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@zmax@reg=\pgfplots@minmax@reg@forbidden
 	\fi
 	%
 	%
@@ -1356,29 +1423,38 @@
 }
 
 \def\pgfplots@handle@invalid@range@defaultlimits@smithchart{%
-	\def\pgfplots@loc@TMPa{0}%
-	\ifx\pgfplots@xmin\pgfplots@invalidrange@xmin
-		\def\pgfplots@loc@TMPa{1}%
-	\fi
-	\ifx\pgfplots@xmax\pgfplots@invalidrange@xmax
-		\def\pgfplots@loc@TMPa{1}%
-	\fi
-	\if\pgfplots@loc@TMPa1%
-		\pgfplotscoordmath{x}{parsenumber}{0}%
-		\global\let\pgfplots@xmin=\pgfmathresult
-		\pgfplotscoordmath{x}{parsenumber}{360}%
-		\global\let\pgfplots@xmax=\pgfmathresult
-		\global\let\pgfplots@data@xmin=\pgfplots@xmin
-		\global\let\pgfplots@data@xmax=\pgfplots@xmax
-	\fi
+	\pgfplotscoordmath{x}{parsenumber}{0}%
+	\global\let\pgfplots@xmin=\pgfmathresult
+	\pgfplotscoordmath{x}{parsenumber}{16000}%
+	\global\let\pgfplots@xmax=\pgfmathresult
+	\global\let\pgfplots@data@xmin=\pgfplots@xmin
+	\global\let\pgfplots@data@xmax=\pgfplots@xmax
 	%
 	\pgfplotscoordmath{y}{parsenumber}{0}%
 	\global\let\pgfplots@ymin=\pgfmathresult
-	\pgfplotscoordmath{y}{one}%
+	\pgfplotscoordmath{y}{parsenumber}{16000}%
 	\global\let\pgfplots@ymax=\pgfmathresult
 	\global\let\pgfplots@data@ymin=\pgfplots@ymin
 	\global\let\pgfplots@data@ymax=\pgfplots@ymax
+	\pgfplotsset{enlargelimits=false}%
 }
+
+\let\pgfplots@set@default@size@options@standard=\pgfplots@set@default@size@options
+\def\pgfplots@set@default@size@options@smithchart{%
+	\pgfplots@set@default@size@options@standard
+	\pgfplotsset{few smithchart ticks}%
+}
+\def\pgfplots@assign@default@tick@foraxis@smithchart#1{%
+	% do nothing here. I don't know the algorithm yet... but for 
+	% smithcharts, it may be sufficient to simply predefine several
+	% sets of ticks, depending on the final size.
+	%
+	% This is realized in 
+	% \pgfplots@set@default@size@options@smithchart (which is invoked
+	% before the ticks are processed).
+	\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfutil@empty
+}%
 
 \let\pgfplots@show@ticklabel@@orig=\pgfplots@show@ticklabel@
 \def\pgfplots@show@ticklabel@@smithchart#1#2{%

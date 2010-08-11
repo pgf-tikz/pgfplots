@@ -827,13 +827,7 @@
 	%\global\pgfplotslistnewempty\pgfplots@prepared@tick@positions@major@tickindices
 	\global\pgfplotslistnewempty\pgfplots@prepared@tick@positions@minor
 	%
-	\afterassignment\pgfplots@gobble@until@relax
-	\pgfplots@tmpa=\pgfkeysvalueof{/pgfplots/#1tick placement tolerance}pt\relax
-	\pgfplots@tmpa=\csname pgfplots@#1@inverseveclength\endcsname\pgfplots@tmpa
-	\edef\pgfplots@loc@tick@placement@tolerance{\the\pgfplots@tmpa}%
-	%
-	\advance\csname pgfplots@#1min@reg\endcsname by-\pgfplots@tmpa
-	\advance\csname pgfplots@#1max@reg\endcsname by\pgfplots@tmpa
+	\pgfplots@prepare@tick@coordlists@for@handletolerance#1%
 	%
 	\edef\pgfplots@loc@TMPa{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -876,18 +870,14 @@
 		\else
 			\expandafter\def\expandafter\pgfplots@checktickminmax\expandafter{%
 				\pgfplots@checktickminmax
-				\ifdim\pgfplots@tmpa<\csname pgfplots@#1tickmin\endcsname pt
-					\pgfplots@tickshowfalse
-				\fi
+				\pgfplots@prepare@tick@coordlists@for@checktickmin#1%
 			}%
 		\fi
 		\expandafter\ifx\csname pgfplots@#1tickmax\endcsname\pgfutil@empty
 		\else
 			\expandafter\def\expandafter\pgfplots@checktickminmax\expandafter{%
 				\pgfplots@checktickminmax
-				\ifdim\pgfplots@tmpa>\csname pgfplots@#1tickmax\endcsname pt
-					\pgfplots@tickshowfalse
-				\fi
+				\pgfplots@prepare@tick@coordlists@for@checktickmax#1%
 			}%
 		\fi
 		%
@@ -896,55 +886,39 @@
 		\foreach \x in {#2} {%
 			\let\pgfplots@ticknum=\pgfplots@glob@TMPa
 			%
-			\pgfplots@tmpa=\x pt %
+			\pgfplots@prepare@tick@coordlists@for@assign\pgfplots@tmpa=\x
+			\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
 			\csname pgfplots@#1tick@check@tickshow\endcsname
 			\pgfplots@checktickminmax
 			%
 			\ifpgfplots@tickshow
-				\ifdim\pgfplots@tmpa<\csname pgfplots@#1min@reg\endcsname
-				\else
-					\ifdim\pgfplots@tmpa>\csname pgfplots@#1max@reg\endcsname
-					\else
-						\edef\x{{\pgfplots@ticknum}{\x}}%
-						\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@major
-						%\expandafter\pgfplotslistpushbackglobal\pgfplots@ticknum\to\pgfplots@prepared@tick@positions@major@tickindices
-					\fi
-				\fi
+				\edef\x{{\pgfplots@ticknum}{\x}}%
+				\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@major
+				%\expandafter\pgfplotslistpushbackglobal\pgfplots@ticknum\to\pgfplots@prepared@tick@positions@major@tickindices
 			\fi
 			% X-Axis ticks bottom and top
 			\ifpgfplots@needsminorloop
 				% SEE BELOW for the 'minor #1tick' feature -- it has a
 				% separate loop.
 				\foreach \pgfplots@i in {1,...,\pgfplots@minor@tick@num} {%
-					\begingroup
 					\ifpgfplots@islinear
-						\pgfplots@tmpa=\pgfplots@minor@tick@dist pt %
-						\pgfplots@tmpa=\pgfplots@i\pgfplots@tmpa
-						\edef\pgfmathresult{\the\pgfplots@tmpa}%
+						\pgfmathmultiply@{\pgfplots@i}{\pgfplots@minor@tick@dist}%
 					\else
 						% in log:
 						%  log( i*10^k ) = log\pgfplots@i + k\log10 -> draw ticks for i=1..9
 						\pgfplotscoordmath{#1}{log unsigned int}{\pgfplots@i}%
 						\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
-						\edef\pgfmathresult{\pgfmathresult pt}%
 					\fi
-					\pgfmath@smuggleone\pgfmathresult
-					\endgroup
-					\advance\pgfplots@tmpa by\pgfmathresult\relax
+					\pgfplots@prepare@tick@coordlists@for@advance\pgfplots@tmpa by\pgfmathresult
 					\pgfplots@tickshowtrue
+					\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
 					\pgfplots@checktickminmax
 					\ifpgfplots@tickshow
-						\ifdim\pgfplots@tmpa<\csname pgfplots@#1min@reg\endcsname
-						\else
-							\ifdim\pgfplots@tmpa>\csname pgfplots@#1max@reg\endcsname
-							\else
-								\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpa}}%
-								\c@pgf@counta=\pgfplots@ticknum\relax
-								\advance\c@pgf@counta by\i
-								\edef\x{{\pgfplots@ticknum}{\pgfmathresult}}%
-								\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
-							\fi
-						\fi
+						\pgfplots@prepare@tick@coordlists@for@tofixed\pgfplots@tmpa
+						\c@pgf@counta=\pgfplots@ticknum\relax
+						\advance\c@pgf@counta by\pgfplots@i\relax
+						\edef\x{{\the\c@pgf@counta}{\pgfmathresult}}%
+						\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
 					\fi
 				}%
 			\fi
@@ -960,18 +934,13 @@
 			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@minor@tick@list} {%
 				\let\pgfplots@ticknum=\pgfplots@glob@TMPa
 				%
-				\pgfplots@tmpa =\x pt
+				\pgfplots@prepare@tick@coordlists@for@assign\pgfplots@tmpa=\x
 				\pgfplots@tickshowtrue
+				\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
 				\pgfplots@checktickminmax
 				\ifpgfplots@tickshow
-					\ifdim\pgfplots@tmpa<\csname pgfplots@#1min@reg\endcsname
-					\else
-						\ifdim\pgfplots@tmpa>\csname pgfplots@#1max@reg\endcsname
-						\else
-							\edef\x{{\pgfplots@ticknum}{\x}}%
-							\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
-						\fi
-					\fi
+					\edef\x{{\pgfplots@ticknum}{\x}}%
+					\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
 				\fi
 				\pgfplotsutil@advancestringcounter\pgfplots@ticknum
 				% carry \ticknum outside of this scope:
@@ -986,6 +955,56 @@
 	\global\let\pgfplots@prepared@tick@positions@major=\relax
 	%\global\let\pgfplots@prepared@tick@positions@major@tickindices=\relax
 	\global\let\pgfplots@prepared@tick@positions@minor=\relax
+}%
+
+% The following set of macros can be used to replace the TeX register
+% arithmetics used to speed up the computations inside of
+% \pgfplots@prepare@tick@coordlists@for by something different.
+%
+% FIXME : that is no clean programming! Perhaps a new math class
+% should be used here, and implemented during the complete tick
+% preparation!?
+%
+% Keep in mind that these tick positions are in "transformed
+% range", i.e. they are expected to be in the range -16000...16000. At
+% the time of this modification, only the smithchart lib needs special
+% handling here... does this justify a re-design?
+\def\pgfplots@prepare@tick@coordlists@for@assign#1=#2{%
+	#1=#2pt
+}%
+\def\pgfplots@prepare@tick@coordlists@for@advance#1by#2{%
+	\advance#1 by#2 pt %
+}%
+\def\pgfplots@prepare@tick@coordlists@for@tofixed#1{%
+	\edef\pgfmathresult{\pgf@sys@tonumber{#1}}%
+}%
+\def\pgfplots@prepare@tick@coordlists@for@handletolerance#1{%
+	\afterassignment\pgfplots@gobble@until@relax
+	\pgfplots@tmpa=\pgfkeysvalueof{/pgfplots/#1tick placement tolerance}pt\relax
+	\pgfplots@tmpa=\csname pgfplots@#1@inverseveclength\endcsname\pgfplots@tmpa
+	\edef\pgfplots@loc@tick@placement@tolerance{\the\pgfplots@tmpa}%
+	%
+	\advance\csname pgfplots@#1min@reg\endcsname by-\pgfplots@tmpa
+	\advance\csname pgfplots@#1max@reg\endcsname by\pgfplots@tmpa
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checktickmin#1{%
+	\ifdim\pgfplots@tmpa<\csname pgfplots@#1tickmin\endcsname pt
+		\pgfplots@tickshowfalse
+	\fi
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checktickmax#1{%
+	\ifdim\pgfplots@tmpa>\csname pgfplots@#1tickmax\endcsname pt
+		\pgfplots@tickshowfalse
+	\fi
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1{%
+	\ifdim\pgfplots@tmpa<\csname pgfplots@#1min@reg\endcsname
+		\pgfplots@tickshowfalse
+	\else
+		\ifdim\pgfplots@tmpa>\csname pgfplots@#1max@reg\endcsname
+			\pgfplots@tickshowfalse
+		\fi
+	\fi
 }%
 
 % Unpacks entries of the \pgfplots@prepared@tick@positions@* lists.
