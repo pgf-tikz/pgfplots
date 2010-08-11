@@ -66,7 +66,7 @@
 	/pgfplots/ygrid stop each nth at x/.initial=,
 	/pgfplots/ygrid stop each nth at x start/.initial=0,
 	%
-	/pgfplots/xgrid stop at y/.initial=,
+	/pgfplots/xgrid stop at y/.initial=,% format: CSV list, each entry of the form '<at> | <at> ':' <eachnth> | <at> '<' <iflessthan> | <at> ':' <eachnth> '<' <iflessthan>'
 	/pgfplots/ygrid stop at x/.initial=,
 	%
 	% this boolean may only be used inside of \addplot. It will be
@@ -124,13 +124,13 @@
 	},
 	/pgfplots/dense smithchart ticks/.style={
 		xtick={
-			0.1,0.2,0.3,0.4,0.5,1,1.2,1.4,1.6,1.8,2,3,4,5,10,20%
+			0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.2,1.4,1.6,1.8,2,3,4,5,10,20%
 		},
 		minor xtick={%
 			0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.11,0.12,0.13,0.14,0.15,0.16,0.17,0.18,0.19,%
 			0.22,0.24,0.26,0.28,0.32,0.34,0.36,0.38,0.42,0.44,0.46,0.48,%
 			0.55,0.65,0.75,0.85,0.95,%
-			0.6,0.7,0.8,0.9,%
+			%0.6,0.7,0.8,0.9,%
 			1.1,1.3,1.5,1.7,1.9,%
 			2.2,2.4,2.6,2.8,3.2,3.4,3.6,3.8,4.5,6,7,8,9,50},
 		ytick={%
@@ -149,7 +149,7 @@
 			-1.1,-1.3,-1.5,-1.7,-1.9,-2.2,-2.4,-2.6,-2.8,-3.2,-3.4,-3.6,-3.8,-4.5,-6,-7,-8,-9,-50%
 		},
 		xgrid stop each nth at y={0.5,1,2,4,5,10,20},
-		ygrid stop each nth at x={0.2,0.5,1,2,3,5,10:3,20:3},
+		ygrid stop each nth at x={0.2<0.2,0.5,1,2,3,5,10:3,20:3},
 	},
 	/pgfplots/yticklabel in circle/.style={
 		ytick align=inside,
@@ -754,11 +754,30 @@
 	\expandafter\def\csname b@pgfplots@#2ticknum@to@pos@lookup\endcsname{1}%
 }%
 \def\pgfplots@gridlines@init@grid@stop@points@for@normalise#1\relax#2#3{%
+	\pgfutil@in@<{#1}%
+	\ifpgfutil@in@
+		\def\b@pgfplots@haslt{1}%
+	\else
+		\def\b@pgfplots@haslt{0}%
+	\fi
+	%
 	\pgfutil@in@:{#1}%
 	\ifpgfutil@in@
+		\def\b@pgfplots@hascolon{1}%
 	\else
-		\edef\entry{\entry:2}%
+		\def\b@pgfplots@hascolon{0}%
 	\fi
+	%
+	\if1\b@pgfplots@hascolon
+		\edef\entry{\entry\if0\b@pgfplots@haslt<\fi}%
+	\else
+		\if1\b@pgfplots@haslt
+			\expandafter\pgfplots@gridlines@stop@at@unpack@@@\entry\relax
+			\edef\entry{\pgfplots@grid@stop@at:2<\pgfplots@grid@stop@at@iflt}%
+		\else
+			\edef\entry{\entry:2<}%
+		\fi%
+	\fi%
 	%
 	\pgfutil@in@{[index]}{#1}%
 	\ifpgfutil@in@
@@ -776,11 +795,22 @@
 	%
 	\expandafter\pgfplots@gridlines@stop@at@unpack\entry\relax
 	\pgfplotscoordmath{default}{parsenumber}\pgfplots@grid@stop@at
-	\edef\entry{\pgfmathresult:\pgfplots@grid@stop@at@eachnth}%
+	\let\pgfplots@grid@stop@at=\pgfmathresult
+	\ifx\pgfplots@grid@stop@at@iflt\pgfutil@empty
+	\else
+		\pgfplotscoordmath{default}{parsenumber}\pgfplots@grid@stop@at@iflt
+		\let\pgfplots@grid@stop@at@iflt=\pgfmathresult
+	\fi
+	\edef\entry{\pgfplots@grid@stop@at:\pgfplots@grid@stop@at@eachnth<\pgfplots@grid@stop@at@iflt}%
 }%
-\def\pgfplots@gridlines@stop@at@unpack#1:#2\relax{%
+\def\pgfplots@gridlines@stop@at@unpack@@@#1<#2\relax{%
+	\def\pgfplots@grid@stop@at{#1}%
+	\def\pgfplots@grid@stop@at@iflt{#2}%
+}%
+\def\pgfplots@gridlines@stop@at@unpack#1:#2<#3\relax{%
 	\def\pgfplots@grid@stop@at{#1}%
 	\def\pgfplots@grid@stop@at@eachnth{#2}%
+	\def\pgfplots@grid@stop@at@iflt{#3}%
 }%
 
 % Returns the xtick position which should end the current arc.
@@ -815,6 +845,9 @@
 	\pgfmathfloatabs@\pgfplots@tick@prepared
 	\let\pgfplots@tick@prepared@abs=\pgfmathresult
 	%
+	\pgfplotscoordmath{default}{op}{abs}{{#3}}%
+	\let\pgfplots@tick@abs=\pgfmathresult
+	%
 	% first: check the '#1grid stop at #2':
 	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
 		% ok. there is no such thing.
@@ -842,19 +875,31 @@
 					\ifx\pgfplotsretval\pgfutil@empty
 						% we found no final limit so far. proceed.
 						\expandafter\pgfplots@gridlines@stop@at@unpack\pgfplots@loc@TMPa\relax
-						\pgfplotsmathmodint\pgfplots@k\pgfplots@grid@stop@at@eachnth
-						\ifnum\pgfmathresult=0
-							\c@pgf@counta=\pgfplots@k
-							\divide\c@pgf@counta by\pgfplots@grid@stop@at@eachnth\relax
-							\edef\pgfplots@k{\the\c@pgf@counta}%
+						\ifx\pgfplots@grid@stop@at@iflt\pgfutil@empty
+							\pgfplots@loop@CONTINUEtrue
 						\else
-							% found the final limit. 
-							%
-							% Now, check the constraints which couple
-							% X and Y.
-							\let\pgfplotsretval=\pgfplots@grid@stop@at
-							\if1#4%
-								\pgfplots@get@current@grid@stop@point@handle@constraints #1#2{#3}%
+							\pgfplotscoordmath{default}{if less than}{\pgfplots@tick@abs}{\pgfplots@grid@stop@at@iflt}{%
+								\pgfplots@loop@CONTINUEtrue
+							}{%
+								\pgfplots@loop@CONTINUEfalse
+							}%
+						\fi
+						%
+						\ifpgfplots@loop@CONTINUE
+							\pgfplotsmathmodint\pgfplots@k\pgfplots@grid@stop@at@eachnth
+							\ifnum\pgfmathresult=0
+								\c@pgf@counta=\pgfplots@k
+								\divide\c@pgf@counta by\pgfplots@grid@stop@at@eachnth\relax
+								\edef\pgfplots@k{\the\c@pgf@counta}%
+							\else
+								% found the final limit. 
+								%
+								% Now, check the constraints which couple
+								% X and Y.
+								\let\pgfplotsretval=\pgfplots@grid@stop@at
+								\if1#4%
+									\pgfplots@get@current@grid@stop@point@handle@constraints #1#2{#3}%
+								\fi
 							\fi
 						\fi
 					\fi
