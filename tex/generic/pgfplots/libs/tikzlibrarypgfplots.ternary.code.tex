@@ -696,10 +696,21 @@
 \pgfplotsset{
 	tieline/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlertieline
+		\pgfkeysifdefined{/pgfplots/table/tie end x}{}{%
+			% provide these keys locally:
+			\pgfkeyslet{/pgfplots/table/tie end x}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end x index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z index}\pgfutil@empty%
+		}%
 		\pgfqkeys{/pgfplots/tieline}{#1}%
 	},
-	tieline/tieline handler/.style={/tikz/sharp plot},
-	tieline/curve handler/.style={/tikz/sharp plot},
+	tieline/every tieline/.style={},
+	tieline/tieline style/.style={/pgfplots/tieline/every tieline/.append style={#1}},
+	tieline/every curve/.style={},
+	tieline/curve style/.style={/pgfplots/tieline/every curve/.append style={#1}},
 	tieline/each nth tie/.initial=,
 }
 \def\pgfplotsplothandlertieline{%
@@ -755,8 +766,11 @@
 \def\pgfplotsplothandlervis@streamend@tieline{%
 	\begingroup
 		\pgfplots@drawmodes@appendtrue
-		\path[/pgfplots/tieline/curve handler]%
+		\path[/pgfplots/tieline/every curve]%
 		\pgfextra
+		\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+			\let\tikz@plot@handler\pgfplothandlerlineto
+		\fi
 		\pgfplotsresetplothandler
 		\tikz@plot@handler
 		\pgf@plotstreamstart
@@ -773,7 +787,10 @@
 	\endgroup
 	%
 	%
-	\pgfplotsset{/pgfplots/tieline/tieline handler}%
+	\pgfplotsset{/pgfplots/tieline/every tieline}%
+	\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+		\let\tikz@plot@handler\pgfplothandlerlineto
+	\fi
 	\pgfplotsresetplothandler
 	\tikz@plot@handler
 	\pgf@plotstreamstart
@@ -797,17 +814,56 @@
 }%
 
 \def\pgfplotsplothandlersurveypoint@tieline@init{%
-	\ifnum\pgfplotstablecols<6
-		\pgfplots@error{Sorry, 'tieline' plots expect at least 6 columns in the input table, but found only \pgfplotstablecols}%
-	\else
-		\def\pgfplotsplothandlertieline@Ax{\getthisrowno{0}\pgfmathresult}%
-		\def\pgfplotsplothandlertieline@Ay{\getthisrowno{1}\pgfmathresult}%
-		\def\pgfplotsplothandlertieline@Az{\getthisrowno{2}\pgfmathresult}%
-		\def\pgfplotsplothandlertieline@Bx{\getthisrowno{3}\pgfmathresult}%
-		\def\pgfplotsplothandlertieline@By{\getthisrowno{4}\pgfmathresult}%
-		\def\pgfplotsplothandlertieline@Bz{\getthisrowno{5}\pgfmathresult}%
-	\fi
+	\def\pgfplotsplothandlertieline@Ax{\let\pgfmathresult=\pgfplots@current@point@x}%
+	\def\pgfplotsplothandlertieline@Ay{\let\pgfmathresult=\pgfplots@current@point@y}%
+	\def\pgfplotsplothandlertieline@Az{\let\pgfmathresult=\pgfplots@current@point@z}%
+	%
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor x\pgfplotsplothandlertieline@Bx
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor y\pgfplotsplothandlertieline@By
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor z\pgfplotsplothandlertieline@Bz
+	%
 	\def\b@pgfplotsplothandlersurveystart@tieline@init{1}%
+}%
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor#1#2{%
+	\let#2=\relax
+	\pgfkeysgetvalue{/pgfplots/table/tie end #1}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/tie end #1 index}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\edef#2{\noexpand\getthisrowno{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+		\fi
+	\else
+		\edef#2{\noexpand\getthisrow{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+	\fi
+	\ifx#2\relax
+		\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for #1\pgfplots@loc@ind
+		\c@pgf@countd=\pgfplots@loc@ind\relax
+		\advance\c@pgf@countd by3
+		\ifnum\c@pgf@countd<\pgfplotstablecols\relax
+		\else
+			\advance\c@pgf@countd by-6
+			\ifnum\c@pgf@countd>0
+			\else
+				\c@pgf@countd=0
+				\pgfplots@error{Sorry, I can't find the 'tie end #1 index' automatically. Please provide 'table[tie end #1={<colname>}]' or 'table[tie end #1 index=<col index>]' manually}%
+			\fi
+		\fi
+		\edef\pgfplots@loc@ind{\the\c@pgf@countd}%
+		\pgfkeyslet{/pgfplots/table/tie end #1 index}\pgfplots@loc@ind
+		\edef#2{\noexpand\getthisrowno{\pgfplots@loc@ind}\noexpand\pgfmathresult}%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for#1#2{%
+	\pgfkeysgetvalue{/pgfplots/table/#1}{\pgfplots@loc@TMPa}%
+	\pgfkeysgetvalue{/pgfplots/table/#1 index}{\pgfplots@loc@TMPb}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\let#2=\pgfplots@loc@TMPb
+	\else
+		\def\pgfplots@loc@TMPb{\expandafter\pgfplotstablegetcolumnindexforname\expandafter{\pgfplots@loc@TMPa}\of}%
+		\expandafter\pgfplots@loc@TMPb\pgfplotstablename\to#2%
+	\fi
 }%
 
 \def\pgfplotsplothandlersurveypoint@tieline{%
