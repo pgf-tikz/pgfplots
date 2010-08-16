@@ -78,6 +78,8 @@
 }
 
 \def\pgfplots@ternary@activate{%
+	\let\pgfplotsqpointxy=\pgfplotsqpointxy@ternary
+	\let\pgfplotsqpointxy@orthogonal=\pgfplotsqpointxy
 	\let\pgfplotsqpointxyz=\pgfplotsqpointxyz@ternary
 	\let\pgfplots@draw@axis=\pgfplots@draw@axis@ternary
 	\def\pgfplots@drawaxis@outerlines@separate@onorientedsurf##1##2{}%
@@ -355,6 +357,28 @@
 
 \newif\ifpgfplots@ternary@next@is@unitinterval
 
+% Deduce z = 1-x-y after transformation to relative coordinates.
+\def\pgfplotsqpointxy@ternary#1#2{%
+	\pgf@process{%
+		\ifpgfplots@ternary@next@is@unitinterval
+			\dimen1=#1pt
+			\dimen2=#2pt
+		\else
+			\pgfplots@ternary@map@to@unit@x{#1}%
+			\dimen1=\pgfmathresult pt
+			%
+			\pgfplots@ternary@map@to@unit@y{#2}%
+			\dimen2=\pgfmathresult pt
+		\fi
+		\dimen4=\dimen1
+		\advance\dimen4 by\dimen2
+		\dimen3=1pt
+		\advance\dimen3 by-\dimen4
+		%
+		\global\pgfplots@ternary@next@is@unitintervalfalse
+		\pgfplotsqpointxyz@ternary@
+	}%
+}%
 % gx(x,y,z) = 0.5 * (x + 2*z)/(x+y+z)
 % gy(x,y,z) = (sqrt(3) / 2) * x / (x+y+z)
 \def\pgfplotsqpointxyz@ternary#1#2#3{%
@@ -689,4 +713,191 @@
 	\def\pgfplotsretval{1}%
 }%
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+% tieline plots
+%
+\pgfplotsset{
+	tieline/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlertieline
+		\pgfkeysifdefined{/pgfplots/table/tie end x}{}{%
+			% provide these keys locally:
+			\pgfkeyslet{/pgfplots/table/tie end x}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end x index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z index}\pgfutil@empty%
+		}%
+		\pgfqkeys{/pgfplots/tieline}{#1}%
+	},
+	tieline/every tieline/.style={},
+	tieline/tieline style/.style={/pgfplots/tieline/every tieline/.append style={#1}},
+	tieline/every curve/.style={},
+	tieline/curve style/.style={/pgfplots/tieline/every curve/.append style={#1}},
+	tieline/each nth tie/.initial=,
+}
+\def\pgfplotsplothandlertieline{%
+	\pgfplotsresetplothandler
+	\let\pgf@plotstreamstart=\pgfplotsplothandlervisbegin@tieline
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@tieline
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@tieline
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@tieline
+}%
+\def\pgfplotsplothandlervisbegin@tieline{%
+	\pgfplotsapplistXnewempty\pgfp@binodal@A
+	\pgfplotsapplistXnewempty\pgfp@ties
+	\pgfplotsprependlistXnewempty{pgfp@binodal@B@reverse}
+	\def\b@pgfplotsplothandlersurveystart@tieline@even{1}%
+	%
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlervis@streampoint@tieline
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlervis@streamend@tieline
+	%
+	\pgfkeysgetvalue{/pgfplots/tieline/each nth tie}\pgfplots@eachnth@tie
+	\ifx\pgfplots@eachnth@tie\pgfutil@empty
+		\def\pgfplots@eachnth@tie{1}%
+	\fi
+	\let\c@pgfplots@tiecounter=\c@pgfplotstable@counta
+	\c@pgfplots@tiecounter=0
+}%
+\def\pgfplotsplothandlervis@streampoint@tieline#1{%
+	\pgf@process{#1}%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@stream@withmeta@
+			{\pgfplots@current@point@coordindex}%
+			{\the\pgf@x}{\the\pgf@y}%
+			{\pgfplots@current@point@meta}%
+	}%
+	\if1\b@pgfplotsplothandlersurveystart@tieline@even
+		\let\pgfplotsplothandlervis@streampoint@tieline@last=\pgfplots@loc@TMPa
+		\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfp@binodal@A
+		\def\b@pgfplotsplothandlersurveystart@tieline@even{0}%
+	\else
+		\expandafter\pgfplotsprependlistXpushfront\pgfplots@loc@TMPa\to{pgfp@binodal@B@reverse}%
+		%
+		\advance\c@pgfplots@tiecounter by1
+		\ifnum\pgfplots@eachnth@tie=\c@pgfplots@tiecounter
+			\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlervis@streampoint@tieline@last}%
+			\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\noexpand\pgfplotsplothandlertieline@finishtie}%
+			\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfp@ties
+			\c@pgfplots@tiecounter=0
+		\fi
+		%
+		\def\b@pgfplotsplothandlersurveystart@tieline@even{1}%
+	\fi
+}%
+\def\pgfplotsplothandlervis@streamend@tieline{%
+	\begingroup
+		\pgfplots@drawmodes@appendtrue
+		\path[/pgfplots/tieline/every curve]%
+		\pgfextra
+		\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+			\let\tikz@plot@handler\pgfplothandlerlineto
+		\fi
+		\pgfplotsresetplothandler
+		\tikz@plot@handler
+		\pgf@plotstreamstart
+		%
+		\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfp@binodal@A
+		\pgfplots@loc@TMPa
+		\pgfplotsapplistXnewempty\pgfp@binodal@A
+		\pgfplotsprependlistXlet\pgfplots@loc@TMPa={pgfp@binodal@B@reverse}%
+		\pgfplots@loc@TMPa
+		\pgfplotsprependlistXnewempty{pgfp@binodal@B@reverse}%
+		%
+		\pgf@plotstreamend
+		\endpgfextra;
+	\endgroup
+	%
+	%
+	\pgfplotsset{/pgfplots/tieline/every tieline}%
+	\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+		\let\tikz@plot@handler\pgfplothandlerlineto
+	\fi
+	\pgfplotsresetplothandler
+	\tikz@plot@handler
+	\pgf@plotstreamstart
+	%
+	\def\pgfplotsplothandlertieline@finishtie{%
+		\pgfplotsplothandlervisualizejump
+	}%
+	\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfp@ties
+	\pgfplots@loc@TMPa
+	\pgfplotsapplistXnewempty\pgfp@ties
+	%
+	\pgf@plotstreamend
+}%
+
+\def\pgfplotsplothandlersurveystart@tieline{%
+	\def\pgfplots@loc@TMPa{table}%
+	\ifx\pgfplotssurveyphaseinputclass\pgfplots@loc@TMPa
+	\else
+		\pgfplots@error{Sorry, 'tieline' plots are currently only supported for \string\addplot\space table}%
+	\fi
+	\def\b@pgfplotsplothandlersurveystart@tieline@init{0}%
+}%
+\def\pgfplotsplothandlersurveyend@tieline{%
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline@init{%
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor x\pgfplotsplothandlertieline@Bx
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor y\pgfplotsplothandlertieline@By
+	\ifpgfplots@curplot@threedim
+		\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor z\pgfplotsplothandlertieline@Bz
+	\fi
+	%
+	\def\b@pgfplotsplothandlersurveystart@tieline@init{1}%
+}%
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor#1#2{%
+	\let#2=\relax
+	\pgfkeysgetvalue{/pgfplots/table/tie end #1}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/tie end #1 index}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\edef#2{\noexpand\getthisrowno{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+		\fi
+	\else
+		\edef#2{\noexpand\getthisrow{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+	\fi
+	\ifx#2\relax
+		\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for #1\pgfplots@loc@ind
+		\c@pgf@countd=\pgfplots@loc@ind\relax
+		\advance\c@pgf@countd by3
+		\ifnum\c@pgf@countd<\pgfplotstablecols\relax
+		\else
+			\c@pgf@countd=0
+			\pgfplots@error{Sorry, I can't find the 'tie end #1 index' automatically. Please provide 'table[tie end #1={<colname>}]' or 'table[tie end #1 index=<col index>]' manually and verify the all, x,y and z components are correct}%
+		\fi
+		\edef\pgfplots@loc@ind{\the\c@pgf@countd}%
+		\pgfkeyslet{/pgfplots/table/tie end #1 index}\pgfplots@loc@ind
+		\edef#2{\noexpand\getthisrowno{\pgfplots@loc@ind}\noexpand\pgfmathresult}%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for#1#2{%
+	\pgfkeysgetvalue{/pgfplots/table/#1}{\pgfplots@loc@TMPa}%
+	\pgfkeysgetvalue{/pgfplots/table/#1 index}{\pgfplots@loc@TMPb}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\let#2=\pgfplots@loc@TMPb
+	\else
+		\def\pgfplots@loc@TMPb{\expandafter\pgfplotstablegetcolumnindexforname\expandafter{\pgfplots@loc@TMPa}\of}%
+		\expandafter\pgfplots@loc@TMPb\pgfplotstablename\to#2%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline{%
+	\if0\b@pgfplotsplothandlersurveystart@tieline@init
+		\pgfplotsplothandlersurveypoint@tieline@init
+	\fi
+	\pgfplotsplothandlersurveypoint@default
+	%
+	\pgfplotsplothandlertieline@Bx\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotsplothandlertieline@By\let\pgfplots@current@point@y=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfplotsplothandlertieline@Bz\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	\pgfplotsplothandlersurveypoint@default
+}%
 \endinput
