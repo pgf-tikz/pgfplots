@@ -69,11 +69,7 @@
 		\ifpgfplots@curplot@threedim
 			\noexpand\pgfplotsqpointxyz{##1}{##2}{##3}%
 		\else
-			\ifpgfplots@threedim
-				\noexpand\pgfplotsqpointxyz{##1}{##2}{0.0}%
-			\else
-				\noexpand\pgfplotsqpointxy{##1}{##2}%
-			\fi
+			\noexpand\pgfplotsqpointxy{##1}{##2}%
 		\fi
 	}%
 	%
@@ -120,9 +116,9 @@
 	\pgfplotsdeclareborderanchorforticklabelaxis{y}{near yticklabel}%
 	\pgfplotsdeclareborderanchorforticklabelaxis{z}{near zticklabel}%
 	%
-	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{x}}}%
-	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{y}}}%
-	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{z}}}%
+	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{x}}}%
+	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{y}}}%
+	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{z}}}%
 	%
 }%
 
@@ -1423,29 +1419,65 @@
 	\fi
 }%
 
+\newif\ifpgfplots@sloped
+\pgfplots@slopedtrue % its only purpose is to *DEACTIVATE* the sloped transformation after it has been activated.
+\newif\ifpgfplots@sloped@resets@nontranslations
+\newif\ifpgfplots@sloped@allowupsidedown
+\pgfkeys{
+	/pgfplots/sloped/true/.code={\pgfplots@slopedtrue},
+	/pgfplots/sloped/false/.code={\pgfplots@slopedfalse},
+	/pgfplots/sloped/allow upside down/.is if=pgfplots@sloped@allowupsidedown,
+	/pgfplots/sloped/allow upside down/.default=true,
+	/pgfplots/sloped/execute for upside down/.initial=,
+	/pgfplots/sloped/reset nontranslations/.is if=pgfplots@sloped@resets@nontranslations,
+	/pgfplots/sloped/reset nontranslations/.default=true,
+}
 % Installs a rotation transformation matrix such that labels or
 % whatever are aligned precisely in direction of one of the two/three
 % coordinate directions.
 %
-% #1: the coordinate direction (one of x,y or z)
+% \pgfplotstransformtoaxisdirection[<options>]{<axis char>}
+% 
+% <axis char>: the coordinate direction (one of x,y or z)
 %
 % The code is pretty much the same as \pgftransformlineattime, except
 % that the computation is considerably simpler as axis directions are
 % a well known quantity.
 %
-% This command assumes \ifpgfallowupsidedownattime = false and
-% \ifpgfresetnontranslationattime = true
-\def\pgfplotstransformtoaxisdirection#1{%
-	\pgftransformresetnontranslations
+% This command uses \ifpgfplots@sloped@allowupsidedown (=false) and
+% \ifpgfplots@sloped@resets@nontranslations (= true). The default
+% setting is reinitialised before options are processed
+\def\pgfplotstransformtoaxisdirection{%
+	\pgfutil@ifnextchar[{\pgfplotstransformtoaxisdirection@}{\pgfplotstransformtoaxisdirection@[]}%
+}%
+\def\pgfplotstransformtoaxisdirection@[#1]#2{%
+	\pgfplots@sloped@allowupsidedownfalse
+	\pgfplots@sloped@resets@nontranslationstrue
+	%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/sloped}{#1}%
+	\fi
+	\ifpgfplots@sloped
+	%
+	\ifpgfplots@sloped@resets@nontranslations
+		\pgftransformresetnontranslations
+	\fi
 	%
 	% compute unit length vector pointing into the direction of
 	% '#1#2#3':
-	\pgfqpointscale{\csname pgfplotsunit#1invlength\endcsname}{\csname pgfplotspointunit#1\endcsname}%
+	\pgfqpointscale{\csname pgfplotsunit#2invlength\endcsname}{\csname pgfplotspointunit#2\endcsname}%
 	%
-	% do not allow upside down labels:
 	\ifdim\pgf@x<0pt%   
-		\global\pgf@x=-\pgf@x%
-		\global\pgf@y=-\pgf@y%
+		% oh. upside down.
+		\pgfkeysvalueof{/pgfplots/sloped/execute for upside down}%
+		\ifpgfplots@sloped@allowupsidedown
+		\else
+			% do not allow upside down labels:
+			\global\pgf@x=-\pgf@x%
+			\global\pgf@y=-\pgf@y%
+		\fi
 	\fi%
 	%
 	\pgf@ya=-\pgf@y%
@@ -1456,6 +1488,7 @@
 	\pgftransformcm%
 	{\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+	\fi
 }
 
 
@@ -4718,6 +4751,7 @@
 			\pgfplots@addplotimpl@f{#1}{#2}%
 		}{%
 			\pgfutil@ifnextchar t{%
+				\def\pgfplotssurveyphaseinputclass{table}%
 				\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2}%
 				\pgfplots@addplotimpl@table{#1,#2}%
 			}{%
@@ -4854,6 +4888,7 @@
 \long\def\pgfplots@addplotimpl@expression#1#2(#3,#4)#5;{\pgfplots@addplotimpl@expression@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] (#3,#4) #5;
 \long\def\pgfplots@addplotimpl@expression@#1#2#3#4#5{%
+	\def\pgfplotssurveyphaseinputclass{expression}%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2,/pgfplots/mesh input=lattice,/pgfplots/mesh/ordering/x varies}%
 	\pgfplots@plot@expression@preparekeys
 	%
@@ -5125,6 +5160,7 @@
 \def\pgfplots@addplotimpl@function@opt@#1#2#3#4#5{%
 	% FIXME : what about the key search paths if the user changes
 	% them!?
+	\def\pgfplotssurveyphaseinputclass{gnuplot}%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2,/pgfplots/.cd,#3,/pgfplots/mesh/ordering/x varies}%
 	%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
@@ -5322,6 +5358,7 @@
 \def\pgfplots@addplotimpl@shell@opt#1#2[#3]#4#5;{\pgfplots@addplotimpl@shell@opt@{#1}{#2}{#3}{#4}{#5}}%
 % \addplot[#1] [#2] shell[#3] {#4} #5;
 \def\pgfplots@addplotimpl@shell@opt@#1#2#3#4#5{%
+	\def\pgfplotssurveyphaseinputclass{shell}%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2,/pgfplots/.cd,#3}%
 	\pgfplots@gettikzinternal@keyval{prefix}{tikz@plot@prefix}{\jobname.}%
 	\pgfplots@gettikzinternal@keyval{id}{tikz@plot@id}{pgf-shell}%
@@ -5370,6 +5407,7 @@
 \def\pgfplots@addplotimpl@file@opt@#1#2#3#4#5{%
 	% invoke this here - allows to share the 'plot file' impl with
 	% 'plot gnuplot'.
+	\def\pgfplotssurveyphaseinputclass{file}%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2}%
 	\pgfplots@addplotimpl@file@opt@@{#1,#2}{#3}{#4}{#5}%
 }
@@ -5470,6 +5508,7 @@
 % \addplot[#1] plot[#2] graphics[#3] {#4} #5;
 \long\def\pgfplots@addplotimpl@graphics@#1#2[#3]#4#5;{\pgfplots@addplotimpl@graphics@@{#1}{#2}{#3}{#4}{#5}}%
 \long\def\pgfplots@addplotimpl@graphics@@#1#2#3#4#5{%
+	\def\pgfplotssurveyphaseinputclass{graphics}%
 	\pgfplots@start@plot@with@behavioroptions{%
 		/pgfplots/filter discard warning=false,
 		#1,/pgfplots/.cd,#2,%
@@ -5658,6 +5697,7 @@
 % \addplot[#1] table[#2] from {#3} #4 ;
 \long\def\pgfplots@addplotimpl@table@fromstructure@#1#2#3#4{%
 	\begingroup
+	\def\pgfplotstablename{#3}% store the name of the currently processed table.
 	\pgfplotstablegetscanlinelength{#3}{\pgfplotsscanlinelength}%
 	% FIXME : this thing here has runtime O(N^2) !
 	% I fear it is faster to simply reload the data .... !?
@@ -6153,7 +6193,7 @@
 % So, this macro install special handlers to restore the old setting.
 \def\pgfplots@install@local@bar@handlers{%
 	\pgfkeysgetvalue{/pgfplots/xbar/.@cmd}\pgfplotskeys@orig@xbar
-	\pgfkeysgetvalue{/pgfplots/ybar/.@cmd}\pgfplotskeys@orig@xbar
+	\pgfkeysgetvalue{/pgfplots/ybar/.@cmd}\pgfplotskeys@orig@ybar
 	\pgfkeysgetvalue{/pgfplots/xbar interval/.@cmd}\pgfplotskeys@orig@xbari
 	\pgfkeysgetvalue{/pgfplots/ybar interval/.@cmd}\pgfplotskeys@orig@ybari
 	\pgfkeysdef{/pgfplots/xbar}{%
@@ -6257,6 +6297,7 @@
 \long\def\pgfplots@addplotimpl@coordinates#1#2plot coordinates#3#4;{\pgfplots@addplotimpl@coordinates@{#1}{#2}{#3}{#4}}%
 % \addplot[#1] [#2] coordinates {#3} #4;
 \long\def\pgfplots@addplotimpl@coordinates@#1#2#3#4{%
+	\def\pgfplotssurveyphaseinputclass{coordinates}%
 	\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2}%
 	\pgfplots@PREPARE@COORD@STREAM{#4}%
 	\ifpgfplots@curplot@threedim
@@ -6500,11 +6541,7 @@
 		\ifpgfplots@curplot@threedim
 			\E\pgfplotsqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{\E\pgfplots@current@point@z}%
 		\else
-			\ifpgfplots@threedim
-				\E\pgfplotsqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{0.0}%
-			\else
-				\E\pgfplotsqpointxy{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}%
-			\fi
+			\E\pgfplotsqpointxy{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}%
 		\fi
 		%
 		\ifpgfplots@record@marker@stream
