@@ -116,9 +116,9 @@
 	\pgfplotsdeclareborderanchorforticklabelaxis{y}{near yticklabel}%
 	\pgfplotsdeclareborderanchorforticklabelaxis{z}{near zticklabel}%
 	%
-	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{x}}}%
-	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{y}}}%
-	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{z}}}%
+	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{x}}}%
+	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{y}}}%
+	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{z}}}%
 	%
 }%
 
@@ -481,12 +481,6 @@
 % fixed.
 \def\pgfplotspointonorientedsurfacespecsymbol{\pgfplotspointonorientedsurfaceabsetupfor@fixedsymbol}
 
-% Initialises \pgfplotspointonorientedsurfaceab such that 'a' is the x
-% axis and 'b' is the y axis and the z coordinate has been fixed with
-% \pgfplotspointonorientedsurfaceabsetupforsetz{}.
-%
-% The Z value needs to be fixed with 
-% \pgfplotspointonorientedsurfaceabsetupforsetz .
 \def\pgfplotspointonorientedsurfaceabsetupfor#1#2#3{%
 	\pgfutil@ifundefined{pgfplotspointonorientedsurfaceabsetupfor@@#1#2#3}{%
 		\pgfplots@error{Sorry, \string\pgfplotspointonorientedsurfaceabsetupfor\space#1#2#3 is not yet implemented.}%
@@ -495,6 +489,12 @@
 	}%
 }%
 %
+% Initialises \pgfplotspointonorientedsurfaceab such that 'a' is the x
+% axis and 'b' is the y axis and the z coordinate has been fixed with
+% \pgfplotspointonorientedsurfaceabsetupforsetz{}.
+%
+% The Z value needs to be fixed with 
+% \pgfplotspointonorientedsurfaceabsetupforsetz .
 \def\pgfplotspointonorientedsurfaceabsetupfor@@xyz{%
 	\def\pgfplotspointonorientedsurfaceab##1##2{\pgfplotsqpointxyz{##1}{##2}{\pgfplotspointonorientedsurfaceabsetupfor@fixedz}}%
 	\def\pgfplotspointonorientedsurfaceA{x}%
@@ -1023,10 +1023,16 @@
 					\let\pgfplots@loc@TMPa=\pgfutil@empty
 				\fi
 			\else
-				\pgfplots@error{The character '#1' is no valid element for a three-character axis line or surface description!}%
+				% return TRUE.
+				% I admit I am not sure at all if this works in all
+				% cases
+				\pgfplotspointonorientedsurfaceabmatchaxisline@warn{#1}%
 			\fi
 		\fi
 	\fi
+}%
+\def\pgfplotspointonorientedsurfaceabmatchaxisline@warn#1{%
+	\pgfplots@warning{The internal implementation is suspicious that something is wrong: \string\pgfplotspointonorientedsurfaceabmatchaxisline@warn:  the character '#1' in a three-character axis line or surface description might not be fully supported...}%
 }%
 
 % Provides a point on an arbitrary axis (identified by a
@@ -1413,29 +1419,65 @@
 	\fi
 }%
 
+\newif\ifpgfplots@sloped
+\pgfplots@slopedtrue % its only purpose is to *DEACTIVATE* the sloped transformation after it has been activated.
+\newif\ifpgfplots@sloped@resets@nontranslations
+\newif\ifpgfplots@sloped@allowupsidedown
+\pgfkeys{
+	/pgfplots/sloped/true/.code={\pgfplots@slopedtrue},
+	/pgfplots/sloped/false/.code={\pgfplots@slopedfalse},
+	/pgfplots/sloped/allow upside down/.is if=pgfplots@sloped@allowupsidedown,
+	/pgfplots/sloped/allow upside down/.default=true,
+	/pgfplots/sloped/execute for upside down/.initial=,
+	/pgfplots/sloped/reset nontranslations/.is if=pgfplots@sloped@resets@nontranslations,
+	/pgfplots/sloped/reset nontranslations/.default=true,
+}
 % Installs a rotation transformation matrix such that labels or
 % whatever are aligned precisely in direction of one of the two/three
 % coordinate directions.
 %
-% #1: the coordinate direction (one of x,y or z)
+% \pgfplotstransformtoaxisdirection[<options>]{<axis char>}
+% 
+% <axis char>: the coordinate direction (one of x,y or z)
 %
 % The code is pretty much the same as \pgftransformlineattime, except
 % that the computation is considerably simpler as axis directions are
 % a well known quantity.
 %
-% This command assumes \ifpgfallowupsidedownattime = false and
-% \ifpgfresetnontranslationattime = true
-\def\pgfplotstransformtoaxisdirection#1{%
-	\pgftransformresetnontranslations
+% This command uses \ifpgfplots@sloped@allowupsidedown (=false) and
+% \ifpgfplots@sloped@resets@nontranslations (= true). The default
+% setting is reinitialised before options are processed
+\def\pgfplotstransformtoaxisdirection{%
+	\pgfutil@ifnextchar[{\pgfplotstransformtoaxisdirection@}{\pgfplotstransformtoaxisdirection@[]}%
+}%
+\def\pgfplotstransformtoaxisdirection@[#1]#2{%
+	\pgfplots@sloped@allowupsidedownfalse
+	\pgfplots@sloped@resets@nontranslationstrue
+	%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/sloped}{#1}%
+	\fi
+	\ifpgfplots@sloped
+	%
+	\ifpgfplots@sloped@resets@nontranslations
+		\pgftransformresetnontranslations
+	\fi
 	%
 	% compute unit length vector pointing into the direction of
 	% '#1#2#3':
-	\pgfqpointscale{\csname pgfplotsunit#1invlength\endcsname}{\csname pgfplotspointunit#1\endcsname}%
+	\pgfqpointscale{\csname pgfplotsunit#2invlength\endcsname}{\csname pgfplotspointunit#2\endcsname}%
 	%
-	% do not allow upside down labels:
 	\ifdim\pgf@x<0pt%   
-		\global\pgf@x=-\pgf@x%
-		\global\pgf@y=-\pgf@y%
+		% oh. upside down.
+		\pgfkeysvalueof{/pgfplots/sloped/execute for upside down}%
+		\ifpgfplots@sloped@allowupsidedown
+		\else
+			% do not allow upside down labels:
+			\global\pgf@x=-\pgf@x%
+			\global\pgf@y=-\pgf@y%
+		\fi
 	\fi%
 	%
 	\pgf@ya=-\pgf@y%
@@ -1446,6 +1488,7 @@
 	\pgftransformcm%
 	{\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+	\fi
 }
 
 
@@ -1504,6 +1547,10 @@
 }%
 
 % this does the work for \pgfplotsdeclareborderanchorforaxis.
+%
+% It depends on \pgfplotspointunit[xyz] and
+% \pgfplotspointouternormalvectorofaxis
+%
 % #1: either x,y or z the direction which varies
 % #2: a three-char-string uniquely identifying the axis line.
 %   The parameter '#1' is redundand: it is the same as the 'v'
@@ -1656,6 +1703,7 @@
 			{\pgfplots@loc@center}%
 			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
 	\else
+\message{^^JPGFPlots warning: The ticklabel anchor cannot be determined, the normal vector and the unit #1 vector are almost parallel (abs(cos(angle)) = \the\pgf@xc)!^^J}%
 		% Something went awry: normal and unit#1 are almost parallel!?
 		% just use the determined anchor.
 		\def\pgfplots@r{0}%
@@ -2003,6 +2051,7 @@
 		initialise=,
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
 		zero=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{0},
+		one=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{1},
 		log e=		\pgfmathlog@{##1},%
 		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
 		log from display log=\pgfmath@basic@multiply@{##1}{0.434294},% / log(10)
@@ -2107,6 +2156,8 @@
 	%
 	zero/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ zero\endcsname{#1}},%
+	one/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ one\endcsname{#1}},%
 	%
 	% takes a parsed number and returns a fixed point number:
 	tofixed/.code=
@@ -2364,6 +2415,7 @@
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
 	suffix=@basic@,
 	zero=\def\pgfmathresult{0},
+	one=\def\pgfmathresult{1},
 }
 \pgfplotsdeclarecoordmath{float}{%
 	initialise=
@@ -2373,6 +2425,7 @@
 		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
 	zero=\pgfmathfloatcreate{0}{0.0}{0},%
+	one=\pgfmathfloatcreate{1}{1.0}{0},%
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
 	max=\pgfplotsmathfloatmax{#1}{#2},%
