@@ -116,9 +116,9 @@
 	\pgfplotsdeclareborderanchorforticklabelaxis{y}{near yticklabel}%
 	\pgfplotsdeclareborderanchorforticklabelaxis{z}{near zticklabel}%
 	%
-	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{x}}}%
-	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{y}}}%
-	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection{z}}}%
+	\pgfkeysdef{/tikz/sloped like x axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{x}}}%
+	\pgfkeysdef{/tikz/sloped like y axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{y}}}%
+	\pgfkeysdef{/tikz/sloped like z axis}{\tikz@addtransform{\pgfplotstransformtoaxisdirection[##1]{z}}}%
 	%
 }%
 
@@ -481,12 +481,6 @@
 % fixed.
 \def\pgfplotspointonorientedsurfacespecsymbol{\pgfplotspointonorientedsurfaceabsetupfor@fixedsymbol}
 
-% Initialises \pgfplotspointonorientedsurfaceab such that 'a' is the x
-% axis and 'b' is the y axis and the z coordinate has been fixed with
-% \pgfplotspointonorientedsurfaceabsetupforsetz{}.
-%
-% The Z value needs to be fixed with 
-% \pgfplotspointonorientedsurfaceabsetupforsetz .
 \def\pgfplotspointonorientedsurfaceabsetupfor#1#2#3{%
 	\pgfutil@ifundefined{pgfplotspointonorientedsurfaceabsetupfor@@#1#2#3}{%
 		\pgfplots@error{Sorry, \string\pgfplotspointonorientedsurfaceabsetupfor\space#1#2#3 is not yet implemented.}%
@@ -495,6 +489,12 @@
 	}%
 }%
 %
+% Initialises \pgfplotspointonorientedsurfaceab such that 'a' is the x
+% axis and 'b' is the y axis and the z coordinate has been fixed with
+% \pgfplotspointonorientedsurfaceabsetupforsetz{}.
+%
+% The Z value needs to be fixed with 
+% \pgfplotspointonorientedsurfaceabsetupforsetz .
 \def\pgfplotspointonorientedsurfaceabsetupfor@@xyz{%
 	\def\pgfplotspointonorientedsurfaceab##1##2{\pgfplotsqpointxyz{##1}{##2}{\pgfplotspointonorientedsurfaceabsetupfor@fixedz}}%
 	\def\pgfplotspointonorientedsurfaceA{x}%
@@ -1023,10 +1023,16 @@
 					\let\pgfplots@loc@TMPa=\pgfutil@empty
 				\fi
 			\else
-				\pgfplots@error{The character '#1' is no valid element for a three-character axis line or surface description!}%
+				% return TRUE.
+				% I admit I am not sure at all if this works in all
+				% cases
+				\pgfplotspointonorientedsurfaceabmatchaxisline@warn{#1}%
 			\fi
 		\fi
 	\fi
+}%
+\def\pgfplotspointonorientedsurfaceabmatchaxisline@warn#1{%
+	\pgfplots@warning{The internal implementation is suspicious that something is wrong: \string\pgfplotspointonorientedsurfaceabmatchaxisline@warn:  the character '#1' in a three-character axis line or surface description might not be fully supported...}%
 }%
 
 % Provides a point on an arbitrary axis (identified by a
@@ -1398,7 +1404,7 @@
 
 % Helper method for \pgfplotsqpointoutsideofaxis and its variants.
 % #1: an axis (x,y or z)
-% #2: one of '0', '1' or '2' where
+% #2: o(\pgfplots@loc@TMPa - \pgfplots@loc@TMPb) ne of '0', '1' or '2' where
 % 	0 == add lower #1 axis limit,
 % 	1 == add upper #1 axis limit,
 % 	2 == add nothing.
@@ -1413,29 +1419,65 @@
 	\fi
 }%
 
+\newif\ifpgfplots@sloped
+\pgfplots@slopedtrue % its only purpose is to *DEACTIVATE* the sloped transformation after it has been activated.
+\newif\ifpgfplots@sloped@resets@nontranslations
+\newif\ifpgfplots@sloped@allowupsidedown
+\pgfkeys{
+	/pgfplots/sloped/true/.code={\pgfplots@slopedtrue},
+	/pgfplots/sloped/false/.code={\pgfplots@slopedfalse},
+	/pgfplots/sloped/allow upside down/.is if=pgfplots@sloped@allowupsidedown,
+	/pgfplots/sloped/allow upside down/.default=true,
+	/pgfplots/sloped/execute for upside down/.initial=,
+	/pgfplots/sloped/reset nontranslations/.is if=pgfplots@sloped@resets@nontranslations,
+	/pgfplots/sloped/reset nontranslations/.default=true,
+}
 % Installs a rotation transformation matrix such that labels or
 % whatever are aligned precisely in direction of one of the two/three
 % coordinate directions.
 %
-% #1: the coordinate direction (one of x,y or z)
+% \pgfplotstransformtoaxisdirection[<options>]{<axis char>}
+% 
+% <axis char>: the coordinate direction (one of x,y or z)
 %
 % The code is pretty much the same as \pgftransformlineattime, except
 % that the computation is considerably simpler as axis directions are
 % a well known quantity.
 %
-% This command assumes \ifpgfallowupsidedownattime = false and
-% \ifpgfresetnontranslationattime = true
-\def\pgfplotstransformtoaxisdirection#1{%
-	\pgftransformresetnontranslations
+% This command uses \ifpgfplots@sloped@allowupsidedown (=false) and
+% \ifpgfplots@sloped@resets@nontranslations (= true). The default
+% setting is reinitialised before options are processed
+\def\pgfplotstransformtoaxisdirection{%
+	\pgfutil@ifnextchar[{\pgfplotstransformtoaxisdirection@}{\pgfplotstransformtoaxisdirection@[]}%
+}%
+\def\pgfplotstransformtoaxisdirection@[#1]#2{%
+	\pgfplots@sloped@allowupsidedownfalse
+	\pgfplots@sloped@resets@nontranslationstrue
+	%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/sloped}{#1}%
+	\fi
+	\ifpgfplots@sloped
+	%
+	\ifpgfplots@sloped@resets@nontranslations
+		\pgftransformresetnontranslations
+	\fi
 	%
 	% compute unit length vector pointing into the direction of
 	% '#1#2#3':
-	\pgfqpointscale{\csname pgfplotsunit#1invlength\endcsname}{\csname pgfplotspointunit#1\endcsname}%
+	\pgfqpointscale{\csname pgfplotsunit#2invlength\endcsname}{\csname pgfplotspointunit#2\endcsname}%
 	%
-	% do not allow upside down labels:
 	\ifdim\pgf@x<0pt%   
-		\global\pgf@x=-\pgf@x%
-		\global\pgf@y=-\pgf@y%
+		% oh. upside down.
+		\pgfkeysvalueof{/pgfplots/sloped/execute for upside down}%
+		\ifpgfplots@sloped@allowupsidedown
+		\else
+			% do not allow upside down labels:
+			\global\pgf@x=-\pgf@x%
+			\global\pgf@y=-\pgf@y%
+		\fi
 	\fi%
 	%
 	\pgf@ya=-\pgf@y%
@@ -1446,6 +1488,7 @@
 	\pgftransformcm%
 	{\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
 	{\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+	\fi
 }
 
 
@@ -1504,6 +1547,10 @@
 }%
 
 % this does the work for \pgfplotsdeclareborderanchorforaxis.
+%
+% It depends on \pgfplotspointunit[xyz] and
+% \pgfplotspointouternormalvectorofaxis
+%
 % #1: either x,y or z the direction which varies
 % #2: a three-char-string uniquely identifying the axis line.
 %   The parameter '#1' is redundand: it is the same as the 'v'
@@ -1656,6 +1703,7 @@
 			{\pgfplots@loc@center}%
 			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
 	\else
+\message{^^JPGFPlots warning: The ticklabel anchor cannot be determined, the normal vector and the unit #1 vector are almost parallel (abs(cos(angle)) = \the\pgf@xc)!^^J}%
 		% Something went awry: normal and unit#1 are almost parallel!?
 		% just use the determined anchor.
 		\def\pgfplots@r{0}%
@@ -1888,9 +1936,9 @@
 	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
 	% compute 1/(xmax - xmin) in float.
 	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
-	\pgfmathfloatparsenumber\pgfmathresult
-	\pgfmathfloatreciprocal@\pgfmathresult
-	\pgfmathfloattofixed\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(xmax-xmin) = 1/(\pgfplots@xmax-\pgfplots@xmin) = \pgfmathresult.}%
 	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
@@ -1899,9 +1947,9 @@
 	\pgf@xy=\pgfmathresult\pgf@xy
 	%
 	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-	\pgfmathfloatparsenumber\pgfmathresult
-	\pgfmathfloatreciprocal@\pgfmathresult
-	\pgfmathfloattofixed\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(ymay-ymin) = 1/(\pgfplots@ymax-\pgfplots@ymin) = \pgfmathresult.}%
 	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
@@ -1911,9 +1959,9 @@
 	%
 	\ifpgfplots@threedim
 		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
-		\pgfmathfloatparsenumber\pgfmathresult
-		\pgfmathfloatreciprocal@\pgfmathresult
-		\pgfmathfloattofixed\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
 %\message{and 1/(zmaz-zmin) = 1/(\pgfplots@zmax-\pgfplots@zmin) = \pgfmathresult.}%
 		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
@@ -2003,6 +2051,7 @@
 		initialise=,
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
 		zero=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{0},
+		one=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{1},
 		log e=		\pgfmathlog@{##1},%
 		log to display log=\pgfmath@basic@multiply@{##1}{2.3025851},% * log(10)
 		log from display log=\pgfmath@basic@multiply@{##1}{0.434294},% / log(10)
@@ -2107,6 +2156,8 @@
 	%
 	zero/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ zero\endcsname{#1}},%
+	one/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ one\endcsname{#1}},%
 	%
 	% takes a parsed number and returns a fixed point number:
 	tofixed/.code=
@@ -2364,6 +2415,7 @@
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
 	suffix=@basic@,
 	zero=\def\pgfmathresult{0},
+	one=\def\pgfmathresult{1},
 }
 \pgfplotsdeclarecoordmath{float}{%
 	initialise=
@@ -2373,6 +2425,7 @@
 		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
 	zero=\pgfmathfloatcreate{0}{0.0}{0},%
+	one=\pgfmathfloatcreate{1}{1.0}{0},%
 	tofixed=\pgfmathfloattofixed{#1},
 	tostring=\pgfmathfloattosci{#1},
 	max=\pgfplotsmathfloatmax{#1}{#2},%
@@ -2487,6 +2540,15 @@
 	}{%
 		\expandafter\edef\csname pgfcrdmth@#1\endcsname{#2}%
 		\pgfplotscoordmath{#1}{initialise}%
+	}%
+}%
+
+% Defines \pgfplotsretval to be the coordmath id for #1
+\def\pgfplotsgetcoordmathfor#1{%
+	\pgfutil@ifundefined{pgfcrdmth@#1}{%
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, \string\pgfplotsgetcoordmathfor{#1} failed since `#1' is unknown. Maybe you misspelled it?}\pgfeov%
+	}{%
+		\pgfutil@namelet{pgfplotsretval}{pgfcrdmth@#1}%
 	}%
 }%
 \pgfplotssetcoordmathfor{pgfbasic}{pgfbasic}%
@@ -3944,56 +4006,55 @@
 			\ifcase\csname pgfplots@errorbars@#1mode\endcsname
 				% fixed absolute, log( x +- e_x )
 				%
-				% FIXME : I'd prefer to use the \pgfplotcoordmath
-				% framework here. But I can't since here, TWO math
-				% engines take place: float for non-log coords and
-				% basic for log!
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1fixed\endcsname}%
+				\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@errorbars@#1fixed\endcsname}%
 				\expandafter\let\csname pgfplots@error@coord@#1\endcsname=\pgfmathresult
 				\expandafter\def\csname pgfplots@PREPARE@errorbar@process@#1@\endcsname##1{%
-					\pgfmathfloatparsenumber{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
+					\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
 					\let\pgfplots@loc@TMPa=\pgfmathresult
 					\if +##1%
-						\pgfmathfloatadd@
-							{\pgfplots@loc@TMPa}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@op{add}%
 					\else
-						\pgfmathfloatsubtract@
-							{\pgfplots@loc@TMPa}%
-							{\csname pgfplots@error@coord@#1\endcsname}%
+						\def\pgfplots@loc@op{subtract}%
 					\fi
+					\pgfplotscoordmath{default}{op}{\pgfplots@loc@op}{%
+						{\pgfplots@loc@TMPa}%
+						{\csname pgfplots@error@coord@#1\endcsname}%
+					}%
+					\pgfplotscoordmath{default}{tostring}{\pgfmathresult}%
 					\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 					\let\pgfplots@error@coord=\pgfmathresult
 					\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
 				}%
 			\or% fixed relative, log( x ( 1+-e_x ) ) = log(x) + log(1+-e_x)
-				\pgfmathfloatparsenumber{\csname pgfplots@errorbars@#1rel\endcsname}%
+				\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@errorbars@#1rel\endcsname}%
 				\let\pgfplots@loc@TMPb=\pgfmathresult
 				%
 				% +1:
-				\pgfmathfloatcreate{1}{1.0}{0}%
+				\pgfplotscoordmath{default}{one}%
 				\let\pgfplots@loc@TMPa=\pgfmathresult
 				%
 				% Prepare '1 + err':
-				\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{default}{op}{add}{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}}%
+				\pgfplotscoordmath{default}{tostring}{\pgfmathresult}%
 				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
 				}{%
 					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
-					\pgfplots@error{Sorry, log(1+\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
+					\pgfplotscoordmath{default}{tostring}{\pgfplots@loc@TMPb}%
+					\pgfplots@error{Sorry, log(1 + \pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
 				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@+\endcsname=\pgfmathresult
 				%
 				% Prepare '1 - err':
-				\pgfmathfloatsubtract@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
+				\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}}%
+				\pgfplotscoordmath{default}{tostring}{\pgfmathresult}%
 				\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 				\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
 				}{%
-					% 1 + err <= 0  and log(1+err) is undefined:
-					\pgfplotscoordmath{#1}{tostring}{\pgfplots@loc@TMPb}%
-					\pgfplots@error{Sorry, log(1-\pgfmathresult) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
+					% 1 - err <= 0  and log(1+err) is undefined:
+					\pgfplotscoordmath{default}{tostring}{\pgfplots@loc@TMPb}%
+					\pgfplots@error{Sorry, log(1 - \pgfmathresult) (\pgfplots@loc@TMPa - \pgfplots@loc@TMPb) is undefined. Please provide a different argument for '/pgfplots/error bar/#1 fixed relative'.}%
 					\let\pgfmathresult=\pgfutil@empty
 				}%
 				\expandafter\let\csname pgfplots@error@coord@#1@-\endcsname=\pgfmathresult
@@ -4014,22 +4075,23 @@
 					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
 					\ifx\pgfplots@error@coord\pgfutil@empty
 					\else
-						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\pgfplotscoordmath{default}{parsenumber}{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						% remember result here - will be used in case
 						% of '+' AND '-' error bars:
 						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
-						\pgfmathfloatparsenumber{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
+						\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@current@point@#1@unfiltered\endcsname}%
 						\let\pgfplots@loc@TMPa=\pgfmathresult
 						\if +##1%
-							\pgfmathfloatadd@
-								{\pgfplots@loc@TMPa}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@op{add}%
 						\else
-							\pgfmathfloatsubtract@
-								{\pgfplots@loc@TMPa}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@op{subtract}%
 						\fi
+						\pgfplotscoordmath{default}{op}{\pgfplots@loc@op}{%
+							{\pgfplots@loc@TMPa}%
+							{\pgfplots@error@coord}%
+						}%
+						\pgfplotscoordmath{default}{tostring}{\pgfmathresult}%
 						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\csname pgfplots@PREPARE@errorbar@stream@it@#1\endcsname
@@ -4042,23 +4104,24 @@
 					\edef\pgfplots@error@coord{\csname pgfplots@current@point@#1@error\endcsname}%
 					\ifx\pgfplots@error@coord\pgfutil@empty
 					\else
-						\pgfmathfloatparsenumber{\pgfplots@error@coord}%
+						\pgfplotscoordmath{default}{parsenumber}{\pgfplots@error@coord}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						% remember result here - will be used in case
 						% of '+' AND '-' error bars:
 						\expandafter\let\csname pgfplots@current@point@#1@error\endcsname=\pgfmathresult
 						%
-						\pgfmathfloatcreate{1}{1.0}{0}%
+						\pgfplotscoordmath{default}{one}%
 						\let\pgfplots@loc@TMPa=\pgfmathresult
 						\if +##1%
-							\pgfmathfloatadd@
-								{\pgfplots@loc@TMPa}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@op{add}%
 						\else
-							\pgfmathfloatsubtract@
-								{\pgfplots@loc@TMPa}%
-								{\pgfplots@error@coord}%
+							\def\pgfplots@loc@op{subtract}%
 						\fi
+						\pgfplotscoordmath{default}{op}{\pgfplots@loc@op}{%
+							{\pgfplots@loc@TMPa}%
+							{\pgfplots@error@coord}%
+						}%
+						\pgfplotscoordmath{default}{tostring}{\pgfmathresult}%
 						\pgfplotscoordmath{#1}{log}{\pgfmathresult}%
 						\let\pgfplots@error@coord=\pgfmathresult
 						\pgfplotscoordmath{#1}{if is bounded}{\pgfmathresult}{%
@@ -4238,7 +4301,7 @@
 \def\pgfplotsaxisvisphasetransformpointmeta{%
 	\ifx\pgfplots@current@point@meta\pgfutil@empty%
 		\pgfplots@error{could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\string\addplot[point meta=y]' or something like that?}%
-		\pgfmathfloatcreate{1}{1.0}{0}%
+		\pgfplotscoordmath{meta}{one}%
 		\let\pgfplotspointmeta=\pgfmathresult
 		\def\pgfplotspointmetatransformed{1.0}%
 	\else
@@ -8060,7 +8123,7 @@
 		\if1\csname pgfpmeta@\pgfplotspointmetainputhandler @issymbolic\endcsname
 		\else
 			% ok, be fault tolerant and round to an integer:
-			\pgfmathfloattofixed{\pgfplotspointmeta}%
+			\pgfplotscoordmath{meta}{tofixed}{\pgfplotspointmeta}%
 			\begingroup
 			\pgfkeys{/pgf/number format/precision=0}%
 			\expandafter\pgfmathroundto\expandafter{\pgfmathresult}%
