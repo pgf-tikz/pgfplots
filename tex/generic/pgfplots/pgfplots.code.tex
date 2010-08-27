@@ -480,7 +480,11 @@
 	/pgfplots/style commands/.is family,
 	/pgfplots/naming commands/.is family,
 	/pgfplots/shared with tikz/.is family,
+	/pgfplots/layer family/.is family,
 	/pgfplots/error bars/.is family,
+	/pgfplots/set layers/.initial=,
+	/pgfplots/set layers/.default={axis background,main,axis foreground,unclipped axis foreground},
+	/pgfplots/on layer/.initial=,
 	/pgfplots/every axis/.style={},
 	/pgfplots/every axis/.append code={\pgfplotsdeprecatedstylecheck{/tikz/every axis}},
 	/pgfplots/every axis/.belongs to family=/pgfplots/style commands,
@@ -3581,6 +3585,9 @@
 \def\pgfplots@replacement@for@scope@[#1]{\pgfplotsextra{\scope[#1]}}%
 \def\pgfplots@replacement@for@endscope{\pgfplotsextra\endscope}%
 
+\def\pgfplots@replacement@for@onlayer#1{\pgfplotsextra{\pgfplotsonlayer{#1}}}%
+\def\pgfplots@replacement@for@endonlayer{\pgfplotsextra{\endpgfplotsonlayer}}%
+
 {
 	% A block which handles active semicolons.
 	%
@@ -3670,7 +3677,15 @@
 % before.
 %
 % In contrast to \path, \pgfplotsextra can contain any command(s).
-\let\pgfplotsextra=\pgfplots@path@enqueue
+%
+% Syntax: either 
+% \pgfplotsextra{<argument>}
+% or
+% \pgfplotsextra <argument> \endpgfplotsextra
+\def\pgfplotsextra{%
+	\pgfutil@ifnextchar\bgroup{\pgfplots@path@enqueue}{\pgfplotsextra@}%
+}%
+\long\def\pgfplotsextra@#1\endpgfplotsextra{\pgfplots@path@enqueue{#1}}%
 
 
 % Assigns a legend.
@@ -4062,7 +4077,9 @@
 %\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node^^J}%
 	\ifx\pgfplots@createlegend@toname\pgfutil@empty
 		% DRAW:
+		\pgfplotsonlayerforstyle{every axis legend}%
 		\pgfplots@already@computed@legend@node
+		\endpgfplotsonlayerforstyle
 	\else
 		% apply the 'legend to name' feature:
 		%
@@ -6713,7 +6730,9 @@
 				\pgfplots@error{Sorry, your choice for '3d box' and 'axis x line' is incompatible.}%
 			\else
 				% 3d box=complete or complete*
+				\pgfplotsonlayer{axis foreground}%
 				\begingroup
+				\pgfplots@layered@graphicsfalse% no distinction of layers here.
 				\pgfplotsset{every 3d box foreground}%
 				\let\pgfplots@drawticklabels@onorientedsurf=\relax
 				\if2\pgfplots@threedimbox@choice
@@ -6780,6 +6799,7 @@
 				}{}%
 	%\fi
 				\endgroup
+				\endpgfplotsonlayer
 				% end of 3d box=complete
 			\fi
 		\fi
@@ -7259,10 +7279,135 @@
 	\pgfkeyslet{/pgfplots/.unknown/.@cmd}\pgfplots@BEGIN@prepare@description@styles@oldhandler
 }%
 
+\newif\ifpgfplots@layered@graphics
+
+\def\pgfplots@prepare@layered@graphics{%
+	\pgfkeysgetvalue{/pgfplots/set layers}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% DEFAULT.
+		\pgfplots@layered@graphicsfalse
+	\else
+		\def\pgfplots@loc@TMPb{false}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			% "set layers=false"
+			\pgfplots@layered@graphicsfalse
+		\else
+			\def\pgfplots@loc@TMPb{main}%
+			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+				% "set layers=main"
+				\pgfplots@layered@graphicsfalse
+			\else
+				\pgfplots@layered@graphicstrue
+				% declare all layers, and collect the normalised list
+				% into \pgfplots@loc@TMPd
+				\def\pgfplots@loc@TMPd{}%
+				\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPa}\as\pgfplots@loc@TMPa{%
+					% normalize argument:
+					\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+					\expandafter\pgfplotsutil@trim\expandafter{\pgfplots@loc@TMPa}%
+					\let\pgfplots@loc@TMPa=\pgfplotsretval
+					%
+					\ifx\pgfplots@loc@TMPa\pgfutil@empty
+					\else
+						\def\pgfplots@loc@TMPb{main}%
+						\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+						\else
+							\expandafter\pgfdeclarelayer\expandafter{\pgfplots@loc@TMPa}%
+						\fi
+						\edef\pgfplots@loc@TMPd{\ifx\pgfplots@loc@TMPd\pgfutil@empty\else\pgfplots@loc@TMPd,\fi\pgfplots@loc@TMPa}%
+					\fi
+				}%
+				% activate layers:
+				\expandafter\pgfsetlayers\expandafter{\pgfplots@loc@TMPd}%
+			\fi
+		\fi
+	\fi
+}%
+\def\pgfplotsonlayer#1{%
+	\begingroup
+	\def\b@pgfplotsonlayer@started{0}%
+	\ifpgfplots@layered@graphics
+		\edef\pgfplots@loc@TMPa{#1}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\def\b@pgfplotsonlayer@started{1}%
+			\pgfonlayer{#1}%
+		\fi
+	\fi
+}%
+\def\endpgfplotsonlayer{%
+	\ifpgfplots@layered@graphics
+		\if1\b@pgfplotsonlayer@started
+			\endpgfonlayer
+		\fi
+	\fi
+	\endgroup
+}%
+
+
+% Searches for the layers of a (set of) style name(s).
+%
+% #1 is a style name like 'every major grid'. It can also be a list of
+% style names.
+%
+% The last "on layer" key found in these styles will be used here.
+%
+% Note that the "on layer" keys have already been extracted in during
+% the key filtering procedure.
+\def\pgfplotsonlayerforstyle#1{%
+	\pgfplotsgetlayerforstyle{#1}%
+	\ifx\pgfplotsretval\pgfutil@empty
+		\expandafter\pgfplotsonlayer\expandafter{\pgfplotsretval}%
+	\fi
+}%
+\def\endpgfplotsonlayerforstyle{%
+	\ifpgfplots@layered@graphics
+		\endpgfplotsonlayer
+	\fi
+}
+% Returns the 'on layer' argument for '\pgfplotsonlayerforstyle'.
+%
+% @see \pgfplotsonlayerforstyle
+\def\pgfplotsgetlayerforstyle#1{%
+	\let\pgfplotsretval=\pgfutil@empty
+	\ifpgfplots@layered@graphics
+		% this here is the return value:
+		\let\pgfplots@loc@TMPc=\pgfutil@empty
+		%
+		% search list:
+		\pgfplotsutilforeachcommasep{#1}\as\pgfplots@loc@TMPa{%
+			\pgfkeysifdefined{/pgfplots/layers for styles/\pgfplots@loc@TMPa}{%
+				% oh, good: I have already processed the requested
+				% style, and I already know if it has a particular
+				% layer.
+				\pgfkeysgetvalue{/pgfplots/layers for styles/\pgfplots@loc@TMPa}\pgfplots@loc@TMPb
+			}{%
+				% hm. Ok, then process the style. Throw everything
+				% away, keep only the layer.
+				\begingroup
+				\pgfkeyslet{/pgfplots/on layer}\pgfutil@empty
+				\pgfkeysdef{/handlers/.unknown}{}% do nothing
+				\pgfkeysdef{/tikz/.unknown}{}% also, do nothing.
+				\pgfplotsset{#1}% let's hope this works with unknown keys...
+				\pgfkeysgetvalue{/pgfplots/on layer}\pgfplots@loc@TMPb
+				\pgfmath@smuggleone\pgfplots@loc@TMPb
+				\endgroup
+			}%
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty
+			\else
+				% update return value:
+				\let\pgfplots@loc@TMPc=\pgfplots@loc@TMPb
+			\fi
+		}%
+		\let\pgfplotsretval=\pgfplots@loc@TMPc
+	\fi
+}%
+
 \def\pgfplots@BEGIN@init@and@draw@axis{%
 	\pgfplots@determinedefaultvalues
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
 		\pgfinterruptpicture
+		\pgfplots@prepare@layered@graphics
 		\tikzpicture[/pgfplots/every axis]%
 		% set baseline for sub-picture to default value.
 		% the baseline option will be applied to the OUTER picture.
@@ -7287,7 +7432,9 @@
 		\scope
 		%
 		\pgfkeysifdefined{/pgfplots/axis background/.@cmd}{%
+			\pgfplotsonlayer{axis background}%
 			\path[/pgfplots/axis background] \pgfextra{\pgfplots@clippath@install{}};%
+			\endpgfplotsonlayer
 		}{}%
 		%
 		\ifpgfplots@axis@on@top
@@ -7618,6 +7765,10 @@
 	% This here looks better, I think... markers should not be obscured by descriptions.
 	\ifpgfplots@clip@marker@paths
 	\else
+		% Note that layer changes are expensive. That's why I collect
+		% the pgfplots@stored@markerlist here and assign the layer
+		% just one time:
+		\pgfplotsonlayer{unclipped axis foreground}%
 		\pgfplotslistforeach\pgfplots@stored@markerlist\as\pgfplots@loc@TMPa{%
 			\scope% make sure that 'fill opacity' and 'dotted' styles remain local!
 %\message{Executing marker stuff: \meaning\pgfplots@loc@TMPa]]]]]}%
@@ -7626,6 +7777,7 @@
 			\endscope
 		}%
 		\global\pgfplotslistnewempty\pgfplots@stored@markerlist% clear.
+		\endpgfplotsonlayer
 	\fi
 	%
 	\begingroup
@@ -8358,6 +8510,22 @@
 	\pgfplots@set@keymacro@to@style\pgfplots@rmopts{#1}%
 }
 
+% Invokes \pgfplots@set@keys@from@tikz@style and handles the "on
+% layer" key.
+%
+% More precisely, it stores any "on layer" value found in style "#1"
+% in
+% /pgfplots/layers for styles/#1.
+%
+% If there is no such value, it will store the empty string (main
+% layer)
+\def\pgfplots@set@keys@from@tikz@style@and@handle@layer#1{%
+	\pgfkeyslet{/pgfplots/on layer}\pgfutil@empty
+	\pgfplots@set@keys@from@tikz@style{#1}%
+	\pgfkeysgetvalue{/pgfplots/on layer}\pgfplots@loc@TMPa
+	\pgfkeyslet{/pgfplots/layers for styles/#1}\pgfplots@loc@TMPa
+}%
+
 % The same as \pgfplots@set@keys@from@tikz@style  but this one appends
 % unmatched options to style #2.
 %
@@ -8602,7 +8770,7 @@
 		% 'legend style={legend pos=outer north east}':
 		\pgfkeysdef{/pgfplots/every axis legend/.append style}{\pgfkeysalso{##1}}%
 		%
-		\pgfplots@set@keys@from@tikz@style{every axis legend}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every axis legend}%
 		%
 		% restore:
 		\pgfkeysdef{/pgfplots/every axis legend/.append style}{%
@@ -8621,12 +8789,12 @@
 	%\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
 	%
 	\pgfkeysactivatefamily{/pgfplots/tick}%
-		\pgfplots@set@keys@from@tikz@style{every tick}%
-		\pgfplots@set@keys@from@tikz@style{every minor tick}%
-		\pgfplots@set@keys@from@tikz@style{every major tick}%
-		\pgfplots@set@keys@from@tikz@style{every axis grid}%
-		\pgfplots@set@keys@from@tikz@style{every minor grid}%
-		\pgfplots@set@keys@from@tikz@style{every major grid}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every tick}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every minor tick}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every major tick}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every axis grid}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every minor grid}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every major grid}%
 	\pgfkeysdeactivatefamily{/pgfplots/tick}%
 	%
 	%--------------------------------------------------
@@ -8640,9 +8808,9 @@
 	% ensure that \axis[<options>] take higher precedence).
 	%\pgfkeysactivatefamily{/pgfplots/descriptions}%
 	\pgfkeysactivatefamily{/pgfplots/tick}%
-		\pgfplots@set@keys@from@tikz@style{every x tick label}%
-		\pgfplots@set@keys@from@tikz@style{every y tick label}%
-		\pgfplots@set@keys@from@tikz@style{every tick label}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every x tick label}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every y tick label}%
+		\pgfplots@set@keys@from@tikz@style@and@handle@layer{every tick label}%
 	\pgfkeysdeactivatefamily{/pgfplots/tick}%
 	%\pgfkeysdeactivatefamily{/pgfplots/descriptions}%
 	%
@@ -8691,6 +8859,16 @@
 		\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	\fi
 	\pgfkeysalso{/pgfplots/.search also=/tikz}%
+	%
+	\pgfkeysifdefined{/tikz/on layer}{}{%
+		% make sure assignments 'on layer' in the /tikz/ prefix
+		% doesn't hurt.
+		% this may happen, for example with 
+		% 'x grid style={on layer=...}'
+		% because 'x grid style' is not processed by the key filtering
+		% above.
+		\pgfkeyslet{/tikz/on layer}\pgfutil@empty%
+	}%
 	%
 	\pgfplots@set@options@sanitize
 	\pgfplots@notify@options@are@set
@@ -9345,6 +9523,18 @@
 	\let\scope=\pgfplots@replacement@for@scope
 	\let\endscope=\pgfplots@replacement@for@endscope
 	%
+	\let\pgfplots@orig@pgfonlayer=\pgfonlayer
+	\let\pgfplots@orig@endpgfonlayer=\endpgfonlayer
+	\let\pgfonlayer=\pgfplots@replacement@for@onlayer
+	\let\endpgfonlayer=\pgfplots@replacement@for@endonlayer
+	%
+	\let\pgfplots@orig@pgfplotsonlayer=\pgfplotsonlayer
+	\let\pgfplots@orig@endpgfplotsonlayer=\endpgfplotsonlayer
+	\let\pgfplotsonlayer=\pgfplots@replacement@for@onlayer
+	\let\endpgfplotsonlayer=\pgfplots@replacement@for@endonlayer
+	%
+	% allow layer changes within the environment; reset:
+	\pgfkeyslet{/pgfplots/on layer}\pgfutil@empty
 }
 
 % \end{axis} :
@@ -9366,6 +9556,10 @@
 	\let\plot=\pgfplots@orig@plot
 	\let\scope=\pgfplots@orig@scope
 	\let\endscope=\pgfplots@orig@endscope
+	\let\pgfonlayer=\pgfplots@orig@pgfonlayer
+	\let\endpgfonlayer=\pgfplots@orig@endpgfonlayer
+	\let\pgfplotsonlayer=\pgfplots@orig@pgfplotsonlayer
+	\let\endpgfplotsonlayer=\pgfplots@orig@endpgfplotsonlayer
 	%
 	\pgfplotssurveyphase@setactiveplothandlers
 	%
@@ -9401,6 +9595,7 @@
 		% finalize a plot.
 		% @see the stream preparation routines.
 		\pgfplots@stored@current@precmd
+		\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}%
 		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 			\pgfplots@stored@current@data%
 		\else
@@ -9425,6 +9620,7 @@
 			\fi
 			\endscope
 		\fi
+		\endpgfplotsonlayer
 		\pgfplots@stored@current@postcmd
 	}%
 	\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
