@@ -1379,6 +1379,7 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % MESH SURVEY
+\newif\ifpgfplotsplothandlermesh@patchtable@hascdata
 \def\pgfplotsplothandlersurveystart@mesh@patchtable{%
 	\pgfplotsarraynewempty\pgfplots@verts
 }%
@@ -1394,7 +1395,12 @@
 		\let\pgfplots@current@point@z=\pgfmathresult
 	\fi
 	%
-	\pgfplotsaxissurveysetpointmeta
+	\ifpgfplotsplothandlermesh@patchtable@hascdata
+		% will be handled later, using data from within 'patch table':
+		\let\pgfplots@current@point@meta=\pgfutil@empty
+	\else
+		\pgfplotsaxissurveysetpointmeta
+	\fi
 	%
 	\def\pgfplots@loc@TMPa{1}%
 	\ifx\pgfplots@current@point@x\pgfutil@empty
@@ -1427,9 +1433,25 @@
 	}%
 	\pgfplotsplothandlersurveyend
 }%
+
 \def\pgfplotsplothandlermesh@patchtable@init{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{get num vertices}%
 	\let\pgfplotsplothandlermesh@patchtable@numverts=\pgfplotsretval
+	%
+	\ifpgfplotsplothandlermesh@patchtable@hascdata
+		\ifnum\pgfplotsplothandlermesh@patchtable@numverts<\pgfplotstablecols\relax
+			% prepare a pointer to data column: use the column
+			% after the last vertex index.
+			% this thing constitutes the "default" cdata source for
+			% 'point meta=explicit'.
+			\pgfplotstablereadgetptrtocolindex
+				{\pgfplotsplothandlermesh@patchtable@numverts}
+				{\pgfplots@table@PTR@CDATA}%
+		\else
+			\let\pgfplots@table@PTR@CDATA=\relax
+		\fi
+	\fi
+	%
 	\c@pgf@countb=0
 	\pgfutil@loop
 	\ifnum\c@pgf@countb<\pgfplotsplothandlermesh@patchtable@numverts\relax
@@ -1447,6 +1469,15 @@
 \def\pgfplotsplothandlermesh@patchtable@rowlistener{%
 	\pgfplotsplothandlermesh@patchtable@init%
 	\let\pgfplotsexceptionmsg=\pgfplotsplothandlermesh@patchtable@rowlistener@exceptionmsg
+	%
+	\ifpgfplotsplothandlermesh@patchtable@hascdata
+		\ifx\pgfplots@table@PTR@CDATA\relax
+			\let\pgfplots@current@point@meta=\pgfutil@empty
+		\else
+			\pgfplotstablereadevalptr\pgfplots@table@PTR@CDATA\pgfplots@current@point@meta
+		\fi
+	\fi
+	%
 	\c@pgf@countb=0
 	\pgfutil@loop
 	\ifnum\c@pgf@countb<\pgfplotsplothandlermesh@patchtable@numverts\relax
@@ -1469,7 +1500,12 @@
 	\def\pgfplots@current@point@x{#1}%
 	\def\pgfplots@current@point@y{#2}%
 	\def\pgfplots@current@point@z{#3}%
-	\def\pgfplots@current@point@meta{#4}%
+	\ifpgfplotsplothandlermesh@patchtable@hascdata
+		\def\pgfplots@set@perpointmeta@done{0}%
+		\pgfplotsaxissurveysetpointmeta
+	\else
+		\def\pgfplots@current@point@meta{#4}%
+	\fi
 	\pgfplotsplothandlersurveypoint
 }%
 % MESH SURVEY
