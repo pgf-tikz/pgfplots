@@ -22,6 +22,282 @@
 % along with this program.  If not, see <http://www.gnu.org/licenses/>.
 %
 %--------------------------------------------
+	
+	% NOTES:
+	% In general, a Bezier spline C:[0,1] -> \R of order n fulfills
+	% C'(0) = n ( P_1 - P_0 ),
+	% C'(1) = n ( P_n - P_{n-1} ).
+	% For n=3 and given P_0 and P_3, I can directly compute P_1 and P_2 once I know
+	% the derivatives at t=0 and t=1.
+	%
+	%
+	% 
+%--------------------------------------------------
+% 4-point Lagrange interpolation on {0,1/3,2/3,1}:
+% C(x) = 
+% a * (1/3 - x)/(1/3) * (2/3-x)/(2/3) * (1-x) +
+% b * (0   - x)/(0 - 1/3) * (2/3-x)/(2/3-1/3)  * (1-x)/(1-1/3) +
+% c * (0   - x)/(0 - 2/3) * (1/3-x)/(1/3-2/3) *  (1-x)/(1-2/3) +
+% d * (0   - x)/(0 - 1)   * (1/3-x)/(1/3-1)   *  (2/3-x) /(2/3-1)
+% 
+% 
+% Derivative:
+% 
+% (-9*c + 2*d + 72*c*x - 18*d*x - 81*c*x^2 + 27*d*x^2 + 
+%   a*(-11 + 36*x - 27*x^2) + 9*b*(2 - 10*x + 9*x^2))/2
+% 
+% bezier control points are
+% P1 = (-5*a)/6 + 3*b - (3*c)/2 + d/3
+% 	=  -0.833333 a + 3. b - 1.5 c + 0.333333 d
+% 
+% P2 =  0.333333 (0.5 (2. a - 9. b + 18. c - 11. d) + 3. d)
+%   =  0.333333 a - 1.5 b + 3. c - 0.833333 d
+%-------------------------------------------------- 
+
+
+
+\pgfplotsdeclarepatchclass{quadratic spline}{%
+	allow matrix=0,
+	uses view depth=0,
+	new=\def\pgfplotspatchclass@qspline@no{A},
+	set next vertex={%
+		% EXPECTED ORDERING: first 2 corners, then 1 mid nodes
+		% (interpolatory).
+		% defines \pgfplotspatchclass@qspline@A ... \pgfplotspatchclass@qspline@C (3 points)
+		\expandafter\edef\csname pgfplotspatchclass@qspline@\pgfplotspatchclass@qspline@no\endcsname{#1}%
+		\if C\pgfplotspatchclass@qspline@no
+			\def\pgfplotspatchclass@qspline@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@qspline@no\csname pgfpptchindexnext@\pgfplotspatchclass@qspline@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@C\endvertex #1%
+	},
+	fill path={%
+		\begingroup
+		% Draw the patch boundary using a bezier curves.
+		%
+		% Since I have lagrange points to describe the patch (i.e.
+		% points the patch passes through), I have to convert the
+		% lagrange representation to bezier.
+		%
+		% Furthermore, I convert to *cubic* bezier since pdf only
+		% supports cubic curves.
+		%
+		% See the docs for 'biquadratic::fill path' for more details,
+		% in does the same.
+		\def\pgfplots@edge{%
+			\ifx\pgfplotspatchclass@qspline@A\PA
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\PA\endvertex}%
+			\fi
+			\pgfpathcurveto	{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+			}{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+			}{%
+				\expandafter\pgfplotspointpatchvertex\PC\endvertex
+			}%
+		}%
+		\let\PA=\pgfplotspatchclass@qspline@A
+		\let\PB=\pgfplotspatchclass@qspline@C
+		\let\PC=\pgfplotspatchclass@qspline@B
+		\pgfplots@edge
+		\endgroup
+	},
+	triangulate class=line,
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{line}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@B}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	recursive refine@={%
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@C\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qspline@AC
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@AC}%
+		#1%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@C\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qspline@CB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@CB}%
+		#1%
+		%
+	},%
+	get pdf shading type=0,
+	get num vertices=3,
+}%
+
+\pgfplotsdeclarepatchclass{cubic spline}{%
+	allow matrix=0,
+	uses view depth=0,
+	new=\def\pgfplotspatchclass@cspline@no{A},
+	set next vertex={%
+		% EXPECTED ORDERING: first 2 corners, then 1 mid nodes
+		% (interpolatory).
+		% defines \pgfplotspatchclass@cspline@A ... \pgfplotspatchclass@cspline@D (4 points)
+		\expandafter\edef\csname pgfplotspatchclass@cspline@\pgfplotspatchclass@cspline@no\endcsname{#1}%
+		\if D\pgfplotspatchclass@cspline@no
+			\def\pgfplotspatchclass@cspline@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@cspline@no\csname pgfpptchindexnext@\pgfplotspatchclass@cspline@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@D\endvertex #1%
+	},
+	fill path={%
+		% Draw the patch boundary using a bezier curve.
+		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@cspline@A\endvertex}%
+		% switch basis from lagrange to bezier (see formular on top of
+		% this file)
+		\pgfpathcurveto	{%
+			\begingroup
+			\pgfplotspatchvertexaccumstart
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@A\times{-0.833333}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@C\times{3}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@D\times{-1.5}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@B\times{0.3333333}%
+			\pgfplotspatchvertexfinish\pgfplots@loc@TMPa
+			\expandafter\pgfplotspointpatchvertex\pgfplots@loc@TMPa\endvertex
+			\endgroup
+		}{%
+			\begingroup
+			\pgfplotspatchvertexaccumstart
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@A\times{0.333333}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@C\times{-1.5}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@D\times{3}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@B\times{-0.833333}%
+			\pgfplotspatchvertexfinish\pgfplots@loc@TMPa
+			\expandafter\pgfplotspointpatchvertex\pgfplots@loc@TMPa\endvertex
+			\endgroup
+		}{%
+			\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@cspline@B\endvertex
+		}%
+	},
+	triangulate class=line,
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{line}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@B}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	recursive refine@={%
+		% The 4-point lagrangian interpolation formular is shown on
+		% the top of this page. What I do here is simply to evaluate 
+		% C(i*1/9) for i =0,...,9:
+		% 0
+		% 0.493827 A +0.740741 C -0.296296 D +0.0617284 B
+		% 0.17284 A +1.03704 C -0.259259 D +0.0493827 B
+		% 1/3
+		% -0.0617284 A +0.740741 C +0.37037 D -0.0493827 B
+		% -0.0493827 A +0.37037 C +0.740741 D -0.0617284 B
+		% 2/3
+		% 0.0493827 A -0.259259 C +1.03704 D +0.17284 B
+		% 0.0617284 A -0.296296 C +0.740741 D +0.493827 B
+		% 1
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.740741}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{-0.296296}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.17284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{1.03704}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{-0.259259}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{-0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{-0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.740741}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.37037}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{-0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{-0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.37037}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.740741}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.17284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{-0.259259}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{+1.03704}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{-0.296296}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.740741}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+	},
+	get pdf shading type=0,
+	get num vertices=4,
+}%
 
 % make a linearized sequence around the edge of the quad.triangle.
 % note the ordering: first 3 corners, then 3 mid nodes:
@@ -49,6 +325,8 @@
 }%
 
 
+% A 3-point interpolatory patch which draws quadratic polynomial
+% splines (functions f(x), x 1d).
 \pgfplotsdeclarepatchclass{triangle quadr}{%
 	allow matrix=0,
 	uses view depth=1,
