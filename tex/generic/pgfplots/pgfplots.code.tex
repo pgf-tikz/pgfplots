@@ -2638,22 +2638,15 @@
 		\pgfkeysalso{/pgfplots/surf=#1,/pgfplots/mesh input=patches}%
 	},%
 	/pgfplots/patch table/value/.initial=,
-	/pgfplots/patch table/.style={
-		/pgfplots/patch table/value={#1},
-		/pgfplots/patch table cdata=none%
+	/pgfplots/patch table/.code={
+		\pgfkeyssetvalue{/pgfplots/patch table/value}{#1}%
+		\pgfplotsplothandlermesh@patchtable@hascdatafalse
 	},
 	/pgfplots/patch table*/.code={%
 		\pgfkeyssetvalue{/pgfplots/patch table/value}{#1}%
-		\if\pgfplotsplothandlermesh@extratbl@cdatachoice0%
-			\pgfkeysalso{/pgfplots/patch table cdata=auto}%
-		\fi
+		\pgfplotsplothandlermesh@patchtable@hascdatatrue
+		\pgfkeysalso{/pgfplots/point meta/explicit}%
 	},
-	/pgfplots/patch table cdata/.is choice,
-	/pgfplots/patch table cdata/none/.code	={\def\pgfplotsplothandlermesh@extratbl@cdatachoice{0}},
-	/pgfplots/patch table cdata/auto/.code	={\def\pgfplotsplothandlermesh@extratbl@cdatachoice{1}},
-	/pgfplots/patch table cdata/per vertex/.code	={\def\pgfplotsplothandlermesh@extratbl@cdatachoice{2}},
-	/pgfplots/patch table cdata/per patch/.code	={\def\pgfplotsplothandlermesh@extratbl@cdatachoice{3}},
-	/pgfplots/patch table cdata=none,
 	/pgfplots/patch type/.initial=,
 	/pgfplots/patch internal depth/.is if=pgfplotsplothandlermesh@internaldepth,
 	/pgfplots/patch internal depth=true,
@@ -7692,19 +7685,55 @@
 % @PRECONDITION  the axis limits must be ready.
 \def\pgfplots@clippath@prepare{%
 	\pgfplots@clippath@prepare@for@axistype
+	% now, the \pgfplots@clippath@install routine should be ready.
 	%
-	% FIXME : workaround clear path sizes at beginning! This shouldn't 
-	% be necessary!
-	\expandafter\def
-	\expandafter\pgfplots@clippath@install
-	\expandafter##%
-	\expandafter1%
-	\expandafter{%
-	\expandafter\pgf@resetpathsizes
-		\pgfplots@clippath@install{##1}%
-	}%
+	% it is used to compute the bounding box. prepare that:
 	\global\let\pgfplotspoint@bb@@@=\relax
+	%
+	% Now, I SET the clip path temporarily and record the low level
+	% protocol.
+	% This low level protocol is used to create a highly optimized
+	% clip path routine; it will be used quite often.
+	%
+	\let\pgfplots@clippath@install@pathcmd=\pgfplots@clippath@install
+		\pgf@resetpathsizes% FIXME: this here should not be necessary!
+		\pgfsysprotocol@getcurrentprotocol\pgfplots@loc@TMPa%
+		\begingroup
+			% when I do this work, I can as well compute the bounding
+			% box (done in \pgfplots@clippath@use@)
+			\pgfinterruptboundingbox
+			\pgf@relevantforpicturesizetrue
+			%
+			\pgfsysprotocol@bufferedtrue%
+			\pgfsysprotocol@setcurrentprotocol\pgfutil@empty%
+		%	\pgfplots@clippath@install@pathcmd{\pgfusepath{clip}}%
+			\pgfsysprotocol@getcurrentprotocol\pgfplots@loc@TMPa%
+			\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
+			\endpgfinterruptboundingbox
+		\endgroup
+		\let\pgfplots@clippath@install@clip@protocolled=\pgfplots@glob@TMPa
+		\pgfsysprotocol@setcurrentprotocol\pgfplots@loc@TMPa%
+	%
+	% Replace \pgfplots@clippath@install by one which makes use of the
+	% optimized version (if ##1=\pgfusepath{clip})
+	\def\pgfplots@clippath@install##1{%
+		\def\pgfplots@loc@TMPa{##1}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@clippath@install@test
+			% the 'clip' path has been precomputed because it is often
+			% used:
+			\expandafter\pgfsys@invoke\expandafter{\pgfplots@clippath@install@clip@protocolled}%
+			% as far as I can see, this here is the only command which
+			% can't be protocolled:
+			\pgf@relevantforpicturesizefalse
+		\else
+			\pgf@resetpathsizes% FIXME: this here should not be necessary!
+			\pgfplots@clippath@install@pathcmd{##1}%
+		\fi
+	}%
+	%
 }%
+\def\pgfplots@clippath@install@test{\pgfusepath{clip}X}%
+
 \def\pgfplotspointbb@assertvaluesexist{%
 	\ifx\pgfplotspoint@bb@@@\relax
 		% (RE)COMPUTE:
