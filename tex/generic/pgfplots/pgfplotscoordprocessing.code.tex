@@ -1842,7 +1842,7 @@
 	\pgfmathmultiply@{\cosaz}{\cosel}%
 	\xdef\pgfplots@glob@TMPd{{\pgfmathresultNx}{\pgfmathresult}{\sinel}}%
 	\endgroup
-%\message{Setting x,y and z from {#1}{#2} to x = \meaning\pgfplots@glob@TMPa, y = \meaning\pgfplots@glob@TMPb, z = \meaning\pgfplots@glob@TMPc...n = \pgfplots@glob@TMPd.}%
+%\message{Setting x,y and z from {#1}{#2} to x = \meaning\pgfplots@glob@TMPa, y = \meaning\pgfplots@glob@TMPb, z = \meaning\pgfplots@glob@TMPc...n = \pgfplots@glob@TMPd.^^J}%
 	\pgfsetxvec{\pgfplots@glob@TMPa}%
 	\pgfsetyvec{\pgfplots@glob@TMPb}%
 	\pgfsetzvec{\pgfplots@glob@TMPc}%
@@ -1853,16 +1853,16 @@
 	}%
 	\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPd\relax
 	\def#3{0}%
+	\pgfplots@scaleaxes@to@widthheight
+}%
+
+\def\pgfplots@scaleaxes@to@widthheight{%
 	\pgfplots@initsizes@get@width@withoutlabels
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@initsizes@get@height@withoutlabels
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
 	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
-%\message{After scaling: 
-%	x = (\the\pgf@xx,\the\pgf@xy), 
-%	y = (\the\pgf@yx,\the\pgf@yy),
-%	z = (\the\pgf@zx,\the\pgf@zy).}%
-}%
+}
 
 % Takes the current PGF x,y and z unit vectors and scales them such
 % that the bounding box of the final image has width #1 and height #2.
@@ -1887,6 +1887,20 @@
 % 	- the @veclength and @inverseveclength have been re-scaled as
 % 	well.
 \def\pgfplots@scaleaxes@to@BB#1#2{%
+	\if0\pgfplots@scale@mode@choice
+		\def\pgfplots@scale@mode@choice{2}% auto--> stretch to fill
+	\fi
+	\if1\pgfplots@scale@mode@choice
+		% scale mode=none
+	\else
+		\pgfplots@scaleaxes@to@BB@{#1}{#2}%
+	\fi
+	% FIXME 
+	% I suppose I should call \pgfplotsgetnormalforcurrentview now?
+	\pgfplots@computeunitvectorlengths
+\message{After scaling: x = (\the\pgf@xx,\the\pgf@xy), y =(\the\pgf@yx,\the\pgf@yy), z = (\the\pgf@zx,\the\pgf@zy).^^J}%
+}%
+\def\pgfplots@scaleaxes@to@BB@#1#2{%
 	\begingroup
 	\pgfinterruptboundingbox
 	% STEP 1: compute the bounding box for UNITS. We just need the
@@ -1915,20 +1929,50 @@
 	\pgf@ya=#1\relax
 	\pgf@yb=#2\relax
 %\message{PGFPLOTS: the current unit vectors result in a UNIT BB of (\the\pgf@xa,\the\pgf@xb). Scaling it to (\the\pgf@ya,\the\pgf@yb)...}%
-	% STEP 2: compute the scales for x and y such 
-	% that the UNIT-BB will have size #1,#2:
-	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@ya}%
-		{\pgf@sys@tonumber\pgf@xa}%
-	}%
-	% TMPa = scalex
-	\global\let\pgfplots@glob@TMPa=\pgfmathresult
-	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@yb}%
-		{\pgf@sys@tonumber\pgf@xb}%
-	}%
-	% TMPb = scaley
-	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\ifcase\pgfplots@scale@mode@choice
+		% scale mode=auto  does not happen here
+	\or
+		% scale mode=none  does not happen here
+	\or
+		% scale mode=stretch to fill
+		% Compute individual scaling factors for X and Y
+		% such that the UNIT-BB will have size #1,#2:
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@ya}%
+			{\pgf@sys@tonumber\pgf@xa}%
+		}%
+		% TMPa = scalex
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@yb}%
+			{\pgf@sys@tonumber\pgf@xb}%
+		}%
+		% TMPb = scaley
+		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\or
+		% scale mode=scale uniformly
+		% compute ONE common scale for both, X and Y.
+		\if\pgfplots@user@provided@height\pgfplots@user@provided@width
+			\pgfplots@warning{scale mode=scale uniformly  expected EITHER 'width' OR 'height'... it will now scale to fit the widths.}%
+			\if0\pgfplots@user@provided@height
+				\def\pgfplots@user@provided@width{1}%
+			\fi
+		\fi
+		\if1\pgfplots@user@provided@width
+			\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+				{\pgf@sys@tonumber\pgf@ya}%
+				{\pgf@sys@tonumber\pgf@xa}%
+			}%
+			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\else
+			\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+				{\pgf@sys@tonumber\pgf@yb}%
+				{\pgf@sys@tonumber\pgf@xb}%
+			}%
+			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\fi
+		\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
+	\fi
 	\pgfusepath{discard}%
 	\endpgfinterruptboundingbox
 	\endgroup
@@ -1969,7 +2013,6 @@
 		\pgf@zx=\pgfmathresult\pgf@zx
 		\pgf@zy=\pgfmathresult\pgf@zy
 	\fi
-	\pgfplots@computeunitvectorlengths
 }%
 
 \def\pgfplots@computeunitvectorlengths{%
@@ -2013,6 +2056,71 @@
 		}%
 		\let\pgfplots@z@inverseveclength=\pgfmathresult
 	\fi
+}%
+
+% Defines \pgfplots@view@dir@threedim@[xyz] according to the actual
+% configuration of x,y,z (2d) unit vectors.
+%
+% The idea is as follows:
+% I suppose the actual view is actually a transformed XZ plane and the
+% view direction is the transformed Y axis of the underlying axis. In
+% other words, I try to restore the case as it is documented for
+% \pgfplotssetaxesfromazel.
+%
+% Consequently, I assume that the actual transformation from 3D points
+% q \in \R^3 to 2d CANVAS is given by
+% P(q) = (q^T X, q^T Z)
+% where X,Z \in \R^3 (!) are the 3d transformed axes. Once I have
+% these two vectors, I know Y = Z crossproduct X.
+%
+% That's what I do. I can recover X and Z (which have 6 components)
+% using the 6 equations for
+% P([1 0 0]), P([0 1 0]), P([0 0 1]).
+% That yields
+% X = [ e_xx e_yy e_xy ]
+% Z = [ e_zx e_yx e_zy ].
+%
+% Then, I use Y = Z crossprod X  (plus a normalization) as view
+% direction.
+%
+\def\pgfplotsgetnormalforcurrentview{%
+	\begingroup	
+		\pgf@xa=\pgf@sys@tonumber\pgf@xy\pgf@yx
+		\pgf@xb=\pgf@sys@tonumber\pgf@yy\pgf@zy
+		\advance\pgf@xa by -\pgf@xb
+		\pgf@ya=\pgf@xa
+		\xdef\pgfplots@view@dir@threedim@x{\pgf@sys@tonumber\pgf@xa}%
+		%
+		\pgf@xa=\pgf@sys@tonumber\pgf@xx\pgf@zy
+		\pgf@xb=\pgf@sys@tonumber\pgf@xy\pgf@zx
+		\advance\pgf@xa by -\pgf@xb
+		\pgf@yb=\pgf@xa
+		\xdef\pgfplots@view@dir@threedim@y{\pgf@sys@tonumber\pgf@xa}%
+		%
+		\pgf@xa=\pgf@sys@tonumber\pgf@yy\pgf@zx
+		\pgf@xb=\pgf@sys@tonumber\pgf@xx\pgf@yx
+		\advance\pgf@xa by -\pgf@xb
+		\pgf@xc=\pgf@xa
+		\xdef\pgfplots@view@dir@threedim@z{\pgf@sys@tonumber\pgf@xa}%
+		%
+		% L_infty normalization:  (the normalization is more or less
+		% irrelevant, so I choose the simplest one)
+		\ifdim\pgf@ya<0sp \multiply\pgf@ya by-1\fi
+		\ifdim\pgf@yb<0sp \multiply\pgf@yb by-1\fi
+		\ifdim\pgf@xc<0sp \multiply\pgf@xc by-1\fi
+		\pgf@xa=\pgf@ya
+		\ifdim\pgf@xa<\pgf@yb \pgf@xa=\pgf@yb	\fi
+		\ifdim\pgf@xa<\pgf@xc \pgf@xa=\pgf@xc	\fi
+		\expandafter\pgfmathreciprocal@\expandafter{\pgf@sys@tonumber\pgf@xa}%
+		\let\pgfplots@normalization=\pgfmathresult
+		%
+		\pgfmathmultiply@{\pgfplots@view@dir@threedim@x}{\pgfplots@normalization}%
+		\global\let\pgfplots@view@dir@threedim@x=\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@view@dir@threedim@y}{\pgfplots@normalization}%
+		\global\let\pgfplots@view@dir@threedim@y=\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@view@dir@threedim@z}{\pgfplots@normalization}%
+		\global\let\pgfplots@view@dir@threedim@z=\pgfmathresult
+	\endgroup
 }%
 
 % ==================================================================================
