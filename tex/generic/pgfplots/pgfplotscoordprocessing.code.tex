@@ -1842,7 +1842,7 @@
 	\pgfmathmultiply@{\cosaz}{\cosel}%
 	\xdef\pgfplots@glob@TMPd{{\pgfmathresultNx}{\pgfmathresult}{\sinel}}%
 	\endgroup
-\message{Setting x,y and z from {#1}{#2} to^^J x = \meaning\pgfplots@glob@TMPa,^^J y = \meaning\pgfplots@glob@TMPb,^^J z = \meaning\pgfplots@glob@TMPc,^^J n = \pgfplots@glob@TMPd.^^J}%
+%\message{Setting x,y and z from {#1}{#2} to^^J x = \meaning\pgfplots@glob@TMPa,^^J y = \meaning\pgfplots@glob@TMPb,^^J z = \meaning\pgfplots@glob@TMPc,^^J n = \pgfplots@glob@TMPd.^^J}%
 	\pgfsetxvec{\pgfplots@glob@TMPa}%
 	\pgfsetyvec{\pgfplots@glob@TMPb}%
 	\pgfsetzvec{\pgfplots@glob@TMPc}%
@@ -1853,16 +1853,8 @@
 	}%
 	\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPd\relax
 	\def#3{0}%
-	\pgfplots@scaleaxes@to@widthheight
+	\pgfplots@scale@plotbox@to@widthheight
 }%
-
-\def\pgfplots@scaleaxes@to@widthheight{%
-	\pgfplots@initsizes@get@width@withoutlabels
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfplots@initsizes@get@height@withoutlabels
-	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
-	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
-}
 
 \def\message@pgfplots@units{%
 	\begingroup
@@ -1880,6 +1872,38 @@
 		unit vector ratio=[\X\space\Y\space 1],^^J}%
 	\endgroup
 }%
+
+% Takes the current plot box, defined by the actual PGF x,y and z unit
+% vectors, and re-scales it such that it fits into the 
+% width and height of the axis (as they have been provided by the
+% user).
+%
+% @see \pgfplots@scale@axisbox@to@widthheight
+% @see\pgfplots@scaleaxes@to@BB
+\def\pgfplots@scale@plotbox@to@widthheight{%
+	\pgfplots@initsizes@get@width@withoutlabels
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@initsizes@get@height@withoutlabels
+	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
+	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
+	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
+	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
+}
+
+
+% A variant of \pgfplots@scale@plotbox@to@widthheight which does not
+% use the given x,y,z vectors to define the plot box. Instead, it uses
+% the lower and upper axis limits.
+\def\pgfplots@scale@axisbox@to@widthheight{%
+	\pgfplots@initsizes@get@width@withoutlabels
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@initsizes@get@height@withoutlabels
+	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
+	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@computelimits
+	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@NOP
+	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
+}
+
 
 % Takes the current PGF x,y and z unit vectors and scales them such
 % that the bounding box of the final image has width #1 and height #2.
@@ -1904,7 +1928,7 @@
 % 	- the @veclength and @inverseveclength have been re-scaled as
 % 	well.
 \def\pgfplots@scaleaxes@to@BB#1#2{%
-\message{before scaling:}\message@pgfplots@units
+%\message{before scaling:}\message@pgfplots@units
 	\if0\pgfplots@scale@mode@choice
 		% scale mode=auto
 		\def\pgfplots@scale@mode@choice{2}% stretch to fill
@@ -1917,20 +1941,14 @@
 	% FIXME 
 	% I suppose I should call \pgfplotsgetnormalforcurrentview now?
 	\pgfplots@computeunitvectorlengths
-\message{after scaling:}\message@pgfplots@units
+%\message{after scaling:}\message@pgfplots@units
 }%
-\def\pgfplots@scaleaxes@to@BB@#1#2{%
-	\begingroup
-	\pgfinterruptboundingbox
-	% STEP 1: compute the bounding box for UNITS. We just need the
+\def\pgfplots@BB@for@plotbox@relative{%
+	% We just need the
 	% relative sizes, i.e.
 	%  "0" == lower axis limit
 	%  "1" == upper axis limit
 	%
-	%  FIXME : these here are no relative limits if unit vectors have
-	%  been provided explicitly! They are UNITS and have nothing todo
-	%  with axis limits! The algorithm here applies to 'plot box
-	%  ratio', not to 'unit vector ratio'!
 	\ifpgfplots@threedim
 		\pgfpathmoveto{\pgfqpointxyz000}%
 		\pgfpathmoveto{\pgfqpointxyz001}%
@@ -1946,6 +1964,66 @@
 		\pgfpathmoveto{\pgfqpointxy10}%
 		\pgfpathmoveto{\pgfqpointxy11}%
 	\fi
+}%
+\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
+\def\pgfplots@BB@for@plotbox@compute@post@scales@relative#1#2#3{%
+	% Consequently, we have to multiply  with 1/(max-min):
+	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
+	% compute 1/(xmax - xmin) in float.
+	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\let#1=\pgfmathresult
+	%
+	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\let#2=\pgfmathresult
+	%
+	\ifpgfplots@threedim
+		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\else
+		\def\pgfmathresult{1}%
+	\fi
+	\let#3=\pgfmathresult
+}%
+\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
+\def\pgfplots@BB@for@plotbox@computelimits{%
+	\ifpgfplots@threedim
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymax\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymax\pgfplots@zmax}%
+	\else
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmin\pgfplots@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmin\pgfplots@ymax}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmax\pgfplots@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmax\pgfplots@ymax}%
+	\fi
+}%
+\def\pgfplots@BB@for@plotbox@compute@post@scales@NOP#1#2#3{%
+	\let#1=\pgfutil@empty
+	\let#2=\pgfutil@empty
+	\let#3=\pgfutil@empty
+}%
+\def\pgfplots@scaleaxes@to@BB@#1#2{%
+	\begingroup
+	\pgfinterruptboundingbox
+	% STEP 1: compute the bounding box for the plot box.
+	\pgfplots@BB@for@plotbox
+	%
 	% TMPa = width
 	\pgf@xa=\pgf@pathmaxx
 	\advance\pgf@xa by-\pgf@pathminx
@@ -2012,37 +2090,11 @@
 	% We have to convert them now, by interpreting "1 == upper limit"
 	% and "0 == lower limit" for every direction.
 	%
-	% Consequently, we have to multiply  with 1/(max-min):
-	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
-	% compute 1/(xmax - xmin) in float.
-	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
-	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	%
-	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	%
-	\ifpgfplots@threedim
-		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
-		\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-	\else
-		\def\pgfmathresult{1}%
-	\fi
-	\let\pgfplots@loc@TMPc=\pgfmathresult
+	\pgfplots@BB@for@plotbox@compute@post@scales{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
 	%
 	% ok. Now apply all scalings.
 	% Let's hope all these temporary macros are still valid!
-\message{got scaleW = \pgfplots@glob@TMPa\space and scaleH = \pgfplots@glob@TMPb; scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.}%
+%\message{got scaleW = \pgfplots@glob@TMPa\space and scaleH = \pgfplots@glob@TMPb; scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.}%
 	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
 	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
 	\pgf@xx=\pgfplots@loc@TMPa\pgf@xx
@@ -2129,7 +2181,10 @@
 % Then, I use Y = Z crossprod X  (plus a normalization) as view
 % direction.
 %
+% You can override this function by the /pgfplots/view dir key.
 \def\pgfplotsgetnormalforcurrentview{%
+	\pgfkeysgetvalue{/pgfplots/view dir}\pgfplots@loc@TMPc
+	\ifx\pgfplots@loc@TMPc\pgfutil@empty
 	\begingroup	
 		\pgf@xa=\pgf@sys@tonumber\pgf@xy\pgf@yx
 		\pgf@xb=\pgf@sys@tonumber\pgf@yy\pgf@zy
@@ -2167,7 +2222,15 @@
 		\pgfmathmultiply@{\pgfplots@view@dir@threedim@z}{\pgfplots@normalization}%
 		\global\let\pgfplots@view@dir@threedim@z=\pgfmathresult
 	\endgroup
-\message{\string\pgfplotsgetnormalforcurrentview:  got (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z)^^J}%
+	\else
+		\def\pgfplots@loc@TMPb##1##2##3{%
+			\xdef\pgfplots@view@dir@threedim@x{##1}%
+			\xdef\pgfplots@view@dir@threedim@y{##2}%
+			\xdef\pgfplots@view@dir@threedim@z{##3}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPc
+	\fi
+%\message{\string\pgfplotsgetnormalforcurrentview:  got (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z)^^J}%
 }%
 
 % ==================================================================================
@@ -7515,6 +7578,7 @@
 					\pgfplots@loop@CONTINUEfalse
 				\fi
 				\ifpgfplots@loop@CONTINUE
+	%	\pgfplotscoordmath{default}{parsenumber}{1}\let\pgfplots@scale=\pgfmathresult
 					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem0\of\pgfplotsE}{\pgfplots@scale}}%
 					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
 					\let\pgfplots@xx=\pgfmathresult
@@ -7540,9 +7604,13 @@
 						y={(\pgfplots@yx,\pgfplots@yy)},%
 						z={(\pgfplots@zx,\pgfplots@zy)},%
 						scale mode=scale uniformly,%
-						unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
+					%	unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
 					}%
 				\fi
+			\fi
+			%
+			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
+				\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output
 			\fi
 			%
 			\ifx\pgfplotsretval\pgfutil@empty
@@ -7556,12 +7624,14 @@
 				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
 				\immediate\write
 					\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug 16\else -1\fi
-					{PGFPlots plot graphics[auto adjust axis=true] {\the\t@pgfplots@tokc} \csname on@line\endcsname: using '\pgfplotsretval'. Use 'plot graphics[debug] to generate debug output files.^^J}% 
+					{PGFPlots plot graphics[auto adjust axis=true] {\the\t@pgfplots@tokc} \csname on@line\endcsname: using '\pgfplotsretval'. 
+					\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
+						See \the\t@pgfplots@tokc.dat for debug output.
+					\else
+						Use 'plot graphics[debug] to generate debug output files.
+					\fi
+					^^J}% 
 				\endgroup
-			\fi
-			%
-			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
-				\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output
 			\fi
 			%
 		\fi
