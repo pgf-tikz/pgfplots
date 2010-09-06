@@ -4412,8 +4412,8 @@
 				\fi
 				%
 				% Step 2: compute 'q', the #1-size of the axis.
-				\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
-					% We have 'width' or 'height'.
+				%\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
+					% We have 'width' or 'height' (I always have them).
 					%
 					% Use the order of these parameters.
 					\def\pgfplots@loc@TMPa{#1}%
@@ -4421,10 +4421,7 @@
 					\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 						\data@dimen=\pgfplots@width\relax
 					\else
-						\def\pgfplots@loc@TMPb{y}%
-						\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-							\data@dimen=\pgfplots@height\relax
-						\fi
+						\data@dimen=\pgfplots@height\relax
 					\fi
 					\pgfplots@compute@number@order@for@trafo@isdimen
 						\data@dimen
@@ -4432,12 +4429,12 @@
 					% This here is to avoid inaccuracies in the final
 					% axis rectangle size, see \pgfplots@initsizes:
 					%\advance\data@dimen@order by-1
-				\else
+				%\else
 					% FIXME:
 					% we have either the 'x=1cm' or 'y=1cm' option!
 					% How should I initialise the trafo!?
-					\data@dimen@order=3
-				\fi
+				%	\data@dimen@order=3
+				%\fi
 				%
 %\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
 				\data@EXPONENT=\data@dimen@order
@@ -5278,7 +5275,6 @@
 			\def#4{0}% we DON'T have (#1,0) or (0,#1). At least I think so.
 			%
 %\message{Setting unitvector(#1) to non-standard \csname pgfplots@#1\endcsname ...}%
-			% FIXME : that's wrong for 3D axes!
 			\def\pgfplots@loc@TMPa(##1,##2){%
 				\pgfmathparse{##1}%
 				\let\pgfplots@loc@TMPb=\pgfmathresult
@@ -5599,8 +5595,8 @@
 % \pgfplots@apply@unit@ratio@reference, the macro contains one of
 % {x,y,z}.
 %
-% The data limits for '#1' will be enlarged as well (for 'axis
-% equal').
+% The data limits for '#1' will be enlarged as well (for 'unit rescale
+% keep size').
 %
 % #1 is the axis which should be scaled (i.e. #1 in {x,y,z}).
 % It is allowed if #1 = \pgfplots@apply@unit@ratio@reference. In this
@@ -5651,37 +5647,56 @@
 		\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
 		% 
 		%
+		\pgfplots@apply@unit@vector@rescale@keep@size{#1}{\pgfplots@glob@TMPb}%
 		%
-		\ifpgfplots@unit@vector@rescale@keep@size
-			%
-			% Ok, now update the axis limits such that the axis' dimensions
-			% stay the same.
-			%
-			% My idea is to add half of the new range to 'max' and
-			% subtract the other half from 'min':
-			% 1/s( xmax - xmin) = (xmax+0.5d) - (xmin-0.5d) = xmax - xmin +d
-			% with d = 1/s (xmax-xmin) - (xmax-xmin) = (1/s - 1) (xmax-xmin)
-			% 
-%\message{'axis equal': Resizing data range for #1: from \csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname\ to}%
-			\pgfmathsubtract@{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#1min\endcsname}%
-			\begingroup
-				\pgf@xa=\pgfmathresult pt
-				\pgfmathsubtract@{\pgfplots@glob@TMPb}{1.0}%
-				\pgf@xa=\pgfmathresult \pgf@xa
-				\divide\pgf@xa by2
-				\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
-			\endgroup
-			\pgfmathsubtract@{\csname pgfplots@#1min\endcsname}{\pgfplots@glob@TMPb}%
-			\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
-			\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPb}%
-			\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [+- \pgfplots@glob@TMPb]}%
-			%
-			% Update auxiliary data members:
-			\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
-		\fi
 	\fi
 }
+
+% Updates the #1 axis limits such that the axis' dimensions
+% stay the same after scaling the #1 unit vector by a scale 's'.
+%
+% PRECONDITION:
+%   - the #1 unit vector has been rescaled by a factor s.
+%   For example, e_xnew := e_x * 0.5 .
+% 
+% POSTCONDITION:
+%   - the axis limits are enlarged by a factor 1/s such that 
+%   1/s (#1max - #1min) * e_xnew = (#1max- #1min) * e_x.
+%
+% In other words, the unit vector rescale is componensated by
+% modifying the axis limits.
+%
+% My idea is to add half of the new range to 'max' and
+% subtract the other half from 'min':
+% 1/s( xmax - xmin) = (xmax+0.5d) - (xmin-0.5d) = xmax - xmin +d
+% with d = 1/s (xmax-xmin) - (xmax-xmin) = (1/s - 1) (xmax-xmin)
+% 
+% #1: either x, y or z. It denotes the direction which has been
+% modified.
+% #2: the INVERSE of the scaling factor, #2 = 1/s .
+%
+\def\pgfplots@apply@unit@vector@rescale@keep@size#1#2{%
+	\ifpgfplots@unit@vector@rescale@keep@size
+		%
+%\message{'unit rescale keep size': Resizing data range for #1: from \csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname\ to}%
+		\pgfmathsubtract@{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#1min\endcsname}%
+		\begingroup
+			\pgf@xa=\pgfmathresult pt
+			\pgfmathsubtract@{#2}{1.0}%
+			\pgf@xa=\pgfmathresult \pgf@xa
+			\divide\pgf@xa by2
+			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+		\endgroup
+		\pgfmathsubtract@{\csname pgfplots@#1min\endcsname}{\pgfplots@glob@TMPb}%
+		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+		\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPb}%
+		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [+- \pgfplots@glob@TMPb]}%
+		%
+		% Update auxiliary data members:
+		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
+	\fi
+}%
 
 % #1: an axis which should be scaled
 % #2: the desired final ratio  ||e_#1||/||e_ref||

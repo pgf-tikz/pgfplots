@@ -2053,33 +2053,86 @@
 		}%
 		% TMPb = scaley
 		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		\global\let\pgfplots@glob@TMPc=\relax
 	\or
 		% scale mode=scale uniformly
 		% compute ONE common scale for both, X and Y.
 		%
-		% FIXME : that's not correct. What do I want? 
-		% - keep the 'unit vector ratio'? then, this here is not enough.
-		% - keep the 'plot box ratio'? Yes, that should work.
-		\if\pgfplots@user@provided@height\pgfplots@user@provided@width
-			\pgfplots@warning{scale mode=scale uniformly  expected EITHER 'width' OR 'height'... it will now scale to fit the widths '#1'.}%
-			\if0\pgfplots@user@provided@height
-				\def\pgfplots@user@provided@width{1}%
-			\fi
-		\fi
-		\if1\pgfplots@user@provided@width
-			\pgfplotsutil@edef@invoke\pgfmathdivide@{%
-				{\pgf@sys@tonumber\pgf@ya}%
-				{\pgf@sys@tonumber\pgf@xa}%
-			}%
-			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@ya}%
+			{\pgf@sys@tonumber\pgf@xa}%
+		}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
+		\ifdim\pgf@zy=0pt
 		\else
+			% The strategy is as follows:
+			% 1. I want to fit the axis into width #1 (\pgf@ya) and
+			% height #1 (\pgf@yb).
+			% 2. I want to MAINTAIN the unit vector ratio. 
+			% 3. I want to MAINTAIN the unit vector directions.
+			%
+			% I already know the scaling factor to fit the width (it
+			% is stored in \pgfplots@glob@TMPa = \pgfplots@glob@TMPb).
+			% Let's call it "s".
+			%
+			% Consequently, a uniform scaling by "s" leads the image
+			% height
+			% h = s* (r_x * e_xy + r_y * e_yy + r_z * e_zy)
+			% where r_i = (imax - imin). This here is essentially the
+			% same as the bounding box computation above (at least for
+			% standart orthographic 3D axes).
+			%
+			% What I want now is to enlarge the limits such that I
+			% have BOTH, width #1 AND height #2, without obscuring the
+			% unit vector ratio. Recall that width #1 is already
+			% given.
+			%
+			% In my opinion the ONLY way to achieve this goal is to
+			% modify axis limits for an axis whose unit vector is
+			% parallel to the canvas y axis, i.e. e_i = (0,*). To see
+			% this, remember that a rescaling of the other limits will
+			% also modify the width.
+			%
+			% That means I have to introduce a SECOND scale s_z which
+			% applies only to the Z unit vector (since e_z = (0,*) ).
+			% If H = #2 is the desired height, I find the target
+			% equation for s_z,
+			%
+			% H = s* r_x e_xy + s * r_y e_yy + s_z * s * r_z * e_zy
+			% =>
+			% s_z = ( H- s*r_x e_xy - s*r_y e_yy) / ( s * r_z * e_zy).
+			%
+			% Remember that 
+			% s = \pgfplots@glob@TMPa
+			% and
+			% \pgfplots@glob@TMPa * \pgf@xb = s*h
+			% 
+			\pgf@xc=\pgfplots@zmax\pgf@zy% FIXME : what if we are working with relative coords?
+			\advance\pgf@xc by -\pgfplots@zmin\pgf@zy
+			%
+			\advance\pgf@xb by-\pgf@xc
+			\pgf@xb=\pgfplots@glob@TMPa\pgf@xb
+			\advance\pgf@yb by-\pgf@xb
+			\pgf@xb=\pgfplots@glob@TMPa\pgf@xc
 			\pgfplotsutil@edef@invoke\pgfmathdivide@{%
 				{\pgf@sys@tonumber\pgf@yb}%
 				{\pgf@sys@tonumber\pgf@xb}%
 			}%
-			\global\let\pgfplots@glob@TMPa=\pgfmathresult
+			% Now, s_z = \pgfmathresult .
+			%
+			% Now, adjust the z limits.
+			% Note that \pgfplots@apply@unit@vector@rescale@keep@size
+			% has a slightly different context; it assumes that the
+			% unit vector has been rescaled, not the axis limits.
+			% Consequently, the inverse of the scaling factor enters.
+			% Since \pgfplots@apply@unit@vector@rescale@keep@size
+			% expects the inverse of the scale, we can provide
+			% \pgfmathresult:
+			\xdef\pgfplots@glob@TMPc{%
+				\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{z}{\pgfmathresult}%
+			}%
 		\fi
-		\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
 	\fi
 	\pgfusepath{discard}%
 	\endpgfinterruptboundingbox
@@ -2111,6 +2164,7 @@
 		\pgf@zx=\pgfplots@loc@TMPc\pgf@zx
 		\pgf@zy=\pgfplots@loc@TMPc\pgf@zy
 	\fi
+	\pgfplots@glob@TMPc
 }%
 
 \def\pgfplots@computeunitvectorlengths{%
@@ -7443,7 +7497,7 @@
 		% ratio for its axis.
 		%
 		%
-		% The actual implementation is dump; it requires 4 (!) points for
+		% The actual implementation is dumb; it requires 4 (!) points for
 		% which BOTH, the 3D coordinates and the projected 2D
 		% coordinates relative to the image's lower left corner are
 		% available.
@@ -7457,8 +7511,7 @@
 		% involved vectors). Thus, a simple approach is to provide 4
 		% linearly independend points to get 8 equations.
 		%
-		% Then, I solve for o,e_x,e_y,e_z and use
-		% unit vector ratio={||e_x||/ ||e_z||  ||e_y||/||e_z|| 1}.
+		% Then, I solve for o,e_x,e_y,e_z 
 		%
 		%
 		\pgfplotsmatrixnewempty\pgfplotsmatrix
@@ -7578,7 +7631,7 @@
 					\pgfplots@loop@CONTINUEfalse
 				\fi
 				\ifpgfplots@loop@CONTINUE
-		\pgfplotscoordmath{default}{parsenumber}{1}\let\pgfplots@scale=\pgfmathresult
+		%\pgfplotscoordmath{default}{parsenumber}{1}\let\pgfplots@scale=\pgfmathresult
 					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem0\of\pgfplotsE}{\pgfplots@scale}}%
 					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
 					\let\pgfplots@xx=\pgfmathresult
@@ -7604,7 +7657,8 @@
 						y={(\pgfplots@yx,\pgfplots@yy)},%
 						z={(\pgfplots@zx,\pgfplots@zy)},%
 						scale mode=scale uniformly,%
-						%scale mode=none,%
+					%	scale mode=stretch to fill,%
+					%	scale mode=none,%
 					%	unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
 					}%
 				\fi
@@ -7770,7 +7824,6 @@
 	\pgfmath@basic@multiply@{\pgfplots@y@rel}{\pgfplots@H}%
 	\let\pgfplots@h=\pgfmathresult
 	%
-	%
 	\edef\pgfplots@plot@handler@graphics@DRAW@{%
 		\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/plot graphics/lowlevel draw/.@cmd}{%
 			{\pgfplots@w pt}% width
@@ -7780,9 +7833,11 @@
 	\pgfpointadd
 		{\pgfplots@plot@handler@graphics@pointmap@A@canvas}% the canvas coordinate corresponding to 'A'
 		{\pgfqpointscale{-1}
-			{\pgfqpoint\pgfplots@vx\pgfplots@vy}%
+			{\pgfqpoint{\pgfplots@vx pt}{\pgfplots@vy pt}}%
 		}%
 	\edef\pgfplots@plot@handler@graphics@pointmap@lowerleft@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+%
+	%
 	%
 	\begingroup
 		\pgftransformshift{}% simply take \pgf@x and \pgf@y
