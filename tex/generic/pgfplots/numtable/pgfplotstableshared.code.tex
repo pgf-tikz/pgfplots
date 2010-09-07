@@ -97,6 +97,7 @@
 	/pgfplots/table/z error expr/.initial=,
 	/pgfplots/table/ignore chars/.initial=,
 	/pgfplots/table/white space chars/.initial=,
+	/pgfplots/table/comment chars/.initial=,
 	/pgfplots/table/trim cells/.is if=pgfplotstable@trimcells,
 	/pgfplots/table/trim cells/.default=true,
 	/pgfplots/table/read completely/.is choice,
@@ -773,6 +774,11 @@
 	\or
 		\pgfplotstableread@inlinefalse
 	\fi
+	\pgfkeysgetvalue{/pgfplots/table/comment chars}\pgfplots@loc@TMPd
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty
+		% this is an optimization:
+		\let\pgfplotstableread@checkspecial@line@default=\relax
+	\fi
 	%
 	\ifpgfplotstableread@inline
 		\def\pgfplotstableread@impl@fCLOSE{}%
@@ -1133,73 +1139,79 @@
 }%
 
 % WARNING: this routine is also used in pgfplots.code.tex ...
-%--------------------------------------------------
-% EXPERIMENTAL REPLACEMENT IMPL SEE BELOW FOR ORIGINAL
-% \def\pgfplotstableread@checkspecial@line{%
-% 	\futurelet\pgfplotstableread@tmp\pgfplotstableread@checkspecial@line@
-% }%
-% \def\pgfplotstableread@checkspecial@line@{%
-% 	\pgfplotstableread@skiplinefalse
-% 	\let\pgfplotstableread@checkspecial@line@@\pgfplotstableread@impl@gobble%
-% 	%
-% 	\let\pgfplotstableread@tmpb=##%
-% 	\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
-% 		\pgfplotstableread@skiplinetrue
-% 	\else
-% 		\let\pgfplotstableread@tmpb=$%
-% 		\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
-% 			\let\pgfplotstableread@checkspecial@line@@=\pgfplotstableread@process@flags@line
-% 		\else
-% 			\let\pgfplotstableread@tmpb=\pgfplotstable@EOI%
-% 			\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
-% 				\pgfplotstableread@skiplinetrue
-% 				\pgfplotsscanlinecomplete% the line is empty; same as \par!
-% 			\else
-% 				\let\pgfplotstableread@tmpb=\par%
-% 				\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
-% 					\pgfplotstableread@skiplinetrue
-% 					\pgfplotsscanlinecomplete% the line is empty;
-% 				\else
-% 					\pgfplotstableread@checkspecial@line@default%
-% 				\fi
-% 			\fi
-% 		\fi
-% 	\fi
-% 	\pgfplotstableread@checkspecial@line@@
-% }%
-% \def\pgfplotstableread@checkspecial@line@default{%
-% 	\let\pgfplotstableread@tmpb=!%
-% 	\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
-% 		\pgfplotstableread@skiplinetrue
-% 	\fi
-% }%
-%-------------------------------------------------- 
-
 \def\pgfplotstableread@checkspecial@line{%
-	\pgfutil@ifnextchar##{%
+	\futurelet\pgfplotstableread@tmp\pgfplotstableread@checkspecial@line@
+}%
+\def\pgfplotstableread@checkspecial@line@{%
+	\pgfplotstableread@skiplinefalse
+	\let\pgfplotstableread@checkspecial@line@@\pgfplotstableread@impl@gobble%
+	%
+	\let\pgfplotstableread@tmpb=##%
+	\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
 		\pgfplotstableread@skiplinetrue
-		\pgfplotstableread@impl@gobble
-	}{%
-		\pgfutil@ifnextchar${%
-			\pgfplotstableread@process@flags@line
-		}{%
-			\pgfutil@ifnextchar\pgfplotstable@EOI{%
+	\else
+		\let\pgfplotstableread@tmpb=$%
+		\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+			\let\pgfplotstableread@checkspecial@line@@=\pgfplotstableread@process@flags@line
+		\else
+			\let\pgfplotstableread@tmpb=\pgfplotstable@EOI%
+			\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
 				\pgfplotstableread@skiplinetrue
 				\pgfplotsscanlinecomplete% the line is empty; same as \par!
-				\pgfplotstableread@impl@gobble
-			}{%
-				\pgfutil@ifnextchar\par{%
+			\else
+				\let\pgfplotstableread@tmpb=\par%
+				\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
 					\pgfplotstableread@skiplinetrue
-					\pgfplotsscanlinecomplete
-					\pgfplotstableread@impl@gobble
-				}{%
-					\pgfplotstableread@skiplinefalse
-					\pgfplotstableread@impl@gobble
-				}%
-			}%
+					\pgfplotsscanlinecomplete% the line is empty;
+				\else
+					\pgfplotstableread@checkspecial@line@default%
+				\fi
+			\fi
+		\fi
+	\fi
+	\pgfplotstableread@checkspecial@line@@
+}%
+\def\pgfplotstableread@checkspecial@line@default{%
+	% this routine can be optimized away
+	\pgfkeysgetvalue{/pgfplots/table/comment chars}\pgfplots@loc@TMPd
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty
+	\else
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPd}\as\pgfplots@loc@TMPd{%
+			\expandafter\let\expandafter\pgfplotstableread@tmpb\pgfplots@loc@TMPd
+			\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+				\pgfplotstableread@skiplinetrue
+			\fi
 		}%
-	}%
-}
+	\fi
+}%
+
+%--------------------------------------------------
+% \def\pgfplotstableread@checkspecial@line{%
+% 	\pgfutil@ifnextchar##{%
+% 		\pgfplotstableread@skiplinetrue
+% 		\pgfplotstableread@impl@gobble
+% 	}{%
+% 		\pgfutil@ifnextchar${%
+% 			\pgfplotstableread@process@flags@line
+% 		}{%
+% 			\pgfutil@ifnextchar\pgfplotstable@EOI{%
+% 				\pgfplotstableread@skiplinetrue
+% 				\pgfplotsscanlinecomplete% the line is empty; same as \par!
+% 				\pgfplotstableread@impl@gobble
+% 			}{%
+% 				\pgfutil@ifnextchar\par{%
+% 					\pgfplotstableread@skiplinetrue
+% 					\pgfplotsscanlinecomplete
+% 					\pgfplotstableread@impl@gobble
+% 				}{%
+% 					\pgfplotstableread@skiplinefalse
+% 					\pgfplotstableread@impl@gobble
+% 				}%
+% 			}%
+% 		}%
+% 	}%
+% }
+%-------------------------------------------------- 
 
 \long\def\pgfplotstableread@process@flags@line$flags {%
 %\pgfplots@message{Ignoring flags line ...}%
