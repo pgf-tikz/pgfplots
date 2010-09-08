@@ -341,6 +341,12 @@
 	/pgfplots/table/every last column/.style={},
 	/pgfplots/table/every even column/.style={},
 	/pgfplots/table/every odd column/.style={},
+	/pgfplots/table/every nth row/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
+	/pgfplots/table/every nth row/.style 2 args/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
 	/pgfplots/table/before row/.initial=,
 	/pgfplots/table/after row/.initial=,
 	/pgfplots/table/begin table/.initial={\begin{tabular}},
@@ -1506,6 +1512,60 @@
 	\fi
 }%
 
+% Upon execution, \pgfplotsretval contains a set of /pgfplots/table
+% keys from 'every nth row' styles.
+%
+% @PRECONDITION this macro assumes it is run in \pgfplotstabletypeset.
+\def\pgfplots@each@nth@styles{\let\pgfplotsretval\pgfutil@empty}%
+
+% Defines an 'every nth row' style for an integer #1.
+%
+% #1: integer
+% #2: style arguments
+%
+% All these styles are accumulated into the macro
+% \pgfplots@each@nth@styles. 
+\def\pgfplotstabletypeset@append@every@nth@row#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	% chech for the special 'each nth row={3[+1]}{...} format:
+	\expandafter\pgfutil@in@\expandafter[\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfutil@in@
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@getshift\pgfplots@loc@TMPa%
+		\t@pgfplots@toka={#2}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplotstabletypeset@append@every@nth@row@{\pgfplots@loc@TMPa}{\the\t@pgfplots@toka}{\pgfplots@loc@TMPb}%
+		}%
+		\pgfplots@loc@TMPa
+	\else
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@\expandafter{\pgfplots@loc@TMPa}{#2}{0}%
+	\fi
+}%
+\def\pgfplotstabletypeset@append@every@nth@row@getshift#1[#2]{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifnum#2<0
+		\c@pgf@countc=#1\relax
+		\advance\c@pgf@countc by#2
+		\edef\pgfplots@loc@TMPb{\the\c@pgf@countc}%
+	\else
+		\def\pgfplots@loc@TMPb{#2}%
+	\fi
+}%
+% #3 is an additional shift. It is usually 0
+\def\pgfplotstabletypeset@append@every@nth@row@#1#2#3{%
+	\expandafter\def\expandafter\pgfplots@each@nth@styles\expandafter{%
+		\pgfplots@each@nth@styles
+		\expandafter\pgfplotsmathmodint\expandafter{\the\c@pgfplotstable@rowindex}{#1}%
+		\ifnum\pgfmathresult=#3\relax
+			\ifx\pgfplotsretval\pgfutil@empty
+				\def\pgfplotsretval{#2}%
+			\else
+				\expandafter\def\expandafter\pgfplotsretval\expandafter{\pgfplotsretval,%
+					#2}%
+			\fi
+		\fi
+	}%
+}
+
 \def\pgfplotstable@insertemptycells@forbalance{%
 	\pgfutil@loop
 	\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
@@ -1901,6 +1961,21 @@
 					\else
 						\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
 						\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+						%
+						\ifnum\c@pgfplotstable@rowindex=0\relax
+						\else
+							% process 'every nth row' styles:
+							\begingroup
+							\pgfplots@each@nth@styles
+							\pgfmath@smuggleone\pgfplotsretval
+							\endgroup
+							\ifx\pgfplotsretval\pgfutil@empty
+							\else
+								\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+								\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
+								\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+							\fi
+						\fi
 					\fi
 					% misuse as temporary variable:
 					\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
@@ -1986,6 +2061,7 @@
 	\endgroup
 	\pgfplots@glob@TMPa% execute 'write to macro' if set.
 }%
+
 
 \newif\ifpgfplotstable@isfirstrow
 \newif\ifpgfplotstable@islastrow
