@@ -2236,70 +2236,167 @@
 }%
 
 % Defines \pgfplots@view@dir@threedim@[xyz] according to the actual
-% configuration of x,y,z (2d) unit vectors.
+% configuration of x,y,z (2d) unit vectors, assuming the associated
+% unit vectors form a right-handed-system.
 %
-% The idea is as follows:
-% I suppose the actual view is actually a transformed XZ plane and the
-% view direction is the transformed Y axis of the underlying axis. In
-% other words, I try to restore the case as it is documented for
-% \pgfplotssetaxesfromazel.
+% The algorithm works for standard three dimensional axes. It works as
+% follows:
 %
-% Consequently, I assume that the actual transformation from 3D points
-% q \in \R^3 to 2d CANVAS is given by
-% P(q) = (q^T X, q^T Z)
-% where X,Z \in \R^3 (!) are the 3d transformed axes. Once I have
-% these two vectors, I know Y = Z crossproduct X.
+% First, observe that we have a normal direction N if all its
+% multiples are on the mapped onto the same point in 2D canvas
+% coordinates. In other words: all 3D coordinates which are mapped
+% onto an arbitrary point in 2D canvas coordinates (take, for example,
+% the origin (0,0)  ) are on a line in direction of N.
 %
-% That's what I do. I can recover X and Z (which have 6 components)
-% using the 6 equations for
-% P([1 0 0]), P([0 1 0]), P([0 0 1]).
-% That yields
-% X = [ e_xx e_yy e_xy ]
-% Z = [ e_zx e_yx e_zy ].
+% We use this observation to compute the normal axis, i.e. we search
+% for all points which are mapped onto the 2D canvas coordinate (0,0):
+%  N_x e_xx + N_y e_yx + N_z e_zx = 0
+%  N_x e_xy + N_y e_yy + N_z e_zy = 0.
+% All solutions make up a linear space of dimension 1 (up to special
+% cases). In the general case, we can chose an arbitrary  N_z != 0
+% and reduce the linear system to
+%  N_x e_xx + N_y e_yx = - N_z e_zx
+%  N_x e_xy + N_y e_yy = - N_z e_zy.
+% Choosing *any* N_z != 0, say, N_z=-1 (which corresponds to view
+% from above) will lead to a vector parallel to the normal direction.
+% But it might have the wrong sign.
 %
-% Then, I use Y = Z crossprod X  (plus a normalization) as view
-% direction.
+% To find the correct sign for N, I have made several case
+% distinctions to identify the cases when we have to multiply with -1.
+% The key idea is to assume a right-handed-system of unit vectors;
+% this is the condition which allows to determine the sign.
+%
+% Furthermore, I assume that e_z points to the top, i.e. that e_zy >0.
+% Then, there are (mainly) four conditions on the signs of e_x and e_y
+% which indicate that we are viewing from below and should switch the
+% sign of N (keep in mind that our initial choice was N_z =-1, see above).
+%
+% The conditions can be identified by drawing a 3D box and
+% identifying the corner which represents the lower left 3D limits.
+%
+% You can visualize these cases using
+%--------------------------------------------------
+% \pgfplotsset{
+% 		separate axis lines,
+% 		every outer x axis line/.append style= {-stealth},
+% 		every outer y axis line/.append style= {-stealth},
+% 		every outer z axis line/.append style= {-stealth},
+% 		samples=2,shader=interp,title={view=\h,\v},
+% 		domain=0:1,
+% 		enlargelimits=false,
+% 		view=\h\v,xlabel=x,ylabel=y,
+% 		extra description/.code={%
+% 			\node[draw,fill=white] at (axis cs:0,0,0) {};
+% 		},
+% }
+% 
+% \def\v{30}
+% \foreach \h in {30,120,210,300} {
+% \message{VIEW={\h}{\v}^^J}
+% \begin{tikzpicture}
+% 	\begin{axis}
+% 	\addplot3[surf] {x};
+% 	\end{axis}
+% \end{tikzpicture}
+% 
+% }
+% 
+% \def\v{-30}
+% \foreach \h in {30,120,210,300} {
+% \message{VIEW={\h}{\v}^^J}
+% \begin{tikzpicture}
+% 	\begin{axis}
+% 	\addplot3[surf] {x};
+% 	\end{axis}
+% \end{tikzpicture}
+% 
+% }
+%-------------------------------------------------- 
+%  The precise formulas can be found below in the source code.
 %
 % You can override this function by the /pgfplots/view dir key.
 \def\pgfplotsgetnormalforcurrentview{%
 	\pgfkeysgetvalue{/pgfplots/view dir}\pgfplots@loc@TMPc
 	\ifx\pgfplots@loc@TMPc\pgfutil@empty
 	\begingroup	
-		\pgf@xa=\pgf@sys@tonumber\pgf@xy\pgf@yx
-		\pgf@xb=\pgf@sys@tonumber\pgf@yy\pgf@zy
-		\advance\pgf@xa by -\pgf@xb
-		\pgf@ya=\pgf@xa
-		\xdef\pgfplots@view@dir@threedim@x{\pgf@sys@tonumber\pgf@xa}%
+		\xdef\pgfplots@view@dir@threedim@z{-1}% hold it at some arbitrary value
+		\pgf@xa=-\pgfplots@view@dir@threedim@z\pgf@zx
+		\pgf@ya=-\pgfplots@view@dir@threedim@z\pgf@zy
+		\edef\pgfplots@loc@TMPa{%
+			{%
+				{\pgf@sys@tonumber\pgf@xx}{\pgf@sys@tonumber\pgf@yx}%
+				{\pgf@sys@tonumber\pgf@xy}{\pgf@sys@tonumber\pgf@yy}%
+			}%
+			{%
+				{\pgf@sys@tonumber\pgf@xa}{\pgf@sys@tonumber\pgf@ya}%
+			}%
+		}%
+		\expandafter\pgfutilsolvetwotwoleq\pgfplots@loc@TMPa
+		\def\pgfplots@loc@TMPb##1##2{%
+			\xdef\pgfplots@view@dir@threedim@x{##1}%
+			\xdef\pgfplots@view@dir@threedim@y{##2}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfmathresult
 		%
-		\pgf@xa=\pgf@sys@tonumber\pgf@xx\pgf@zy
-		\pgf@xb=\pgf@sys@tonumber\pgf@xy\pgf@zx
-		\advance\pgf@xa by -\pgf@xb
-		\pgf@yb=\pgf@xa
-		\xdef\pgfplots@view@dir@threedim@y{\pgf@sys@tonumber\pgf@xa}%
+		% Identify if we need to switch the sign.
+		% To verify that these cases are useful, I suggest visualizing
+		% that stuff using the TeX code from above...
 		%
-		\pgf@xa=\pgf@sys@tonumber\pgf@yy\pgf@zx
-		\pgf@xb=\pgf@sys@tonumber\pgf@xx\pgf@yx
-		\advance\pgf@xa by -\pgf@xb
-		\pgf@xc=\pgf@xa
-		\xdef\pgfplots@view@dir@threedim@z{\pgf@sys@tonumber\pgf@xa}%
-		%
-		% L_infty normalization:  (the normalization is more or less
-		% irrelevant, so I choose the simplest one)
-		\ifdim\pgf@ya<0sp \multiply\pgf@ya by-1\fi
-		\ifdim\pgf@yb<0sp \multiply\pgf@yb by-1\fi
-		\ifdim\pgf@xc<0sp \multiply\pgf@xc by-1\fi
-		\pgf@xa=\pgf@ya
-		\ifdim\pgf@xa<\pgf@yb \pgf@xa=\pgf@yb	\fi
-		\ifdim\pgf@xa<\pgf@xc \pgf@xa=\pgf@xc	\fi
-		\expandafter\pgfmathreciprocal@\expandafter{\pgf@sys@tonumber\pgf@xa}%
-		\let\pgfplots@normalization=\pgfmathresult
-		%
-		\pgfmathmultiply@{\pgfplots@view@dir@threedim@x}{\pgfplots@normalization}%
-		\global\let\pgfplots@view@dir@threedim@x=\pgfmathresult
-		\pgfmathmultiply@{\pgfplots@view@dir@threedim@y}{\pgfplots@normalization}%
-		\global\let\pgfplots@view@dir@threedim@y=\pgfmathresult
-		\pgfmathmultiply@{\pgfplots@view@dir@threedim@z}{\pgfplots@normalization}%
-		\global\let\pgfplots@view@dir@threedim@z=\pgfmathresult
+		% I guess it is correct up to collapsing views (as you see, I
+		% did not properly identify the cases with "=0" )
+		\def\pgfplots@scale{1}%
+		\ifdim\pgf@xx>0pt
+			\ifdim\pgf@yx>0pt
+				%
+				\ifdim\pgf@xy>0pt
+					\ifdim\pgf@yy<0pt
+						\def\pgfplots@scale{-1}%
+					\fi
+				\fi
+				%
+			\fi
+		\else
+			\ifdim\pgf@xx<0pt
+				\ifdim\pgf@yx<0pt
+					%
+					\ifdim\pgf@xy<0pt
+						\ifdim\pgf@yy>0pt
+							\def\pgfplots@scale{-1}%
+						\fi
+					\fi
+					%
+				\fi
+			\fi
+		\fi
+		\ifdim\pgf@xy>0pt
+			\ifdim\pgf@yy>0pt
+				%
+				\ifdim\pgf@xx<0pt
+					\ifdim\pgf@yx>0pt
+						\def\pgfplots@scale{-1}%
+					\fi
+				\fi
+				%
+			\fi
+		\else
+			\ifdim\pgf@xy<0pt
+				\ifdim\pgf@yy<0pt
+					%
+					\ifdim\pgf@xx>0pt
+						\ifdim\pgf@yx<0pt
+							\def\pgfplots@scale{-1}%
+						\fi
+					\fi
+					%
+				\fi
+			\fi
+		\fi
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@x}%
+		\global\let\pgfplots@view@dir@threedim@x\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@y}%
+		\global\let\pgfplots@view@dir@threedim@y\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@z}%
+		\global\let\pgfplots@view@dir@threedim@z\pgfmathresult
 	\endgroup
 	\else
 		\def\pgfplots@loc@TMPb##1##2##3{%
@@ -7742,7 +7839,11 @@
 					%	scale mode=none,%
 					%	unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
 					}%
+				\else
+					\let\pgfplotsretval=\pgfutil@empty
 				\fi
+			\else
+				\let\pgfplotsretval=\pgfutil@empty
 			\fi
 			%
 			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
@@ -7750,10 +7851,7 @@
 			\fi
 			%
 			\ifx\pgfplotsretval\pgfutil@empty
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotsxlen}\let\pgfplotsxlen@=\pgfmathresult
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
-				\pgfplots@warning{plot graphics failed to compute the 'unit vector ratio'\csname on@line\endcsname\space (it found ||ex|| =\pgfplotsxlen@; ||ey||= \pgfplotsylen@; ||ez|| =\pgfplotszlen@). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
+				\pgfplots@error{plot graphics failed to perform the 'auto adjust axis' feature \csname on@line\endcsname\space\space (compare 'plot graphics[debug]). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
 			\else
 				\begingroup
 				\pgfkeysgetvalue{/pgfplots/plot graphics/src}\pgfplots@loc@TMPa
@@ -7782,6 +7880,7 @@
 	\let\pgfplotsrhs@text=\pgfplotsretval
 }%
 \def\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output{%
+	\begingroup
 	\immediate\openout\w@pgf@writea=\pgfkeysvalueof{/pgfplots/plot graphics/src}.dat
 	\pgfplotsarrayselect0\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplotsarrayselect1\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPb=\pgfmathresult
@@ -7799,12 +7898,11 @@
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
 	\immediate\write\w@pgf@writea{unit length=\pgfplotsxlen@\space\pgfplotsylen@\space\pgfplotszlen@,}%
-	\begingroup
 	\def\n{^^J}%
 	\def\t{^^I}%
 	\immediate\write\w@pgf@writea{canvasmapmatrix=[\pgfplotsmatrix@text];^^Jcanvasmaprhs = [\pgfplotsrhs@text];^^J}%
-	\endgroup
 	\immediate\closeout\w@pgf@writea
+	\endgroup
 }%
 
 \def\pgfplots@plot@handler@graphics@process@pointmap{%
