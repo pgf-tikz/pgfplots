@@ -1,6 +1,6 @@
 
-xdata =load('plotgraphics2_coord.dat');
-veldata=load('plotgraphics2_vel.dat');
+xdata =load('risingdrop3d_coord.dat');
+veldata=load('risingdrop3d_vel.dat');
 
 n = veldata(1) / 3
 
@@ -57,7 +57,7 @@ I = find( ...
 	);
 scale=2;
 h=quiver3(X(I),Y(I),Z(I),U(I),V(I),W(I),scale);
-set(h, 'Color', 'w', 'Linewidth',1.3);
+set(h, 'Color', [0.9 0.9 0.9], 'Linewidth',1.3);
 hold off
 
 view(3)
@@ -67,9 +67,9 @@ axis equal
 xlabel('x')
 ylabel('y')
 zlabel('z')
-print -dpng 3drisingdropwithaxis
+print -dpng risingdrop3dwithaxis
 plotboxratio=pbaspect
 [az,el]=view
 axis off
-print -dpng 3drisingdrop
+print -dpng risingdrop3d
 
