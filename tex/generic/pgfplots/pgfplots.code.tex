@@ -724,9 +724,10 @@
 	% axis type:
 	/pgfplots/axis type/.initial=rectangle,
 	/pgfplots/axis type/.belongs to family=/pgfplots/scale,
+	/pgfplots/@expected axis cs/.initial=cart,
 	/pgfplots/every rectangle axis/.style={},
 	% 
-	/pgfplots/output cs/.initial=,
+	/pgfplots/data cs/.initial=cart,% the coordinate system of provided data. Will be transformed to the axis' internal coordinate system (@expected axis cs).
 	%
 	% Colorbar interface:
 	/pgfplots/colorbar/.is if=pgfplots@colorbar,
@@ -6580,36 +6581,6 @@
 	}{}%
 }%
 
-% #1: a new value for 'output cs'
-% #2: initialization code which should define/modify
-% 	\pgfplotsqpointxy
-% 	\pgfplotsqpointxyz
-% 	\pgfplotsqpointxy@orthogonal
-% #3: code to update global axis limits \pgfplots@[xyz][minmax] by
-% actual data limits, given by
-% \pgfplots@data@[xyz][minmax].
-% Arithmetics are to be performed in \pgfplotscoordmath!
-\def\pgfplotsdefineoutputcs#1#2#3{%
-	\expandafter\def\csname pgfplots@outputcs@#1\endcsname{#2}%
-	\expandafter\def\csname pgfplots@outputcs@#1@upd@limits\endcsname{#3}%
-}%
-
-\pgfplotsdefineoutputcs{}{}{}% empty, the default.
-
-\def\pgfplotsactivateoutputcs#1{%
-	\pgfutil@ifundefined{pgfplots@outputcs@#1}{%
-		\pgfplots@error{Sorry, 'output cs={#1}' is not known to pgfplots}%
-	}{%
-		\csname pgfplots@outputcs@#1\endcsname
-	}%
-}%
-\def\pgfplotsupdatelimitsfordatainoutputcs#1{%
-	\pgfutil@ifundefined{pgfplots@outputcs@#1}{%
-		\pgfplots@error{Sorry, 'output cs={#1}' is not known to pgfplots}%
-	}{%
-		\csname pgfplots@outputcs@#1@upd@limits\endcsname
-	}%
-}%
 
 % Defines a new axis type `#1' with initialization code `#2'.
 % 
@@ -6621,30 +6592,40 @@
 %
 % #1: the axis type name
 % #2: initialization TeX code.
-\def\pgfplotsdefineaxistype#1#2{%
-	\expandafter\def\csname pgfplots@axistype@#1\endcsname{#2}%
-	\expandafter\def\csname pgfplots@environment@#1axis\endcsname{%
+%
+% OPTIONAL: you can provide the expected axis coordinate system in
+% square brackets.
+%
+% \pgfplotsdefineaxistype{rectangle}{...}
+% \pgfplotsdefineaxistype[polar]{polar}{...}
+\def\pgfplotsdefineaxistype{\pgfutil@ifnextchar[{\pgfplotsdefineaxistype@}{\pgfplotsdefineaxistype@[cart]}}%
+\def\pgfplotsdefineaxistype@[#1]#2#3{%
+	\expandafter\def\csname pgfplots@axistype@#2\endcsname{%
+		\pgfkeyssetvalue{/pgfplots/@expected axis cs}{#1}%
+		#3%
+	}%
+	\expandafter\def\csname pgfplots@environment@#2axis\endcsname{%
 		\pgfutil@ifnextchar[%
-			{\csname pgfplots@environment@#1axis@\endcsname}%
-			{\csname pgfplots@environment@#1axis@\endcsname[]}%
+			{\csname pgfplots@environment@#2axis@\endcsname}%
+			{\csname pgfplots@environment@#2axis@\endcsname[]}%
 	}%
-	\expandafter\long\expandafter\def\csname pgfplots@environment@#1axis@\endcsname[##1]{%
-		\begin{axis}[##1,axis type=#1]%
+	\expandafter\long\expandafter\def\csname pgfplots@environment@#2axis@\endcsname[##1]{%
+		\begin{axis}[##1,axis type=#2]%
 	}%
-	\expandafter\def\csname endpgfplots@environment@#1axis\endcsname{\end{axis}}%
-	\edef\pgfplots@glob@TMPc{\expandafter\noexpand\csname #1axis\endcsname\expandafter\noexpand\csname pgfplots@environment@#1axis\endcsname}%
+	\expandafter\def\csname endpgfplots@environment@#2axis\endcsname{\end{axis}}%
+	\edef\pgfplots@glob@TMPc{\expandafter\noexpand\csname #2axis\endcsname\expandafter\noexpand\csname pgfplots@environment@#2axis\endcsname}%
 	\expandafter
 	\tikzaddtikzonlycommandshortcutlet\pgfplots@glob@TMPc
 	%
-	\edef\pgfplots@glob@TMPc{\expandafter\noexpand\csname end#1axis\endcsname\expandafter\noexpand\csname endpgfplots@environment@#1axis\endcsname}%
+	\edef\pgfplots@glob@TMPc{\expandafter\noexpand\csname end#2axis\endcsname\expandafter\noexpand\csname endpgfplots@environment@#2axis\endcsname}%
 	\expandafter
 	\tikzaddtikzonlycommandshortcutlet\pgfplots@glob@TMPc
 	%
 	% ConTeXt compatibility:
-	\t@pgfplots@toka=\expandafter{\csname #1axis\endcsname}%
-	\t@pgfplots@tokb=\expandafter{\csname end#1axis\endcsname}%
-	\expandafter\edef\csname start#1axis\endcsname{\the\t@pgfplots@toka}%
-	\expandafter\edef\csname stop#1axis\endcsname{\the\t@pgfplots@tokb}%
+	\t@pgfplots@toka=\expandafter{\csname #2axis\endcsname}%
+	\t@pgfplots@tokb=\expandafter{\csname end#2axis\endcsname}%
+	\expandafter\edef\csname start#2axis\endcsname{\the\t@pgfplots@toka}%
+	\expandafter\edef\csname stop#2axis\endcsname{\the\t@pgfplots@tokb}%
 }%
 
 \def\pgfplotssetaxistype#1{%
@@ -9531,8 +9512,6 @@
 			% this code here means we REALLY have a plotting
 			% command!
 			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
-			%
-			\pgfplotsactivateoutputcs{\pgfkeysvalueof{/pgfplots/output cs}}%
 			%
 			% de-activate the FPU here! I fear its number
 			% format may cause errors when used in low-level
