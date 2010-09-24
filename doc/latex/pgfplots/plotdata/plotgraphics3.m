@@ -12,7 +12,7 @@ isonormals(data,p1)
 daspect([1 2 2])
 view(3); axis vis3d tight
 camlight; lighting phong
-print -dpng plotgraphics3withaxis
+% print -dpng plotgraphics3withaxis
 axis off
 print -dpng plotgraphics3
-save  plotgraphics3.seed seed -ASCII 
+save  plotgraphics3.seed seed -ASCII % to reproduce the result
