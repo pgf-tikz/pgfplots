@@ -4025,20 +4025,64 @@
 		{\pgfkeysvalueof{/pgfplots/@expected axis cs}}%
 }%
 
+% Changes \pgfplots@current@point@[xyz] to the new coordinate system
+% (cs) designated by '#2'.
+%
+% #1: the actual coordinate system's name
+% #2: the desired coordinate system's name
+%
+% PRECONDITION: \pgfplots@current@point@[xyz] contain the current
+% point's coordinates in the '#1' system. The z coordinate is ignored for 2d plots (or
+% for coordinate systems which are inherently two-dimensional).
+%
+% POSTCONDITION: \pgfplots@current@point@[xyz] contain same point as
+% before, but represented in the '#2' system.
+%
+% The coordinate system transformations must be defined,
+% see \pgfplotsdefinecstransform.
+%
+% Example:
+% \def\pgfplots@current@point@x{90}
+% \def\pgfplots@current@point@y{1}
+% \pgfplotsaxistransformcs{polar}{cart}
+% -->
+%  \pgfplots@current@point@x = 0
+%  \pgfplots@current@point@y = 1
 \def\pgfplotsaxistransformcs#1#2{%
 	\edef\pgfplots@loc@TMPa{#1}%
 	\edef\pgfplots@loc@TMPb{#2}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 	\else
 		\pgfutil@ifundefined{pgfp@transform@\pgfplots@loc@TMPa @to@\pgfplots@loc@TMPb}{%
-			\pgfplotsaxistransformcs@error
+			\pgfutil@ifundefined{pgfp@transform@\pgfplots@loc@TMPa @to@cart}{%
+				\pgfplotsaxistransformcs@error
+			}{%
+				\pgfplotsaxistransformcs{#1}{cart}%
+				\pgfplotsaxistransformcs{cart}{#2}%
+			}%
 		}{%
 			\csname pgfp@transform@\pgfplots@loc@TMPa @to@\pgfplots@loc@TMPb\endcsname
 		}%
 	\fi
 }%
 
-\def\pgfp@transform@polar@to@cart{%
+% Defines a new coordinate transformation for use in
+% \pgfplotsaxistransformcs.
+% #1: the source coordinate system
+% #2: the target coordinate system
+% #3: the transformation code. 
+%
+% @see \pgfplotsaxistransformcs for what #3 should do.
+%
+% This does also declare a coordinate system for use in 'data cs'.
+% The minimal requirements are to define the transformations from and
+% to "cart" (cartesian coordinates).
+% 
+\def\pgfplotsdefinecstransform#1#2#3{%
+	\expandafter\def\csname pgfp@transform@#1@to@#2\endcsname{#3}%
+}%
+
+\pgfplotsdefinecstransform{polar}{cart}{%
 	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
 	\let\pgfplots@current@point@x=\pgfmathresult
 	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@y}%
@@ -4049,7 +4093,7 @@
 	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y@}%
 	\let\pgfplots@current@point@y=\pgfmathresult
 }%
-\def\pgfp@transform@cart@to@polar{%
+\pgfplotsdefinecstransform{cart}{polar}{%
 	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
 	\let\pgfplots@current@point@x=\pgfmathresult
 	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@y}%
@@ -4059,6 +4103,36 @@
 	\let\pgfplots@current@point@x=\pgfmathresult
 	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y@}%
 	\let\pgfplots@current@point@y=\pgfmathresult
+}%
+
+\pgfplotsdefinecstransform{polarrad}{polar}{%
+	\pgfplotsgetcoordmathfor{default}\let\pgfplots@coordmath@id=\pgfplotsretval
+	\pgfutil@ifundefined{pgfp@polarradscale@\pgfplots@coordmath@id}{%
+		\pgfplotscoordmath{default}{parsenumber}{57.2957795130823}%
+		\expandafter\global\expandafter\let\csname pgfp@polarradscale@\pgfplots@coordmath@id\endcsname=\pgfmathresult
+	}{}%
+	%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\csname pgfp@polarradscale@\pgfplots@coordmath@id\endcsname}}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+}%
+\pgfplotsdefinecstransform{polar}{polarrad}{%
+	\pgfplotsgetcoordmathfor{default}\let\pgfplots@coordmath@id=\pgfplotsretval
+	\pgfutil@ifundefined{pgfp@polarradiscale@\pgfplots@coordmath@id}{%
+		\pgfplotscoordmath{default}{parsenumber}{0.0174532925199433}%
+		\expandafter\global\expandafter\let\csname pgfp@polarradiscale@\pgfplots@coordmath@id\endcsname=\pgfmathresult
+	}{}%
+	%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\csname pgfp@polarradiscale@\pgfplots@coordmath@id\endcsname}}%
+}%
+\pgfplotsdefinecstransform{polarrad}{cart}{%
+	\pgfplotsaxistransformcs{polarrad}{polar}%
+	\pgfplotsaxistransformcs{polar}{cart}%
+}%
+\pgfplotsdefinecstransform{cart}{polarrad}{%
+	\pgfplotsaxistransformcs{cart}{polar}%
+	\pgfplotsaxistransformcs{polar}{polarrad}%
 }%
 
 \def\pgfplotsaxistransformcs@error{%
