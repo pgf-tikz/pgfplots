@@ -2443,6 +2443,7 @@
 	\edef\pgfplotsdeclarecoordmath@{@#1@}%
 	\pgfqkeys{/pgfplots/@declare coord math}{%
 		initialise=,
+		parse=\pgfmathparse{##1},
 		parsenumber=\pgfmathfloatparsenumber{##1}\pgfmathfloattofixed{##1},%
 		zero=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{0},
 		one=		\pgfplotscoordmath{\pgfplotscoordmathid}{parsenumber}{1},
@@ -2552,6 +2553,11 @@
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ zero\endcsname{#1}},%
 	one/.code=
 		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ one\endcsname{#1}},%
+	%
+	% Calls pgfmathparse. Note that this might need to switch to the
+	% required math library (which is not necessarily cheap)
+	parse/.code=
+		{\expandafter\def\csname pgfpmth\pgfplotsdeclarecoordmath@ parse\endcsname##1{#1}},%
 	%
 	% takes a parsed number and returns a fixed point number:
 	tofixed/.code=
@@ -2818,6 +2824,7 @@
 			\expandafter\edef\csname pgfplots@data@scale@trafo@SHIFT@\pgfplotscoordmathid\endcsname{0}%
 		}{},
 	parsenumber=\pgfmathfloatparsenumber{#1},
+	parse=\begingroup \pgfkeys{/pgf/fpu}\pgfmathparse{#1}\pgfmath@smuggleone\pgfmathresult\endgroup,
 	zero=\pgfmathfloatcreate{0}{0.0}{0},%
 	one=\pgfmathfloatcreate{1}{1.0}{0},%
 	tofixed=\pgfmathfloattofixed{#1},
@@ -2869,25 +2876,13 @@
 		\pgfmathfloattofixed\pgfmathresult
 	},%
 	datascaletrafo noshift inverse={%
-		\edef\pgfplots@datascaletrafo@tmp{#1}%
-		\pgfmathapproxequalto@{\pgfplots@datascaletrafo@tmp}{0.0}%
-		\ifpgfmathcomparison
-			\pgfmathfloatcreate{0}{0.0}{0}%
-		\else
-			\pgfmathfloatparsenumber{\pgfplots@datascaletrafo@tmp}%
-			\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
-		\fi
+		\pgfmathfloatparsenumber{#1}%
+		\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
 	},%
 	datascaletrafo noshift inverse to fixed={%
-		\edef\pgfplots@datascaletrafo@tmp{#1}%
-		\pgfmathapproxequalto@{\pgfplots@datascaletrafo@tmp}{0.0}%
-		\ifpgfmathcomparison
-			\def\pgfmathresult{0}%
-		\else
-			\pgfmathfloatparsenumber{\pgfplots@datascaletrafo@tmp}%
-			\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
-			\pgfmathfloattofixed\pgfmathresult
-		\fi
+		\pgfmathfloatparsenumber{#1}%
+		\pgfmathfloatshift@{\pgfmathresult}{-\csname pgfplots@data@scale@trafo@EXPONENT@\pgfplotscoordmathid\endcsname}%
+		\pgfmathfloattofixed\pgfmathresult
 	},%
 }
 
@@ -7915,117 +7910,58 @@
 			%
 			\pgfplotsmatrixsolveLEQS\pgfplotsmatrix=\pgfplotsE
 			%
-			\pgfplotscoordmath{default}{op}{veclen}{%
-				{\pgfplotsarrayvalueofelem0\of\pgfplotsE}%
-				{\pgfplotsarrayvalueofelem1\of\pgfplotsE}%
-			}%
-			\let\pgfplotsxlen=\pgfmathresult
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem0\of\pgfplotsE}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@xx=\pgfmathresult
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem1\of\pgfplotsE}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@xy=\pgfmathresult
 			%
-			\pgfplotscoordmath{default}{op}{veclen}{%
-				{\pgfplotsarrayvalueofelem2\of\pgfplotsE}%
-				{\pgfplotsarrayvalueofelem3\of\pgfplotsE}%
-			}%
-			\let\pgfplotsylen=\pgfmathresult
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem2\of\pgfplotsE}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@yx=\pgfmathresult
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem3\of\pgfplotsE}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@yy=\pgfmathresult
 			%
-			\pgfplotscoordmath{default}{op}{veclen}{%
-				{\pgfplotsarrayvalueofelem4\of\pgfplotsE}%
-				{\pgfplotsarrayvalueofelem5\of\pgfplotsE}%
-			}%
-			\let\pgfplotszlen=\pgfmathresult
-			%
-			\pgfplots@loop@CONTINUEtrue
-			\pgfplotscoordmath{default}{if is}{\pgfplotsxlen}{0}{%
-				\pgfplots@loop@CONTINUEfalse
-			}{}%
-			\pgfplotscoordmath{default}{if is}{\pgfplotsylen}{0}{%
-				\pgfplots@loop@CONTINUEfalse
-			}{}%
-			\pgfplotscoordmath{default}{if is}{\pgfplotszlen}{0}{%
-				\pgfplots@loop@CONTINUEfalse
-			}{}%
-			%
-			\ifpgfplots@loop@CONTINUE
-				\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplotszlen}}%
-				\let\pgfplots@scale=\pgfmathresult
-				%
-				% this is nonsense, I just keep it because the @scale
-				% variable will change eventually:
-				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotszlen}{\pgfplots@scale}}%
-				\let\pgfplotszlenratio@float=\pgfmathresult
-				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-				\let\pgfplotszlenratio=\pgfmathresult
-				%
-				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsxlen}{\pgfplots@scale}}%
-				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-				\let\pgfplotsxlenratio=\pgfmathresult
-				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsylen}{\pgfplots@scale}}%
-				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-				\let\pgfplotsylenratio=\pgfmathresult
-				%
-				\pgfmathapproxequalto@{\pgfplotsxlenratio}{0.0}%
-				\ifpgfmathcomparison
-					\pgfplots@loop@CONTINUEfalse
-				\fi
-				\pgfmathapproxequalto@{\pgfplotsylenratio}{0.0}%
-				\ifpgfmathcomparison
-					\pgfplots@loop@CONTINUEfalse
-				\fi
-				\ifpgfplots@loop@CONTINUE
-		%\pgfplotscoordmath{default}{parsenumber}{1}\let\pgfplots@scale=\pgfmathresult
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem0\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@xx=\pgfmathresult
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem1\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@xy=\pgfmathresult
-					%
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem2\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@yx=\pgfmathresult
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem3\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@yy=\pgfmathresult
-					%
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem4\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfkeysgetvalue{/pgfplots/plot graphics/snap z}\pgfplots@loc@TMPa
-					\ifx\pgfplots@loc@TMPa\pgfutil@empty
-					\else
-						\let\pgfplots@zx=\pgfmathresult
-						%
-						% compute 'snap z' relative to
-						% '\pgfplotszlenratio' (which is usually 1)
-						\pgfplotscoordmath{default}{parsenumber}{\pgfplots@loc@TMPa}%
-						\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplotszlenratio@float}}%
-						\let\pgfplots@loc@TMPa=\pgfmathresult
-						%
-						\pgfplotscoordmath{default}{op}{abs}{{\pgfplots@zx}}%
-						\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
-							\pgfplotscoordmath{default}{zero}%
-						}{%
-							\let\pgfmathresult=\pgfplots@zx
-						}%
-					\fi
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@zx=\pgfmathresult
-					%
-					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem5\of\pgfplotsE}{\pgfplots@scale}}%
-					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
-					\let\pgfplots@zy=\pgfmathresult
-					\edef\pgfplotsretval{%
-						x={(\pgfplots@xx,\pgfplots@xy)},%
-						y={(\pgfplots@yx,\pgfplots@yy)},%
-						z={(\pgfplots@zx,\pgfplots@zy)},%
-						scale mode=scale uniformly,%
-					%	scale mode=stretch to fill,%
-					%	scale mode=none,%
-					%	unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
-					}%
-				\else
-					\let\pgfplotsretval=\pgfutil@empty
-				\fi
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem4\of\pgfplotsE}%
+			\pgfkeysgetvalue{/pgfplots/plot graphics/snap z}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
-				\let\pgfplotsretval=\pgfutil@empty
+				\let\pgfplots@zx=\pgfmathresult
+				\pgfplotscoordmath{default}{op}{veclen}{%
+					{\pgfplotsarrayvalueofelem4\of\pgfplotsE}%
+					{\pgfplotsarrayvalueofelem5\of\pgfplotsE}%
+				}%
+				\let\pgfplotszlen=\pgfmathresult
+				\message{zlen=\pgfmathresult}%
+				%
+				% compute 'snap z' relative to
+				% '\pgfplotszlen'
+				\pgfplotscoordmath{default}{parsenumber}{\pgfplots@loc@TMPa}%
+				\message{snap==\pgfmathresult}%
+				\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplotszlen}}%
+				\let\pgfplots@loc@TMPa=\pgfmathresult
+				%
+				\pgfplotscoordmath{default}{op}{abs}{{\pgfplots@zx}}%
+				\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+					\pgfplotscoordmath{default}{zero}%
+				}{%
+					\let\pgfmathresult=\pgfplots@zx
+				}%
 			\fi
+			\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+			\let\pgfplots@zx=\pgfmathresult
+			%
+			\edef\pgfmathresult{\pgfplotsarrayvalueofelem5\of\pgfplotsE}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@zy=\pgfmathresult
+			\edef\pgfplotsretval{%
+				x={(\pgfplots@xx,\pgfplots@xy)},%
+				y={(\pgfplots@yx,\pgfplots@yy)},%
+				z={(\pgfplots@zx,\pgfplots@zy)},%
+				scale mode=scale uniformly,%
+			}%
 			%
 			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
 				\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output
@@ -8075,10 +8011,6 @@
 	\pgfplotsarrayselect6\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplotsarrayselect7\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPb=\pgfmathresult
 	\immediate\write\w@pgf@writea{img origin=\pgfplots@loc@TMPa\space\pgfplots@loc@TMPb,}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfplotsxlen}\let\pgfplotsxlen@=\pgfmathresult
-	\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
-	\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
-	\immediate\write\w@pgf@writea{unit length=\pgfplotsxlen@\space\pgfplotsylen@\space\pgfplotszlen@,}%
 	\def\n{^^J}%
 	\def\t{^^I}%
 	\immediate\write\w@pgf@writea{canvasmapmatrix=[\pgfplotsmatrix@text];^^Jcanvasmaprhs = [\pgfplotsrhs@text];^^J}%
