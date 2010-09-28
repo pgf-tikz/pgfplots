@@ -32,9 +32,15 @@
     /pgfplots/contour/.is family,
     /pgfplots/calculation method/.is choice,
     /pgfplots/calculation method/linear/.is if=\ifpgfplots@contour@calc@linear,
-    /pgfplots/contour/values/.store in=\pgfplots@contour@values,
+    /pgfplots/contour/levels/.store in=\pgfplots@contour@levels,
 }
 
+\let\E=\expandafter
+\countdef\c@pgfplots@contour@row@f
+\countdef\c@pgfplots@contour@col@f
+\countdef\c@pgfplots@contour@edge
+\countdef\c@pgfplots@contour@start@edge
+\newif\ifpgfplots@contour@process
 
 \pgfplots@contour@start{%
     %
@@ -43,8 +49,29 @@
     \ifpgfplots@contour@calc@linear
       \let\pgfplots@contour@calc@method=\pgfplots@contour@calc@linear
     \endif
+    %
+    % This matrix will hold every point and see that it has been checked.
+    %
+    \pgfplotsmatrixnewempty\pgfplots@contour@runned@matrix
     % create new initial lists % remember!!!!
-    \pgfplotsarraysize\pgfplots@contour@levels@array\to\c@pgf@counta
+    \edef\pgfplots@contour@tmpA{\noexpand\pgfplotsarraynew\noexpand\pgfplots@contour@levels@array\pgfplots@contour@levels}
+    \pgfplot@contour@tmpA%
+    \pgfplotsmatrixnewempty\pgfplots@contour@matrix@points{}
+    % 
+    % Only start with 1 rows and a 2 column matrix. Build up as in Matlab
+    % and Octave etc.
+    % Matrix m:
+    % -------
+    % m(0,0) = number of elements in first contour
+    % m(0,1) = contour value of first contour
+    % m(m(0,0),0) = number of elements in second contour
+    % m(m(0,0),1) = contour value of second contour
+    % 
+    % Only in our case we will build it up reversibly.
+    % This makes it easier to handle as one does not need to count and reset in the end.
+    % TODO consider changing this
+    % 
+    \pgfplotsmatrixresize\pgfplots@contour@matrix@points{1}{2}
     \c@pgf@countb=0
     \pgfplotsloop{%
         \ifnum\c@pgf@counta=\c@pgfplots@row
@@ -53,18 +80,17 @@
             \pgfplotsloopcontinuetrue
         \fi
     }{%
-        \pgfplotsarrayselect\c@pgf@countb\fo\pgfplots@contour@levels@array\to\pgfplots@contour@curlevel
-        \pgfplots@contour@calc@method\pgfplots@contour@curlevel%
+        \pgfplotsarrayselect\c@pgf@countb\of\pgfplots@contour@levels@array\to\pgfplots@contour@curlevel
+        \pgfplotsmatrixforeach\pgfplots@contour@runned@matrix\as\tmp\relax
+        \pgfplots@contour@calc@method%
         \advance\c@pgf@countb by1%
     }
 }
 
-\def\pgfplots@contour@calc@linear#1{%
+\def\pgfplots@contour@calc@linear@loop{%
     \c@pgfplots@col=0
-    \c@pgfplots@row@end=100
-    \c@pgfplots@col@end=100
-    \pgfplotsmatrixnewempty\pgfplots@contour@runned@matrix
-    \pgfplotsmatrixresize\pgfplots@contour@runned@matrix\c@pgfplots@row@end\c@pgfplots@col@end
+    \c@pgfplots@row@end=10
+    \c@pgfplots@col@end=10
     \pgfplotsloop{%
         \ifnum\c@pgfplots@col@end=\c@pgfplots@col
             \pgfplotsloopcontinuefalse
@@ -86,49 +112,15 @@
             %
             % If the matrix element has already been processed then just continue.
             %
-            \pgfplots@contour@tmpA
-            \expandafter\let\expandafter\pgfplots@contour@tmpA\csname\string\pgfplots@contour@runned@matrix@\c@pgfplots@row,\c@pgfplots@col\endcsname%
-            \ifx\pgfplots@contour@tmpA\relax\else
-            %
-            % First retreive the X and Y points in the quadro point segment of the current row and column.
-            % 
-            \pgfplots@contour@tmpXA=X[\c@pgfplots@row][\c@pgfplots@col]
-            \pgfplots@contour@tmpXB=X[\c@pgfplots@row][\c@pgfplots@col+1]
-            \pgfplots@contour@tmpXC=X[\c@pgfplots@row+1][\c@pgfplots@col]
-            \pgfplots@contour@tmpXD=X[\c@pgfplots@row+1][\c@pgfplots@col+1]
-            \pgfplots@contour@tmpYA=Y[\c@pgfplots@row][\c@pgfplots@col]
-            \pgfplots@contour@tmpYB=Y[\c@pgfplots@row][\c@pgfplots@col+1]
-            \pgfplots@contour@tmpYC=Y[\c@pgfplots@row+1][\c@pgfplots@col]
-            \pgfplots@contour@tmpYD=Y[\c@pgfplots@row+1][\c@pgfplots@col+1]
-            
-            %
-            % Retreive the Z values at the same point and immediately subtract the current level from the point.
-            %
-            \pgfplots@contour@tmpZA=Z[\c@pgfplots@row][\c@pgfplots@col]-#1
-            \pgfplots@contour@tmpZB=Z[\c@pgfplots@row][\c@pgfplots@col+1]-#1
-            \pgfplots@contour@tmpZC=Z[\c@pgfplots@row+1][\c@pgfplots@col]-#1
-            \pgfplots@contour@tmpZD=Z[\c@pgfplots@row+1][\c@pgfplots@col+1]-#1
-
-            \pgfplots@contour@tmpZA=Z[\c@pgfplots@row][\c@pgfplots@col]-#1
-            \pgfplots@contour@tmpZB=Z[\c@pgfplots@row][\c@pgfplots@col+1]-#1
-            \pgfplots@contour@tmpZC=Z[\c@pgfplots@row+1][\c@pgfplots@col]-#1
-            \pgfplots@contour@tmpZD=Z[\c@pgfplots@row+1][\c@pgfplots@col+1]-#1
-            
-            
-            %\pgfplots@tmpa % tmp counter
-            \pgfplots@contour@calc@edge@product\pgplots@contour@tmpZD\pgfplots@contour@tmpZA\to\pgfplots@contour@tmp@edgeA
-            \pgfplots@contour@calc@edge@product\pgplots@contour@tmpZA\pgfplots@contour@tmpZB\to\pgfplots@contour@tmp@edgeB
-            \pgfplots@contour@calc@edge@product\pgplots@contour@tmpZB\pgfplots@contour@tmpZC\to\pgfplots@contour@tmp@edgeC
-            \pgfplots@contour@calc@edge@product\pgplots@contour@tmpZC\pgfplots@contour@tmpZD\to\pgfplots@contour@tmp@edgeD
-            \ifnum\pgfplots@contour@tmp@edgeA=\pgfplots@contour@tmp@edgeB\ifnum\pgfplots@contour@edgeC=\pgfplots@contour@edgeD\ifnum\pgfplots@contour@edgeB=\pgfplots@contour@edgeC\ifnum\pgfplots@contour@edgeA=-1.0\else
-            % 
-            % This means that we have encountered a square where there is a possibility of a contour line 
-            %
-                
-            \fi\fi\fi\fi% the four checks if the edge[A-D] = -1.0
-            
-            
-            
+            %\pgfplots@contour@tmpA
+            \edef\pgfplots@contour@tmpA{\csname\string\pgfplots@contour@runned@matrix@\c@pgfplots@row,\c@pgfplots@col\endcsname}%
+            \E\ifx\pgfplots@contour@tmpA\relax\else%
+            % I can now call \pgfplots@contour@calc@linear@
+            % Use a temporary command to call after. This ensures that we do not have endless groups! This command gets defined in
+            \pgfplots@contour@calc@linear@\c@pgfplots@row\c@pgfplots@col
+            % Remember to finish of the contour now!
+            % Ex. \pgfplots@contour@follow@contours
+            % Needs to be called out here due to the limitation of nested calls
             \fi%
         }%
         \advance\c@pgfplots@row by1
@@ -136,13 +128,130 @@
     \advance\c@pgfplots@col by1
 }%
 
+%
+% This command is called by:
+% \pgfplots@contour@calc@linear@<row><col><startedge>
+% The startedge parameter is used to figure out where the contour came from. A negative value would
+% show the macro that it is the first point.
+% 
+\def\pgfplots@contour@calc@linear@#1#2#3{%
+    \let\pgfplots@contour@follow@contours\relax % if it doesn't get redefined nothing should happen!
+    % 
+    % First retreive the X and Y points in the quadro point segment of the current row and column.
+    % 
+    \pgfplotsmatrixselect#1+1,#2\of\pgfplots@data@matrixX\to\pgfplots@contour@0@tmpX
+    \pgfplotsmatrixselect#1,#2\of\pgfplots@data@matrixX\to\pgfplots@contour@1@tmpX
+    \pgfplotsmatrixselect#1,#2+1\of\pgfplots@data@matrixX\to\pgfplots@contour@2@tmpX
+    \pgfplotsmatrixselect#1+1,#2+1\of\pgfplots@data@matrixX\to\pgfplots@contour@3@tmpX
 
-\def\pgfplots@contour@calc@edge@product#1#2\to#3{%
-    \pgfmathparse{#1*#2}
-    \pgfmathparse{ifthenelse(\pgfmathresult>0,int(-1),ifthenelse(\pgfmathresult==0.0,int(0),int(1)))}\edef#3{\pgfmathresult}
+    \pgfplotsmatrixselect#1+1,#2\of\pgfplots@data@matrixY\to\pgfplots@contour@0@tmpY
+    \pgfplotsmatrixselect#1,#2\of\pgfplots@data@matrixY\to\pgfplots@contour@1@tmpY
+    \pgfplotsmatrixselect#1,#2+1\of\pgfplots@data@matrixY\to\pgfplots@contour@2@tmpY
+    \pgfplotsmatrixselect#1+1,#2+1\of\pgfplots@data@matrixY\to\pgfplots@contour@3@tmpY
+
+    \pgfplotsmatrixselect#1+1,#2\of\pgfplots@data@matrixZ\to\pgfplots@contour@0@tmpZ
+    \pgfplotsmatrixselect#1,#2\of\pgfplots@data@matrixZ\to\pgfplots@contour@1@tmpZ
+    \pgfplotsmatrixselect#1,#2+1\of\pgfplots@data@matrixZ\to\pgfplots@contour@2@tmpZ
+    \pgfplotsmatrixselect#1+1,#2+1\of\pgfplots@data@matrixZ\to\pgfplots@contour@3@tmpZ
+    \pgfmathsubtract{\pgfplots@contour@0@tmpZ}{\pgfplots@contour@curlevel}
+    \edef\pgfplots@contour@0@tmpZ{\pgfmathresult}
+    \pgfmathsubtract{\pgfplots@contour@1@tmpZ}{\pgfplots@contour@curlevel}
+    \edef\pgfplots@contour@1@tmpZ{\pgfmathresult}
+    \pgfmathsubtract{\pgfplots@contour@2@tmpZ}{\pgfplots@contour@curlevel}
+    \edef\pgfplots@contour@2@tmpZ{\pgfmathresult}
+    \pgfmathsubtract{\pgfplots@contour@3@tmpZ}{\pgfplots@contour@curlevel}
+    \edef\pgfplots@contour@3@tmpZ{\pgfmathresult}
+    
+    % \pgfplots@tmpa % tmp counter
+    \pgfplots@contour@calc@edge@prod\pgplots@contour@0@tmpZ\pgfplots@contour@1@tmpZ\to\pgfplots@contour@tmp@0@edge
+    \pgfplots@contour@calc@edge@prod\pgplots@contour@1@tmpZ\pgfplots@contour@2@tmpZ\to\pgfplots@contour@tmp@1@edge
+    \pgfplots@contour@calc@edge@prod\pgplots@contour@2@tmpZ\pgfplots@contour@3@tmpZ\to\pgfplots@contour@tmp@2@edge
+    \pgfplots@contour@calc@edge@prod\pgplots@contour@3@tmpZ\pgfplots@contour@0@tmpZ\to\pgfplots@contour@tmp@3@edge
+    
+    %REACHED HERE
+    % Mark it as runned
+    % Am not using the \pgfplotsmatrixset due to speed!
+    %
+    \E\def\csname\string\pgfplots@contour@runned@matrix@#1,#2\endcsname{x}%
+    % 
+    % Loop over the edges
+    % 
+    \pgfplotsloop{%
+        \pgfplots@contour@processfalse
+        \ifnum\c@pgfplots@contour@edge=4%
+            \pgfplotsloopcontinuefalse%
+        \else%
+            \pgfplotsloopcontinuetrue%
+        \fi%
+    }{%
+        % 
+        % Begin calculation of the contour, this is not the best implementation but it should work.
+        % The wrong doing is looping through the entire matrix for each contour level. This is O(N)* <num contours>
+        % 
+        % If the matrix element has already been processed then just continue.
+        % 
+%        \pgfplots@contour@tmpA
+        \edef\pgfplots@contour@tmpA{\csname\string\pgfplots@contour@runned@matrix@\c@pgfplots@row,\c@pgfplots@col\endcsname}%
+        \E\ifx\pgfplots@contour@tmpA\relax\else%
+        \ifx\pgfplots@contour@tmpA\relax%
+        \ifnum#3=\c@pgfplots@contour@edge\else
+        % 
+        % Retrieve the Z values at the same point and immediately subtract the current level from the point.
+        % 
+        \ifnum\pgfplots@contour@tmp@edgeA=\pgfplots@contour@tmp@edgeB\ifnum\pgfplots@contour@edgeC=\pgfplots@contour@edgeD\ifnum\pgfplots@contour@edgeB=\pgfplots@contour@edgeC\ifnum\pgfplots@contour@edgeA=-1\else
+        \ifnum\pgfplots@contour@tmp@edgeA=\pgfplots@contour@tmp@edgeB\ifnum\pgfplots@contour@edgeC=\pgfplots@contour@edgeD\ifnum\pgfplots@contour@edgeB=\pgfplots@contour@edgeC\ifnum\pgfplots@contour@edgeA=0\else
+        % 
+        % This means that we have encountered a square where there is a possibility of a contour line.
+        % First calculate the intersection point x[i] and y[i]
+        %        
+        %
+        % If the contour value is spot on:
+        \E\ifnum\csname\string\pgfplots@contour@tmp@\c@pgfplots@contour@edge @edge\endcsname=0
+        \pgfplots@contour@processtrue
+        \fi
+        % If the edge value is 1:
+        \E\ifnum\csname\string\pgfplots@contour@tmp@\c@pgfplots@contour@edge @edge\endcsname=1
+        \pgfplots@contour@processtrue
+        \fi
+        
+
+        % Therefore we should follow the contour in!
+        
+        \def\pgfplots@contour@follow@contours{%
+            %
+            % Example
+            %
+            \c@pgfplots@contour@start@edge=2
+            \pgfplots@contour@calc@linear\c@pgfplots@contour@row@f\c@pgfplots@contour@col@f % the rows and stuff needs to be expanded!
+            \pgfplots@contour@follow@contours % this is needed as otherwise it would end the call!
+            \c@pgfplots@contour@start@edge=1
+            \pgfplots@contour@calc@linear
+            \pgfplots@contour@follow@contours % this is needed as otherwise it would end the call!
+        }
+        \fi\fi\fi\fi% the four checks if the edge[A-D] = 0, i.e. flat square
+        \fi\fi\fi\fi% the four checks if the edge[A-D] = -1.0 i.e. all under
+        
+        
+        
+        \fi % the end of the edge if check
+        \else
+        \c@pgfplots@contour@edge=4
+        \fi% the end of the current point runned check
+        \advance\c@pgfplots@contour@edge by1
+    }%
+}
+
+\def\pgfplots@contour@calc@edge@prod#1#2\to#3{%
+    \pgfmathmultiply{#1}{#2}%
+    \pgfmathparse{ifthenelse(\pgfmathresult>0,int(-1),ifthenelse(\pgfmathresult==0.0,int(0),int(1)))}%
+    \edef#3{\pgfmathresult}
 }
 
 \def\pgfplots@contour@cur@point@check#1{%
-    \expandafter\let\expandafter#1\csname\string\pgfplots@contour@runned@matrix@\c@pgfplots@row,\c@pgfplots@col\endcsname%
+    \E\let\E#1\csname\string\pgfplots@contour@runned@matrix@\c@pgfplots@row,\c@pgfplots@col\endcsname%
+}
+
+\def\pgfplots@contour@add@point#1#2\to#3{%
+    
 }
 \endinput
