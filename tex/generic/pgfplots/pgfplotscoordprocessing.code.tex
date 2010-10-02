@@ -1703,7 +1703,7 @@
 			{\pgfplots@loc@center}%
 			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
 	\else
-\message{^^JPGFPlots warning: The ticklabel anchor cannot be determined, the normal vector and the unit #1 vector are almost parallel (abs(cos(angle)) = \the\pgf@xc)!^^J}%
+		\message{^^JPGFPlots warning: The ticklabel anchor cannot be determined, the normal vector -(\the\pgf@xb,\the\pgf@yb) and the unit #1 vector (\the\pgf@xa,\the\pgf@ya) are almost parallel (abs(cos(angle)) = \the\pgf@xc)!^^J}%
 		% Something went awry: normal and unit#1 are almost parallel!?
 		% just use the determined anchor.
 		\def\pgfplots@r{0}%
@@ -1813,13 +1813,38 @@
 		\xdef\pgfplots@glob@TMPc{\noexpand\pgfqpointscale{-1}{\the\t@pgfplots@toka}}%
 	\fi
 	%
+	% Process 'plot box ratio':
 	\def\pgfplots@extract@plot@box@ratio##1##2##3##4\pgfplots@EOI{%
 		\pgfmathparse{##1}\let\pgfplots@plotboxratio@x=\pgfmathresult
 		\pgfmathparse{##2}\let\pgfplots@plotboxratio@y=\pgfmathresult
 		\pgfmathparse{##3}\let\pgfplots@plotboxratio@z=\pgfmathresult
 	}%
+	\def\pgfplots@extract@plot@box@ratio@spaces##1 ##2 ##3 ##4\pgfplots@EOI{%
+		\pgfplots@extract@plot@box@ratio{##1}{##2}{##3}{##4}\pgfplots@EOI
+	}%
 	\pgfkeysgetvalue{/pgfplots/plot box ratio}\pgfplots@loc@TMPa
-	\expandafter\pgfplots@extract@plot@box@ratio\pgfplots@loc@TMPa{1}{1}{1}\pgfplots@EOI
+	% Auto-determine input format which is either '{x}{y}{z}' or 'x y z'
+	\def\pgfplots@loc@TMPb{%
+		\pgfutil@ifnextchar\bgroup{%
+			\pgfplots@loc@tmptrue
+			\pgfplots@gobble@until@EOI
+		}{%
+			\pgfplots@loc@tmpfalse
+			\pgfplots@gobble@until@EOI
+		}%
+	}%
+	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI
+	\ifpgfplots@loc@tmp
+		% Ah- braces format.
+		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa{1}{1}{1}}%
+		\expandafter\pgfplots@extract@plot@box@ratio\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		% Ah- space-separated
+		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa\space 1 1 1}%
+		\expandafter\pgfplots@extract@plot@box@ratio@spaces\pgfplots@loc@TMPa\pgfplots@EOI
+	\fi
+	%
+	% process it:
 	\ifdim\pgfplots@plotboxratio@x pt=1pt
 	\else
 		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
@@ -1842,7 +1867,7 @@
 	\pgfmathmultiply@{\cosaz}{\cosel}%
 	\xdef\pgfplots@glob@TMPd{{\pgfmathresultNx}{\pgfmathresult}{\sinel}}%
 	\endgroup
-%\message{Setting x,y and z from {#1}{#2} to x = \meaning\pgfplots@glob@TMPa, y = \meaning\pgfplots@glob@TMPb, z = \meaning\pgfplots@glob@TMPc...n = \pgfplots@glob@TMPd.}%
+%\message{Setting x,y and z from {#1}{#2} to^^J x = \meaning\pgfplots@glob@TMPa,^^J y = \meaning\pgfplots@glob@TMPb,^^J z = \meaning\pgfplots@glob@TMPc,^^J n = \pgfplots@glob@TMPd.^^J}%
 	\pgfsetxvec{\pgfplots@glob@TMPa}%
 	\pgfsetyvec{\pgfplots@glob@TMPb}%
 	\pgfsetzvec{\pgfplots@glob@TMPc}%
@@ -1853,16 +1878,57 @@
 	}%
 	\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPd\relax
 	\def#3{0}%
+	\pgfplots@scale@plotbox@to@widthheight
+}%
+
+\def\message@pgfplots@units{%
+	\begingroup
+	\pgfmathparse{veclen(\pgf@zx,\pgf@zy)}\let\Z=\pgfmathresult
+	\pgfmathparse{veclen(\pgf@xx,\pgf@xy)/\Z}\let\X=\pgfmathresult
+	\pgfmathparse{veclen(\pgf@yx,\pgf@yy)/\Z}\let\Y=\pgfmathresult
+	\message{^^J 
+		x = (\the\pgf@xx,\the\pgf@xy),^^J 
+		y =(\the\pgf@yx,\the\pgf@yy),^^J 
+		z = (\the\pgf@zx,\the\pgf@zy),^^J 
+		\expandafter\ifx\csname pgfplots@view@dir@threedim@x\endcsname\relax
+		\else
+			n = (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z),^^J
+		\fi
+		unit vector ratio=[\X\space\Y\space 1],^^J}%
+	\endgroup
+}%
+
+% Takes the current plot box, defined by the actual PGF x,y and z unit
+% vectors, and re-scales it such that it fits into the 
+% width and height of the axis (as they have been provided by the
+% user).
+%
+% @see \pgfplots@scale@axisbox@to@widthheight
+% @see\pgfplots@scaleaxes@to@BB
+\def\pgfplots@scale@plotbox@to@widthheight{%
 	\pgfplots@initsizes@get@width@withoutlabels
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@initsizes@get@height@withoutlabels
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
+	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
+	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
 	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
-%\message{After scaling: 
-%	x = (\the\pgf@xx,\the\pgf@xy), 
-%	y = (\the\pgf@yx,\the\pgf@yy),
-%	z = (\the\pgf@zx,\the\pgf@zy).}%
-}%
+}
+
+
+% A variant of \pgfplots@scale@plotbox@to@widthheight which does not
+% use the given x,y,z vectors to define the plot box. Instead, it uses
+% the lower and upper axis limits.
+\def\pgfplots@scale@axisbox@to@widthheight{%
+	\pgfplots@initsizes@get@width@withoutlabels
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@initsizes@get@height@withoutlabels
+	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
+	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@computelimits
+	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@NOP
+	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
+}
+
 
 % Takes the current PGF x,y and z unit vectors and scales them such
 % that the bounding box of the final image has width #1 and height #2.
@@ -1887,10 +1953,27 @@
 % 	- the @veclength and @inverseveclength have been re-scaled as
 % 	well.
 \def\pgfplots@scaleaxes@to@BB#1#2{%
-	\begingroup
-	\pgfinterruptboundingbox
-	% STEP 1: compute the bounding box for UNITS. We just need the
-	% relative sizes:
+%\message{before scaling:}\message@pgfplots@units
+	\if0\pgfplots@scale@mode@choice
+		% scale mode=auto
+		\def\pgfplots@scale@mode@choice{2}% stretch to fill
+	\fi
+	\if1\pgfplots@scale@mode@choice
+		% scale mode=none
+	\else
+		\pgfplots@scaleaxes@to@BB@{#1}{#2}%
+	\fi
+	% FIXME 
+	% I suppose I should call \pgfplotsgetnormalforcurrentview now?
+	\pgfplots@computeunitvectorlengths
+%\message{after scaling:}\message@pgfplots@units
+}%
+\def\pgfplots@BB@for@plotbox@relative{%
+	% We just need the
+	% relative sizes, i.e.
+	%  "0" == lower axis limit
+	%  "1" == upper axis limit
+	%
 	\ifpgfplots@threedim
 		\pgfpathmoveto{\pgfqpointxyz000}%
 		\pgfpathmoveto{\pgfqpointxyz001}%
@@ -1906,6 +1989,66 @@
 		\pgfpathmoveto{\pgfqpointxy10}%
 		\pgfpathmoveto{\pgfqpointxy11}%
 	\fi
+}%
+\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
+\def\pgfplots@BB@for@plotbox@compute@post@scales@relative#1#2#3{%
+	% Consequently, we have to multiply  with 1/(max-min):
+	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
+	% compute 1/(xmax - xmin) in float.
+	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\let#1=\pgfmathresult
+	%
+	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\let#2=\pgfmathresult
+	%
+	\ifpgfplots@threedim
+		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
+	\else
+		\def\pgfmathresult{1}%
+	\fi
+	\let#3=\pgfmathresult
+}%
+\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
+\def\pgfplots@BB@for@plotbox@computelimits{%
+	\ifpgfplots@threedim
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymax\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymin\pgfplots@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymax\pgfplots@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmax\pgfplots@ymax\pgfplots@zmax}%
+	\else
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmin\pgfplots@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmin\pgfplots@ymax}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmax\pgfplots@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmax\pgfplots@ymax}%
+	\fi
+}%
+\def\pgfplots@BB@for@plotbox@compute@post@scales@NOP#1#2#3{%
+	\let#1=\pgfutil@empty
+	\let#2=\pgfutil@empty
+	\let#3=\pgfutil@empty
+}%
+\def\pgfplots@scaleaxes@to@BB@#1#2{%
+	\begingroup
+	\pgfinterruptboundingbox
+	% STEP 1: compute the bounding box for the plot box.
+	\pgfplots@BB@for@plotbox
+	%
 	% TMPa = width
 	\pgf@xa=\pgf@pathmaxx
 	\advance\pgf@xa by-\pgf@pathminx
@@ -1915,61 +2058,138 @@
 	\pgf@ya=#1\relax
 	\pgf@yb=#2\relax
 %\message{PGFPLOTS: the current unit vectors result in a UNIT BB of (\the\pgf@xa,\the\pgf@xb). Scaling it to (\the\pgf@ya,\the\pgf@yb)...}%
-	% STEP 2: compute the scales for x and y such 
-	% that the UNIT-BB will have size #1,#2:
-	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@ya}%
-		{\pgf@sys@tonumber\pgf@xa}%
-	}%
-	% TMPa = scalex
-	\global\let\pgfplots@glob@TMPa=\pgfmathresult
-	\pgfplotsutil@edef@invoke\pgfmathdivide@{%
-		{\pgf@sys@tonumber\pgf@yb}%
-		{\pgf@sys@tonumber\pgf@xb}%
-	}%
-	% TMPb = scaley
-	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\ifcase\pgfplots@scale@mode@choice
+		% scale mode=auto  does not happen here
+	\or
+		% scale mode=none  does not happen here
+	\or
+		% scale mode=stretch to fill
+		% Compute individual scaling factors for X and Y
+		% such that the UNIT-BB will have size #1,#2:
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@ya}%
+			{\pgf@sys@tonumber\pgf@xa}%
+		}%
+		% TMPa = scalex
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@yb}%
+			{\pgf@sys@tonumber\pgf@xb}%
+		}%
+		% TMPb = scaley
+		\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		\global\let\pgfplots@glob@TMPc=\relax
+	\or
+		% scale mode=scale uniformly
+		% compute ONE common scale for both, X and Y.
+		%
+		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+			{\pgf@sys@tonumber\pgf@ya}%
+			{\pgf@sys@tonumber\pgf@xa}%
+		}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
+		\ifdim\pgf@zy=0pt
+		\else
+			% The strategy is as follows:
+			% 1. I want to fit the axis into width #1 (\pgf@ya) and
+			% height #1 (\pgf@yb).
+			% 2. I want to MAINTAIN the unit vector ratio. 
+			% 3. I want to MAINTAIN the unit vector directions.
+			%
+			% I already know the scaling factor to fit the width (it
+			% is stored in \pgfplots@glob@TMPa = \pgfplots@glob@TMPb).
+			% Let's call it "s".
+			%
+			% Consequently, a uniform scaling by "s" leads the image
+			% height
+			% h = s* (r_x * e_xy + r_y * e_yy + r_z * e_zy)
+			% where r_i = (imax - imin). This here is essentially the
+			% same as the bounding box computation above (at least for
+			% standart orthographic 3D axes).
+			%
+			% What I want now is to enlarge the limits such that I
+			% have BOTH, width #1 AND height #2, without obscuring the
+			% unit vector ratio. Recall that width #1 is already
+			% given.
+			%
+			% In my opinion the ONLY way to achieve this goal is to
+			% modify axis limits for an axis whose unit vector is
+			% parallel to the canvas y axis, i.e. e_i = (0,*). To see
+			% this, remember that a rescaling of the other limits will
+			% also modify the width.
+			%
+			% That means I have to introduce a SECOND scale s_z which
+			% applies only to the Z unit vector (since e_z = (0,*) ).
+			% If H = #2 is the desired height, I find the target
+			% equation for s_z,
+			%
+			% H = s* r_x e_xy + s * r_y e_yy + s_z * s * r_z * e_zy
+			% =>
+			% s_z = ( H- s*r_x e_xy - s*r_y e_yy) / ( s * r_z * e_zy).
+			%
+			% Remember that 
+			% s = \pgfplots@glob@TMPa
+			% and
+			% \pgfplots@glob@TMPa * \pgf@xb = s*h
+			% 
+			\pgf@xc=\pgfplots@zmax\pgf@zy% FIXME : what if we are working with relative coords?
+			\advance\pgf@xc by -\pgfplots@zmin\pgf@zy
+			%
+			\advance\pgf@xb by-\pgf@xc
+			\pgf@xb=\pgfplots@glob@TMPa\pgf@xb
+			\advance\pgf@yb by-\pgf@xb
+			\pgf@xb=\pgfplots@glob@TMPa\pgf@xc
+			\pgfplotsutil@edef@invoke\pgfmathdivide@{%
+				{\pgf@sys@tonumber\pgf@yb}%
+				{\pgf@sys@tonumber\pgf@xb}%
+			}%
+			% Now, s_z = \pgfmathresult .
+			%
+			% Now, adjust the z limits.
+			% Note that \pgfplots@apply@unit@vector@rescale@keep@size
+			% has a slightly different context; it assumes that the
+			% unit vector has been rescaled, not the axis limits.
+			% Consequently, the inverse of the scaling factor enters.
+			% Since \pgfplots@apply@unit@vector@rescale@keep@size
+			% expects the inverse of the scale, we can provide
+			% \pgfmathresult:
+			\xdef\pgfplots@glob@TMPc{%
+				\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{z}{\pgfmathresult}%
+			}%
+		\fi
+	\fi
 	\pgfusepath{discard}%
 	\endpgfinterruptboundingbox
 	\endgroup
-%\message{got scalex = \pgfplots@glob@TMPa\space and scaley = \pgfplots@glob@TMPb.}%
-	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
-	% compute 1/(xmax - xmin) in float.
-	% I observed that it is much more accurate (lead to scaling differences of up to 10pt!)
-	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-%\message{and 1/(xmax-xmin) = 1/(\pgfplots@xmax-\pgfplots@xmin) = \pgfmathresult.}%
+	% Ok, we know the W,H scalings now.
+	%
+	% But remember that we have worked with RELATIVE scales up to now.
+	% We have to convert them now, by interpreting "1 == upper limit"
+	% and "0 == lower limit" for every direction.
+	%
+	\pgfplots@BB@for@plotbox@compute@post@scales{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+	%
+	% ok. Now apply all scalings.
+	% Let's hope all these temporary macros are still valid!
+%\message{got scaleW = \pgfplots@glob@TMPa\space and scaleH = \pgfplots@glob@TMPb; scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.}%
 	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
 	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
-	\pgf@xx=\pgfmathresult\pgf@xx
-	\pgf@xy=\pgfmathresult\pgf@xy
+	\pgf@xx=\pgfplots@loc@TMPa\pgf@xx
+	\pgf@xy=\pgfplots@loc@TMPa\pgf@xy
 	%
-	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-	\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-	%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-%\message{and 1/(ymay-ymin) = 1/(\pgfplots@ymax-\pgfplots@ymin) = \pgfmathresult.}%
 	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
 	\pgf@yy=\pgfplots@glob@TMPb\pgf@yy
-	\pgf@yx=\pgfmathresult\pgf@yx
-	\pgf@yy=\pgfmathresult\pgf@yy
+	\pgf@yx=\pgfplots@loc@TMPb\pgf@yx
+	\pgf@yy=\pgfplots@loc@TMPb\pgf@yy
 	%
 	\ifpgfplots@threedim
-		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
-		\pgfplotscoordmath{default}{parsenumber}{\pgfmathresult}%
-		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
-		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
-		%\expandafter\pgfmath@basic@reciprocal@\expandafter{\pgfmathresult}%
-%\message{and 1/(zmaz-zmin) = 1/(\pgfplots@zmax-\pgfplots@zmin) = \pgfmathresult.}%
 		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
 		\pgf@zy=\pgfplots@glob@TMPb\pgf@zy
-		\pgf@zx=\pgfmathresult\pgf@zx
-		\pgf@zy=\pgfmathresult\pgf@zy
+		\pgf@zx=\pgfplots@loc@TMPc\pgf@zx
+		\pgf@zy=\pgfplots@loc@TMPc\pgf@zy
 	\fi
-	\pgfplots@computeunitvectorlengths
+	\pgfplots@glob@TMPc
 }%
 
 \def\pgfplots@computeunitvectorlengths{%
@@ -2013,6 +2233,180 @@
 		}%
 		\let\pgfplots@z@inverseveclength=\pgfmathresult
 	\fi
+}%
+
+% Defines \pgfplots@view@dir@threedim@[xyz] according to the actual
+% configuration of x,y,z (2d) unit vectors, assuming the associated
+% unit vectors form a right-handed-system.
+%
+% The algorithm works for standard three dimensional axes. It works as
+% follows:
+%
+% First, observe that we have a normal direction N if all its
+% multiples are on the mapped onto the same point in 2D canvas
+% coordinates. In other words: all 3D coordinates which are mapped
+% onto an arbitrary point in 2D canvas coordinates (take, for example,
+% the origin (0,0)  ) are on a line in direction of N.
+%
+% We use this observation to compute the normal axis, i.e. we search
+% for all points which are mapped onto the 2D canvas coordinate (0,0):
+%  N_x e_xx + N_y e_yx + N_z e_zx = 0
+%  N_x e_xy + N_y e_yy + N_z e_zy = 0.
+% All solutions make up a linear space of dimension 1 (up to special
+% cases). In the general case, we can chose an arbitrary  N_z != 0
+% and reduce the linear system to
+%  N_x e_xx + N_y e_yx = - N_z e_zx
+%  N_x e_xy + N_y e_yy = - N_z e_zy.
+% Choosing *any* N_z != 0, say, N_z=-1 (which corresponds to view
+% from above) will lead to a vector parallel to the normal direction.
+% But it might have the wrong sign.
+%
+% To find the correct sign for N, I have made several case
+% distinctions to identify the cases when we have to multiply with -1.
+% The key idea is to assume a right-handed-system of unit vectors;
+% this is the condition which allows to determine the sign.
+%
+% Furthermore, I assume that e_z points to the top, i.e. that e_zy >0.
+% Then, there are (mainly) four conditions on the signs of e_x and e_y
+% which indicate that we are viewing from below and should switch the
+% sign of N (keep in mind that our initial choice was N_z =-1, see above).
+%
+% The conditions can be identified by drawing a 3D box and
+% identifying the corner which represents the lower left 3D limits.
+%
+% You can visualize these cases using
+%--------------------------------------------------
+% \pgfplotsset{
+% 		separate axis lines,
+% 		every outer x axis line/.append style= {-stealth},
+% 		every outer y axis line/.append style= {-stealth},
+% 		every outer z axis line/.append style= {-stealth},
+% 		samples=2,shader=interp,title={view=\h,\v},
+% 		domain=0:1,
+% 		enlargelimits=false,
+% 		view=\h\v,xlabel=x,ylabel=y,
+% 		extra description/.code={%
+% 			\node[draw,fill=white] at (axis cs:0,0,0) {};
+% 		},
+% }
+% 
+% \def\v{30}
+% \foreach \h in {30,120,210,300} {
+% \message{VIEW={\h}{\v}^^J}
+% \begin{tikzpicture}
+% 	\begin{axis}
+% 	\addplot3[surf] {x};
+% 	\end{axis}
+% \end{tikzpicture}
+% 
+% }
+% 
+% \def\v{-30}
+% \foreach \h in {30,120,210,300} {
+% \message{VIEW={\h}{\v}^^J}
+% \begin{tikzpicture}
+% 	\begin{axis}
+% 	\addplot3[surf] {x};
+% 	\end{axis}
+% \end{tikzpicture}
+% 
+% }
+%-------------------------------------------------- 
+%  The precise formulas can be found below in the source code.
+%
+% You can override this function by the /pgfplots/view dir key.
+\def\pgfplotsgetnormalforcurrentview{%
+	\pgfkeysgetvalue{/pgfplots/view dir}\pgfplots@loc@TMPc
+	\ifx\pgfplots@loc@TMPc\pgfutil@empty
+	\begingroup	
+		\xdef\pgfplots@view@dir@threedim@z{-1}% hold it at some arbitrary value
+		\pgf@xa=-\pgfplots@view@dir@threedim@z\pgf@zx
+		\pgf@ya=-\pgfplots@view@dir@threedim@z\pgf@zy
+		\edef\pgfplots@loc@TMPa{%
+			{%
+				{\pgf@sys@tonumber\pgf@xx}{\pgf@sys@tonumber\pgf@yx}%
+				{\pgf@sys@tonumber\pgf@xy}{\pgf@sys@tonumber\pgf@yy}%
+			}%
+			{%
+				{\pgf@sys@tonumber\pgf@xa}{\pgf@sys@tonumber\pgf@ya}%
+			}%
+		}%
+		\expandafter\pgfutilsolvetwotwoleq\pgfplots@loc@TMPa
+		\def\pgfplots@loc@TMPb##1##2{%
+			\xdef\pgfplots@view@dir@threedim@x{##1}%
+			\xdef\pgfplots@view@dir@threedim@y{##2}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfmathresult
+		%
+		% Identify if we need to switch the sign.
+		% To verify that these cases are useful, I suggest visualizing
+		% that stuff using the TeX code from above...
+		%
+		% I guess it is correct up to collapsing views (as you see, I
+		% did not properly identify the cases with "=0" )
+		\def\pgfplots@scale{1}%
+		\ifdim\pgf@xx>0pt
+			\ifdim\pgf@yx>0pt
+				%
+				\ifdim\pgf@xy>0pt
+					\ifdim\pgf@yy<0pt
+						\def\pgfplots@scale{-1}%
+					\fi
+				\fi
+				%
+			\fi
+		\else
+			\ifdim\pgf@xx<0pt
+				\ifdim\pgf@yx<0pt
+					%
+					\ifdim\pgf@xy<0pt
+						\ifdim\pgf@yy>0pt
+							\def\pgfplots@scale{-1}%
+						\fi
+					\fi
+					%
+				\fi
+			\fi
+		\fi
+		\ifdim\pgf@xy>0pt
+			\ifdim\pgf@yy>0pt
+				%
+				\ifdim\pgf@xx<0pt
+					\ifdim\pgf@yx>0pt
+						\def\pgfplots@scale{-1}%
+					\fi
+				\fi
+				%
+			\fi
+		\else
+			\ifdim\pgf@xy<0pt
+				\ifdim\pgf@yy<0pt
+					%
+					\ifdim\pgf@xx>0pt
+						\ifdim\pgf@yx<0pt
+							\def\pgfplots@scale{-1}%
+						\fi
+					\fi
+					%
+				\fi
+			\fi
+		\fi
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@x}%
+		\global\let\pgfplots@view@dir@threedim@x\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@y}%
+		\global\let\pgfplots@view@dir@threedim@y\pgfmathresult
+		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@z}%
+		\global\let\pgfplots@view@dir@threedim@z\pgfmathresult
+	\endgroup
+	\else
+		\def\pgfplots@loc@TMPb##1##2##3{%
+			\xdef\pgfplots@view@dir@threedim@x{##1}%
+			\xdef\pgfplots@view@dir@threedim@y{##2}%
+			\xdef\pgfplots@view@dir@threedim@z{##3}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPc
+	\fi
+%\message{\string\pgfplotsgetnormalforcurrentview:  got (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z)^^J}%
 }%
 
 % ==================================================================================
@@ -2928,11 +3322,8 @@
 	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
 	\def\pgfplots@loc@TMPb{auto}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-		\ifpgfplots@curplot@threedim
-			\def\pgfplots@loc@TMPa{scanline}%
-		\else
-			\def\pgfplots@loc@TMPa{jump}%
-		\fi
+		\pgfplotsdetermineemptylinehandler
+		\pgfkeysgetvalue{/pgfplots/empty line}\pgfplots@loc@TMPa%
 	\fi
 	\def\pgfplots@loc@TMPb{jump}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
@@ -2953,6 +3344,28 @@
 	}%
 	\expandafter\let\expandafter\pgfplotsscanlinelengthcleanup		\csname pgfplotsscanlinelength@\pgfplots@loc@TMPa @cleanup\endcsname
 	\pgfplotsscanlinelength@initzero
+}%
+
+\newif\ifpgfplots@emptyline@compat
+
+% Invoked for 'empty line=auto'. 
+%
+% @POSTCONDITION: '/pgfplots/empty line' is set to something useful
+% (not auto)
+\def\pgfplotsdetermineemptylinehandler{%
+	\if n\pgfplots@meshmode
+		% no mesh/surf plot:
+		\pgfkeyssetvalue{/pgfplots/empty line}{jump}%
+		\ifpgfplots@emptyline@compat
+			\ifpgfplots@curplot@threedim
+			\else
+				\pgfkeyssetvalue{/pgfplots/empty line}{none}% do nothing for backwards compatibility with 2D processing.
+			\fi
+		\fi
+	\else
+		% it is a mesh or surf plot; use scanline:
+		\pgfkeyssetvalue{/pgfplots/empty line}{scanline}%
+	\fi
 }%
 \def\pgfplotsscanlinedisablechanges{%
 	\let\pgfplotsscanlinecomplete=\relax
@@ -3164,6 +3577,7 @@
 			% All following routines (limit updating/stacking/error
 			% bars) will use float numerics if necessary (controlled
 			% by ifs).
+			\E\pgfplotsaxistransformfromdatacs
 			\ifpgfplots@stackedmode
 				\E\pgfplots@stacked@preparepoint@inmacro%
 			\fi
@@ -3371,6 +3785,7 @@
 		\if0\pgfplots@set@perpointmeta@done
 			\csname pgfpmeta@\pgfplotspointmetainputhandler @assign\endcsname
 			\def\pgfplots@set@perpointmeta@done{1}%
+			\pgfplots@set@perpointmeta@limits
 		\fi
 	}%
 	% append limit updating to \pgfplots@set@perpointmeta :
@@ -3402,24 +3817,23 @@
 			\global\let\pgfplots@metamax=\pgfmathresult
 		\fi
 		%
-		\t@pgfplots@toka=\expandafter{\pgfplots@set@perpointmeta}%
-		\edef\pgfplots@set@perpointmeta{%
-			\the\t@pgfplots@toka
+		\edef\pgfplots@set@perpointmeta@limits{%
 			\noexpand\ifx\noexpand\pgfplots@current@point@meta\noexpand\pgfutil@empty
 			\noexpand\else
 				\the\t@pgfplots@tokb
 			\noexpand\fi
 		}%
-		\edef\pgfplotsaxisupdatelimitsforpointmeta##1{%
-			\noexpand\begingroup
-			\noexpand\def\noexpand\pgfplots@current@point@meta{##1}%
-			\the\t@pgfplots@tokb
-			\noexpand\endgroup
+		\def\pgfplotsaxisupdatelimitsforpointmeta##1{%
+			\begingroup
+			\def\pgfplots@current@point@meta{##1}%
+			\pgfplots@set@perpointmeta@limits
+			\endgroup
 		}%
 	\else
 		% there is no point meta:
 		\global\let\pgfplots@metamin=\pgfutil@empty
 		\global\let\pgfplots@metamax=\pgfutil@empty
+		\let\pgfplots@set@perpointmeta@limits=\relax
 		\def\pgfplotsaxisupdatelimitsforpointmeta##1{}%
 	\fi
 }%
@@ -3487,8 +3901,9 @@
 		\pgfplotspreparemeshkeydefaults%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting x%
 		\pgfplots@PREPARE@COORD@STREAM@end@determinecoordsorting y%
-		\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,%
+		\t@pgfplots@tokc=\expandafter{\pgfplots@addplot@survey@@optionlist,%
 			/pgfplots/.cd,/pgfplots/every axis plot post}%
+		\edef\pgfplots@addplot@survey@@optionlist{\the\t@pgfplots@tokc}%
 		\ifpgfplots@curplot@isirrelevant
 			% for \label commands:
 			\expandafter\pgfplots@rememberplotspec@for@label\expandafter{\pgfplots@addplot@survey@@optionlist}%
@@ -3596,6 +4011,132 @@
 		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 	\fi
 	\pgfplots@end@plot
+}%
+
+
+% A routine which transforms the current set of
+% \pgfplots@current@point@[xyz] values to the coordinate system
+% accepted by the actual axis.
+%
+% This routine needs to be reimplemented 
+\def\pgfplotsaxistransformfromdatacs{%
+	\pgfplotsaxistransformcs
+		{\pgfkeysvalueof{/pgfplots/data cs}}
+		{\pgfkeysvalueof{/pgfplots/@expected axis cs}}%
+}%
+
+% Changes \pgfplots@current@point@[xyz] to the new coordinate system
+% (cs) designated by '#2'.
+%
+% #1: the actual coordinate system's name
+% #2: the desired coordinate system's name
+%
+% PRECONDITION: \pgfplots@current@point@[xyz] contain the current
+% point's coordinates in the '#1' system. The z coordinate is ignored for 2d plots (or
+% for coordinate systems which are inherently two-dimensional).
+%
+% POSTCONDITION: \pgfplots@current@point@[xyz] contain same point as
+% before, but represented in the '#2' system.
+%
+% The coordinate system transformations must be defined,
+% see \pgfplotsdefinecstransform.
+%
+% Example:
+% \def\pgfplots@current@point@x{90}
+% \def\pgfplots@current@point@y{1}
+% \pgfplotsaxistransformcs{polar}{cart}
+% -->
+%  \pgfplots@current@point@x = 0
+%  \pgfplots@current@point@y = 1
+\def\pgfplotsaxistransformcs#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\edef\pgfplots@loc@TMPb{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	\else
+		\pgfutil@ifundefined{pgfp@transform@\pgfplots@loc@TMPa @to@\pgfplots@loc@TMPb}{%
+			\pgfutil@ifundefined{pgfp@transform@\pgfplots@loc@TMPa @to@cart}{%
+				\pgfplotsaxistransformcs@error
+			}{%
+				\pgfplotsaxistransformcs{#1}{cart}%
+				\pgfplotsaxistransformcs{cart}{#2}%
+			}%
+		}{%
+			\csname pgfp@transform@\pgfplots@loc@TMPa @to@\pgfplots@loc@TMPb\endcsname
+		}%
+	\fi
+}%
+
+% Defines a new coordinate transformation for use in
+% \pgfplotsaxistransformcs.
+% #1: the source coordinate system
+% #2: the target coordinate system
+% #3: the transformation code. 
+%
+% @see \pgfplotsaxistransformcs for what #3 should do.
+%
+% This does also declare a coordinate system for use in 'data cs'.
+% The minimal requirements are to define the transformations from and
+% to "cart" (cartesian coordinates).
+% 
+\def\pgfplotsdefinecstransform#1#2#3{%
+	\expandafter\def\csname pgfp@transform@#1@to@#2\endcsname{#3}%
+}%
+
+\pgfplotsdefinecstransform{polar}{cart}{%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@y}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	\pgfplotsmathpoltocart\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@x@\pgfplots@current@point@y@
+	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x@}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y@}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+}%
+\pgfplotsdefinecstransform{cart}{polar}{%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@y}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	\pgfplotsmathcarttopol\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@x@\pgfplots@current@point@y@
+	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x@}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y@}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+}%
+
+\pgfplotsdefinecstransform{polarrad}{polar}{%
+	\pgfplotsgetcoordmathfor{default}\let\pgfplots@coordmath@id=\pgfplotsretval
+	\pgfutil@ifundefined{pgfp@polarradscale@\pgfplots@coordmath@id}{%
+		\pgfplotscoordmath{default}{parsenumber}{57.2957795130823}%
+		\expandafter\global\expandafter\let\csname pgfp@polarradscale@\pgfplots@coordmath@id\endcsname=\pgfmathresult
+	}{}%
+	%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\csname pgfp@polarradscale@\pgfplots@coordmath@id\endcsname}}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+}%
+\pgfplotsdefinecstransform{polar}{polarrad}{%
+	\pgfplotsgetcoordmathfor{default}\let\pgfplots@coordmath@id=\pgfplotsretval
+	\pgfutil@ifundefined{pgfp@polarradiscale@\pgfplots@coordmath@id}{%
+		\pgfplotscoordmath{default}{parsenumber}{0.0174532925199433}%
+		\expandafter\global\expandafter\let\csname pgfp@polarradiscale@\pgfplots@coordmath@id\endcsname=\pgfmathresult
+	}{}%
+	%
+	\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\csname pgfp@polarradiscale@\pgfplots@coordmath@id\endcsname}}%
+}%
+\pgfplotsdefinecstransform{polarrad}{cart}{%
+	\pgfplotsaxistransformcs{polarrad}{polar}%
+	\pgfplotsaxistransformcs{polar}{cart}%
+}%
+\pgfplotsdefinecstransform{cart}{polarrad}{%
+	\pgfplotsaxistransformcs{cart}{polar}%
+	\pgfplotsaxistransformcs{polar}{polarrad}%
+}%
+
+\def\pgfplotsaxistransformcs@error{%
+	\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, I do not know how to transform the coordinate system '\pgfplots@loc@TMPa' to '\pgfplots@loc@TMPb'. Maybe you misspelled the 'data cs'? Or perhaps the feature is not yet implemented?}\pgfeov%
 }%
 
 \def\pgfplotsaxisserializedatapoint{%
@@ -4629,6 +5170,11 @@
 	\ifpgfplots@usefpu
 		\pgfkeys{/pgf/fpu=true}%
 	\fi
+	%
+	% make sure it is reset, just in case it is not supported by the
+	% input method. 
+	\pgfplotsscanlinelengthinitzero
+	%
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplotsresetplothandler
 	\pgfplots@basiclevel@plothandler
@@ -4644,13 +5190,17 @@
 			/pgfplots/point meta rel=per plot}%
 	\fi
 	%
-	\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,#1}%
+	\t@pgfplots@tokc=\expandafter{\pgfplots@addplot@survey@@optionlist,#1}% this allows '#' inside of '#1'
+	\edef\pgfplots@addplot@survey@@optionlist{\the\t@pgfplots@tokc}%
+	%
+	%
 	\pgfplots@validate@plot@domain@arguments
 }
 
-\def\pgfplotsplothandlersurveyaddoptions#1{%
+\long\def\pgfplotsplothandlersurveyaddoptions#1{%
 	\pgfplotsset{/pgfplots/execute at end survey/.add={}{%
-			\expandafter\def\expandafter\pgfplots@addplot@survey@@optionlist\expandafter{\pgfplots@addplot@survey@@optionlist,#1}%
+			\t@pgfplots@tokc=\expandafter{\pgfplots@addplot@survey@@optionlist,#1}% this allows '#' inside of '#1'
+			\edef\pgfplots@addplot@survey@@optionlist{\the\t@pgfplots@tokc}%
 		},%
 		#1%
 	}%
@@ -4727,57 +5277,54 @@
 	}%
 }
 
-\long\def\pgfplots@addplotimplAPPEND+[{%
+\def\pgfplots@addplotimplAPPEND+{\pgfutil@ifnextchar[{\pgfplots@addplotimplAPPEND@}{\pgfplots@addplotimplAPPEND@[]}}% this allows to gobble spaces and to skip the '[]'
+\def\pgfplots@addplotimplAPPEND@[{%
 	\expandafter\pgfplots@addplotimpl\expandafter[\nextplotspec,%
 }
 
 \long\def\pgfplots@addplotimpl[#1]{%
-	\pgfutil@ifnextchar p{%
+	\pgfplotsutil@ifnextchar p{%
 		\pgfplots@addplotimpl@plot{#1}%
 	}{%
 		\pgfplots@addplotimpl@plot{#1}plot
 	}%
 }
 
-\def\pgfplots@addplotimpl@plot#1plot{%
-	\pgfutil@ifnextchar[{%
+\long\def\pgfplots@addplotimpl@plot#1plot{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@plot@withoptions{#1}%
 	}{%
 		\pgfplots@addplotimpl@plot@withoptions{#1}[]%
 	}%
 }
 
-\def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
+\long\def\pgfplots@addplotimpl@plot@withoptions#1[#2]{
 	\begingroup% <-- This groups ends in \pgfplots@end@plot
 	%
-	% make sure it is reset, just in case it is not supported by the
-	% input method. 
-	\pgfplotsscanlinelengthinitzero
-	%
-	\pgfutil@ifnextchar c{%
+	\pgfplotsutil@ifnextchar c{%
 		\pgfplots@addplotimpl@coordinates{#1}{#2}plot 
 	}{%
-		\pgfutil@ifnextchar f{%
+		\pgfplotsutil@ifnextchar f{%
 			\pgfplots@addplotimpl@f{#1}{#2}%
 		}{%
-			\pgfutil@ifnextchar t{%
+			\pgfplotsutil@ifnextchar t{%
 				\def\pgfplotssurveyphaseinputclass{table}%
 				\pgfplots@start@plot@with@behavioroptions{#1,/pgfplots/.cd,#2}%
 				\pgfplots@addplotimpl@table{#1,#2}%
 			}{%
-				\pgfutil@ifnextchar ({%
+				\pgfplotsutil@ifnextchar ({%
 					\pgfplots@addplotimpl@expression{#1}{#2}%
 				}{%
-					\pgfutil@ifnextchar\bgroup{%
+					\pgfplotsutil@ifnextchar\bgroup{%
 						\pgfplots@addplotimpl@expression@curly{#1}{#2}%
 					}{%
-						\pgfutil@ifnextchar e{%
+						\pgfplotsutil@ifnextchar e{%
 							\pgfplots@addplotimpl@expression@e{#1}{#2}%
 						}{%
-							\pgfutil@ifnextchar g{%
+							\pgfplotsutil@ifnextchar g{%
 								\pgfplots@addplotimpl@g{#1}{#2}%
 							}{%
-								\pgfutil@ifnextchar s{%
+								\pgfplotsutil@ifnextchar s{%
 									\pgfplots@addplotimpl@shell{#1}{#2}%
 								}{%
 
@@ -4792,8 +5339,8 @@
 		}%
 	}%
 }
-\def\pgfplots@addplotimpl@f#1#2f{%
-	\pgfutil@ifnextchar i{%
+\long\def\pgfplots@addplotimpl@f#1#2f{%
+	\pgfplotsutil@ifnextchar i{%
 		\pgfplots@addplotimpl@file{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@function{#1}{#2}%
@@ -4855,9 +5402,32 @@
 		\edef\pgfplots@plot@var@y{\expandafter\noexpand\csname \pgfplots@plot@var@y\endcsname}%
 	\fi
 	%
-	% Check if we have to sample a line.
-	\def\b@pgfplots@should@sample@LINE{0}%
-	\ifpgfplots@curplot@threedim
+	% Check if we have to sample a line or a matrix.
+	% 
+	\pgfkeysgetvalue{/pgfplots/sample dim}\pgfplots@loc@TMPa
+	\def\pgfplots@loc@TMPb{auto}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\ifpgfplots@curplot@threedim
+			\def\b@pgfplots@should@sample@LINE{0}%
+		\else
+			\def\b@pgfplots@should@sample@LINE{1}%
+		\fi
+	\else
+		\ifcase\pgfplots@loc@TMPa\relax
+			% sample dim=0 not useful!?
+			\def\b@pgfplots@should@sample@LINE{1}%
+		\or
+			\def\b@pgfplots@should@sample@LINE{1}%
+		\or
+			\def\b@pgfplots@should@sample@LINE{0}%
+		\else
+			\pgfplots@error{Sorry, sample dim=\pgfplots@loc@TMPa\space is unsupported (use either 1 or 2)}%
+		\fi
+	\fi
+	%
+	\if0\b@pgfplots@should@sample@LINE
+		% sample a matrix. Check the keys; if they are one
+		% dimensional, switch back to line sampling:
 		\pgfkeysgetvalue{/pgfplots/y domain}{\pgfplots@plot@ydomain}%
 		\edef\pgfplots@plot@ydomain{\pgfplots@plot@ydomain}%
 		\def\pgfplots@loc@TMPa{0:0}%
@@ -4885,7 +5455,10 @@
 	\pgfkeyssetvalue{/pgfplots/mesh/rows}{\pgfkeysvalueof{/pgfplots/samples y}}%
 	\pgfkeyssetvalue{/pgfplots/mesh/cols}{\pgfkeysvalueof{/pgfplots/samples}}%
 	\if1\b@pgfplots@should@sample@LINE
+		\pgfkeyssetvalue{/pgfplots/sample dim}{1}%
 		\pgfkeyssetvalue{/pgfplots/mesh/cols}{1}%
+	\else
+		\pgfkeyssetvalue{/pgfplots/sample dim}{2}%
 	\fi
 	%
 }%
@@ -5114,13 +5687,14 @@
 		}%
 		\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb{#4}%
 	\else
-		\def\pgfplots@loc@TMPa{\pgfplots@addplotimpl@expression@{#1}{#2}}%
+		\t@pgfplots@tokc={\pgfplots@addplotimpl@expression@{#1}{#2}}%
+		\def\pgfplots@loc@TMPa{\the\t@pgfplots@tokc}% this construction allows '#' in either '#1' or '#2'
 		\expandafter\pgfplots@loc@TMPa\expandafter{\tikz@plot@var}{#3}{#4}%
 	\fi
 }%
 % \addplot[#1] [#2] expression[#3] {#4} #5;
 \def\pgfplots@addplotimpl@expression@e#1#2expression{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@expression@e@{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@expression@e@{#1}{#2}[]%
@@ -5147,7 +5721,7 @@
   \xdef\pgfplots@gnuplot@format{set format "%.7e";}
 }
 \def\pgfplots@addplotimpl@g#1#2g{%
-	\pgfutil@ifnextchar r{%
+	\pgfplotsutil@ifnextchar r{%
 		\pgfplots@addplotimpl@graphics{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@gnuplot{#1}{#2}%
@@ -5159,7 +5733,7 @@
 
 % \addplot[#1] plot[#2] function[#3] {#4} #5;
 \def\pgfplots@addplotimpl@function#1#2unction{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@function@opt{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@function@opt{#1}{#2}[]%
@@ -5235,6 +5809,7 @@
 				\expandafter\def\expandafter\pgfplots@gnuplot@logdirs\expandafter{\pgfplots@gnuplot@logdirs z}%
 			\fi
 		\fi
+		%
 		\ifpgfplots@curplot@threedim
 			\if1\b@pgfplots@should@sample@LINE
 				\pgfplots@error{Sorry, I do not know how to sample 3D LINE plots with gnuplot... I only know 2D line and 3D mesh. You may want to help the author of pgfplots to improve this feature.}%
@@ -5359,7 +5934,7 @@
 
 % \addplot[#1] plot[#2] shell[#3] {#4} #5;
 \def\pgfplots@addplotimpl@shell#1#2shell{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@shell@opt{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@shell@opt{#1}{#2}[]%
@@ -5405,7 +5980,7 @@
 
 % \addplot[#1] [#2] file{#3} #4;
 \def\pgfplots@addplotimpl@file#1#2ile{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@file@opt{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@file@opt{#1}{#2}[]%
@@ -5509,7 +6084,7 @@
 
 
 \def\pgfplots@addplotimpl@graphics#1#2raphics{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@graphics@{#1}{#2}%
 	}{%
 		\pgfplots@addplotimpl@graphics@{#1}{#2}[]%
@@ -5521,6 +6096,9 @@
 	\def\pgfplotssurveyphaseinputclass{graphics}%
 	\pgfplots@start@plot@with@behavioroptions{%
 		/pgfplots/filter discard warning=false,
+		/pgfplots/mesh/rows=2,% allow \addplot[surf] graphics ... --> yields a good legend.
+		/pgfplots/mesh/cols=2,
+		/pgfplots/mesh/check=false,
 		#1,/pgfplots/.cd,#2,%
 		/pgfplots/plot graphics/@prepare legend,
 		/pgfplots/plot graphics,%
@@ -5630,7 +6208,7 @@
 %   package is used - with all its features, including comfortable
 %   access to the previous and next row and accumulation features.
 \def\pgfplots@addplotimpl@table#1table{%
-	\pgfutil@ifnextchar[{%
+	\pgfplotsutil@ifnextchar[{%
 		\pgfplots@addplotimpl@table@getopts{#1}%
 	}{%
 		\pgfplots@addplotimpl@table@getopts{#1}[]%
@@ -5643,10 +6221,10 @@
 	\pgfplots@addplotimpl@table@installkeypath
 	\pgfplotstableset{#2}%
 	%
-	\pgfutil@ifnextchar s{%
+	\pgfplotsutil@ifnextchar s{%
 		\pgfplots@addplotimpl@table@fromshell{#1}{#2}%
 	}{%
-		\pgfutil@ifnextchar f{%
+		\pgfplotsutil@ifnextchar f{%
 			\pgfplots@addplotimpl@table@fromstructure@gobble@space{#1}{#2}%
 		}{%
 			\pgfplots@addplotimpl@table@fromfile@gobble@space{#1}{#2}%
@@ -6392,6 +6970,9 @@
 	}%
 }
 	
+\def\pgfplots@invoke@prefilter{%
+	\pgfkeysvalueof{/pgfplots/pre filter/.@cmd}\pgfeov%
+}%
 \def\pgfplots@invoke@filter#1#2{%
 	\pgfkeysvalueof{/pgfplots/#2 filter/.@cmd}#1\pgfeov%
 }%
@@ -6558,6 +7139,7 @@
 			% remember the position (x,y) for markers.
 			% remember it before \pgfplotstreampoint (which might change (x,y) )
 			\ifpgfplots@clip
+				% check for clip marker paths:
 				\E\pgfplotsaxisifcontainspoint{\E\pgfplots@visualize@performserialization}{}%
 			\else
 				\E\pgfplots@visualize@performserialization
@@ -6583,6 +7165,30 @@
 		\fi
 	}%
 }
+
+\def\pgfplots@check@for@default@plot@mark{%
+	% make sure there is a mark set!
+	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
+	\def\pgfplots@loc@TMPa{none}%
+	\ifx\tikz@plot@mark\pgfplots@loc@TMPa
+		% this here happens only in older versions of pgf.
+		\let\tikz@plot@mark\pgfutil@empty
+	\fi
+	\ifx\tikz@plot@mark\pgfutil@empty
+		\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
+			% oh, the "only marks" plot handler-- and no plot mark!?
+			% what's that!?
+			\ifpgfplots@scatterplotenabled
+				% scatter handles this in /pgfplots/scatter/true
+				% automatically.
+			\else
+				% that appears to be nonsense...
+				\def\tikz@plot@mark{*}%
+			\fi
+		\fi
+	\fi
+}%
 
 
 % Defines an optimized and matching \pgfplotsaxisvisphasetransformcoordinate 
@@ -7224,7 +7830,7 @@
 		% ratio for its axis.
 		%
 		%
-		% The actual implementation is dump; it requires 4 (!) points for
+		% The actual implementation is dumb; it requires 4 (!) points for
 		% which BOTH, the 3D coordinates and the projected 2D
 		% coordinates relative to the image's lower left corner are
 		% available.
@@ -7238,8 +7844,7 @@
 		% involved vectors). Thus, a simple approach is to provide 4
 		% linearly independend points to get 8 equations.
 		%
-		% Then, I solve for o,e_x,e_y,e_z and use
-		% unit vector ratio={||e_x||/ ||e_z||  ||e_y||/||e_z|| 1}.
+		% Then, I solve for o,e_x,e_y,e_z 
 		%
 		%
 		\pgfplotsmatrixnewempty\pgfplotsmatrix
@@ -7340,10 +7945,20 @@
 			}{}%
 			%
 			\ifpgfplots@loop@CONTINUE
-				\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsxlen}{\pgfplotszlen}}%
+				\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplotszlen}}%
+				\let\pgfplots@scale=\pgfmathresult
+				%
+				% this is nonsense, I just keep it because the @scale
+				% variable will change eventually:
+				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotszlen}{\pgfplots@scale}}%
+				\let\pgfplotszlenratio@float=\pgfmathresult
+				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+				\let\pgfplotszlenratio=\pgfmathresult
+				%
+				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsxlen}{\pgfplots@scale}}%
 				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 				\let\pgfplotsxlenratio=\pgfmathresult
-				\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsylen}{\pgfplotszlen}}%
+				\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsylen}{\pgfplots@scale}}%
 				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 				\let\pgfplotsylenratio=\pgfmathresult
 				%
@@ -7356,25 +7971,82 @@
 					\pgfplots@loop@CONTINUEfalse
 				\fi
 				\ifpgfplots@loop@CONTINUE
-					\edef\pgfplotsretval{unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}}%
+		%\pgfplotscoordmath{default}{parsenumber}{1}\let\pgfplots@scale=\pgfmathresult
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem0\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@xx=\pgfmathresult
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem1\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@xy=\pgfmathresult
+					%
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem2\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@yx=\pgfmathresult
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem3\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@yy=\pgfmathresult
+					%
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem4\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfkeysgetvalue{/pgfplots/plot graphics/snap z}\pgfplots@loc@TMPa
+					\ifx\pgfplots@loc@TMPa\pgfutil@empty
+					\else
+						\let\pgfplots@zx=\pgfmathresult
+						%
+						% compute 'snap z' relative to
+						% '\pgfplotszlenratio' (which is usually 1)
+						\pgfplotscoordmath{default}{parsenumber}{\pgfplots@loc@TMPa}%
+						\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplotszlenratio@float}}%
+						\let\pgfplots@loc@TMPa=\pgfmathresult
+						%
+						\pgfplotscoordmath{default}{op}{abs}{{\pgfplots@zx}}%
+						\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+							\pgfplotscoordmath{default}{zero}%
+						}{%
+							\let\pgfmathresult=\pgfplots@zx
+						}%
+					\fi
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@zx=\pgfmathresult
+					%
+					\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsarrayvalueofelem5\of\pgfplotsE}{\pgfplots@scale}}%
+					\pgfplotscoordmath{default}{tofixed}\pgfmathresult%
+					\let\pgfplots@zy=\pgfmathresult
+					\edef\pgfplotsretval{%
+						x={(\pgfplots@xx,\pgfplots@xy)},%
+						y={(\pgfplots@yx,\pgfplots@yy)},%
+						z={(\pgfplots@zx,\pgfplots@zy)},%
+						scale mode=scale uniformly,%
+					%	scale mode=stretch to fill,%
+					%	scale mode=none,%
+					%	unit vector ratio={\pgfplotsxlenratio\space\pgfplotsylenratio\space1}%
+					}%
+				\else
+					\let\pgfplotsretval=\pgfutil@empty
 				\fi
-			\fi
-			%
-			\ifx\pgfplotsretval\pgfutil@empty
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotsxlen}\let\pgfplotsxlen@=\pgfmathresult
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
-				\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
-				\pgfplots@warning{plot graphics failed to compute the 'unit vector ratio'\csname on@line\endcsname\space (it found ||ex|| =\pgfplotsxlen@; ||ey||= \pgfplotsylen@; ||ez|| =\pgfplotszlen@). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
 			\else
-				\begingroup
-				\pgfkeysgetvalue{/pgfplots/plot graphics/src}\pgfplots@loc@TMPa
-				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
-				\immediate\write-1{PGFPlots plot graphics[auto adjust axis=true] {\the\t@pgfplots@tokc} \csname on@line\endcsname: using '\pgfplotsretval'. Use 'plot graphics[debug] to generate debug output files.^^J}% 
-				\endgroup
+				\let\pgfplotsretval=\pgfutil@empty
 			\fi
 			%
 			\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
 				\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output
+			\fi
+			%
+			\ifx\pgfplotsretval\pgfutil@empty
+				\pgfplots@error{plot graphics failed to perform the 'auto adjust axis' feature \csname on@line\endcsname\space\space (compare 'plot graphics[debug]). The graphics might be scaled incorrectly. Perhaps the provided 'points' are not linearly independent?}%
+			\else
+				\begingroup
+				\pgfkeysgetvalue{/pgfplots/plot graphics/src}\pgfplots@loc@TMPa
+				\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+				\immediate\write
+					\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug 16\else -1\fi
+					{PGFPlots plot graphics[auto adjust axis=true] {\the\t@pgfplots@tokc} \csname on@line\endcsname: determined options '\pgfplotsretval'. 
+					\if1\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug
+						See \the\t@pgfplots@tokc.dat for debug output.
+					\else
+						Use 'plot graphics[debug] to generate debug output files.
+					\fi
+					^^J}% 
+				\endgroup
 			\fi
 			%
 		\fi
@@ -7389,6 +8061,7 @@
 	\let\pgfplotsrhs@text=\pgfplotsretval
 }%
 \def\pgfplotsplothandlergraphicspointmapcomputerequiredview@debug@output{%
+	\begingroup
 	\immediate\openout\w@pgf@writea=\pgfkeysvalueof{/pgfplots/plot graphics/src}.dat
 	\pgfplotsarrayselect0\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplotsarrayselect1\of\pgfplotsE\to\pgfmathresult \pgfplotscoordmath{default}{tofixed}{\pgfmathresult}\let\pgfplots@loc@TMPb=\pgfmathresult
@@ -7406,12 +8079,11 @@
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotsylen}\let\pgfplotsylen@=\pgfmathresult
 	\pgfplotscoordmath{default}{tofixed}{\pgfplotszlen}\let\pgfplotszlen@=\pgfmathresult
 	\immediate\write\w@pgf@writea{unit length=\pgfplotsxlen@\space\pgfplotsylen@\space\pgfplotszlen@,}%
-	\begingroup
 	\def\n{^^J}%
 	\def\t{^^I}%
 	\immediate\write\w@pgf@writea{canvasmapmatrix=[\pgfplotsmatrix@text];^^Jcanvasmaprhs = [\pgfplotsrhs@text];^^J}%
-	\endgroup
 	\immediate\closeout\w@pgf@writea
+	\endgroup
 }%
 
 \def\pgfplots@plot@handler@graphics@process@pointmap{%
@@ -7454,10 +8126,11 @@
 	\pgfpointdiff
 		{\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@A@img}
 		{\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@B@img}%
-	\ifnum\pgf@x=0pt
-		\pgfplots@error{Sorry, the first two points with '=>' in plot graphics[points={}] are expected to have different image X coordinates. Please reorder the sequence.}%
-	\fi
-	\ifnum\pgf@y=0pt
+	\pgfplots@loop@CONTINUEtrue
+	\ifdim\pgf@x=0pt \pgfplots@loop@CONTINUEfalse \fi
+	\ifdim\pgf@y=0pt \pgfplots@loop@CONTINUEfalse \fi
+	\ifpgfplots@loop@CONTINUE
+	\else
 		\pgfplots@error{Sorry, the first two points with '=>' in plot graphics[points={}] are expected to have different image Y coordinates. Please reorder the sequence.}%
 	\fi
 	\edef\pgfplots@DDx{\pgf@sys@tonumber\pgf@x}%
@@ -7511,7 +8184,6 @@
 	\pgfmath@basic@multiply@{\pgfplots@y@rel}{\pgfplots@H}%
 	\let\pgfplots@h=\pgfmathresult
 	%
-	%
 	\edef\pgfplots@plot@handler@graphics@DRAW@{%
 		\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/plot graphics/lowlevel draw/.@cmd}{%
 			{\pgfplots@w pt}% width
@@ -7521,9 +8193,11 @@
 	\pgfpointadd
 		{\pgfplots@plot@handler@graphics@pointmap@A@canvas}% the canvas coordinate corresponding to 'A'
 		{\pgfqpointscale{-1}
-			{\pgfpoint\pgfplots@vx\pgfplots@vy}%
+			{\pgfqpoint{\pgfplots@vx pt}{\pgfplots@vy pt}}%
 		}%
 	\edef\pgfplots@plot@handler@graphics@pointmap@lowerleft@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+%
+	%
 	%
 	\begingroup
 		\pgftransformshift{}% simply take \pgf@x and \pgf@y
@@ -7537,13 +8211,26 @@
 			\pgfplots@warning{plot graphics in 3D axis has just two inner anchors (those with '(x,y,z)=>(imgx,imgy)'). You should provide a third one such that I can check for correct scaling.}%
 		\fi
 	\else
-		\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling
+		\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling{C}%
+		\ifx\pgfplots@plot@handler@graphics@pointmap@D@canvas\pgfutil@empty
+		\else
+			\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling{D}%
+		\fi
 	\fi
 	\endgroup
 }%
 
-\def\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling{%
-	\expandafter\pgfplots@extractimgaspoint\pgfplots@plot@handler@graphics@pointmap@C@img% anchor 3 in image
+% Checks if the logical and canvas coordinates of the point identified
+% by #1 are correct.
+%
+% #1: a character in {A,B,C...}.
+%
+\def\pgfplots@plot@handler@graphics@pointmap@sanitize@scaling#1{%
+	\begingroup
+	\expandafter\let\expandafter\pgfplots@point@img\csname pgfplots@plot@handler@graphics@pointmap@#1@img\endcsname
+	\expandafter\let\expandafter\pgfplots@point@canvas\csname pgfplots@plot@handler@graphics@pointmap@#1@canvas\endcsname
+	\expandafter\let\expandafter\pgfplots@point@logical\csname pgfplots@plot@handler@graphics@pointmap@#1@logical\endcsname
+	\expandafter\pgfplots@extractimgaspoint\pgfplots@point@img% anchor 3 in image
 	\edef\pgfplots@Cx{\pgf@sys@tonumber\pgf@x}%
 	\edef\pgfplots@Cy{\pgf@sys@tonumber\pgf@y}%
 	%
@@ -7555,10 +8242,10 @@
 	\pgfpointadd
 		{\pgfplots@plot@handler@graphics@pointmap@lowerleft@canvas}%
 		{\pgfpoint\pgfplots@Cx\pgfplots@Cy}%
-	\edef\pgfplots@plot@handler@graphics@pointmap@C@canvas@check{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\edef\pgfplots@point@canvas@check{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
 	\pgfpointdiff
-		\pgfplots@plot@handler@graphics@pointmap@C@canvas@check
-		\pgfplots@plot@handler@graphics@pointmap@C@canvas
+		{\pgfplots@point@canvas@check}%
+		{\pgfplots@point@canvas}%
 	\ifdim\pgf@x<0pt \pgf@x=-\pgf@x\fi
 	\ifdim\pgf@y<0pt \pgf@y=-\pgf@y\fi
 	\def\pgfplots@is@the@same@point{1}%
@@ -7576,9 +8263,9 @@
 		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
 		\def\pgfplots@extractcoord##1##2##3{##1,##2,##3}%
 		\pgfplots@error{sorry, I can't fix the scaling of 'plot graphics {\the\t@pgfplots@tokc}'.
-			The points (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@C@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' unit vectors because the view is incorrect.^^J
+			The points (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@A@logical) and (\expandafter\pgfplots@extractcoord\pgfplots@plot@handler@graphics@pointmap@B@logical) are correct, but the point (\expandafter\pgfplots@extractcoord\pgfplots@point@logical) is wrong (its position vector has an error of (\the\pgf@x,\the\pgf@y) which is larger than 'squeeze tol=\pgfkeysvalueof{/pgfplots/plot graphics/squeeze tol}'). This is probably caused by improper relations between the axis' unit vectors because the view is incorrect.^^J
 			- Is the 'view' argument correct (matlab: [h,v] = view)? ^^J
-			- Does your image have a non-trivial 'plot box ratio' (matlab: get(gca,'PlotBoxAspectRatio') )?^^J
+			- Does your image have a non-trivial 'plot box ratio' (matlab: ratio = pbaspect)?^^J
 			Please refer to the pgfplots manual for details. If you continue now, I'll show the points in the image}%
 		\endgroup
 		%
@@ -7586,17 +8273,18 @@
 		\scope
 		\pgfsetstrokecolor{black}%
 		\pgfsetfillcolor{red}%
-		\pgfpathcircle{\pgfplots@plot@handler@graphics@pointmap@C@canvas@check}{2pt}%
+		\pgfpathcircle{\pgfplots@point@canvas@check}{2pt}%
 		\pgfusepath{stroke,fill}%
 		\pgfsetfillcolor{green}%
-		\pgfpathcircle{\pgfplots@plot@handler@graphics@pointmap@C@canvas}{2pt}%
+		\pgfpathcircle{\pgfplots@point@canvas}{2pt}%
 		\pgfusepath{stroke,fill}%
 		\draw[->,red] 
 			\pgfextra{
-				\pgfpathmoveto{\pgfplots@plot@handler@graphics@pointmap@C@canvas@check}%
-				\pgfpathlineto{\pgfplots@plot@handler@graphics@pointmap@C@canvas}};
+				\pgfpathmoveto{\pgfplots@point@canvas@check}%
+				\pgfpathlineto{\pgfplots@point@canvas}};
 		\endscope
 	\fi
+	\endgroup
 }
 
 \def\pgfplots@plot@handler@graphics@usebb{%
@@ -7693,7 +8381,8 @@
 		\advance\pgf@y by\dp0
 	\else
 		\ifdim\dp0<0pt
-		\advance\pgf@y by-\dp0
+			\advance\pgf@y by-\dp0
+		\fi
 	\fi
 	\xdef\pgfplots@glob@TMPb{{\the\pgf@x}{\the\pgf@y}}%
 	\endgroup

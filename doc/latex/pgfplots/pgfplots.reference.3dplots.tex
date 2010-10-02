@@ -1060,7 +1060,7 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	Patch plots make use of the |mesh| configuration, including the |shader|. Thus, the example above uses the initial |shader=flat| (which uses the \emph{mean} color data to determine a triangle's color). The |shader=interp| yields the following result\footnote{At the time of this writing, many free readers, especially those for Linux, have difficulties displaying the correct color maps and take a long time to render. Acrobat reader displays the shading according to the pdf standard. Bugfixes for xpdf/libpoppler are currently about to be tested.}:
+	Patch plots make use of the |mesh| configuration, including the |shader|. Thus, the example above uses the initial |shader=faceted| (which uses the \emph{mean} color data to determine a triangle's color and a related stroke color). The |shader=interp| yields the following result\footnote{At the time of this writing, many free readers, especially those for Linux, have difficulties displaying the correct color maps and take a long time to render. Acrobat reader displays the shading according to the pdf standard. Bugfixes for xpdf/libpoppler are currently about to be tested.}:
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}
@@ -1109,7 +1109,11 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 	
 	Two dimensional |patch| plots simply draw triangles in their order of appearance. In three dimensions, single elements are sorted according to their view depth, with foreground elements drawn on top of background elements (``painters algorithm'', see |z buffer=sort|).
 
-\begin{pgfplotskeylist}{patch table=\marg{table file name or inline table} (initially empty)}
+\begin{pgfplotskeylist}{%
+	patch table=\marg{table file name or inline table} (initially empty),%
+	patch table with point meta=\marg{table file name or inline table} (initially empty),%
+	patch table with individual point meta=\marg{table file name or inline table} (initially empty)%
+}
 	Allows to provide patch connectivity data stored in an input table.
 
 	A non--empty argument for |patch table| enables patch input mode. Now, the standard input stream is a long list of vertices which are stored in an array using their |\coordindex| as key. Each row of \marg{table file name or inline table} makes up one patch, defined by indices into the vertex array:
@@ -1137,6 +1141,59 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 	
 	The argument to |patch table| needs to be a table -- either a file name or an inline table as in the example above. The first $n$ columns of this table are assumed to contain indices into the vertex array (which is made up using all vertices of the standard input as explained in the previous paragraph). The entries in this table can be provided in floating point, just make sure they are not rounded. The variable $n$ is the number of vertices required to make up a single patch. For triangular patches, it is $n=3$, for |patch type=bilinear| it is $n=4$ and similar for other choices of |patch type|.
 
+	The alternative \declaretext{patch table with point meta} is almost the same as |patch table| -- but it allows to provide (a single) |point meta| (color data) per patch instead of per vertex. Here, a further column of the argument table is interpreted as color data:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	% this uses per-patch color data:
+	\addplot[patch,table/row sep=\\,
+	patch table with point meta={%
+		0 1 2 100\\
+		1 2 3 10\\
+		4 3 5 0\\
+	}]
+	table[row sep=\\] {
+		x y \\
+		0 0 \\% 0
+		1 1 \\% 1
+		2 0 \\% 2
+		3 1 \\% 3
+		2 0 \\% 4
+		4 0 \\% 5
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent The |patch table with point meta| always prefers |point meta| data from the provided table argument. However, it is still supported to write |point meta=\thisrow|\marg{colname} or similar constructs -- but now, \meta{colname} refers to the provided table argument. More precisely, |point meta| is evaluated in a context where the patch connectivity has been resolved and the |patch table with point meta| is loaded.
+
+	The other alternative \declaretext{patch table with individual point meta} is very similar, but instead of a flat color per patch, it allows to write one color value for every patch:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	% this uses n per-patch color values:
+	\addplot[patch,shader=interp,
+	table/row sep=\\,
+	patch table with individual point meta={%
+		0 1 2 100 100 100\\% V_0 V_1 V_2 C_0 C_1 C_2
+		1 2 3 10 0 50\\
+		4 3 5 0 0 100\\
+	}]
+	table[row sep=\\] {
+		x y \\
+		0 0 \\% 0
+		1 1 \\% 1
+		2 0 \\% 2
+		3 1 \\% 3
+		2 0 \\% 4
+		4 0 \\% 5
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent To find the |point meta| data for vertex $\#i, i=0,1,2$, \PGFPlots\ searches in column $i+n$ where $n$ is the number of vertices for |patch type| (in our case, $n=3$). 
+	
+	Technical remark: The |patch table with individual point meta| installs |point meta=explicit|. It might be confusing to override the value of |point meta| here (although it is allowed). 
+
 	The |patch table| input type allows to reduce the size of geometries since vertices are stored just once. \PGFPlots\ unpacks them into memory into the redundant format in order to work with single patch elements\footnote{The reason for such an approach is that \TeX\ doesn't really know what an array is -- and according to my experience, arrays implemented by macros tend to blow up \TeX's memory limits even faster than the alternative.}. In case you experience \TeX\ memory problems with this connectivity input, consider using the redundant format. It uses other types of memory limits.
 	\index{Errors!Patch Input and Memory Problems}
 \end{pgfplotskeylist}
@@ -1163,7 +1220,7 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	\noindent The ordering in which triangles are specified is irrelevant, three--dimensional patch plots use |z buffer=sort| to sort patches according to their depth (defined as mean depth over each vertex), where foreground patches are drawn on top of background patches. This so called ``painters algorithm'' works well for most meshes. If it fails, consider using |patch refines=1| or |patch refines=2| to split larger elements into small ones automatically.
+	\noindent The ordering in which triangles are specified is irrelevant, three--dimensional patch plots use |z buffer=sort| to sort patches according to their depth (defined as mean depth over each vertex), where foreground patches are drawn on top of background patches. This so--called ``painters algorithm'' works well for most meshes. If it fails, consider using |patch refines=1| or |patch refines=2| to split larger elements into small ones automatically.
 
 
 	The drawing color associated to single vertices can be changed using the |point meta| key (which is the common method to configure color data in \PGFPlots). The initial configuration is |point meta=z| for three dimensional |patch| plots, i.e.\ to use the $z$ coordinate also as color data. Use |point meta=\thisrow|\marg{colname} in conjunction with |\addplot3[patch] table| to load a selected table column.
