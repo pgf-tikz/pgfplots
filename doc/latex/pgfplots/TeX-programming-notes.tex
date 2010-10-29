@@ -637,6 +637,239 @@ Let's start with macro definitions which should be carried over the end of the g
 
 Sometimes one needs to copy other variables outside of a scope. The trick with a temporary global variable works always, of course. But it is also possible to define a macro which contains commands to apply any required changes and transport that macro out of the scope.
 
+\subsection{Branching}
+\label{sec:branching}
+
+Here we discuss some of the available branching constructions of \TeX, with emphasis on conditions involving numbers and tokens.
+
+\begin{command}{ifnum\meta{count/integer number}=\meta{count/integer number}\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+|\ifnum| compare integer numbers or integer registers (|\count| registers) and contains two branches, one is executed in the true case, the other in the case of false:
+\begin{codeexample}[]
+\ifnum1=2 % this space is important.
+This is shown if above were true.
+\else
+This is shown if above results to false.
+\fi
+\end{codeexample}
+
+	Note that the |\else| with its \meta{false-block} is optional.
+\end{command}
+
+\begin{command}{ifdim\meta{dimen/fixed point number}=\meta{dimen/fixed point number}\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+	Similar to |\ifnum|, |\ifdim| compares two fixed point numbers or |\dimen| registers. The numbers must have a unit.
+\begin{codeexample}[]
+\ifdim1pt=2pt % this space is important.
+This is shown if above were true.
+\else
+This is shown if above results to false.
+\fi
+\end{codeexample}
+\end{command}
+
+\begin{command}{ifx\meta{token1}\meta{token2}\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+|\ifx| is a bit more complex: It compares two \emph{tokens} up to their first-level expansion.
+\begin{codeexample}[]
+\def\empty{\empty}
+\ifx\empty\empty %
+This is shown if the two tokens have equal expansion.
+\else
+This is shown if the two tokens expand to something different.
+\fi
+\end{codeexample}
+
+Here, we have defined a token |\empty| to be a replacement for |\empty| and subsequently have compared whether these two tokens are equal in first-level expansion. Note that the definition is actually nonsense. If \TeX{} ever were to go through the whole expansion -- i.e. we would put |\empty| somewhere else -- it would do so indefinitely. However, with |\ifx| only first-level expansion is done and compared. Hence, the statement evaluates to true.
+
+Have a look at the following example:
+\begin{codeexample}[]
+\def\empty{\relax}
+\ifx\empty\relax %
+This is shown if the two tokens have equal expansion.
+\else
+This is shown if the two tokens expand to something different.
+\fi
+\end{codeexample}
+
+On first glance, this should evaluate to true: |\empty| is defined as a replacement for |\relax|. But it does not. Why? 
+
+|\empty| is expanded to |\relax|, however |\relax| expanded has a different meaning, namely stop scanning and not |\relax| anymore. Hence, they are different and the statement is false! If the expansion in |\ifx| were to be taken till maximum, both would be equal but not in the case of a comparison on first-level expansion only.
+\end{command}
+
+\begin{command}{if\meta{token1}\meta{token2}\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+	The |\if| comparison is closely related to the |\ifx| conditional, with one major exception: it expands tokens until it finds the next two unexpandable tokens. If these two tokens are the same, it expands to the \meta{true-block}, otherwise to the \meta{false-block}.
+
+	The |\if| conditional should be handled with care as it might produce undesirable effects. Use it only if you know what you do.
+
+	A useful example is if you \emph{know} that a macro contains at most one character, and you want to test for a particular one:
+\begin{codeexample}[]
+\def\choice{a}
+\if b\choice
+  This is shown for the `b' choice.
+\else
+  This is shown for all other choices.
+\fi
+\end{codeexample}
+\end{command}
+
+\begin{command}{iftrue\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+	A ``conditional'' which always invokes the \meta{true-block}.
+\end{command}
+\begin{command}{iffalse\meta{true-block}\textbackslash else\meta{false-block}\textbackslash fi}
+	A ``conditional'' which always invokes the \meta{false-block}.
+\end{command}
+
+\subsubsection{Boolean Variables}
+\begin{command}{\newif\meta{if-name}}
+	You can declare a new ``boolean variable `|\ifsupermanmode| by means of |\newif\ifsupermanmode|. Afterwards, you can use the |\supermanmodetrue| and |\supermanmodefalse| switches to assign the boolean and |\ifsupermanmode| to check it.
+
+	The \meta{if-name} has to start with |\if| (to support scans for nested |\if...\fi| pairs, see below).
+\end{command}
+
+\subsubsection{Special Cases for Conditionals}
+Whenever you work with |\if|\ldots\ and friends, you should know the following features:
+\begin{enumerate}
+	\item |\if...\else...\fi| is expandable (including each of the single macros |\if...|, |\else| and |\fi|), which means you can even use it inside of |\edef|:
+\begin{codeexample}[]
+\def\choice{a}
+\edef\temp{The choice is \if a\choice `a'\else not `a'\fi}
+We have now \texttt{\string temp=\meaning\temp}.
+\end{codeexample}
+
+\begin{codeexample}[]
+\def\shownexttoken#1{The next token is `\texttt{\string#1}'.}
+\def\mymacro{%
+ 	\ifnum1=1 %
+ 		\expandafter\shownexttoken%
+ 	\fi%
+}%
+\mymacro 23
+\end{codeexample}
+	This example is tricky. What would have happened without the |\expandafter|!? Well, |\shownexttoken| would be invoked with |#1=\fi|. This would lead to an error because the |\fi| would be missing, and it would spoil the effect since we do not want the |\fi| to be seen -- we expected |#1=2|. The |\expandafter| first expands |\fi| (which simply removes the |\fi| without further effect) such that |\shownexttoken| will see the |2| token in our example above. This would also have worked if there was an |\else| branch instead of |\fi|.
+	
+	\item You should generally make sure that the matching |\else| or |\fi| tokens are ``directly reachable'', i.e.\ without token expansion.
+
+	The background here is that \TeX\ works on a token--based level: Whenever it encounters an |\if|\ldots\ statement, it evaluates it and scans tokens to find the matching end part (either an |\else| or an |\fi| token). But it will not expand tokens fduring this scan, although it will count nested |\if...\fi| pairs! Thus, if you are careless, it might become confused and your conditional will go awry.
+\end{enumerate}
+
+\subsection{Loops}
+\label{sec:loops}
+As you have seen, in \TeX{} we have a a very specific control over token expansion. This makes it possible to construct even loops via means of recursion. In essence, a loop consist of the following parts:
+\begin{itemize}
+ \item counter or, more generally, list of items
+ \item incrementor, or more generally, a next item picker
+ \item threshold or, more generally, an end list marker
+ \item a check of the threshold or end marker, respectively
+\end{itemize}
+
+Leafing through the sections above, we realize that all of this is actually in place: We do know about counters, we do know about branching. Only the specifics of how to create these loops is still to be made clear. We will show both cases, the counting loop and the loop over a list of items in the following in detail.
+
+In general, for a loop done via a recursion we need two definitions: One for the loop start and another for the loop step.
+
+\subsubsection{Counting loops}
+\label{sec:counting:loops}
+For a counting loop, we need a counter |\count0|, an incrementor |\advance|, a threshold |3| and a check |\ifnum\count=10| if the threshold has been reached.
+
+
+\begin{codeexample}[]
+\long\def\countingloop#1 in #2:#3#4{
+	#1=#2 %
+	\loopcounter{#1}{#3}{#4}%
+}
+
+\long\def\loopcounter#1#2#3{
+	#3%
+	\ifnum#1=#2 %
+	\else%
+		\advance#1 by1 %
+		\loopcounter{#1}{#2}{#3}%
+	\fi%
+}
+\countingloop{\count0} in 0:{3}{%
+	The current value is `\the\count0'\par
+}
+\end{codeexample}
+
+There are some subtleties to the above example:
+\begin{itemize}
+ \item We put a lot of \% in the example. Why? Note that whenever \TeX{} scans for a number -- e.\,g. as in the case of |#1=#2| -- it will continue scanning token by token, that is digit by digit, till he is sure that the number has ended, even over white space, and even expanding macros in case they themself might not represent numbers again. Hence, \% tells \TeX{} to stop scanning. It is generally good practice to place \% to tell \TeX{} to stop scanning for more digits. However, there are some exceptions to it as well: In case of |\advance#1 by1| one should keep a white space in between, as well as in the case of |\ifnum#1=#2|.
+ \item We placed the threshold |3| in |\countingloop{\count0} in 0:{3}| in curly brackets. Why? \TeX{} otherwise will recognize only the token |1| if a threshold of e\,g. |10| is given and stumble over the now remnant `extra' argument |0|. That is because a single letter represents a token to \TeX{}. Hence, two letters are two tokens and -- ungrouped -- become two arguments. Here, we have to group the threshold to make clear what we mean.
+ \item One last thing becomes clear first when debugging is activated: As loops are done by recursion, i.\,e. by expansion followed by expansion till some threshold is reached, we will end with a lot of |\fi|s in the above case. If we place |\tracingmacros=2 \tracingcommands=2| before the |\countingloop| call and inspect the log file this will become apparent. This is bad because \TeX{} will keep a stack frame open for each |\if|\ldots|\fi| sequence. If we now have a loop over 10.000 items \ldots
+ \item It is not good practice to use one of the system counters, here |\count0|, becaused one can never be sure that is not used for something else or changed somewhere else. E.\,g. when the page is full, \TeX{} will interrupt the current sequence of tokens to deal with creating a new page and finishing the old one, in this course changing |\count0|. Hence, we should also create our own counter.
+\end{itemize}
+
+Hence, we modify the example as follows:
+\begin{codeexample}[]
+\long\def\countingloop#1 in #2:#3#4{
+	#1=#2 %
+	\loopcounter{#1}{#3}{#4}%
+}
+
+\long\def\loopcounter#1#2#3{
+	#3%
+	\ifnum#1=#2 %
+		\let\next=\relax%
+	\else
+		\advance#1 by1 %
+		\def\next{\loopcounter{#1}{#2}{#3}}%
+	\fi
+	\next
+}
+\newcount\ourcounter
+
+\countingloop{\ourcounter} in 0:{3}{%
+	The current value is `\the\ourcounter'\par
+}
+\end{codeexample}
+
+Principally, nothing has changed in terms of the output. However, notice that we have introduced the macro |\next| which either recurses into the next level -- but after the |\fi| statement has been given -- or ends the recursion by simply containing |\relax|. Also, we have declared a new counter called |\ourcounter| that is safe from harm.
+
+Finally, let us briefly summarize what happens in detail:
+\begin{enumerate}
+ \item |\countingloop|\ldots is expanded to an assignment |#1=#2| and another macro |\loopcounter|\ldots.
+ \item The assignment is done: |\ourcounter| is set to the starting value |0|.
+ \item\label{countingloop:loopstart} The actual loop macro is expanded to the command block -- printing the current value -- and an if statement.
+ \item The current value is printed.
+ \item |\ourcounter| is compared to the threshold |3| and \ldots
+ \begin{itemize}
+	 \item False, i.\,e. the if statement is expanded to an |\advance| statement followed by defining |\next| to be another call of the same macro loop.
+	 \item True, i.\,e. |\next| is set to be just |\relax|.
+ \end{itemize}
+ \item The statement is still false: |\advance| will increase |\ourcounter| by one, it is now |1|. |\next| is set to the loop macro.
+ \item The loop macro is again expanded, go to step~\ref{countingloop:loopstart}. |\ourcounter| is \ldots |2| \ldots |\ourcounter| is |3|.
+ \item Now the statement is true: |\next| is expanded to |\relax| and nothing happens.
+\end{enumerate}
+
+\subsubsection{Loops over list of items}
+\label{sec:loops:over:list:of:items}
+Looping over a list of items is very similar, only we will need |\ifx| in place of |\ifnum| and we need some end marker instead of the threshold value. However, how do we specify the list itself? Let's make some comma-separated list, e.\,g. |{a,b,c,d}| and call the end marker |\listingloopENDMARKER|.
+
+\begin{codeexample}[]
+\def\listingloopENDMARKER{\par \listingloopENDMARKER}
+\long\def\listingloop#1in#2#3{%
+	\looppicker{#1}{#3}#2,\listingloopENDMARKER,%
+}%
+\long\def\looppicker#1#2#3,{%
+	\def\tempitem{#3}%
+	\ifx\tempitem\listingloopENDMARKER
+		\let\next=\relax%
+	\else
+		\def#1{#3}%
+		#2%
+		\def\next{\looppicker{#1}{#2}}%
+	\fi
+	\next
+}%
+\listingloop\x in{a,b,c,,d,e}{%
+	The current item is `\x'
+}
+\end{codeexample}
+
+Again, we make clear the subtleties contained therein:
+\begin{itemize}
+ \item We have defined |\listingloopENDMARKER| to replace itself. This is possible because |\ifx| will only compare first-level expansion, see section~\ref{sec:branching}.
+ \item We seem to miss a white space in \ldots|#1in#2|\ldots. However, tokens are always ending with an additional white space as |\xin| is not equal to |\x in|. Hence, none is needed here and more than one white space would probably get gobbled.
+ \item The definition |\looppicker#1#2#3,|\ldots has three arguments but the recursive call |\looppicker{#1}{#2}| only gives two arguments!? This is the actual magic making this type of list possible! \TeX{} is actually scanning beyond the scope of the given token to obtain the third argument. In effect, we are biting off piece by piece, list item by list item off the given list. All because we have stated an additional |,| -- comma being the item separator -- in the definition of the |\looppicker| macro. The expansion of the loop macro will always pick up one more item from the list concatenated to its end until it has reached the |\ENDMARKER|. This is added to the list's very end on the loop's start, and there it stops.
+\end{itemize}
+
 \subsection{More On \TeX}
 This document is far from complete. I recommend reading about conditional expressions in \cite{schwartz} (german, online version) or \cite{texbook} (bounded book). Hints about loops can be found in the manual of \PGFPlots, \cite{pgfplots} and the manual of \PGF, \cite{tikz}. Moreover, \PGFPlots\ and \PGF\ come with a whole lot of utility functions which are documented in the source |.code.tex| files.
 
