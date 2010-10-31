@@ -7,8 +7,10 @@ all: pgfplotstest.pdf
 referenceimages: FORCE
 	mkdir -p gnuplot
 	cp ../../../../tex/latex/pgfplots/pgfregressiontest.sty .
-	@REVISION=`git describe --tags HEAD` && \
-	$(PDFLATEX) '\def\referencemode{1}\def\pgfplotstestautoregression{1}\input{$(@:.pdf=.tex)}'; \
+	REVISION=`git describe --tags HEAD` && \
+	$(PDFLATEX) '\def\referencemode{1}\def\pgfplotstestautoregression{1}\input{pgfplotstest}' && \
+	$(MAKE) -f pgfplotstest.makefile; \
+	echo "Restoring revision $$REVISION..."; \
 	git checkout $$REVISION; \
 	rm -f pgfregressiontest.sty
 	@echo ""
