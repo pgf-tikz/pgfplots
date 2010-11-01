@@ -5,14 +5,19 @@ all: pgfplotstest.pdf
 	@echo "$^ have been compiled successfully. I did NOT check for references, so you may need to rerun make several times."
 
 referenceimages: FORCE
-	mkdir -p gnuplot
-	cp ../../../../tex/latex/pgfplots/pgfregressiontest.sty .
-	REVISION=`git describe --tags HEAD` && \
-	$(PDFLATEX) '\def\referencemode{1}\def\pgfplotstestautoregression{1}\input{pgfplotstest}' && \
+	mkdir -p /tmp/pgfplotstest
+	cp *.tex /tmp/pgfplotstest
+	cp ../../../../tex/latex/pgfplots/pgfregressiontest.sty /tmp/pgfplotstest
+	OLDPWD=`pwd`; \
+	cd /tmp/pgfplotstest; \
+	mkdir -p gnuplot; \
+	REVISION=`cd $$OLDPWD && git describe --tags HEAD` && \
+	export TEXINPUTS=".:$$OLDPWD:$$TEXINPUTS:"; \
+	echo "running $(PDFLATEX) with TEXINPUTS=$$TEXINPUTS"; \
+	$(PDFLATEX) '\def\referencemode{1}\def\pgfplotstestautoregression{1}\input{pgfplotstest}'; \
 	$(MAKE) -f pgfplotstest.makefile; \
 	echo "Restoring revision $$REVISION..."; \
-	git checkout $$REVISION; \
-	rm -f pgfregressiontest.sty
+	cd $$OLDPWD && git checkout $$REVISION; \
 	@echo ""
 	@echo "All reference images compiled successfully."
 	
