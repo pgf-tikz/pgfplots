@@ -16,8 +16,9 @@ referenceimages: FORCE
 	echo "running $(PDFLATEX) with TEXINPUTS=$$TEXINPUTS"; \
 	$(PDFLATEX) '\def\referencemode{1}\def\pgfplotstestautoregression{1}\input{pgfplotstest}'; \
 	$(MAKE) -f pgfplotstest.makefile; \
+	mv reference_images $$OLDPWD; \
 	echo "Restoring revision $$REVISION..."; \
-	cd $$OLDPWD && git checkout $$REVISION; \
+	cd $$OLDPWD && git checkout $$REVISION;
 	@echo ""
 	@echo "All reference images compiled successfully."
 	
