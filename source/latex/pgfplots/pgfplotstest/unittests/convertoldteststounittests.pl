@@ -21,7 +21,7 @@
 # See the associated Makefile which also exports each thing into pdf and png.
 
 
-$#ARGV > 0 or die('expected INFILE[s].');
+$#ARGV >= 0 or die('expected INFILE[s].');
 
 $OUTPREFIX="unittest";
 
@@ -65,6 +65,94 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 	$autoheaders = '';
 	$largegraphics = 0;
 
+	if ( ($srcFile =~ /axislines/) )
+	{
+		$autoheaders .= '
+\pgfplotsset{xlabel=$x$,ylabel=$y$}
+
+\pgfplotsset{
+	separate axis line style/.style={
+		separate axis lines,
+		axis line style={-stealth,thick},
+		x axis line style={green},
+		y axis line style={red},
+	}
+}
+
+
+\def\smallplotstest{%
+	\addplot[smooth,blue,mark=*] coordinates {
+		(-1,	1)
+		(-0.75,	0.5625)
+		(-0.5,	0.25)
+		(-0.25,	0.0625)
+		(0,		0)
+		(0.25,	0.0625)
+		(0.5,	0.25)
+		(0.75,	0.5625)
+		(1,		1)
+	};
+}
+
+\def\smallplotstestyoffset{%
+\addplot[smooth,blue,mark=*] coordinates {
+	(-1,	11)
+	(-0.75,	10.5625)
+	(-0.5,	10.25)
+	(-0.25,	10.0625)
+	(0,		10)
+	(0.25,	10.0625)
+	(0.5,	10.25)
+	(0.75,	10.5625)
+	(1,		11)
+};
+}
+
+\def\smallplotstestyoffsetneg{%
+\addplot[smooth,blue,mark=*] coordinates {
+	(-1,	-11)
+	(-0.75,	-10.5625)
+	(-0.5,	-10.25)
+	(-0.25,	-10.0625)
+	(0,		-10)
+	(0.25,	-10.0625)
+	(0.5,	-10.25)
+	(0.75,	-10.5625)
+	(1,		-11)
+};
+}
+
+\def\smallplotstestxoffset{%
+\addplot[smooth,blue,mark=*] coordinates {
+	(9,	1)
+	(9.25,	0.5625)
+	(9.5,	0.25)
+	(9.75,	0.0625)
+	(10,		0)
+	(10.25,	-0.0625)
+	(10.5,	-0.25)
+	(10.75,	-0.5625)
+	(11,		-1)
+};
+}
+
+\def\smallplotstestxoffsetneg{%
+\addplot[smooth,blue,mark=*] coordinates {
+	(-9,	1)
+	(-9.25,	0.5625)
+	(-9.5,	0.25)
+	(-9.75,	0.0625)
+	(-10,		0)
+	(-10.25,	-0.0625)
+	(-10.5,	-0.25)
+	(-10.75,	-0.5625)
+	(-11,		-1)
+};
+}
+';
+	}
+
+
 	@matches = ( $content =~ m/\\begin{tikzpicture}.*?\\end{tikzpicture}/gs );
 	#	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[\])\n(\\begin{tikzpicture}.*?\\end{tikzpicture})/gs );
 
@@ -94,6 +182,9 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 		$generated .= $header;
 		$generated .= $autoheaders;
 		$generated .= "\n\\begin{document}\n";
+		$generated .= $match;
+# $generated .= "\n\n";
+# $match =~ s/\\begin{axis}\[/\\begin{axis}[separate axis line style,/g;
 		$generated .= $match;
 		$generated .= "\n\\end{document}\n";
 
