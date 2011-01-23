@@ -65,7 +65,7 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 	$autoheaders = '';
 	$largegraphics = 0;
 
-	if ( ($srcFile =~ /axislines/) )
+	if ( ($srcFile =~ /axislines\.tex/) )
 	{
 		$autoheaders .= '
 \pgfplotsset{xlabel=$x$,ylabel=$y$}
@@ -151,9 +151,22 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 }
 ';
 	}
+	if ( ($srcFile =~ /axislines.3d/) )
+	{
+		$autoheaders .= '
+\pgfplotsset{
+	samples=5,
+	domain=-4:4,
+	xtick=data,
+	ytick=data,
+%	ztick=data,
+}
+';
+
+	}
 
 
-	@matches = ( $content =~ m/\\begin{tikzpicture}.*?\\end{tikzpicture}/gs );
+	@matches = ( $content =~ m/\s*\\begin{tikzpicture}.*?\\end{tikzpicture}/gs );
 	#	@matches = ( $content =~ m/(% [^\n]*\n)*\\begin{codeexample}(\[\])\n(\\begin{tikzpicture}.*?\\end{tikzpicture})/gs );
 
 	print "Processing $srcDisplayName (".$srcFile."; ".($#matches+1)." matches)...\n";
@@ -172,20 +185,71 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 	for( $q=0; $q<=$#matches; $q++ ) {
 		$match = $matches[$q];
 
+		$autoheaders_q = $autoheaders;
 		$i++;
 		$outfile = $OUTPREFIX."_".$srcDisplayName."_".($q).".tex";
 # print "$i PREFIX: ".$prefix."\n";
 # print "$i : ".$match."\n\n";
 # next;
 
+		if ( $match =~ /\\smallplotstest/ )
+		{
+			$autoheaders_q .= '
+\def\smallplotstest{%
+	\addplot[smooth,blue,mark=*] coordinates {
+		(-1,	1)
+		(-0.75,	0.5625)
+		(-0.5,	0.25)
+		(-0.25,	0.0625)
+		(0,		0)
+		(0.25,	0.0625)
+		(0.5,	0.25)
+		(0.75,	0.5625)
+		(1,		1)
+	};
+}
+';
+		}
+		if ( $match =~ /\\loglogtestplot/ )
+		{
+			$autoheaders_q .= '
+\def\loglogtestplot{
+	\addplot plot coordinates {
+		(5,	8.311600e-02)
+		(17,	2.546856e-02)
+		(49,	7.407153e-03)
+		(129,	2.101922e-03)
+		(321,	5.873530e-04)
+		(769,	1.622699e-04)
+		(1793,	4.442489e-05)
+		(4097,	1.207141e-05)
+		(9217,	3.261015e-06)
+	};
+	\addlegendentry{$d=2$}
+
+	\addplot plot coordinates {
+		(7,	8.471784e-02)
+		(31,	3.044093e-02)
+		(111,	1.022145e-02)
+		(351,	3.303463e-03)
+		(1023,	1.038865e-03)
+		(2815,	3.196465e-04)
+		(7423,	9.657898e-05)
+		(18943,	2.873391e-05)
+		(47103,	8.437499e-06)
+	};
+	\addlegendentry{$d=3$}
+}%
+';
+		}
+
 		$generated = "";
 		$generated .= $header;
-		$generated .= $autoheaders;
+		$generated .= $autoheaders_q;
 		$generated .= "\n\\begin{document}\n";
 		$generated .= $match;
 # $generated .= "\n\n";
 # $match =~ s/\\begin{axis}\[/\\begin{axis}[separate axis line style,/g;
-		$generated .= $match;
 		$generated .= "\n\\end{document}\n";
 
 		$exists = 1;
