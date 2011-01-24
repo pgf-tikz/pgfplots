@@ -250,6 +250,24 @@ for($j = 0; $j<=$#ARGV; ++$j ) {
 }
 ';
 		}
+		if ( $match =~ /ternaryaxis/ )
+		{
+			$autoheaders_q .= '
+\usepgfplotslibrary{ternary}
+';
+		}
+		if ( $match =~ /polaraxis/ )
+		{
+			$autoheaders_q .= '
+\usepgfplotslibrary{polar}
+';
+		}
+		if ( $match =~ /smithchartaxis/ )
+		{
+			$autoheaders_q .= '
+\usepgfplotslibrary{smithchart}
+';
+		}
 		if ( $match =~ /\\manylogplots/ )
 		{
 			$autoheaders_q .= '
