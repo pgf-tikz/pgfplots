@@ -21,13 +21,17 @@ pdf: $(UNIT_PDFS)
 
 %.png: references
 
+OLD_BRANCH_STORE=Makefile.oldbranch
+
 references:
-	@BRANCH=`git branch | grep \* | cut -c 3-`; \
-	echo "CHECKING OUT $(DEFAULT_REFERENCE_BRANCH)"; \
-	git checkout $(DEFAULT_REFERENCE_BRANCH) || exit 1;\
-	$(MAKE) -f Makefile.references REALLY_INVOKE=1; CODE=$$?; \
-	echo "RESTORING $$BRANCH";\
-	git checkout $$BRANCH;\
+	@echo "Storing old branch into $(OLD_BRANCH_STORE) (if it does not already exist)"
+	@if [ ! -f "$(OLD_BRANCH_STORE)" ]; then git branch | grep \* | cut -c 3- > $(OLD_BRANCH_STORE); fi
+	@echo "Old branch = `cat $(OLD_BRANCH_STORE)`"
+	git checkout $(DEFAULT_REFERENCE_BRANCH)
+	@$(MAKE) -f Makefile.references REALLY_INVOKE=1; CODE=$$?; \
+	echo "RESTORING `cat $(OLD_BRANCH_STORE)`";\
+	git checkout `cat $(OLD_BRANCH_STORE)`;\
+	echo "CHECKOUT OK; RESUMING MAKE"; \
 	exit $$CODE
 
 
