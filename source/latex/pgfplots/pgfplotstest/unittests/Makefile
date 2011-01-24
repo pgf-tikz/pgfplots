@@ -30,8 +30,8 @@ references:
 	git checkout $(DEFAULT_REFERENCE_BRANCH)
 	@$(MAKE) -f Makefile.references REALLY_INVOKE=1; CODE=$$?; \
 	echo "RESTORING `cat $(OLD_BRANCH_STORE)`";\
-	git checkout `cat $(OLD_BRANCH_STORE)`;\
-	echo "CHECKOUT OK; RESUMING MAKE"; \
+	git checkout `cat $(OLD_BRANCH_STORE)` && rm -f $(OLD_BRANCH_STORE);\
+	echo "CHECKOUT DONE; RESUMING MAKE"; \
 	exit $$CODE
 
 
