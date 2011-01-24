@@ -20,9 +20,12 @@ pdf: $(UNIT_PDFS)
 
 OLD_BRANCH_STORE=Makefile.oldbranch
 
+cleanreferences:
+	$(MAKE) -f Makefile.references REALLY_INVOKE=1 clean
+
 references:
 	@$(MAKE) -f Makefile.references REALLY_INVOKE=1; CODE=$$?; \
-	./Makefile.oldbranch && rm -f Makefile.oldbranch; \
+	./Makefile.oldbranch; \
 	echo "CHECKOUT DONE; RESUMING MAKE"; \
 	exit $$CODE
 
