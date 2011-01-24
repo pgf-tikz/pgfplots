@@ -4,8 +4,11 @@ UNIT_SOURCES=$(wildcard *.tex)
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 UNIT_PNGS=$(UNIT_SOURCES:.tex=.png)
 
+$(shell echo "#!/bin/sh" > regressions.sh && chmod 0755 regressions.sh)
 
 .NOTPARALLEL:
+
+# .PRECIOUS: $(UNIT_PNGS)
 
 .PHONY: references pdf png all
 
@@ -20,12 +23,15 @@ pdf: $(UNIT_PDFS)
 
 
 %.png: %.pdf
+	@rm -f $(@:.png=.regression.sh)
 	convert $< -append $@
-	diff $@ references/$@; \
+	@diff $@ references/$@; \
 	if [ ! $$? -eq 0 ]; then \
-		echo 'convert "$@" "references/$@" -compose difference -composite -colorspace gray miff:- | display' >> $(@:.pdf=.regression.sh); \
-		echo "$(@:.pdf=.regression.sh)" >> regressions.sh; \
+		echo 'convert "$@" "references/$@" -compose difference -composite -colorspace gray miff:- | display' > $(@:.png=.regression.sh); \
+		echo "echo $@" >> regressions.sh; \
+		echo "sh $(@:.png=.regression.sh)" >> regressions.sh; \
 		echo "$@ WAS UNEXPECTED. See regressions.sh"; \
+		touch -t 01010000 $@; # make sure its older MMDDHHSS\
 		false;\
 	fi
 	
