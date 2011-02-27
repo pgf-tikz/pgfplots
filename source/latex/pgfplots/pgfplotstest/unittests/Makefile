@@ -42,9 +42,7 @@
 UNIT_SOURCES=$(wildcard *.tex)
 
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
-UNIT_PNGS=$(UNIT_SOURCES:.tex=.png)
-
-$(shell echo "#!/bin/sh" > regressions.sh && chmod 0755 regressions.sh)
+DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
 .NOTPARALLEL:
 
@@ -52,7 +50,7 @@ $(shell echo "#!/bin/sh" > regressions.sh && chmod 0755 regressions.sh)
 
 .PHONY: references pdf png all
 
-png: $(UNIT_PNGS)
+diff: $(DIFF_MEASURES)
 
 pdf: $(UNIT_PDFS)
 
@@ -60,18 +58,30 @@ pdf: $(UNIT_PDFS)
 	pdflatex -halt-on-error -shell-escape $^
 
 
-%.png: %.pdf
-	@rm -f $(@:.png=.regression.sh)
-	convert $< -append $@
-	@diff $@ references/$@; \
-	if [ ! $$? -eq 0 ]; then \
-		echo 'convert "$@" "references/$@" -compose difference -composite -colorspace gray miff:- | display' > $(@:.png=.regression.sh); \
-		echo "echo $@" >> regressions.sh; \
-		echo "sh $(@:.png=.regression.sh)" >> regressions.sh; \
-		echo "$@ WAS UNEXPECTED. See regressions.sh"; \
-		touch -t 01010000 $@; # make sure its older MMDDHHSS\
-		false;\
+%.diff: %.pdf
+	./pdfdiff.sh $< $@
+	@if [ "`cat $@`" = "0 (0)" ]; then \
+		echo "PASSED: no differences detected (removing superfluos pngs)"; \
+		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
+	else \
+		echo "FAILURE: found pixel differences for $<:  normalized mean absolute error (average channel error distance) = " `cat $@`; \
+		echo "Call 'display $@.png' (or the summary of regressions.sh)"; \
+		rm $@; # make sure it will be recomputed! \
+		false; \
 	fi
+		
+
+
+#	convert $< -append $@
+#	@diff $@ references/$@; \
+#	if [ ! $$? -eq 0 ]; then \
+#		echo 'convert "$@" "references/$@" -compose difference -composite -colorspace gray miff:- | display' > $(@:.png=.regression.sh); \
+#		echo "echo $@" >> regressions.sh; \
+#		echo "sh $(@:.png=.regression.sh)" >> regressions.sh; \
+#		echo "$@ WAS UNEXPECTED. See regressions.sh"; \
+#		touch -t 01010000 $@; # make sure its older MMDDHHSS\
+#		false;\
+#	fi
 	
 		
 
