@@ -34,7 +34,7 @@
 # >> make unittest_polar_7.pdf
 # to compile the pdf
 # use
-# >> make unittest_polar_7.png
+# >> make unittest_polar_7.diff
 # to compile the image and to compute the diff to its reference
 #
 # FIXME : in the moment this stuff is not yet ready.
@@ -55,17 +55,17 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS)
 
 %.pdf: %.tex
-	pdflatex -halt-on-error -shell-escape $^
+	pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
 
 
 %.diff: %.pdf
 	./pdfdiff.sh $< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
-		echo "PASSED: no differences detected (removing superfluos pngs)"; \
+		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
-		echo "FAILURE: found pixel differences for $<:  normalized mean absolute error (average channel error distance) = " `cat $@`; \
-		echo "Call 'display $@.png' (or the summary of regressions.sh)"; \
+		echo "  FAILURE: found pixel differences for $<:  normalized mean absolute error (average channel error distance) = " `cat $@`; \
+		echo "  Call 'display -delay 1 $@.png $< references/$<' (or the summary of regressions.sh)"; \
 		rm $@; # make sure it will be recomputed! \
 		false; \
 	fi
