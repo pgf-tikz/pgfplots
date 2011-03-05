@@ -55,11 +55,13 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS)
 
 %.pdf: %.tex
-	pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
+	@echo "$@: recompiling $< ..."
+	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
 
 
 %.diff: %.pdf
-	./pdfdiff.sh $< $@
+	@echo "$<: diffing --> $@ ..."
+	@./pdfdiff.sh $< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
