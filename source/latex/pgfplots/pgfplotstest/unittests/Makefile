@@ -79,7 +79,7 @@ pdf: $(UNIT_PDFS)
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
 		echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
-		echo "  Call 'display -delay 1 $@.png $< references/$<' (or the summary of regressions.sh)"; \
+		echo "  Call './displayDiff.sh $@.png' (see summarize of regressions.sh)"; \
 		rm $@; # make sure it will be recomputed! \
 		false; \
 	fi
@@ -108,7 +108,7 @@ references: $(UNIT_PDF_REFERENCES)
 $(TMP_REPOSITORY):
 	if [ ! -d $@ ]; then cd $(dir $@) && git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $@); fi
 
-references/%.pdf: $(TMP_REPOSITORY)
+references/%.pdf: %.tex $(TMP_REPOSITORY)
 	@echo "GENERATING $@"; \
 	REFERENCE_SCRIPT=$(subst .pdf,.checkoutreferencerev.sh,$(subst references/,,$@));\
 	echo "checking out reverence revision to $(TMP_REPOSITORY)..."; \

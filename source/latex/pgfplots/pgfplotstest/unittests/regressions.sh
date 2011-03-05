@@ -7,9 +7,6 @@ echo ${PROBLEMS//.diff.png/.tex}
 echo "I will now display each of them."
 	
 for A in $PROBLEMS; do
-	ACTUAL=${A%%.diff.png}.pdf
-	EXPECTED=references/$ACTUAL
-	echo "cycling through diff($A) $ACTUAL $EXPECTED ..."
-	display -delay 1 $A $ACTUAL $EXPECTED || break
+	./displayDiff.sh $A
 done
 
