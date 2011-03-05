@@ -123,7 +123,8 @@ references/%.pdf: %.tex $(TMP_REPOSITORY)
 	fi
 	@cd references || exit 1;\
 	export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
-	echo "Compiling $@ (with export TEXINPUTS=$$TEXINPUTS)"; \
+	echo "export TEXINPUTS=$$TEXINPUTS"; \
+	echo "cd references && \"compile $<\" ..."; \
 	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED."; exit 1)
 
 # make sure this rule is AFTER references/%.pdf !
