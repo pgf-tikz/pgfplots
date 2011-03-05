@@ -52,12 +52,15 @@ DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
 # -------------------------------------------------
 # stuff for references:
+ENABLE_DYNAMIC_REFERENCES=1
+
 UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH=1.3.1
 .SECONDARY: $(UNIT_PDF_REFERENCES)
+AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 # -------------------------------------------------
 
 .NOTPARALLEL:
@@ -104,28 +107,41 @@ cleanreferences:
 
 references: $(UNIT_PDF_REFERENCES)
 
+ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
-$(TMP_REPOSITORY):
-	if [ ! -d $@ ]; then cd $(dir $@) && git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $@); fi
-
-references/%.pdf: %.tex $(TMP_REPOSITORY)
-	@echo "GENERATING $@"; \
+references/%.pdf: %.tex 
+	@echo "$<: generating $@"; \
 	REFERENCE_SCRIPT=$(subst .pdf,.checkoutreferencerev.sh,$(subst references/,,$@));\
-	echo "checking out reverence revision to $(TMP_REPOSITORY)..."; \
-	echo "checking for $$REFERENCE_SCRIPT..."; \
+	#echo "  checking out reverence revision to $(TMP_REPOSITORY)..."; \
+	echo "  checking for $$REFERENCE_SCRIPT..."; \
+	if [ ! -d $(TMP_REPOSITORY) ]; then \
+		cd $(dir $(TMP_REPOSITORY)) || exit 1; \
+		git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $(TMP_REPOSITORY)) || exit 1; \
+	fi; \
 	cd $(TMP_REPOSITORY) || exit 1; \
 	if [ -f $(WORKING_DIR)/$$REFERENCE_SCRIPT ]; then \
-		cat $(WORKING_DIR)/$$REFERENCE_SCRIPT; \
-		sh $(WORKING_DIR)/$$REFERENCE_SCRIPT; \
+		cat $(WORKING_DIR)/$$REFERENCE_SCRIPT $(AUTO_INDENT_PIPE); \
+		sh $(WORKING_DIR)/$$REFERENCE_SCRIPT  1>/dev/null 2>&1; \
 	else \
-		echo "git checkout $(DEFAULT_REFERENCE_BRANCH)"; \
-		git checkout $(DEFAULT_REFERENCE_BRANCH); \
+		echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" $(AUTO_INDENT_PIPE); \
+		git checkout $(DEFAULT_REFERENCE_BRANCH) 1>/dev/null 2>&1; \
+	fi; \
+	if [ $$? -ne 0 ]; then \
+		echo "CHECKOUT FAILED." $(AUTO_INDENT_PIPE); \
+		exit 1; \
 	fi
 	@cd references || exit 1;\
 	export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
-	echo "export TEXINPUTS=$$TEXINPUTS"; \
-	echo "cd references && \"compile $<\" ..."; \
-	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED."; exit 1)
+	echo "export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
+	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
+	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED." $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+
+else
+#disable dynamic reference (re-)creation:
+references/%.pdf: %.tex 
+	@if [ ! -f $@ ]; then echo "  REFERENCE IS MISSING AND CAN'T BE CREATED AUTOMATICALLY (ENABLE_DYNAMIC_REFERENCES=0)"; exit 1; fi
+
+endif
 
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex
