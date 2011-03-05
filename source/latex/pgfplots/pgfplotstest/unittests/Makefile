@@ -37,7 +37,12 @@
 # >> make unittest_polar_7.diff
 # to compile the image and to compute the diff to its reference
 #
-# FIXME : in the moment this stuff is not yet ready.
+# The makefile will avoid re-creation of test cases in order to allow concentrate on failures.
+# If you want to remake tests, you can either type 
+# >> make clean
+# or you can use the (standard) make feature 
+# >> make unittest_polar_7.diff -B
+# which forces remake, even if modtimes are unchanged 
 
 UNIT_SOURCES=$(wildcard *.tex)
 
@@ -66,7 +71,7 @@ pdf: $(UNIT_PDFS)
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
-		echo "  FAILURE: found pixel differences for $<:  normalized mean absolute error (average channel error distance) = " `cat $@`; \
+		echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
 		echo "  Call 'display -delay 1 $@.png $< references/$<' (or the summary of regressions.sh)"; \
 		rm $@; # make sure it will be recomputed! \
 		false; \
