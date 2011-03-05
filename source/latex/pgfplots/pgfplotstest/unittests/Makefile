@@ -15,7 +15,7 @@
 # References are stored in a sub-folder called "references". You can *REMOVE* this directory
 # to clean references.
 #
-# References are compiled using different revisions of the code. 
+# References are compiled using different revisions of the code; they are checked out into /tmp. 
 #
 #
 # HOW TO WRITE TESTS
@@ -49,22 +49,29 @@ UNIT_SOURCES=$(wildcard *.tex)
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
+
+# -------------------------------------------------
+# stuff for references:
+UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
+WORKING_DIR=$(shell pwd)
+PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
+TMP_REPOSITORY=/tmp/pgfplots_copy
+DEFAULT_REFERENCE_BRANCH=1.3.1
+.SECONDARY: $(UNIT_PDF_REFERENCES)
+# -------------------------------------------------
+
 .NOTPARALLEL:
 
 # .PRECIOUS: $(UNIT_PNGS)
 
-.PHONY: references pdf png all
+.PHONY: references pdf png  cleanreferences clean
 
 diff: $(DIFF_MEASURES)
 
 pdf: $(UNIT_PDFS)
 
-%.pdf: %.tex
-	@echo "$@: recompiling $< ..."
-	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
 
-
-%.diff: %.pdf
+%.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
 	@./pdfdiff.sh $< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
@@ -92,15 +99,35 @@ pdf: $(UNIT_PDFS)
 	
 		
 
-OLD_BRANCH_STORE=Makefile.oldbranch
-
 cleanreferences:
 	$(MAKE) -f Makefile.references REALLY_INVOKE=1 clean
 
-references:
-	@$(MAKE) -f Makefile.references REALLY_INVOKE=1; CODE=$$?; \
-	./Makefile.oldbranch; \
-	echo "CHECKOUT DONE; RESUMING MAKE"; \
-	exit $$CODE
+references: $(UNIT_PDF_REFERENCES)
 
+
+$(TMP_REPOSITORY):
+	if [ ! -d $@ ]; then cd $(dir $@) && git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $@); fi
+
+references/%.pdf: $(TMP_REPOSITORY)
+	@echo "GENERATING $@"; \
+	REFERENCE_SCRIPT=$(subst .pdf,.checkoutreferencerev.sh,$(subst references/,,$@));\
+	echo "checking out reverence revision to $(TMP_REPOSITORY)..."; \
+	echo "checking for $$REFERENCE_SCRIPT..."; \
+	cd $(TMP_REPOSITORY) || exit 1; \
+	if [ -f $(WORKING_DIR)/$$REFERENCE_SCRIPT ]; then \
+		cat $(WORKING_DIR)/$$REFERENCE_SCRIPT; \
+		sh $(WORKING_DIR)/$$REFERENCE_SCRIPT; \
+	else \
+		echo "git checkout $(DEFAULT_REFERENCE_BRANCH)"; \
+		git checkout $(DEFAULT_REFERENCE_BRANCH); \
+	fi
+	@cd references || exit 1;\
+	export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
+	echo "Compiling $@ (with export TEXINPUTS=$$TEXINPUTS)"; \
+	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED."; exit 1)
+
+# make sure this rule is AFTER references/%.pdf !
+%.pdf: %.tex
+	@echo "$@: recompiling $< ..."
+	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
 
