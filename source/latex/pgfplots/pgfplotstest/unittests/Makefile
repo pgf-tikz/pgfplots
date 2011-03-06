@@ -43,6 +43,10 @@
 # or you can use the (standard) make feature 
 # >> make unittest_polar_7.diff -B
 # which forces remake, even if modtimes are unchanged 
+#
+#
+# SPECIALITIES:
+# create a file unittest_*.diff.accepted containing accepted diff results (in case you approved that they are "not an error")
 
 UNIT_SOURCES=$(wildcard *.tex)
 
@@ -81,10 +85,15 @@ pdf: $(UNIT_PDFS)
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
-		echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
-		echo "  Call './displayDiff.sh $@.png' (see summarize of regressions.sh)"; \
-		rm $@; # make sure it will be recomputed! \
-		false; \
+		if [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
+			echo "  PASSED: only approved differences `cat $@` detected (removing superfluos diff-pngs)"; \
+			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
+		else \
+			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
+			echo "  Call './displayDiff.sh $@.png' (see summarize of regressions.sh)"; \
+			rm $@; # make sure it will be recomputed! \
+			false; \
+		fi; \
 	fi
 		
 
@@ -107,32 +116,29 @@ cleanreferences:
 
 references: $(UNIT_PDF_REFERENCES)
 
+%.checkoutreferencerev.sh:
+	echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@
+
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
-references/%.pdf: %.tex 
+references/%.pdf: %.tex %.checkoutreferencerev.sh
 	@echo "$<: generating $@"; \
-	REFERENCE_SCRIPT=$(subst .pdf,.checkoutreferencerev.sh,$(subst references/,,$@));\
+	REFERENCE_SCRIPT=$(<:.tex=.checkoutreferencerev.sh);\
 	#echo "  checking out reverence revision to $(TMP_REPOSITORY)..."; \
-	echo "  checking for $$REFERENCE_SCRIPT..."; \
 	if [ ! -d $(TMP_REPOSITORY) ]; then \
 		cd $(dir $(TMP_REPOSITORY)) || exit 1; \
 		git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $(TMP_REPOSITORY)) || exit 1; \
 	fi; \
 	cd $(TMP_REPOSITORY) || exit 1; \
-	if [ -f $(WORKING_DIR)/$$REFERENCE_SCRIPT ]; then \
-		cat $(WORKING_DIR)/$$REFERENCE_SCRIPT $(AUTO_INDENT_PIPE); \
-		sh $(WORKING_DIR)/$$REFERENCE_SCRIPT  1>/dev/null 2>&1; \
-	else \
-		echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" $(AUTO_INDENT_PIPE); \
-		git checkout $(DEFAULT_REFERENCE_BRANCH) 1>/dev/null 2>&1; \
-	fi; \
+	cat $(WORKING_DIR)/$$REFERENCE_SCRIPT $(AUTO_INDENT_PIPE); \
+	sh $(WORKING_DIR)/$$REFERENCE_SCRIPT  1>/dev/null 2>&1; \
 	if [ $$? -ne 0 ]; then \
 		echo "CHECKOUT FAILED." $(AUTO_INDENT_PIPE); \
 		exit 1; \
 	fi
 	@cd references || exit 1;\
-	export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
-	echo "export TEXINPUTS=..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
+	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
+	echo "export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED." $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
