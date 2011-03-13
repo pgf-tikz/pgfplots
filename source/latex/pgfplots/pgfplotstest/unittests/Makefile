@@ -8,7 +8,7 @@
 # 4. you can "diff" the actual image and the reference (and view the difference)
 # 5. you can create a log of the single results and diffs
 #
-# This makefile assumes that references exist already. If so, it can accomplish steps (3), (4), and (5).
+# This makefile can do all of these steps.
 #
 # The references can be generated with
 # >> make references
@@ -19,23 +19,23 @@
 #
 #
 # HOW TO WRITE TESTS
-# Simply write a minimal .tex file in this directory. The file is treated as self-contained unit test. It can have multiple
+# Simply write a minimal, self-contained .tex file (say, unittest_42.tex) in this directory. It can have multiple
 # pages.
 #
 # If your example needs a specific reference revision, create a file <base>.checkoutreferencerev.sh which contains something
 # like "git checkout 1.3.1" . It will be invoked to checkout the reference revision.
 #
-# Then, type "make references".
+# Then, type "make unittest_42.diff" to create reference, actual, and difference.
 #
-# Then, everything is ready and you can use "make" to compile the example and compare against the reference.
-# 
+# Typing 'make' will make all unittests (all *.tex files in this directory).
+#  
 # COMPILING TESTS
-# use 
-# >> make unittest_polar_7.pdf
-# to compile the pdf
-# use
+# 1. compile reference, actual, and diff:
 # >> make unittest_polar_7.diff
-# to compile the image and to compute the diff to its reference
+# 2. compile reference only
+# >> make references/unittest_polar_7.pdf
+# 3. compile actual only
+# >> make unittest_polar_7.pdf
 #
 # The makefile will avoid re-creation of test cases in order to allow concentrate on failures.
 # If you want to remake tests, you can either type 
@@ -46,7 +46,9 @@
 #
 #
 # SPECIALITIES:
-# create a file unittest_*.diff.accepted containing accepted diff results (in case you approved that they are "not an error")
+# create a file unittest_*.diff.accepted containing accepted diff results 
+# (in case you approved that they are "not an error"). 
+# The file should contain what the failure-output of the 'make test.diff' target.
 
 UNIT_SOURCES=$(wildcard *.tex)
 
@@ -152,5 +154,5 @@ endif
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || echo "COMPILATION OF $@ FAILED."
+	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION OF $@ FAILED." $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
