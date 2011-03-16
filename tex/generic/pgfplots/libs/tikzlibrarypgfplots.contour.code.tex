@@ -38,9 +38,10 @@
     /pgfplots/contour/levels/.store in=\pgfplots@contour@levels,
 }
 
+
 \let\E=\expandafter
 
-\let\wcontour=\wlog
+\let\wcontour=\message
 
 \newcount\c@pgfplots@row
 \newcount\c@pgfplots@col
@@ -78,8 +79,8 @@
     \pgfplotsmatrixresize\pgfplots@contour@matrix@runned\c@pgfplots@row@end\c@pgfplots@col@end
     % 
     % The list which holds the levels has been giving.
-    \edef\pgfplots@contour@tmpA{\noexpand\pgfplotsarraynew\noexpand\pgfplots@contour@levels@array{\pgfplots@contour@levels}}
-    \pgfplots@contour@tmpA%
+    \E\pgfplotsarraynew\E\pgfplots@contour@levels@array\E{\pgfplots@contour@levels}
+    \edef\pgfplots@contour@lvls{\pgfplotsarraysizeof\pgfplots@contour@levels@array}
     \pgfplotsmatrixnewempty\pgfplots@contour@matrix@points
     % 
     % Only start with 1 rows and a 2 column matrix. Build up as in Matlab
@@ -105,16 +106,21 @@
     \let\pgfplots@contour@run=\relax
     \c@pgfplots@contour@level=0
     \c@pgfplots@contour@cur=0
+    \edef\c@pgfplots@contour@cur@init{\the\c@pgfplots@contour@cur}
     \pgfplotsloop{%
-        \ifnum\c@pgfplots@contour@level>2
-          \pgfplotsloopcontinuefalse
-        \else
+        \ifnum\c@pgfplots@contour@level<\pgfplots@contour@lvls\relax
           \pgfplotsloopcontinuetrue
+        \else
+          \pgfplotsloopcontinuefalse
         \fi
     }{%
+        %
+        % As we use this loop over the levels we have to reset the "runned" matrix.
+        % For very large arrays it could be better so make a list in each point which states which contours it has passed
+        % Currently it is very inconvenient for very large arrays.
+        %
         \pgfplots@contour@reset@runned%
         \pgfplotsarrayselect{\the\c@pgfplots@contour@level}\of\pgfplots@contour@levels@array\to\pgfplots@contour@curlevel
-        \edef\c@pgfplots@contour@cur@init{\the\c@pgfplots@contour@cur}
         \wcontour{Running the array at \the\c@pgfplots@contour@level\space with value \pgfplots@contour@curlevel}
         \pgfplots@contour@calc@method%
 %         % 
@@ -126,7 +132,6 @@
 % %        \E\pgfmathsubtract\E{\pgfmathresult}{1}
 %         \pgfmathint{\pgfmathresult}
 %         \E\xdef\csname\string\pgfplots@contour@matrix@points@\c@pgfplots@contour@cur@init,1\endcsname{\pgfmathresult}
-        \advance\c@pgfplots@contour@cur by1
         \advance\c@pgfplots@contour@level by1
     }
     %
@@ -136,21 +141,21 @@
 
 \def\pgfplots@contour@calc@linear{%
     \wcontour{Linear contour calc now.}
-    \c@pgfplots@col=-1\relax%
-    \c@pgfplots@row=0\relax%
+    \c@pgfplots@col=-1%
+    \c@pgfplots@row=0%
     \pgfplotsloop{%
         \ifnum\the\c@pgfplots@col=\c@pgfplots@col@end\relax
           \ifnum\the\c@pgfplots@row=\c@pgfplots@row@end\relax
             \pgfplotsloopcontinuefalse%
           \else
-            \advance\c@pgfplots@row by1\relax
-            \c@pgfplots@col=-1\relax
+            \advance\c@pgfplots@row by1
+            \c@pgfplots@col=-1
             \pgfplotsloopcontinuetrue
           \fi%
         \else%
           \pgfplotsloopcontinuetrue%
         \fi%
-        \advance\c@pgfplots@col by1\relax%
+        \advance\c@pgfplots@col by1%
     }{%
         \wcontour{Started linear findings with (\the\c@pgfplots@row,\the\c@pgfplots@col) of (\c@pgfplots@row@end,\c@pgfplots@col@end) }%
         % 
@@ -165,19 +170,16 @@
         \edef\pgfplots@contour@tmpA{\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname}
         \wcontour{Checked in main loop for \pgfplots@contour@tmpA}
         \ifx\pgfplots@contour@tmpA\pgfplots@contour@runned@mark
-          \wcontour{Has been runned.}
+          \wcontour{Has been runned!}
         \else
         % I can now call \pgfplots@contour@calc@linear@
         % Use a temporary command to call after. This ensures that we do not have endless groups! This command gets defined in
+        % Thus \pgfplots@contour@follow@contours will be called afterwards.
+        % If it has been redefined to follow a contour it will carry on.
           \pgfplots@contour@calc@linear@{\the\c@pgfplots@row}{\the\c@pgfplots@col}{-1}
-          % Mark it as runned
-          % I am not using the \pgfplotsmatrixset due to speed!
-          \wcontour{Mark runned!}
-          \E\xdef\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname{\pgfplots@contour@runned@mark}%
           % Remember to finish of the contour now!
           % Ex. \pgfplots@contour@follow@contours
           % Needs to be called out here due to the limitation of nested calls
-          \wcontour{MEANING: \meaning\pgfplots@contour@follow@contours}
           \pgfplots@contour@follow@contours%
         \fi%
         \wcontour{The col counter is \the\c@pgfplots@col}%
@@ -191,8 +193,8 @@
 % show the macro that it is the first point.
 % 
 \def\pgfplots@contour@calc@linear@#1#2#3{%
+    \let\pgfplots@contour@follow@contours=\relax
     \wcontour{Calculating with data: (#1,#2) with edge: #3 at the level \pgfplots@contour@curlevel}
-    \global\let\pgfplots@contour@follow@contours=\relax % if it doesn't get redefined nothing should happen!
     \pgfplots@contour@processtrue
     % 
     % First retreive the X and Y points in the quadro point segment of the current row and column.
@@ -236,7 +238,10 @@
         }%
     }\pgfplots@contour@tmpA
     % 
-    %
+    % Mark it as runned
+    % I am not using the \pgfplotsmatrixset due to speed!
+    \pgfplots@contour@mark@runned(\the\c@pgfplots@row,\the\c@pgfplots@col)%
+    \wcontour{Mark runned!\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname}
     % Check if we should at all process the current point?
     \ifnum\pgfplots@contour@get@macro0{edge}=\pgfplots@contour@get@macro1{edge}
       \ifnum\pgfplots@contour@get@macro2{edge}=\pgfplots@contour@get@macro3{edge}
@@ -246,7 +251,19 @@
             \wcontour{All edges are below or over the contour. INVALID}
             \pgfplots@contour@processfalse
           \fi
-          \ifnum\pgfplots@contour@get@macro0{edge}=0
+        \fi
+      \fi
+    \fi
+    % This below test probably have errors when numbers are close to zero but not exactly. Maybe it should use the fpu lib?
+    % it is because the Z points have data like 0.9... So the = sign is never found as ifnum only checks for integers
+    \pgfplots@contour@check@zero\pgfplots@contour@get@macro0Z\to\pgfplots@contour@tmpA
+    \ifnum\pgfplots@contour@tmpA=0
+      \pgfplots@contour@check@zero\pgfplots@contour@get@macro1Z\to\pgfplots@contour@tmpA
+      \ifnum\pgfplots@contour@tmpA=0
+        \pgfplots@contour@check@zero\pgfplots@contour@get@macro2Z\to\pgfplots@contour@tmpA
+        \ifnum\pgfplots@contour@tmpA=0
+          \pgfplots@contour@check@zero\pgfplots@contour@get@macro3Z\to\pgfplots@contour@tmpA
+          \ifnum\pgfplots@contour@tmpA=0
           % We are in the case of all edges the same and with value 0
             \wcontour{All edges are on the contour, i.e. a flat square. INVALID}
             \pgfplots@contour@processfalse
@@ -254,29 +271,29 @@
         \fi
       \fi
     \fi
-    % No matter what, mark the current point runned
-    \wcontour{Mark runned!}
-    \E\xdef\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname{\pgfplots@contour@runned@mark}%
     % 
+    % So now we have tested whether or not we should process the point.
     % Loop over the edges
     %
     \ifpgfplots@contour@process
       \wcontour{Valid point}%
       \c@pgfplots@contour@edge@loop=-1
       \ifnum#3<0
-        \xdef\c@pgfplots@contour@edge{-1}
+        \xdef\c@pgfplots@contour@edge{1}
       \else
-        \pgfmathsubtract{#3}{1}%
+        \pgfmathadd{#3}{1}%
         \pgfmathint{\pgfmathresult}%
         \xdef\c@pgfplots@contour@edge{\pgfmathresult}
       \fi
-      % \advance\c@pgfplots@contour@edge by-1\relax 
+      % Comparing with contour.c we have :
+      % \c@pgfplots@contour@edge@loop = k
+      % \c@pgfplots@contour@edge      = i
       \wcontour{Just before calc loop \the\c@pgfplots@contour@edge@loop\space and \c@pgfplots@contour@edge}
       \pgfplotsloop@contour{%
-          \ifnum\c@pgfplots@contour@edge=3
-            \xdef\c@pgfplots@contour@edge{0}
+          \ifnum\c@pgfplots@contour@edge=0
+            \xdef\c@pgfplots@contour@edge{3}
           \else
-            \pgfmathadd{\c@pgfplots@contour@edge}{1}%
+            \pgfmathsubtract{\c@pgfplots@contour@edge}{1}%
             \pgfmathint{\pgfmathresult}%
             \xdef\c@pgfplots@contour@edge{\pgfmathresult}%
           \fi%
@@ -288,23 +305,28 @@
           \advance\c@pgfplots@contour@edge@loop by1%
       }{%
           \wcontour{Run with \c@pgfplots@contour@edge\space on loop: \the\c@pgfplots@contour@edge@loop\space and found edge \pgfplots@contour@get@macro\c@pgfplots@contour@edge{edge}}%
-          \ifnum\c@pgfplots@contour@edge=#3
+          \ifnum\c@pgfplots@contour@edge=#3\relax
             % the contour followed from the edge so we shouldn't go back
           \else
           % 
-          % We check that if the contour lies on the edge and checks if it has been runned TODO this needs to be "activated" at the moment it just check if
-          % the point has been processed, this should limit the points found
+          % We check that if the contour lies on the edge and checks if it has been runned 
           % First we extract the edge corresponding point state.
-%            \ifnum\pgfplots@contour@get@macro\c@pgfplots@contour@edge{edge}=0
-              \pgfplots@contour@calc@edge@matrix@elem#1,#2\of\c@pgfplots@contour@edge\to\pgfplots@contour@tmpB%
-              \E\edef\E\pgfplots@contour@tmpB\E{\pgfplots@contour@tmpB}
-              \wcontour{HelloA \pgfplots@contour@tmpB\ifx\pgfplots@contour@tmpB\pgfplots@contour@runned@mark Has been runned for sure\else Go through\fi}
-%            \fi
+            \let\pgfplots@contour@tmpB=\relax
+            \pgfplots@contour@check@zero\pgfplots@contour@get@macro\c@pgfplots@contour@edge Z\to\pgfplots@contour@tmpA
+            \wcontour{Hello \pgfplots@contour@tmpA}
+            \ifnum\pgfplots@contour@tmpA=0
+              \pgfmathparse{\c@pgfplots@contour@edge + 1}
+              \pgfmathMod{\pgfmathresult}{4}
+              \pgfmathint{\pgfmathresult}
+              \ifnum\pgfmathresult=0
+                \pgfplots@contour@calc@edge@matrix@elem#1,#2\of\c@pgfplots@contour@edge\to\pgfplots@contour@tmpB%
+                \E\edef\E\pgfplots@contour@tmpB\E{\pgfplots@contour@tmpB}
+                \wcontour{HelloA \pgfplots@contour@tmpB\ifx\pgfplots@contour@tmpB\pgfplots@contour@runned@mark Has been runned for sure\else Go through\fi}
+              \fi
+            \fi
             \ifx\pgfplots@contour@tmpB\pgfplots@contour@runned@mark
-%              \global\def\c@pgfplots@contour@edge{4}
               \wcontour{The point has ALREADY been runned!}
             \else
-%            \ifx\relax\relax
             % 
             % We now have to check if the current edge has a contour
               \pgfplots@contour@processfalse
@@ -313,16 +335,15 @@
                 \pgfplots@contour@processtrue
               \fi
               % If the point value is on the contour
-              \pgfmathparse{ifthenelse(\pgfplots@contour@get@macro\c@pgfplots@contour@edge{Z}==0.0,int(1),int(0))}
-              \edef\pgfplots@contour@tmpC{\pgfmathresult}
-              \ifnum\pgfplots@contour@tmpC=1 % reused down at "two cases". See where we "follow the contour" further down.
+              \pgfplots@contour@check@zero\pgfplots@contour@get@macro\c@pgfplots@contour@edge Z\to\pgfplots@contour@tmpC
+              \ifnum\pgfplots@contour@tmpC=0 % reused down at "two cases". See where we "follow the contour" further down.
                 \pgfplots@contour@processtrue
               \fi
               % the two above if statements checks whether we should process the contour, they are linked through a binary or check, in this case two ifs.
               \wcontour{We are going to process: \pgfplots@contour@tmpC \ifpgfplots@contour@process TRUE \else FALSE \fi}
               \ifpgfplots@contour@process
               % First calculate the intersection point x[i] and y[i]
-                \ifnum\pgfplots@contour@tmpC=1 % The contour is located on the point
+                \ifnum\pgfplots@contour@tmpC=0 % The contour is located on the point
                   \edef\pgfplots@contour@tmpA{\pgfplots@contour@get@macro\c@pgfplots@contour@edge{X}}
                   \edef\pgfplots@contour@tmpB{\pgfplots@contour@get@macro\c@pgfplots@contour@edge{Y}}
                 \else % The contour is located in between two points and needs to be interpolated
@@ -333,10 +354,6 @@
                 % Here we add the found contour x and y coordinate to the matrix! And advance counter
                 % 
                 \pgfplots@contour@add@contour@point(\pgfplots@contour@tmpA,\pgfplots@contour@tmpB)
-                % \global\advance\c@pgfplots@contour@cur by 1
-                % \wcontour{Found a contour point: adding (\pgfplots@contour@tmpA,\pgfplots@contour@tmpB), to \the\c@pgfplots@contour@cur}
-                % \E\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,0\endcsname{\pgfplots@contour@tmpA}
-                % \E\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,1\endcsname{\pgfplots@contour@tmpB}
                 % 
                 \c@pgfplots@contour@row@f=#1
                 \c@pgfplots@contour@col@f=#2
@@ -345,38 +362,40 @@
                 % There is two cases:
                 % 1. The contour passes through the edge and NOT the points. (easy case)
                 % 2. The contour passes through one of the points. (hard case)
-                % First we do 1.:
-                \ifnum\pgfplots@contour@tmpC=0 % so not passing through the point
+                % First we find the next starting edge state:
+                \ifnum\c@pgfplots@contour@edge=0
+                  \c@pgfplots@contour@start@edge=2
+                \else\ifnum\c@pgfplots@contour@edge=1
+                  \c@pgfplots@contour@start@edge=3
+                \else\ifnum\c@pgfplots@contour@edge=2
+                  \c@pgfplots@contour@start@edge=0
+                \else\ifnum\c@pgfplots@contour@edge=3
+                  \c@pgfplots@contour@start@edge=1
+                \fi\fi\fi\fi % end next edge check
+                % Then we do case 1.:
+                \ifnum\pgfplots@contour@tmpC=1 % so not passing through the point
                   \ifnum\c@pgfplots@contour@edge=0
                     \advance\c@pgfplots@contour@col@f by-1
-                    \c@pgfplots@contour@start@edge=2
                   \else\ifnum\c@pgfplots@contour@edge=1
                     \advance\c@pgfplots@contour@row@f by-1
-                    \c@pgfplots@contour@start@edge=3
                   \else\ifnum\c@pgfplots@contour@edge=2
                     \advance\c@pgfplots@contour@col@f by1
-                    \c@pgfplots@contour@start@edge=0
                   \else\ifnum\c@pgfplots@contour@edge=3
                     \advance\c@pgfplots@contour@row@f by1
-                    \c@pgfplots@contour@start@edge=1
                   \fi\fi\fi\fi % end edge contour check
                 \else % case number 2.:
                   \ifnum\c@pgfplots@contour@edge=0
                     \advance\c@pgfplots@contour@col@f by-1
                     \advance\c@pgfplots@contour@row@f by1
-                    \c@pgfplots@contour@start@edge=2
                   \else\ifnum\c@pgfplots@contour@edge=1
                     \advance\c@pgfplots@contour@col@f by-1
                     \advance\c@pgfplots@contour@row@f by-1
-                    \c@pgfplots@contour@start@edge=3
                   \else\ifnum\c@pgfplots@contour@edge=2
                     \advance\c@pgfplots@contour@col@f by1
                     \advance\c@pgfplots@contour@row@f by-1
-                    \c@pgfplots@contour@start@edge=0
                   \else\ifnum\c@pgfplots@contour@edge=3
                     \advance\c@pgfplots@contour@col@f by1
                     \advance\c@pgfplots@contour@row@f by1
-                    \c@pgfplots@contour@start@edge=1
                   \fi\fi\fi\fi % end edge contour check
                 \fi % the end of the two cases check. The \pgfplots@contour@follow@contours will now be redefined
                 % The below checks ensure that we follow a contour which actually is permitted, i.e. the boundaries of the matrix is checked against the
@@ -389,10 +408,10 @@
                 \ifnum\c@pgfplots@contour@row@f<0\else
                 % 
                 % We have to check that the thing we go into has not been runned
-                \edef\pgfplots@contour@tmpA{\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@row,\the\c@pgfplots@col\endcsname}%
-                \wcontour{Before last check \pgfplots@contour@tmpA}
+                \edef\pgfplots@contour@tmpA{\csname\string\pgfplots@contour@matrix@runned@\the\c@pgfplots@contour@row@f,\the\c@pgfplots@contour@col@f\endcsname}%
+                \wcontour{Before last check: \pgfplots@contour@tmpA}
                 \ifx\pgfplots@contour@tmpA\pgfplots@contour@runned@mark
-                  % in this case do nothing as it has been runned
+                  % in this case do nothing as the next site has already been runned
                 \else
                   \xdef\pgfplots@contour@follow@contours{%
                       % 
@@ -407,7 +426,7 @@
               \fi % the end of the contour process
             \fi% the end of the current point runned check
           \fi% end of the contour edge check against the start edge #3
-    }%
+    }% this is the outer pgfplotsloop@contour, explains the indent
     \fi % end of \ifpgfplots@contour@process
 }
 
@@ -421,22 +440,21 @@
 % consider option 2. and 3.
 %
 \def\pgfplots@contour@calc@edge@prod#1#2\to#3{%
-    % \pgfmathmultiply{\csname\string#1\endcsname}{\csname\string#2\endcsname}%
-    % \wcontour{Calculating \string#1 x \string#2 and found \pgfmathresult}
-    % \pgfmathparse{ifthenelse(\pgfmathresult>0,int(-1),ifthenelse(\pgfmathresult<0,int(1),int(0)))}%
+    \pgfmathmultiply{\csname\string#1\endcsname}{\csname\string#2\endcsname}%
+    \pgfmathparse{ifthenelse(\pgfmathresult>0,int(-1),ifthenelse(\pgfmathresult<0,int(1),int(0)))}%
     % \E\xdef\csname\string#3\endcsname{\pgfmathresult}
-%    \pgfmathmultiply{\csname\string#1\endcsname}{\csname\string#2\endcsname}%
-    \pgfmathparse{%
-        ifthenelse(
-          \csname\string#1\endcsname>0 && \csname\string#2\endcsname>0,
-          int(-1),
-          ifthenelse(
-            \csname\string#1\endcsname<0 && \csname\string#2\endcsname<0,
-            int(0),
-            int(1)
-          )
-        )
-    }%
+    % \pgfmathmultiply{\csname\string#1\endcsname}{\csname\string#2\endcsname}%
+    % \pgfmathparse{%
+    %     ifthenelse(
+    %       \csname\string#1\endcsname>0 && \csname\string#2\endcsname>0,
+    %       int(-1),
+    %       ifthenelse(
+    %         \csname\string#1\endcsname<0 && \csname\string#2\endcsname<0,
+    %         int(0),
+    %         int(1)
+    %       )
+    %     )
+    % }%
     \wcontour{Calculating \string#1 x \string#2 and found \pgfmathresult =\csname\string#1\endcsname x\csname\string#2\endcsname}
     \E\xdef\csname\string#3\endcsname{\pgfmathresult}
 }
@@ -476,10 +494,24 @@
 \def\pgfplots@contour@get@macro#1#2{\csname\string\pgfplots@contour@#1@#2\endcsname}
 
 %
+% Marks the point as runned
+%
+\def\pgfplots@contour@mark@runned(#1,#2){%
+    \begingroup
+    \edef\pgfplots@contour@tmpA{%
+        \noexpand\E\noexpand\xdef\noexpand\csname\noexpand\string\noexpand\pgfplots@contour@matrix@runned@#1,#2\noexpand\endcsname\noexpand{\pgfplots@contour@runned@mark}\endgroup
+    }
+    \wcontour{HELLO \meaning\pgfplots@contour@tmpA}
+    \pgfplots@contour@tmpA
+    \wcontour{HELLO}
+}
+
+%
 % This macro returns in #4 the corresponding element of the runned matrix
 % for the case of certain edge values. A specific edge corresponds to certain points.
 %
 \def\pgfplots@contour@calc@edge@matrix@elem#1,#2\of#3\to#4{%
+    \def\pgfmathresult{-1}
     \ifnum#3=0
       \pgfmathsubtract{#2}{1}
       \pgfmathint{\pgfmathresult}
@@ -501,7 +533,7 @@
       \xdef#4{\noexpand\csname\string\pgfplots@contour@matrix@runned@\pgfmathresult,#2\endcsname}%
     \fi\fi\fi\fi% the end of num tests
     \ifnum\pgfmathresult<0
-      \gdef#4{x}%
+      \xdef#4{\pgfplots@contour@runned@mark}%
     \fi
 }
 
@@ -549,6 +581,14 @@
     }%
 }
 
+%
+% This routine returns 1 if the number it receives is different than 0, return 0 if 0.
+%
+\def\pgfplots@contour@check@zero#1\to#2{%
+    \pgfmathparse{ifthenelse(#1==0.00,int(0),int(1))}
+    \edef#2{\pgfmathresult}
+}
+
 
 \newif\ifpgfplots@loopcontour
 
@@ -558,12 +598,12 @@
 % #1: a statement which is expected to set \ifpgfplotsloopcontinue
 % #2: the loop body.
 \def\pgfplotsloop@contour#1#2{%
-	#1\relax
-	\ifpgfplots@loopcontour
-		#2\relax
-		\def\pgfplotsloop@contour@{\pgfplotsloop@contour{#1}{#2}}%
-		\expandafter\pgfplotsloop@contour@
-	\fi
+    #1\relax
+    \ifpgfplots@loopcontour
+      #2\relax
+      \def\pgfplotsloop@contour@{\pgfplotsloop@contour{#1}{#2}}%
+      \expandafter\pgfplotsloop@contour@
+    \fi
 }%
 
 % This macro updates the list of current numbers in the contour list.
@@ -573,15 +613,14 @@
     % 
     % Save the number of points in the matrix of contour levels, as in the above description.
     % 
-    \E\xdef\csname\string\pgfplots@contour@matrix@points@\c@pgfplots@contour@cur@init,0\endcsname{\pgfplots@contour@curlevel}
+    \expandafter\xdef\csname\string\pgfplots@contour@matrix@points@\c@pgfplots@contour@cur@init,0\endcsname{\pgfplots@contour@curlevel}
     % Calculate the number of points on the contour
     \pgfmathsubtract{\the\c@pgfplots@contour@cur}{\c@pgfplots@contour@cur@init}
     \pgfmathint{\pgfmathresult}
-    \E\xdef\csname\string\pgfplots@contour@matrix@points@\c@pgfplots@contour@cur@init,1\endcsname{\pgfmathresult}
-    \ifnum\pgfmathresult>0
+    \expandafter\xdef\csname\string\pgfplots@contour@matrix@points@\c@pgfplots@contour@cur@init,1\endcsname{\pgfmathresult}
+    \ifnum\pgfmathresult>1 % As a contour at least has to have 2 points! If not it results in just overwriting the previous lvl statement.
       \advance\c@pgfplots@contour@cur by1
       \xdef\c@pgfplots@contour@cur@init{\the\c@pgfplots@contour@cur}
-      \advance\c@pgfplots@contour@cur by-1
     \fi
 }
 % Add point to the current contour list
@@ -592,8 +631,8 @@
     \fi
     \global\advance\c@pgfplots@contour@cur by1
     \wcontour{Contour point: adding (#1,#2), to \the\c@pgfplots@contour@cur}
-    \E\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,0\endcsname{#1}
-    \E\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,1\endcsname{#2}
+    \expandafter\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,0\endcsname{#1}
+    \expandafter\xdef\csname\string\pgfplots@contour@matrix@points@\the\c@pgfplots@contour@cur,1\endcsname{#2}
 }
 
 \endinput
