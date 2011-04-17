@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PGFDIR=~/code/tex/pgf_cvs/
+PGFDIR=~/code/tex/pgf/
 
 HEADER='%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% This file is a copy of some part of PGF/Tikz.

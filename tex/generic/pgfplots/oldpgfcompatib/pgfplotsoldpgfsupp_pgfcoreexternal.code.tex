@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Tue Aug 17 09:40:53 CEST 2010 %%%
+%%% Date of this copy: So 17. Apr 22:45:35 CEST 2011 %%%
 
 
 
@@ -27,11 +27,12 @@
 %
 % See the file doc/generic/pgf/licenses/LICENSE for more details.
 
-\ProvidesFileRCS $Header: /cvsroot/pgf/pgf/generic/pgf/basiclayer/pgfcoreexternal.code.tex,v 1.10 2010/08/16 12:44:12 ludewich Exp $
+\ProvidesFileRCS $Header: /cvsroot/pgf/pgf/generic/pgf/basiclayer/pgfcoreexternal.code.tex,v 1.17 2010/09/01 08:56:40 ludewich Exp $
 
 
 
 \newif\ifpgfexternal@aux@in@dpth
+\newif\ifpgfexternal@info
 
 \pgfkeys{
     /pgf/images/include external/.code={\pgfimage{#1}},
@@ -48,6 +49,8 @@
         \ifx\pgf@external@kern@top\pgfutil@empty\def\pgf@external@kern@top{0sp}\fi%
     },
     /pgf/images/trim external={1truein}{1truein}{1truein}{1truein},
+    /pgf/images/external info/.is if=pgfexternal@info,
+    /pgf/images/external info/.default=true,
 }
 
 % The external read/write mechanism is used as follows:
@@ -241,7 +244,7 @@
     \pgfexternalreaddpth{#1}%
     \pgfkeysifdefined{/pgf/images/include external/#1/.@cmd}{%
         \pgfkeysgetvalue{/pgf/images/include external/#1/.@cmd}\pgf@tempa
-        \pgfkeysgetlet{/pgf/images/include external/.@cmd}\pgf@tempa
+        \pgfkeyslet{/pgf/images/include external/.@cmd}\pgf@tempa
     }{}%
     \setbox1=\hbox{\pgfkeysvalueof{/pgf/images/include external/.@cmd}{#1}\pgfeov}%
     \ifdim\pgfexternaltrimleft=0sp \else \kern\pgfexternaltrimleft\relax \fi
@@ -296,44 +299,51 @@
     \fi
 }%
 
-\def\pgfexternal@restore#1{}%
+\def\pgfexternal@restore#1{#1}%
 
-\long\def\pgfincludeexternalgraphics@read@dpth@line#1#2\pgfincludeexternalgraphics@read@dpth@line@EOI{%
-    \ifcat\noexpand#1\relax
+\long\def\pgfincludeexternalgraphics@read@dpth@line@getfirst#1#2\pgfincludeexternalgraphics@read@dpth@line@EOI{%
+    \def\pgf@first{#1}%
+}%
+\long\def\pgfincludeexternalgraphics@read@dpth@line#1\pgfincludeexternalgraphics@read@dpth@line@EOI{%
+    \pgfincludeexternalgraphics@read@dpth@line@getfirst#1\pgfincludeexternalgraphics@read@dpth@line@EOI
+    \expandafter\ifcat\expandafter\noexpand\pgf@first\relax
         % Ah -- the first token is a control sequence. It belongs to
         % the .aux file.
         %
-        \ifx#1\pgfexternal@restore
-            #2%
+        \expandafter\ifx\pgf@first\pgfexternal@restore
+            #1%
         \else
-            % do NOT execute #1#2! many LaTeX commands don't support it (\label for example)
+            % do NOT execute #1! many LaTeX commands don't support it (\label for example)
             \pgfutil@ifundefined{if@filesw}{%
                 % sorry, .aux file support only for latex
             }{%
                 % append to main .aux file (for forward references)
                 \if@filesw
                     {%
-                    \toks0={#1#2}%
+                    \toks0={#1}%
                     % believe it or not, but the
                     % \def\dpthimport{...}\dpthimport *makes* a
                     % difference! In ensures any occuring `##' characters are properly expanded to `#'.
-                    \immediate\write\@auxout{\noexpand\def\noexpand\dpthimport{\the\toks0 }\noexpand\dpthimport }%
+                    \immediate\write\@auxout{%
+                        \noexpand\def\noexpand\dpthimport{\the\toks0}\noexpand\dpthimport}%
                     }%
                 \fi             
             }%
         \fi
     \else% it is the depth (which is simply a number for backwards compatibility)
-        \def\pgfexternaldepth{#1#2}%
+        \def\pgfexternaldepth{#1}%
     \fi
 }%
 
-% Stores '#1' into (expanded!) into the .dpth file of the currently
+% Stores '#1' (expanded!) into the .dpth file of the currently
 % exported image. 
 %
-% Just before the image is included into the main document, '#1' will be
-% invoked.
-%
 % This command has only an effect if an image is being exported.
+%
+% The stored contents will be read in the context where
+% /pgf/images/include external is active (i.e. by
+% \pgfexternalreaddpth).
+%
 \def\pgfexternalstorecommand#1{%
 }%
 \def\pgfexternalstorecommand@isexporting#1{%
@@ -401,12 +411,16 @@
 }%
 
 \def\pgf@externalend@storeshifts#1{%
-  \immediate\write#1{\the\dp\pgfpic}%
+  \immediate\write#1{\the\dp\pgfpic}% store the depth simply as number for backw. compat.
   \ifx\pgf@trimleft@final\pgfutil@empty\else
     \immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternaltrimleft{\pgf@trimleft@final}}}%
   \fi
   \ifx\pgf@trimright@final\pgfutil@empty\else
     \immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternaltrimright{\pgf@trimright@final}}}%
+  \fi
+  \ifpgfexternal@info
+    \immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternalwidth{\the\wd\pgfpic}}}%
+    \immediate\write#1{\noexpand\pgfexternal@restore{\noexpand\def\noexpand\pgfexternalheight{\the\dimen0}}}%
   \fi
 }
 % REMARK:
@@ -440,10 +454,15 @@
     \parindent0pt % leave the space
 %    \leftmargin0pt%
 %    \rightmargin0pt%
+    \hoffset=0pt % reset to default
+    \voffset=0pt
     \dimen0\ht\pgfpic%
     \advance\dimen0\dp\pgfpic%
     \ifdim\dp\pgfpic=0pt\relax
     \else% store the picture's depth. Otherwise, it would be lost.
+      \def\pgf@external@store@dpth{1}%
+    \fi
+    \ifpgfexternal@info
       \def\pgf@external@store@dpth{1}%
     \fi
     %
