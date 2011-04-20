@@ -44,6 +44,7 @@
 \newif\ifpgfplotstabletypeset@force@remake
 \newif\ifpgfplotstable@disable@rowcolstyles
 
+\let\pgfplotstable@outfile=\w@pgf@writea
 
 \input pgfplotstable.coltype.code.tex
 
@@ -468,6 +469,14 @@
 				\def\pgfplots@loc@TMPb{#2}%
 				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplots@loc@TMPb}%
 			\fi
+		}
+	},
+	/pgfplots/table/string replace*/.style 2 args={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\def\pgfplots@loc@TMPa{\pgfplotsutilstrreplace{#1}{#2}}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplotsretval}%
 		}
 	},
 	/pgfplots/table/preproc/expr/.code={%
@@ -1355,13 +1364,36 @@
 %%%%%%%%%%%%%%%
 
 
+% #1: the original value
+% #2: the output macro
 \long\def\pgfplotstabletypeset@getfinalentry#1#2{%
 	\begingroup
+	\def\pgfkeysdefaultpath{/pgfplots/table/}%
 	\def\pgfplotstablepartno{0}%
 	\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
 	\pgfkeyssetvalue{/pgfplots/table/@unprocessed cell content}{#1}%
+	\ifpgfplotstable@disable@rowcolstyles
+	\else
+		\def\pgfplots@loc@TMPb##1{%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column ##1\pgfplotstablecol}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column \pgfplotstable@colname@for@styles}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+		}%
+		\pgfplots@loc@TMPb{}%
+		% also accept the same with the 'row no' style:
+		\pgfplots@loc@TMPb{no }%
+		\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles%
+	\fi
 	\pgfplotstable@debug@notify@cellcontent%
-	\pgfkeysvalueof{/pgfplots/table/preproc cell content/.@cmd}#1\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfkeyslet{/pgfplots/table/@cell content after rowcol styles}\pgfmathresult%
+	\pgfkeysgetvalue{/pgfplots/table/preproc cell content/.@cmd}\pgfplotstable@assigncell
+	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\pgfkeyslet{/pgfplots/table/@preprocessed cell content}\pgfmathresult%
 	\pgfplotstable@debug@notify@cellcontent@preprocessed%
@@ -1397,6 +1429,7 @@
 
 \def\pgfplotstable@debug@notify@cellcontent{}%
 \def\pgfplotstable@debug@notify@cellcontent@preprocessed{}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles{}%
 \def\pgfplotstable@debug@notify@cellcontent@assigned{}%
 \def\pgfplotstable@debug@notify@cellcontent@postprocessed{}%
 \def\pgfplotstable@debug@notify@preprocess@incol#1{}%
@@ -1416,6 +1449,13 @@
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\toks0=\expandafter{\pgfmathresult}%
 	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After '@preproc cell content  : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After applying 'every row * column [no] *' styles : `\the\toks0'}%
 	\endgroup
 }%
 \def\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE{%
@@ -1460,6 +1500,7 @@
 		\let\pgfplotstable@debug@notify@preprocessed@col=\pgfplotstable@debug@notify@preprocessed@col@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent=\pgfplotstable@debug@notify@cellcontent@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@preprocessed=\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles=\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@assigned=\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@postprocessed=\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE
 		\let\pgfplotstable@debug@notify@balancingcell=\pgfplotstable@debug@notify@balancingcell@ACTIVE
@@ -1762,10 +1803,11 @@
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname}%
 			\expandafter\pgfplotstable@checkspecialchars@pgfkeys\the\t@pgfplots@tokb\pgfplotstable@EOI
 			\ifpgfutil@in@
-				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/{\the\t@pgfplots@tokb}/.try}%
+				\edef\pgfplotstable@colname@for@styles{{\the\t@pgfplots@tokb}}%
 			\else
-				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\the\t@pgfplots@tokb/.try}%
+				\edef\pgfplotstable@colname@for@styles{\the\t@pgfplots@tokb}%
 			\fi
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\pgfplotstable@colname@for@styles/.try}%
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@displaycolkey}%
 			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
