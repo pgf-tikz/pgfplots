@@ -119,7 +119,7 @@ cleanreferences:
 references: $(UNIT_PDF_REFERENCES)
 
 %.checkoutreferencerev.sh:
-	echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@
+	@if [ ! -f $@ ]; then echo "generating $@..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
