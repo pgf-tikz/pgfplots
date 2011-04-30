@@ -3599,8 +3599,19 @@
 	\axispath\path#1;%
 }
 \def\pgfplots@replacement@for@scope{\pgfutil@ifnextchar[{\pgfplots@replacement@for@scope@}{\pgfplots@replacement@for@scope@[]}}%
-\def\pgfplots@replacement@for@scope@[#1]{\pgfplotsextra{\scope[#1]}}%
-\def\pgfplots@replacement@for@endscope{\pgfplotsextra\endscope}%
+\def\pgfplots@replacement@for@scope@[#1]{%
+	\pgfplotsextra{\scope[#1]}%
+	\begingroup
+	% I need to apply anything which might be relevant for \addplot
+	% here.
+	% But I do NOT want \scope since this might already affect the low
+	% level output. Try this:
+	\tikzset{#1}%
+}%
+\def\pgfplots@replacement@for@endscope{%
+	\endgroup
+	\pgfplotsextra\endscope%
+}%
 
 {
 	% A block which handles active semicolons.
@@ -3652,35 +3663,54 @@
 % Remembers the plotting command #2 and '#3=plot coordinates {...} ...';
 % for later postprocessing of the coordinates.
 %
-% #1: commands which should be executed before issueing the plotting
+% #1: pre-commands which should be executed before issueing the plotting
 %        command #2 #3.
-% #2:
-%    the command which is responsable for drawing.
+% #2: the drawing-command.
 %    - If #2 is NOT '\pgfutil@empty', we expect #3 to contain only
 %      EXPANDABLE DATA.
 %      That's important for postponed floating point arithmetics in #3.
 %    - If #2='\pgfutil@empty', we don't make any assumption about #3
 %      and process it as-is.
 %
-% #3: see above.
+% #3: the plot data. If #2 is empty, this can be any command.
 %
 % #4: commands which should be executed after '#2 #3'.
 %
 \long\def\pgfplots@path@enqueue@coords#1#2#3#4{%
 	\begingroup
-	\pgfkeysgetvalue{/pgfplots/execute at begin plot visualization}\pgfplots@loc@TMPa
-	\pgfkeysgetvalue{/pgfplots/execute at end plot visualization}\pgfplots@loc@TMPb
-	\t@pgfplots@toka={#1}%
-	\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
-	\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPb}%
-	\edef\pgfplots@loc@TMPa{%
-		\noexpand\pgfkeyssetvalue{/pgfplots/execute at begin plot visualization}{\the\t@pgfplots@tokb}%
-		\noexpand\pgfkeyssetvalue{/pgfplots/execute at end plot visualization}{\the\t@pgfplots@tokc}%
-		\the\t@pgfplots@toka
-	}%
-	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@loc@TMPa}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
+	\def\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@stored@current@precmd{#1}%
+		\def\pgfplots@stored@current@cmd{#2}%
+		\def\pgfplots@stored@current@data{#3}%
+		\def\pgfplots@stored@current@postcmd{#4}%
+		\ifx\pgfplots@stored@current@precmd\pgfutil@empty
+		\else
+			\pgfplots@wrong@plotlist@format@error
+		\fi
+		\ifx\pgfplots@stored@current@postcmd\pgfutil@empty
+		\else
+			\pgfplots@wrong@plotlist@format@error
+		\fi
+		\pgfplotslistpushbackglobal{#1}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
+	\else
+		\pgfkeysgetvalue{/pgfplots/execute at begin plot visualization}\pgfplots@loc@TMPa
+		\pgfkeysgetvalue{/pgfplots/execute at end plot visualization}\pgfplots@loc@TMPb
+		\t@pgfplots@toka={#1}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPb}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfkeyssetvalue{/pgfplots/execute at begin plot visualization}{\the\t@pgfplots@tokb}%
+			\noexpand\pgfkeyssetvalue{/pgfplots/execute at end plot visualization}{\the\t@pgfplots@tokc}%
+			\the\t@pgfplots@toka
+		}%
+		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@loc@TMPa}{#2}{#3}{#4}\to\pgfplots@stored@plotlist
+	\fi
 	\endgroup
 }
+\def\pgfplots@wrong@plotlist@format@error{%
+	\pgfplots@error{Internal logic error: someone used \string \pgfplots@path@enqueue@coords\space in an unexpected way: if the second argument is empty, ONLY the third argument should be non-empty.^^J I found: pre command (1st arg): \meaning\pgfplots@stored@current@precmd;^^J  command (2nd arg): \meaning\pgfplots@stored@current@cmd;^^J  data (3rd arg): \meaning\pgfplots@stored@current@data^^J; post cmd (4th arg): \meaning\pgfplots@stored@current@postcmd^^J}%
+}%
 
 % this was formerly slightly different than
 % \pgfplots@path@enqueue@coords, but it is now the same.
@@ -9018,6 +9048,7 @@
 	%
 	\t@pgfplots@tokc={#4}%
 	\edef\pgfplots@stored@current@postcmd{\the\t@pgfplots@tokc}%
+	%
 }
 
 \def\pgfplots@init@cleared@structures{%
@@ -9631,23 +9662,24 @@
 		% NEW \pgfplots@stored@plotlist!
 		\pgfplots@stacked@finalize@stored@plots
 	\fi
-	\pgfplotslistforeach\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
+	\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
 		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
 %\message{^^JProcessing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';^^J  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd'^^J postcommand '\meaning\pgfplots@stored@current@postcmd'^^J}%
 %\message{DATA: '\meaning\pgfplots@stored@current@data';^^J}%
 		% The precmd sets all required variables needed to
 		% finalize a plot.
-		% @see the stream preparation routines.
-		\pgfplots@stored@current@precmd
-		\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
-		\ifpgfplots@threedim
-		\else
-			% axis = 2d and plot=3d is forbidden here.
-			\pgfplots@curplot@threedimfalse
-		\fi
 		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 			\pgfplots@stored@current@data%
 		\else
+			\begingroup
+			% @see the stream preparation routines.
+			\pgfplots@stored@current@precmd
+			\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
+			\ifpgfplots@threedim
+			\else
+				% axis = 2d and plot=3d is forbidden here.
+				\pgfplots@curplot@threedimfalse
+			\fi
 			%
 			% this code here means we REALLY have a plotting
 			% command!
@@ -9666,9 +9698,10 @@
 				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 			\fi
 			\endscope
+			\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
+			\pgfplots@stored@current@postcmd
+			\endgroup
 		\fi
-		\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
-		\pgfplots@stored@current@postcmd
 	}%
 	\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
 	%
