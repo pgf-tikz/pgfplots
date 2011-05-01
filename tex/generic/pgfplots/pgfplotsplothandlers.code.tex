@@ -1380,6 +1380,12 @@
 		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourexternal}%
 		\pgfqkeys{/pgfplots/contour external}{#1}%
 	},
+	contour external/scanline marks/.is choice,
+	contour external/scanline marks/false/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{0}},
+	contour external/scanline marks/if in input/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{1}},
+	contour external/scanline marks/required/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{2}},
+	contour external/scanline marks/true/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{2}},
+	contour external/scanline marks/if in input,
 	contour external/file/.initial=,% auto-generate
 	contour external/script extension/.initial=script,
 	contour external/script/.initial=,% not yet initialised
@@ -1387,6 +1393,7 @@
 	contour external/.search also=/pgfplots/contour,
 	contour gnuplot/.style={
 		contour external={%
+			scanline marks=required,
 			script={unset surface; set cntrparam levels \pgfkeysvalueof{/pgfplots/contour/number}; set contour; set table \"\outfile\"; splot \"\infile\";},
 			cmd={gnuplot \"\script\"},
 			#1,%
@@ -1876,6 +1883,11 @@
 		\pgfplotsutil@advancestringcounter@global\c@pgfplotsplothandlersurveystart@contourexternal@fileno
 	\fi
 	%
+	\if0\pgfplotsplothandlercontourexternal@scanlinemode
+		\pgfplotsset{plot to file/scanline marks/false}%
+	\else	
+		\pgfplotsset{plot to file/scanline marks/if in input}% the choice 'always' is unaware of existing end-of-scanline marks
+	\fi
 	\pgfplotsplothandlertofile{\pgfplotsplothandlercontourexternal@file.dat}%
 	\pgfplotsplothandlersurveystart
 	\let\pgfplotsplothandlersurveypoint@tofile=\pgfplotsplothandlersurveypoint
@@ -1908,6 +1920,11 @@
 \catcode`\#=12
 \gdef\pgfplotsplothandlersurveyend@contourexternal{%
 	\pgfplotsplothandlersurveyend@tofile
+	\if2\pgfplotsplothandlercontourexternal@scanlinemode
+		\if0\pgfplotsplothandlertofilegeneratedscanlinemarks
+			\pgfplots@error{Sorry, processing the input stream did not lead to end-of-scanline markers; the generated temporary file for 'contour external' does not contain any of them (indicating that matrix structure is lost). To fix this, you have the following options:^^J - Insert end-of-scanline markers into your input data (i.e. empty lines),^^J - provide two of the three options 'mesh/rows=<num matrix rows>, mesh/cols=<num matrix cols>, mesh/num points=<total number points>'}%
+		\fi
+	\fi
 	%
 	\begingroup
 	\let\numcoords=\pgfplots@current@point@coordindex%
@@ -1952,13 +1969,24 @@
 % UNPROCESSED to an output file.
 %
 % I use it as helper tool for `contour gnuplot'.
-\newif\ifpgfplotsplothandlertofile@writeemptylines
-\pgfplotsplothandlertofile@writeemptylinestrue
+%
+% this cannot be combined with other plot handlers unless the other
+% plot handlers controls that explicitly
+%
+% Immediately after the survey ends, this plot handler will set
+% \pgfplotsplothandlertofilegeneratedscanlinemarks to '1' or '0'.
 \pgfplotsset{
 	plot unprocessed to file/.code={
 		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlertofile{#1}}%
 	},
-	plot to file/empty lines/.is if=pgfplotsplothandlertofile@writeemptylines,
+	plot to file/scanline marks/.is choice,
+	plot to file/scanline marks/false/.code={\def\pgfplotsplothandlertofile@scanlinemarks{0}},
+	plot to file/scanline marks/if in input/.code={\def\pgfplotsplothandlertofile@scanlinemarks{1}},
+	plot to file/scanline marks/always/.code={\def\pgfplotsplothandlertofile@scanlinemarks{2}},
+	plot to file/scanline marks/true/.code={\def\pgfplotsplothandlertofile@scanlinemarks{2}},
+	plot to file/scanline marks/if in input,
+	plot to file/col sep/.initial=\pgfplots@TAB,
+	plot to file/end-of-scanline content/.initial=,
 }
 
 \def\pgfplotsplothandlertofile#1{%
@@ -1970,13 +1998,81 @@
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@tofile
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@tofile
 	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlernotifyscanlinecomplete@tofile
+	%
+	\if1\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=if in input
+		% check if we have mesh input:
+		\def\pgfplots@loc@TMP@has@mesh@information{0}%
+		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplots@loc@TMPa
+		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplots@loc@TMPb
+		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplots@loc@TMPc
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\ifx\pgfplots@loc@TMPc\pgfutil@empty
+			\else
+				% has rows and num points:
+				\def\pgfplots@loc@TMP@has@mesh@information{1}%
+			\fi
+		\else
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty
+				\ifx\pgfplots@loc@TMPc\pgfutil@empty
+				\else
+					% has cols and num points:
+					\def\pgfplots@loc@TMP@has@mesh@information{1}%
+				\fi
+			\else
+				% has rows,cols:
+				\def\pgfplots@loc@TMP@has@mesh@information{1}%
+			\fi
+		\fi
+		\if1\pgfplots@loc@TMP@has@mesh@information
+			% activate 'plot to file/scanline marks=always
+			% --> we have the required information!
+			\def\pgfplotsplothandlertofile@scanlinemarks{2}%
+		\fi
+	\fi
+	% NO \else here!
+	\if2\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=always
+		\pgfplotsautocompletemeshkeys%
+		\def\c@pgfplotsplothandlertofile@scanlinelength{0}%
+		\if\pgfplots@plot@mesh@ordering0%
+			% ordering = x varies= rowwise -> scanline is cols!
+			\pgfkeysgetvalue{/pgfplots/mesh/cols}\c@pgfplotsplothandlertofile@expectedscanline
+		\else
+			% ordering = y varies = colwise: scanline is rows!
+			\pgfkeysgetvalue{/pgfplots/mesh/rows}\c@pgfplotsplothandlertofile@expectedscanline
+		\fi
+	\fi
+	\pgfplotsplothandlertofile@scanlinependingfalse
+	\pgfkeysgetvalue{/pgfplots/plot to file/col sep}\pgfplotsplothandlertofile@colsep
+	\pgfkeysgetvalue{/pgfplots/plot to file/end-of-scanline content}\pgfplotsplothandlertofile@scanlinemark
+	%
+	%
+	\def\pgfplotsplothandlertofilegeneratedscanlinemarks{0}%
 }%
+\def\pgfplotsplothandlertofile@scanlinemarks@check{%
+	\if2\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=always
+		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlertofile@scanlinelength
+		\ifnum\c@pgfplotsplothandlertofile@scanlinelength=\c@pgfplotsplothandlertofile@expectedscanline
+			\def\c@pgfplotsplothandlertofile@scanlinelength{0}%
+			\pgfplotsplothandlernotifyscanlinecomplete@tofile
+		\fi
+	\fi
+}%
+\newif\ifpgfplotsplothandlertofile@scanlinepending
 \def\pgfplotsplothandlernotifyscanlinecomplete@tofile{%
-	\ifpgfplotsplothandlertofile@writeemptylines
-		\immediate\write\w@pgf@writea{}% empty line.
+	\if0\pgfplotsplothandlertofile@scanlinemarks
+	\else
+		\pgfplotsplothandlertofile@scanlinependingtrue
 	\fi
 }%
 \def\pgfplotsplothandlersurveypoint@tofile{%
+	\ifpgfplotsplothandlertofile@scanlinepending
+		\def\pgfplotsplothandlertofilegeneratedscanlinemarks{1}%
+		\immediate\write\w@pgf@writea{\pgfplotsplothandlertofile@scanlinemark}% end-of-scanline
+		\pgfplotsplothandlertofile@scanlinependingfalse
+	\fi
 	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x}%
 	\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
 	\let\pgfplots@current@point@x=\pgfmathresult
@@ -1998,12 +2094,13 @@
 	}{}%
 	%
 	\immediate\write\w@pgf@writea{%
-		\pgfplots@current@point@x\pgfplots@TAB
-		\pgfplots@current@point@y\pgfplots@TAB
-		\ifpgfplots@curplot@threedim\pgfplots@current@point@z\pgfplots@TAB\fi
-		\pgfplots@current@point@meta\pgfplots@TAB
+		\pgfplots@current@point@x\pgfplotsplothandlertofile@colsep
+		\pgfplots@current@point@y\pgfplotsplothandlertofile@colsep
+		\ifpgfplots@curplot@threedim\pgfplots@current@point@z\pgfplotsplothandlertofile@colsep\fi
+		\pgfplots@current@point@meta
 	}%
 	\advance\c@pgfplots@coordindex by1
+	\pgfplotsplothandlertofile@scanlinemarks@check
 }%
 \def\pgfplotsplothandlersurveyend@tofile{%
 	\immediate\closeout\w@pgf@writea
