@@ -862,7 +862,8 @@
 % To be used to create a simple parser for keys initialised by
 % \pgfplots@set@source@for:
 %
-% #1: the key path (relative to /pgfplots/) of the data
+% #1: the key path (relative to /pgfplots/) of the data.
+%     Can be empty in which case /pgfplots/#2 is used to access data.
 % #2: the key name of the data
 % #3: a macro name which be will defined to be a parser for the data.
 %
@@ -873,26 +874,26 @@
 % \pgfplots@set@source@for{hist/data}{...}
 %
 % ->
-%  \pgfplots@prepare@source@parser@for{hist}{data}\parser
+%  \pgfplots@prepare@source@parser@for{hist/}{data}\parser
 %
 %  then, invoking \parser
 %  will define \pgfmathresult to be the argument provided to
 %  \pgfplots@set@source@for.
 \def\pgfplots@prepare@source@parser@for#1#2#3{%
-	\pgfkeyslet{/data point/#2}\pgfutil@empty%
+	\pgfkeyslet{/data point/#1#2}\pgfutil@empty%
 	%
-	\pgfkeysgetvalue{/pgfplots/#1/#2 value*}\pgfplots@loc@TMPa
+	\pgfkeysgetvalue{/pgfplots/#1#2 value*}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		% assume the '/data point/#1' is set by some input
+		% assume the '/data point/#1#2' is set by some input
 		% routine.
 		% Invoke math parser in this case.
-		\pgfkeyssetvalue{/pgfplots/#1/#2 is expr}{1}%
+		\pgfkeyssetvalue{/pgfplots/#1#2 is expr}{1}%
 	\else
-		\pgfkeyslet{/data point/#2}\pgfplots@loc@TMPa
+		\pgfkeyslet{/data point/#1#2}\pgfplots@loc@TMPa
 	\fi
-	\if1\pgfkeysvalueof{/pgfplots/#1/#2 is expr}%
+	\if1\pgfkeysvalueof{/pgfplots/#1#2 is expr}%
 		\def#3{%
-			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#2}}
+			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#1#2}}
 			\ifx\pgfmathresult\pgfutil@empty
 			\else
 				\pgfmathparse{\pgfmathresult}%
@@ -900,20 +901,56 @@
 		}%
 	\else
 		\def#3{%
-			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#2}}
+			\edef\pgfmathresult{\pgfkeysvalueof{/data point/#1#2}}
+			% parsenumber is done after coord trafos, see below.
+		}%
+	\fi
+	%
+	%
+	\pgfkeysifdefined{/pgfplots/#1#2 coord trafo/.@cmd}{%
+		\pgfkeysgetvalue{/pgfplots/#1#2 coord trafo/.@cmd}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+		\else
+			\t@pgfplots@toka=\expandafter{#3}%
+			\t@pgfplots@tokb={%
+				\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/#1#2 coord trafo/.@cmd}}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov%
+			}%
+			\t@pgfplots@tokc={%
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathfloatparsenumber{\pgfmathresult}%
+				\fi
+			}%
+			\edef#3{%
+				\the\t@pgfplots@toka
+				\the\t@pgfplots@tokb
+				\the\t@pgfplots@tokc
+			}%
+		\fi
+	}{}%
+	%
+	\if1\pgfkeysvalueof{/pgfplots/#1#2 is expr}%
+	\else
+		\t@pgfplots@toka=\expandafter{#3}%
+		\t@pgfplots@tokc={%
 			\ifx\pgfmathresult\pgfutil@empty
 			\else
 				\pgfmathfloatparsenumber{\pgfmathresult}%
 			\fi
 		}%
+		\edef#3{%
+			\the\t@pgfplots@toka
+			\the\t@pgfplots@tokc
+		}%
 	\fi
 	%
-	\pgfkeysgetvalue{/pgfplots/#1/#2 filter/.@cmd}\pgfplots@loc@TMPa
+	\pgfkeysgetvalue{/pgfplots/#1#2 filter/.@cmd}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
 	\else
 		\t@pgfplots@toka=\expandafter{#3}%
 		\t@pgfplots@tokb={%
-			\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/#1/#2 filter/.@cmd}}%
+			\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/#1#2 filter/.@cmd}}%
 			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov%
 		}%
 		\t@pgfplots@tokc={%
@@ -928,7 +965,20 @@
 			\the\t@pgfplots@tokc
 		}%
 	\fi
+	%
 }%
+
+% Invokes /pgfplots/#1 coord inv trafo  on \pgfmathresult if that key
+% exists.
+% The argument is supposed to be given in float.
+\def\pgfplots@coord@trafo@inv@for#1{%
+	\pgfkeysgetvalue{/pgfplots/#1 coord inv trafo/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\pgfmathfloattofixed{\pgfmathresult}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov
+	\fi
+}
 \def\pgfplotsplothandlerquiver{%
 	\pgfplotsresetplothandler
 	\let\pgf@plotstreamstart=\pgfplotsplothandlervisbegin@quiver
@@ -966,7 +1016,7 @@
 }%
 
 \def\pgfplots@prepare@source@parser@for@quiver#1#2{%
-	\pgfplots@prepare@source@parser@for{quiver}{#1}{#2}%
+	\pgfplots@prepare@source@parser@for{quiver/}{#1}{#2}%
 	\t@pgfplots@toka=\expandafter{#2}%
 	\t@pgfplots@tokb=\expandafter{\csname pgfplots@quiver@#1\endcsname}%
 	\edef#2{%
@@ -1112,7 +1162,8 @@
 	hist/data value/.code	=\pgfplots@set@source@for{hist/data}{#1}{0},%
 	hist/data/.code			=\pgfplots@set@source@for{hist/data}{#1}{1},%
 	hist/data filter/.code=,
-	hist/data={y},
+	hist/data value=\pgfkeysvalueof{/data point/y},
+%	hist/data=y,
 	hist/data min/.initial=\pgfkeysvalueof{/pgfplots/xmin},
 	hist/data max/.initial=\pgfkeysvalueof{/pgfplots/xmax},
 	hist/bins/.initial=10,
@@ -1122,6 +1173,10 @@
 	hist/cumulative/.is if=pgfplotsplothandlerhistogram@cumulative,
 	hist/cumulative/.default=true,
 	hist/handler/.style={/tikz/ybar interval},
+	hist/symbolic coords/.style={%
+		/pgfplots/symbolic coords={hist/data}{A,B,C,D,E,F,G,H,I,J},
+		/pgfplots/symbolic coords={x}{A,B,C,D,E,F,G,H,I,J},
+	},%
 }%
 \def\pgfplotsplothandlerhistogram{%
 	\pgfplotsresetplothandler
@@ -1136,7 +1191,7 @@
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@hist
 }%
 \def\pgfplotsplothandlersurveystart@hist{%
-	\pgfplots@prepare@source@parser@for{hist}{data}{\pgfplotsplothandlerhistogram@parse}%
+	\pgfplots@prepare@source@parser@for{hist/}{data}{\pgfplotsplothandlerhistogram@parse}%
 	%
 	\pgfkeysgetvalue{/pgfplots/hist/data min}\pgfplotsplothandlerhistogram@datamin
 	\edef\pgfplotsplothandlerhistogram@datamin{\pgfplotsplothandlerhistogram@datamin}%
@@ -1234,12 +1289,13 @@
 	\ifpgfplotsplothandlerhistogram@cumulative
 		\c@pgf@counta=0
 		\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
-			\pgfplotsplothandlerhistgetintervalstartfor\pgfplotsarrayforeachindex
 			\advance\c@pgf@counta by\pgfplots@hist@count\relax
 			\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
 			\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
 		}%
 	\fi
+	%
+	\pgfplots@curplot@threedimfalse
 	%
 	\pgfplotsset{/pgfplots/hist/handler}%
 	\pgfplotsresetplothandler
@@ -1250,19 +1306,34 @@
 	\let\pgfplots@current@point@z=\pgfutil@empty
 	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
 		\pgfplotsplothandlerhistgetintervalstartfor\pgfplotsarrayforeachindex
+		\pgfplotsplothandlerhist@invtrafo
 		\let\pgfplots@current@point@x\pgfmathresult%
 		\let\pgfplots@current@point@y\pgfplots@hist@count%
 		\pgfplotsplothandlersurveypoint
 	}%
 	\ifpgfplotsplothandlerhistogram@intervals
 		% replicate last count.
-		\let\pgfplots@current@point@x\pgfplotsplothandlerhistogram@datamax%
+		\let\pgfmathresult\pgfplotsplothandlerhistogram@datamax%
+		\pgfplotsplothandlerhist@invtrafo
+		\let\pgfplots@current@point@x\pgfmathresult%
 		\let\pgfplots@current@point@y\pgfplots@hist@count%
 		\pgfplotsplothandlersurveypoint
 	\fi
 	%
 	\pgfplotsplothandlersurveyend
 }
+\def\pgfplotsplothandlerhist@invtrafo{%
+	% This here might be inefficient, because
+	% there needs to be a compatible "x coord trafo" as well -- and
+	% that transformation will (most likely) do the very same thing as
+	% the hist/data coord trafo. 
+	%
+	% But I did not find a way to combine the transformations
+	% automatically without resorting to hackery.
+	%
+	% And: the performance impact might (hopefully) be small...
+	\pgfplots@coord@trafo@inv@for{hist/data}%
+}%
 \def\pgfplotsplothandlersurveyend@hist@loop#1{%
 	\def\pgfplots@loc@TMPa{#1}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
