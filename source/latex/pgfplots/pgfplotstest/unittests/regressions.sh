@@ -12,6 +12,7 @@ echo ${PROBLEMS//.diff.png/.tex}
 echo "I will now display each of them."
 	
 for A in $PROBLEMS; do
+	echo "./displayDiff.sh $A"
 	./displayDiff.sh $A
 done
 
