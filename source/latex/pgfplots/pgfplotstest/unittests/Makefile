@@ -65,7 +65,7 @@ WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH=1.3.1
-.SECONDARY: $(UNIT_PDF_REFERENCES)
+.SECONDARY: $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 # -------------------------------------------------
 
@@ -94,6 +94,7 @@ clean:
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		else \
 			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
+			echo "  (if not a bug: 'echo \"`cat $@`\" > $@.accepted')"; \
 			echo "  Call './displayDiff.sh $@.png' (see summarize of regressions.sh)"; \
 			rm $@; # make sure it will be recomputed! \
 			false; \
@@ -146,7 +147,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
-	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION OF $@ FAILED." $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
 else
 #disable dynamic reference (re-)creation:
@@ -158,5 +159,5 @@ endif
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION OF $@ FAILED." $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
