@@ -67,17 +67,18 @@ TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH=1.3.1
 .SECONDARY: $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
+$(shell mkdir -p gnuplot references/gnuplot)
 # -------------------------------------------------
 
 .NOTPARALLEL:
 
 # .PRECIOUS: $(UNIT_PNGS)
 
-.PHONY: references pdf png  cleanreferences clean
+.PHONY: references pdf png  cleanreferences clean setupdirs
 
 diff: $(DIFF_MEASURES) 
 
-pdf: $(UNIT_PDFS) setupdirs
+pdf: $(UNIT_PDFS) 
 
 clean:
 	rm -f $(DIFF_MEASURES) $(UNIT_PDFS)
@@ -126,7 +127,7 @@ references: $(UNIT_PDF_REFERENCES)
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
-references/%.pdf: %.tex %.checkoutreferencerev.sh setupdirs
+references/%.pdf: %.tex %.checkoutreferencerev.sh 
 	@echo "$<: generating $@"; \
 	REFERENCE_SCRIPT=$(<:.tex=.checkoutreferencerev.sh);\
 	#echo "  checking out reverence revision to $(TMP_REPOSITORY)..."; \
@@ -157,9 +158,7 @@ references/%.pdf: %.tex
 endif
 
 # make sure this rule is AFTER references/%.pdf !
-%.pdf: %.tex
+%.pdf: %.tex 
 	@echo "$@: recompiling $< ..."
 	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
-setupdirs:
-	mkdir -p references/gnuplot gnuplot
