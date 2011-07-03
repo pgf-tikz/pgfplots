@@ -75,9 +75,9 @@ AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 
 .PHONY: references pdf png  cleanreferences clean
 
-diff: $(DIFF_MEASURES)
+diff: $(DIFF_MEASURES) 
 
-pdf: $(UNIT_PDFS)
+pdf: $(UNIT_PDFS) setupdirs
 
 clean:
 	rm -f $(DIFF_MEASURES) $(UNIT_PDFS)
@@ -126,7 +126,7 @@ references: $(UNIT_PDF_REFERENCES)
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
-references/%.pdf: %.tex %.checkoutreferencerev.sh
+references/%.pdf: %.tex %.checkoutreferencerev.sh setupdirs
 	@echo "$<: generating $@"; \
 	REFERENCE_SCRIPT=$(<:.tex=.checkoutreferencerev.sh);\
 	#echo "  checking out reverence revision to $(TMP_REPOSITORY)..."; \
@@ -161,3 +161,5 @@ endif
 	@echo "$@: recompiling $< ..."
 	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
+setupdirs:
+	mkdir -p references/gnuplot gnuplot
