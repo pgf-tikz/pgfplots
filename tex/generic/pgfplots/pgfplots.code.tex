@@ -4000,12 +4000,21 @@
 \long\def\pgfplots@show@small@legendplots#1#2{%
 	\begingroup
 	\pgfplots@define@currentplotstyle@as{#1,#2}%
+	\pgfplots@restore@state@before@legend@style
 	\scope[/tikz/current plot style,/pgfplots/every legend image post]% this scoping construction allows plot styles to change 'legend image code'.
 		\pgfkeysvalueof{/pgfplots/legend image code/.@cmd}\pgfeov
 	\endscope
 	\endgroup
 	%\pgfkeysvalueof{/pgfplots/legend image code/.@cmd}{/pgfplots/.cd,#1,#2}\pgfeov
 }
+
+% A work-around method to undo the 'every axis legend' style.
+%
+% It is called within legend's cell pictures in order to undo global
+% settings like stroke colors or the-like.
+\def\pgfplots@restore@state@before@legend@style{%
+	\pgfsetfillcolor{black}% 
+}%
 
 \def\pgfplots@split@opts{%
 	\pgfutil@ifnextchar[{%
@@ -4037,6 +4046,7 @@
 			\expandafter\pgfplots@assign@list\expandafter\pgfplots@legend\expandafter{\pgfplots@legend}%
 			\pgfplotslistcheckempty\pgfplots@legend
 		\fi
+%\message{Legend: \meaning\pgfplots@legend^^J}%
 		\ifpgfplotslistempty
 		\else
 		\ifpgfplots@reverse@legend
@@ -4189,7 +4199,7 @@
 		\let\pgfplots@already@computed@legend@node=\pgfplots@glob@TMPa
 		\fi
 	\fi
-%\pgfplots@message{Vor legende: \meaning\pgfplots@already@computed@legend@node^^J}%
+%\message{Vor legende: \meaning\pgfplots@already@computed@legend@node^^J}%
 	\ifx\pgfplots@createlegend@toname\pgfutil@empty
 		% DRAW:
 		\pgfplots@already@computed@legend@node
@@ -4708,7 +4718,7 @@
 		%
 		% Convert any user-specified ticks:
 		\edef\pgfplots@loc@TMPa{\csname pgfplots@#1tick\endcsname}%
-		% this here should also work with 'xtick=\pgfutil@empty', the "No tick" command.
+		% this here should also work with 'xtick=\empty', the "No tick" command.
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
 			\def\pgfplots@loc@TMPb{data}%
@@ -4967,12 +4977,18 @@
 	\fi
 	\ifpgfplots@determinedefaultvalues@needs@check@uniformtick
 		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
-		\pgfplots@if{pgfplots@#1islinear}{%
-			\def\pgfplots@loc@TMPb{\expandafter\pgfplots@checkisuniformLINEARtick\expandafter{\pgfplots@loc@TMPa}}%
-			\expandafter\pgfplots@loc@TMPb\csname pgfplots@tick@distance@#1\endcsname%
-		}{%
-			\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@loc@TMPa}%
-		}%
+		\edef\pgfplots@loc@TMPb{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPb\pgfutil@empty
+			% there are no ticks left.
+			\pgfplots@isuniformtickfalse
+		\else
+			\pgfplots@if{pgfplots@#1islinear}{%
+				\def\pgfplots@loc@TMPb{\expandafter\pgfplots@checkisuniformLINEARtick\expandafter{\pgfplots@loc@TMPa}}%
+				\expandafter\pgfplots@loc@TMPb\csname pgfplots@tick@distance@#1\endcsname%
+			}{%
+				\expandafter\pgfplots@checkisuniformLOGtick\expandafter{\pgfplots@loc@TMPa}%
+			}%
+		\fi
 	\fi
 	\pgfplots@check@for@minor@ticks{#1}%
 	\ifpgfplots@isuniformtick
@@ -8180,13 +8196,14 @@
 		\fi
 		%
 		% any user specified axis ticks:
-		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
+		\edef\pgfplots@loc@TMPa{\csname pgfplots@#1tick\endcsname}%
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
 			\def\pgfplots@loc@TMPb{data}%
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 				% #1tick=data is handled elsewhere...
 			\else
+				\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
 				\expandafter\pgfplots@filter@input@ticks@with@highleveltrafo\expandafter{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPc}%
 				\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfmathresult}%
 			\fi
@@ -8310,13 +8327,14 @@
 			\fi
 			%
 			% any user specified axis ticks:
-			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1tick\endcsname}%
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
 			\else
 				\def\pgfplots@loc@TMPb{data}%
 				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 					% #1tick=data is handled elsewhere...
 				\else
+					\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
 					\expandafter\pgfplots@filter@input@ticks@with@log\expandafter{\pgfplots@loc@TMPa}{#1}%
 					\expandafter\edef\csname pgfplots@#1tick\endcsname{\pgfmathresult}%
 				\fi
@@ -9363,7 +9381,7 @@
 		%
 		\pgfplots@check@for@default@plot@mark%
 		%
-		% As of February 22, the final plot processing uses
+		% the final plot processing uses
 		% foreach stored \addplot command :
 		%   \scope[current plot style]
 		%   <finalize coord stream>
