@@ -2853,6 +2853,12 @@
 	}%
 }%
 
+% Assumes that #2 is a macro, parses it as number with "coord math choice" #1, and overwrites it with the result.
+\def\pgfplotscoordmathparsemacro#1#2{%
+	\pgfplotscoordmath{#1}{parsenumber}{#2}\let#2=\pgfmathresult
+}%
+
+
 \pgfplotsdeclarecoordmath{pgfbasic}{%
 	parsenumber=\pgfmathfloatparsenumber{#1}\pgfmathfloattofixed\pgfmathresult,
 	suffix=@basic@,
@@ -7189,11 +7195,6 @@
 	%
 	% It is prepared here to eliminate if's.
 	\xdef\pgfplots@coord@stream@finalize@currentpt{%
-		\ifpgfplots@curplot@threedim
-			\E\pgfplotsqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{\E\pgfplots@current@point@z}%
-		\else
-			\E\pgfplotsqpointxy{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}%
-		\fi
 		%
 		\ifpgfplots@record@marker@stream
 			% remember the position (x,y) for markers.
@@ -7219,12 +7220,23 @@
 		\ifx\pgfplots@current@point@x\pgfutil@empty% this realizes `unbounded coords=jump', for example
 			\pgfplotsplothandlervisualizejump
 		\else
-			\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
-			\pgfplotsaxisvisphasepreparedatapoint
+			\pgfplotsaxisvisphasegetpoint
 			\pgfplots@coord@stream@finalize@currentpt
 		\fi
 	}%
 }
+
+% Takes the current point (defined by a set of macros) as input and defines \pgf@x and \pgf@y 
+% as the output point.
+\def\pgfplotsaxisvisphasegetpoint{%
+	\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
+	\pgfplotsaxisvisphasepreparedatapoint
+	\ifpgfplots@curplot@threedim
+		\pgfplotsqpointxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
+	\else
+		\pgfplotsqpointxy{\pgfplots@current@point@x}{\pgfplots@current@point@y}%
+	\fi
+}%
 
 \def\pgfplots@check@for@default@plot@mark{%
 	% make sure there is a mark set!
@@ -7339,6 +7351,100 @@
 	\fi
 }%
 
+\def\pgfplots@plot@timer{%
+	\pgfplotstransformplotattime{\tikz@time}%
+}
+\def\pgfplotstransformplotattime#1{%
+  \pgftransformshift{\pgfplotspointplotattime{#1}}%
+  \ifpgfresetnontranslationattime%
+    \pgftransformresetnontranslations%
+  \fi%
+  \ifpgfslopedattime%
+	\pgfplotsplothandlertransformslopedattime{#1}{\pgfplotspointplotattimefirst}{\pgfplotspointplotattimesecond}%
+  \fi%
+}
+
+% Sets (\pgf@x,\pgf@y) to the point of the current plot with fraction #1.
+% For #1 = 0, this is the first point.
+% For #1 = 1, this is the last point.
+% For #1 = 0.5, it is the middle of the plot.
+% This method will work for most plot handlers, although some of them might be unsupported.
+%
+% As a side-effect, it defines the (global) macros \pgfplotspointplotattimefirst and \pgfplotspointplotattimesecond
+% in order to allow the computation of gradients. These macros can be decoded using
+% \pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimesecond
+% \pgfplotsaxisvisphasegetpoint
+\def\pgfplotspointplotattime#1{%
+	\begingroup
+	\def\pgfplots@coord@stream@start@{%
+		\def\pgfplots@last{}%
+		\pgfplotscoordmath{default}{zero}%
+		\let\pgfplots@len@total=\pgfmathresult
+	}%
+	\def\pgfplotspointattime@do{}%
+	\def\pgfplots@coord@stream@coord@{%
+		\ifx\pgfplots@last\pgfutil@empty
+		\else
+%\message{\pgfplots@len@total^^J}%
+			\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+			\pgfplotsplothandlersurveydifflen{\pgfplots@last}{\pgfplots@cur}%
+			\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
+			\let\pgfplots@len@total=\pgfmathresult
+			\pgfplotspointattime@do
+			%
+		\fi
+		\pgfplotsplothandlerserializepointto{\pgfplots@last}%
+	}%
+	\def\pgfplots@coord@stream@end@{}%
+	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+	%
+	% Now, we have the total length. Now, try to find time #1!
+	\edef\pgfplots@time{#1}%
+	\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
+	%
+	\let\pgfplots@len@total@=\pgfplots@len@total
+	%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total@}}%
+	\let\pgfplots@len@thresh=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{zero}%
+	\let\pgfplots@len@last=\pgfmathresult
+%\message{total length=\pgfplots@len@total@; target len \pgfplots@len@thresh\space (#1)^^J}
+	%
+	\def\pgfplots@HIT{0}%
+	\def\pgfplotspointattime@do{%
+		\pgfplotscoordmath{default}{if less than}
+			{\pgfplots@len@thresh}
+			{\pgfplots@len@total}
+			{% HIT!
+				\def\pgfplots@HIT{1}%
+				\pgfplotspointattime@pointbetween@two
+				\let\pgfplots@coord@stream@coord@=\relax
+			}{%
+			}%
+		\let\pgfplots@len@last=\pgfplots@len@total
+	}%
+	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+	\if\pgfplots@HIT0%
+		\pgfplotspointattime@pointbetween@two
+	\fi
+	\endgroup
+}
+\def\pgfplotspointattime@pointbetween@two{%
+	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@len@thresh}{\pgfplots@len@last}}%
+	\let\pgfplots@tmp=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@len@total}{\pgfplots@len@last}}%
+	\pgfplotscoordmath{default}{op}{divide}{{\pgfplots@tmp}{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	\let\pgfplots@time@between@two=\pgfmathresult
+%\message{HIT between \pgfplots@len@last\space and \pgfplots@len@total\space (\pgfplots@time@between@two)^^J}%
+	\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+	\pgfplotsplothandlersurveypointattime{\pgfplots@time@between@two}{\pgfplots@last}{\pgfplots@cur}%
+	\pgfplotsaxisvisphasegetpoint
+	\global\let\pgfplotspointplotattimefirst=\pgfplots@last
+	\global\let\pgfplotspointplotattimesecond=\pgfplots@cur
+}%
+
 % INPUT: 
 % 	either floating point or fixed point coordinates (depending on the
 % 	state of the \ifpgfplots@apply@datatrafo boolean)
@@ -7360,6 +7466,8 @@
 	\pgfutil@ifundefined{pgfplotlastpoint}{}{%
 		\tikz@make@last@position{\pgfplotlastpoint}%  
 	}%
+	\let\pgfplots@plot@timer@args=\pgfplots@coord@stream@finalize@storedcoords@START@coords
+	\let\tikz@timer=\pgfplots@plot@timer%
 	\endpgfextra
 	#2;
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty

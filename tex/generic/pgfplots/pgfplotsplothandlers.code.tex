@@ -53,6 +53,10 @@
 % \pgfplotsplothandlerserializestateto
 % \pgfplotsplothandlerdeserializepointfrom
 %
+% in addition, there are utility macros
+% \pgfplotsplothandlersurveydifflen#1#2
+% \pgfplotsplothandlersurveypointattime#1#2#3
+%
 % The idea is as follows:
 % During \addplot, PGFPLots performs a survey phase. Survey means:
 % nothing will be drawn, only stats will be collected. In this phase,
@@ -261,6 +265,7 @@
 % 	else
 % 		pgfplots calls \pgfplotsaxisvisphasetransformcoordinate
 % 		pgfplots calls \pgfplotsaxisvisphasepreparedatapoint
+% 		pgfplots calls either \pgfplotsqpointxyz or \pgfplotsqpointxy
 % 	fi
 % 	\pgfplotstreampoint
 % }
@@ -274,6 +279,10 @@
 % - \pgfplotsaxisvisphasetransformpointmeta to set up point meta.
 % Use this only if there *is* point meta, see
 % \pgfplotsaxisifhaspointmeta{<true code>}{<false code>}.
+%
+% - \pgfplotsaxisvisphasegetpoint
+%   does not take arguments. It takes the current point as input and
+%   sets \pgf@x, \pgf@y to the final result.
 %
 % 4. API Functions of pgfplots to work with the visualization phases
 %
@@ -307,6 +316,9 @@
 	\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@default
 	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlervisualizejump@default
 	\let\pgfplotsplothandlernotifyscanlinecomplete=\relax
+	\let\pgfplotsplothandlersurveydifflen=\pgfplotsplothandlersurveydifflen@default
+	\let\pgfplotsplothandlersurveypointattime=\pgfplotsplothandlersurveypointattime@default
+	\let\pgfplotsplothandlertransformslopedattime=\pgfplotsplothandlertransformslopedattime@default
 }%
 
 % \pgfplotsplothandlersurveystart
@@ -406,6 +418,115 @@
 	\pgfplotstreamstart
 }%
 
+% \pgfplotsplothandlersurveypointattime#1#2#3
+%
+% sets the current environment to a point which is between points #2
+% and #3, using the fraction #1.
+%
+% #1 a fraction (a number between 0 and 1) in the format of
+% \pgfplotscoordmath{default}
+% #2 a serialized point
+% #3 a serialized point
+%
+% POSTCONDITION: the current point will be set to the point
+% in-between.
+\def\pgfplotsplothandlersurveypointattime@default#1#2#3{%
+	\begingroup
+	\pgfplotsplothandlerdeserializepointfrom{#2}%
+	\let\pgfplots@last@x=\pgfplots@current@point@x
+	\let\pgfplots@last@y=\pgfplots@current@point@y
+	\let\pgfplots@last@z=\pgfplots@current@point@z
+	\pgfplotsplothandlerdeserializepointfrom{#3}%
+	%
+	\def\pgfplots@loc@TMPa##1{%
+		\pgfplotscoordmath{##1}{op}{subtract}{{\csname pgfplots@current@point@##1\endcsname}{\csname pgfplots@last@##1\endcsname}}%
+		\let\pgfplots@diff=\pgfmathresult
+		\pgfplotscoordmathparsemacro{##1}{#1}%
+		\pgfplotscoordmath{##1}{op}{multiply}{{\pgfmathresult}{\pgfplots@diff}}%
+		\pgfplotscoordmath{##1}{op}{add}{{\csname pgfplots@last@##1\endcsname}{\pgfmathresult}}%
+		\expandafter\let\csname pgfplots@current@point@##1\endcsname=\pgfmathresult
+	}%
+	\pgfplots@loc@TMPa x%
+	\pgfplots@loc@TMPa y%
+	\ifpgfplots@curplot@threedim
+		\pgfplots@loc@TMPa z%
+	\fi
+	\xdef\pgfplots@glob@TMPb{%
+		\noexpand\def\noexpand\pgfplots@current@point@x{\pgfplots@current@point@x}%
+		\noexpand\def\noexpand\pgfplots@current@point@y{\pgfplots@current@point@y}%
+		\noexpand\def\noexpand\pgfplots@current@point@z{\pgfplots@current@point@z}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPb
+}%
+
+% \pgfplotsplothandlersurveydifflen#1#2
+%
+% computes the length between two points which are given in logical
+% coordinates. 
+% #1 a serialized point
+% #2 a serialized point
+\def\pgfplotsplothandlersurveydifflen@default#1#2{%
+	\begingroup
+		\pgfplotsplothandlerdeserializepointfrom{#1}%
+		\let\pgfplots@last@x=\pgfplots@current@point@x
+		\let\pgfplots@last@y=\pgfplots@current@point@y
+		\let\pgfplots@last@z=\pgfplots@current@point@z
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+		\pgfplotscoordmathparsemacro{default}\pgfplots@last@x
+		\pgfplotscoordmathparsemacro{default}\pgfplots@last@y
+		\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@x
+		\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@y
+		\ifpgfplots@curplot@threedim
+			\pgfplotscoordmathparsemacro{default}\pgfplots@last@z
+			\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@z
+		\fi
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@x}{\pgfplots@last@x}}%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+		\let\pgfplots@diff@x=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@y}{\pgfplots@last@y}}%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+		\let\pgfplots@diff@y=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@diff@x}{\pgfplots@diff@y}}%
+		\let\pgfplots@len=\pgfmathresult
+		\ifpgfplots@curplot@threedim
+			\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@z}{\pgfplots@last@z}}%
+			\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+			\let\pgfplots@diff@z=\pgfmathresult
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@len}{\pgfplots@diff@z}}%
+			\let\pgfplots@len=\pgfmathresult
+		\fi
+		\pgfplotscoordmath{default}{op}{sqrt}{{\pgfplots@len}}%
+		\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+\def\pgfplotsplothandlertransformslopedattime@default#1#2#3{%
+    \pgf@process{%
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+		\pgfplotsaxisvisphasegetpoint
+	}%
+    \pgf@xa=\pgf@x% xb/yb = start point
+    \pgf@ya=\pgf@y%
+    \pgf@process{%
+		\pgfplotsplothandlerdeserializepointfrom{#3}%
+		\pgfplotsaxisvisphasegetpoint
+	}%
+    \advance\pgf@x by-\pgf@xa%
+    \advance\pgf@y by-\pgf@ya%
+    \ifpgfallowupsidedownattime%
+    \else%
+      \ifdim\pgf@x<0pt%   
+        \pgf@x=-\pgf@x%
+        \pgf@y=-\pgf@y%
+      \fi%
+    \fi%
+    \pgfpointnormalised{}% x/y = normalised vector
+    \pgf@ya=-\pgf@y%
+    \pgftransformcm%
+    {\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
+    {\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+}%
 \pgfplotsresetplothandler
 
 % ==================================
