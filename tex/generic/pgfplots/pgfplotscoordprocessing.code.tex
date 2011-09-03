@@ -7383,44 +7383,75 @@
 % \pgfplotsaxisvisphasegetpoint
 \def\pgfplotspointplotattime#1{%
 	\begingroup
+	%
+	\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
+	%
 	\def\pgfplots@coord@stream@start@{%
-		\def\pgfplots@last{}%
+		\ifx\pgfplots@pos@segment\pgfutil@empty
+			\let\c@pgfplots@segments=\pgfutil@empty
+		\else
+			\def\c@pgfplots@segments{0}%
+			\c@pgf@countd=\pgfplots@pos@segment\relax
+			\edef\pgfplots@pos@segment{\the\c@pgf@countd}%
+		\fi
 		\pgfplotscoordmath{default}{zero}%
 		\let\pgfplots@len@total=\pgfmathresult
+		\let\pgfplots@last@processed=\pgfutil@empty
+		\def\pgfplots@last@was@empty{1}%
 	}%
 	\def\pgfplotspointattime@do{}%
 	\def\pgfplots@coord@stream@coord@{%
-		\ifx\pgfplots@last\pgfutil@empty
+%\message{plot at time (#1, segment \pgfplots@pos@segment): processing (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)^^J}%
+		\ifx\pgfplots@current@point@x\pgfutil@empty
+			\if1\pgfplots@last@was@empty
+			\else
+				% oh. a jump... start new length segment
+				\ifx\c@pgfplots@segments\pgfutil@empty
+				\else
+					\ifx\pgfplots@pos@segment\c@pgfplots@segments
+						\let\pgfplots@coord@stream@coord@=\relax
+					\fi
+					\pgfplotsutil@advancestringcounter\c@pgfplots@segments
+				\fi
+			\fi
+			\let\pgfplots@last@processed=\pgfutil@empty
+			\def\pgfplots@last@was@empty{1}%
 		\else
-%\message{\pgfplots@len@total^^J}%
-			\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-			\pgfplotsplothandlersurveydifflen{\pgfplots@last}{\pgfplots@cur}%
-			\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
-			\let\pgfplots@len@total=\pgfmathresult
-			\pgfplotspointattime@do
-			%
+			\ifx\pgfplots@pos@segment\c@pgfplots@segments
+				\ifx\pgfplots@last@processed\pgfutil@empty
+				\else
+					\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+					\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
+					\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
+					\let\pgfplots@len@total=\pgfmathresult
+%\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplots@len@total^^J}%
+					\pgfplotspointattime@do
+				\fi
+				%
+				\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+			\fi
+			\def\pgfplots@last@was@empty{0}%
 		\fi
-		\pgfplotsplothandlerserializepointto{\pgfplots@last}%
 	}%
 	\def\pgfplots@coord@stream@end@{}%
+	\let\pgfplots@coord@stream@coord@orig=\pgfplots@coord@stream@coord@
 	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
 	%
 	% Now, we have the total length. Now, try to find time #1!
 	\edef\pgfplots@time{#1}%
 	\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
 	%
-	\let\pgfplots@len@total@=\pgfplots@len@total
-	%
-	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total@}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total}}%
 	\let\pgfplots@len@thresh=\pgfmathresult
 	%
 	\pgfplotscoordmath{default}{zero}%
 	\let\pgfplots@len@last=\pgfmathresult
 	\let\pgfplots@len@last@last=\pgfplots@len@last
-%\message{total length=\pgfplots@len@total@; target len \pgfplots@len@thresh\space (#1)^^J}
+%\message{plot at time (#1, segment \pgfplots@pos@segment): total length=\pgfplots@len@total; target len \pgfplots@len@thresh\space (#1)^^J}%
 	%
 	\def\pgfplots@HIT{0}%
 	\let\pgfplots@last@last=\pgfutil@empty
+	\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@orig
 	\def\pgfplotspointattime@do{%
 		\pgfplotscoordmath{default}{if less than}
 			{\pgfplots@len@thresh}
@@ -7433,11 +7464,12 @@
 			}%
 		\let\pgfplots@len@last@last=\pgfplots@len@last
 		\let\pgfplots@len@last=\pgfplots@len@total
-		\let\pgfplots@last@last=\pgfplots@last
+		\let\pgfplots@last@last=\pgfplots@last@processed
+		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 	}%
 	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
 	\if\pgfplots@HIT0%
-		\let\pgfplots@last=\pgfplots@last@last
+		\let\pgfplots@last@processed=\pgfplots@last@last
 		\let\pgfplots@len@last=\pgfplots@len@last@last
 		\pgfplotspointattime@pointbetween@two
 	\fi
@@ -7451,13 +7483,12 @@
 	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 	\let\pgfplots@time@between@two=\pgfmathresult
 %\message{HIT between \pgfplots@len@last\space and \pgfplots@len@total\space (\pgfplots@time@between@two)^^J}%
-	\ifx\pgfplots@last\pgfutil@empty
+	\ifx\pgfplots@last@processed\pgfutil@empty
 	\else
-		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-		\pgfplotsplothandlersurveypointattime{\pgfplots@time@between@two}{\pgfplots@last}{\pgfplots@cur}%
+		\pgfplotsplothandlersurveypointattime{\pgfplots@time@between@two}{\pgfplots@last@processed}{\pgfplots@cur}%
 	\fi
 	\pgfplotsaxisvisphasegetpoint
-	\global\let\pgfplotspointplotattimefirst=\pgfplots@last
+	\global\let\pgfplotspointplotattimefirst=\pgfplots@last@processed
 	\global\let\pgfplotspointplotattimesecond=\pgfplots@cur
 }%
 
