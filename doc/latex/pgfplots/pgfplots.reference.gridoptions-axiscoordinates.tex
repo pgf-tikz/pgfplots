@@ -43,7 +43,22 @@ Grid lines will be drawn before tick lines are processed, so ticks will be drawn
 \end{pgfplotsxykeylist}
 
 
-\subsection{Accessing Axis Coordinates for Annotations}
+\subsection{Custom Annotations}
+Often, one may want to add custom drawing elements or descriptive texts to an axis. These graphical elements should be associated to some logical coordinate, grid point, or perhaps just somewhere into the axis.
+
+\PGFPlots\ assists with the following ways for how to add annotations:
+\begin{enumerate}
+	\item You can explicitly provide any \Tikz\ instruction like |\draw ... ;| into the axis. Here, the |axis cs| allows
+	to provide coordinates of \PGFPlots.
+
+	Furthermore, |rel axis cs| allows to position \Tikz\ elements relatively (like ``$50\%$ of the width).
+	\item \PGFPlots\ can automatically generate nodes at every coordinate using its |nodes near coords| feature.
+	\item \PGFPlots\ can automatically generate \Tikz\ labels for every coordinate (FIXME).
+	\item \PGFPlots\ allows you to place nodes on a plot, using the |\addplot ... node[pos=|\meta{fraction}|] {};| feature.
+\end{enumerate}
+This section explains all of the approaches, except for the |nodes near coords| feature which is documented in its own section.
+
+\subsubsection{Accessing Axis Coordinates in Graphical Elements}
 \label{sec:axis:coords}%
 \begin{coordinatesystem}{axis cs}
 \PGFPlots\ provides a new coordinate system for use inside of an axis, the ``axis coordinate system'', |axis cs|.
@@ -176,3 +191,90 @@ There is also a low--level interface to access the transformations and coordinat
 
 	The initial configuration |true| means that points placed with |rel axis cs| and/or |ticklabel cs| will be at the same position inside of the axes even if its ordering has been reversed. The choice |false| will disable the special treatment of |x dir=reverse|.
 \end{pgfplotskey}
+
+\subsubsection{Placing Nodes on Coordinates of a Plot}
+The |\addplot| command is not only used for \PGFPlots, it can also carry additional drawing instructions which are handed over to \Tikz\ after the plot's path is complete. Among others, this can be used to add further nodes on the path.
+
+\begin{key}{/tikz/pos=\marg{fraction}}
+	The \meta{fraction} identifies a part of the recently completed plot if it is used before the trailing semicolon:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot[blue,domain=0:360] {sin(x)} 
+	[yshift=8pt]
+		node[pos=0] {$0$} 
+		node[pos=0.25] {$\pi/2$}
+		node[pos=0.5] {$\pi$}
+		node[pos=0.75] {$3/2\pi$}
+		node[pos=1] {$2\pi$}
+	;
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent Here, the |[yshift=8pt]| tells \Tikz\ to shift all following nodes upwards. The |node[pos=0] {$0$}| instruction tells \Tikz\ to add a text node at $0\%$ of the recently completed plot. The relative position $0\%$ (|pos=0|) refers to the first coordinate which has been seen by \PGFPlots, and $100\%$ (|pos=1|) refers to the last coordinate. Any value between $0$ and $1$ is interpolated inbetween. Note that all these nodes belong to the plot's visualization (which is terminated by the semicolon). Consequently, all these nodes inherit the same graphic settings (like color choices).
+
+	The position on the plot is computed by \PGFPlots\ using \emph{logical} coordinates. In other words: it computes the overal length of the curve before the curve is projected to screen coordinates and identifies the desired position. Afterwards, it projects the final position to screen coordinates. Thus, the |pos|ition identifies a position on the plot which is always the same, even in case of a rotated three-dimensional axis. \PGFPlots\ will linearly interpolate the fraction between successive coordinates.
+
+	Valid choices for \meta{fraction} are any numbers in the range $[0,1]$.
+\end{key}
+
+\begin{key}{/tikz/sloped (initially false)}
+	Providing the \Tikz\ key |sloped| to a node identified by |pos| causes it to be rotated such that it adapts to the plot's gradient.
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+	\addplot[blue,domain=0:360] {sin(x)} 
+	[every node/.style={yshift=8pt},sloped]
+		node[pos=0] {$0$} 
+		node[pos=0.25] {$\pi/2$}
+		node[pos=0.5] {$\pi$}
+		node[pos=0.75] {$3/2\pi$}
+		node[pos=1] {$2\pi$}
+	;
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Note that the sequence in which |sloped| and shift transformations are applied is important: if shifts are applied first (as would be the case without the |every node/.style| construction), the shifts do not respect the rotation. If |sloped| is applied first, any subsequent shifts will be applied in the \emph{rotated} coordinates. Thus, the case |every node/.style={yshift=8pt}| shifts every node by |8pt| in direction of its normal vector.
+\end{key}
+
+\begin{key}{/tikz/allow upside down=\mchoice{true,false} (initially false)}
+	If |/tikz/sloped| is enabled and one has some difficult line plot, the transformation may cause nodes to be drawn upside down. The default configuration |allow upside down=false| will switch the rotation matrix, whereas |allow upside down| allows this case.
+\end{key}
+
+\begin{key}{/tikz/pos segment=\marg{segment index} (initially empty)}
+	Occasionally, one has a single plot which consists of multiple segments (like those generated by |empty line=jump| or |contour prepared|). The individual segments will typically have different lengths, so it is tedious to identify a position on one of these segments.
+
+	If |pos segment=|\meta{segment index} is provided, the key |pos=|\meta{fraction} is interpreted relative to the provided segment rather than the whole plot. The argument \meta{segment index} is an integer, where $0$ denotes the first segment.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[tiny]
+\addplot coordinates {
+	(0,0) (1,0) 
+
+	(1,1) (2,1)
+}
+	[pos segment=0,yshift=7pt,font=\footnotesize]
+	node[pos=0] {0} node[pos=0.5] {0.5} node[pos=1] {1};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Here, the plot has two segments. However, all three annotation nodes are placed with |pos segment=0|.
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+\addplot3[contour gnuplot,domain=0:1] {x*y}
+	[sloped,
+	 allow upside down,
+	 pos segment=2,
+	 every node/.style={yshift=7pt}]
+	node[pos=0] {0} node[pos=0.5] {0.5} node[pos=1] {1}
+	;
+
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	This plot has four segments (which are generated automatically by the plot handler). The annotation nodes are placed
+	on the third segment, where |sloped| causes them to be rotated, |allow upside down| improves the rendering of the `$0$', and |every node/.style| install a shift in direction of the normal vector (see the documentation of |sloped| for details).
+\end{key}
+
