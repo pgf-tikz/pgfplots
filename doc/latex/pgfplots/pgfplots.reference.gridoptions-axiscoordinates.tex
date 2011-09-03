@@ -44,16 +44,16 @@ Grid lines will be drawn before tick lines are processed, so ticks will be drawn
 
 
 \subsection{Custom Annotations}
-Often, one may want to add custom drawing elements or descriptive texts to an axis. These graphical elements should be associated to some logical coordinate, grid point, or perhaps just somewhere into the axis.
+Often, one may want to add custom drawing elements or descriptive texts to an axis. These graphical elements should be associated to some logical coordinate, grid point, or perhaps they should just be placed somewhere into the axis.
 
-\PGFPlots\ assists with the following ways for how to add annotations:
+\PGFPlots\ assists with the following ways when it comes to annotations:
 \begin{enumerate}
 	\item You can explicitly provide any \Tikz\ instruction like |\draw ... ;| into the axis. Here, the |axis cs| allows
 	to provide coordinates of \PGFPlots.
 
-	Furthermore, |rel axis cs| allows to position \Tikz\ elements relatively (like ``$50\%$ of the width).
+	Furthermore, |rel axis cs| allows to position \Tikz\ elements relatively (like ``$50\%$ of the axis' width).
 	\item \PGFPlots\ can automatically generate nodes at every coordinate using its |nodes near coords| feature.
-	\item \PGFPlots\ can automatically generate \Tikz\ labels for every coordinate (FIXME).
+	%\item \PGFPlots\ can automatically generate \Tikz\ labels for every coordinate (FIXME).
 	\item \PGFPlots\ allows you to place nodes on a plot, using the |\addplot ... node[pos=|\meta{fraction}|] {};| feature.
 \end{enumerate}
 This section explains all of the approaches, except for the |nodes near coords| feature which is documented in its own section.
@@ -214,9 +214,9 @@ The |\addplot| command is not only used for \PGFPlots, it can also carry additio
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
-\noindent Here, the |[yshift=8pt]| tells \Tikz\ to shift all following nodes upwards. The |node[pos=0] {$0$}| instruction tells \Tikz\ to add a text node at $0\%$ of the recently completed plot. The relative position $0\%$ (|pos=0|) refers to the first coordinate which has been seen by \PGFPlots, and $100\%$ (|pos=1|) refers to the last coordinate. Any value between $0$ and $1$ is interpolated inbetween. Note that all these nodes belong to the plot's visualization (which is terminated by the semicolon). Consequently, all these nodes inherit the same graphic settings (like color choices).
+\noindent Here, the |[yshift=8pt]| tells \Tikz\ to shift all following nodes upwards. The |node[pos=0] {$0$}| instruction tells \Tikz\ to add a text node at $0\%$ of the recently completed plot. The relative position $0\%$ (|pos=0|) refers to the first coordinate which has been seen by \PGFPlots, and $100\%$ (|pos=1|) refers to the last coordinate. Any value between $0$ and $1$ is interpolated in-between. Note that all these nodes belong to the plot's visualization (which is terminated by the semicolon). Consequently, all these nodes inherit the same graphic settings (like color choices).
 
-	The position on the plot is computed by \PGFPlots\ using \emph{logical} coordinates. In other words: it computes the overal length of the curve before the curve is projected to screen coordinates and identifies the desired position\footnote{This can be a time-consuming process. Consider using the external library if you have lots of such figures.}. Afterwards, it projects the final position to screen coordinates. Thus, the |pos|ition identifies a position on the plot which is always the same, even in case of a rotated three-dimensional axis. \PGFPlots\ will linearly interpolate the fraction between successive coordinates.
+	The position on the plot is computed by \PGFPlots\ using \emph{logical} coordinates. That means: it computes the overall length of the curve before the curve is projected to screen coordinates and identifies the desired position\footnote{This can be a time-consuming process. Consider using the external library if you have lots of such figures.}. Afterwards, it projects the final position to screen coordinates. Thus, the position identifies a location on the plot which is always the same, even in case of a rotated three-dimensional axis. \PGFPlots\ will linearly interpolate the fraction between successive coordinates.
 
 	Valid choices for \meta{fraction} are any numbers in the range $[0,1]$.
 
@@ -229,7 +229,7 @@ The |\addplot| command is not only used for \PGFPlots, it can also carry additio
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}
-	\addplot[blue,domain=0:360] {sin(x)} 
+	\addplot[blue,domain=0:360,samples=31] {sin(x)} 
 	[every node/.style={yshift=8pt},sloped]
 		node[pos=0] {$0$} 
 		node[pos=0.25] {$\pi/2$}
@@ -241,6 +241,23 @@ The |\addplot| command is not only used for \PGFPlots, it can also carry additio
 \end{tikzpicture}
 \end{codeexample}
 	Note that the sequence in which |sloped| and shift transformations are applied is important: if shifts are applied first (as would be the case without the |every node/.style| construction), the shifts do not respect the rotation. If |sloped| is applied first, any subsequent shifts will be applied in the \emph{rotated} coordinates. Thus, the case |every node/.style={yshift=8pt}| shifts every node by |8pt| in direction of its normal vector.
+
+	The |sloped| transformation is based on the gradient between two points (the two points adjacent to |pos|). Consequently, it inherits any sampling weaknesses. To see this, consider the example above with a different number of samples:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}% same as above with different number of samples
+	\addplot[blue,domain=0:360,samples=25] {sin(x)} 
+	[every node/.style={yshift=8pt},sloped]
+		node[pos=0] {$0$} 
+		node[pos=0.25] {$\pi/2$}
+		node[pos=0.5] {$\pi$}
+		node[pos=0.75] {$3/2\pi$}
+		node[pos=1] {$2\pi$}
+	;
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 \end{key}
 
 \begin{key}{/tikz/allow upside down=\mchoice{true,false} (initially false)}
@@ -250,17 +267,18 @@ The |\addplot| command is not only used for \PGFPlots, it can also carry additio
 \begin{key}{/tikz/pos segment=\marg{segment index} (initially empty)}
 	Occasionally, one has a single plot which consists of multiple segments (like those generated by |empty line=jump| or |contour prepared|). The individual segments will typically have different lengths, so it is tedious to identify a position on one of these segments.
 
-	If |pos segment=|\meta{segment index} is provided, the key |pos=|\meta{fraction} is interpreted relative to the provided segment rather than the whole plot. The argument \meta{segment index} is an integer, where $0$ denotes the first segment.
+	If |pos segment=|\meta{segment index} is non-empty, the key |pos=|\meta{fraction} is interpreted relatively to the provided segment rather than the whole plot. The argument \meta{segment index} is an integer, where $0$ denotes the first segment.
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[tiny]
 \addplot coordinates {
 	(0,0) (1,0) 
 
-	(1,1) (2,1)
-}
+	(1,1) (2,1)}
 	[pos segment=0,yshift=7pt,font=\footnotesize]
-	node[pos=0] {0} node[pos=0.5] {0.5} node[pos=1] {1};
+	node[pos=0] {0} 
+	node[pos=0.5] {0.5} 
+	node[pos=1] {1};
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
@@ -275,7 +293,9 @@ The |\addplot| command is not only used for \PGFPlots, it can also carry additio
 	 allow upside down,
 	 pos segment=2,
 	 every node/.style={yshift=7pt}]
-	node[pos=0] {0} node[pos=0.5] {0.5} node[pos=1] {1}
+	node[pos=0] {0} 
+	node[pos=0.5] {0.5} 
+	node[pos=1] {1}
 	;
 
 \end{axis}
