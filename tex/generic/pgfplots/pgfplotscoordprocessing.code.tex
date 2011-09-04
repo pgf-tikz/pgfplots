@@ -7088,7 +7088,7 @@
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
 	%
 	%
-	\ifpgfplots@clip@limits
+	\ifpgfplots@clip
 	\else
 		% "clip marker paths=true" actually doesn't checks anything --
 		% it leaves the checks to the clip path. But since there is no
@@ -7114,22 +7114,29 @@
 		\pgfplots@record@marker@streamfalse
 	\else
 		% we need markers.
-		\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
-			\ifpgfplots@clip@marker@paths
-				% only marks: draw markers directly; no need for the
-				% two-pass-approach.
-				\let\pgfplots@basiclevel@plothandler=\relax
-				\pgfplots@install@plotmark@handler
-				\pgfplots@record@marker@streamfalse
+		\pgfkeysgetvalue{/pgfplots/mark layer}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			% no special mark layer. Good!
+			\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
+				\ifpgfplots@clip@marker@paths
+					% only marks: draw markers directly; no need for the
+					% two-pass-approach.
+					\let\pgfplots@basiclevel@plothandler=\relax
+					\pgfplots@install@plotmark@handler
+					\pgfplots@record@marker@streamfalse
+				\else
+					% collect mark positions... they will be drawn after
+					% the clipped axis range. Clipping will only be
+					% applied to their *positions*, not their paths.
+					\pgfplots@record@marker@streamtrue
+				\fi
 			\else
-				% collect mark positions... they will be drawn after
-				% the clipped axis range. Clipping will only be
-				% applied to their *positions*, not their paths.
+				% ok, mark!=none and we also have a plot handler.
+				% So, collect mark positions!
 				\pgfplots@record@marker@streamtrue
 			\fi
 		\else
-			% ok, mark!=none and we also have a plot handler.
-			% So, collect mark positions!
+			% we need to prepare for a separate mark layer:
 			\pgfplots@record@marker@streamtrue
 		\fi
 	\fi
@@ -7520,21 +7527,32 @@
 	#2;
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
-		\ifpgfplots@clip@marker@paths
-			% Draw markers on top of the plot lines:
-			%
-			\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
-			\pgfextra 
-				\pgfplots@install@plotmark@handler
-				\pgfplots@recorded@marker@stream 
-			\endpgfextra
-			;
+		\pgfkeysgetvalue{/pgfplots/mark layer}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\ifpgfplots@clip@marker@paths
+				% Draw markers on top of the plot lines:
+				%
+				\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/mark layer}}%
+				\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
+				\pgfextra 
+					\pgfplots@install@plotmark@handler
+					\pgfplots@recorded@marker@stream 
+				\endpgfextra
+				;
+				\endpgfplotsonlayer
+			\else
+				% sigh... ok, store the marker list (once more again).
+				% They need to be drawn after the clipped area.
+				%
+				% fortunately, the serialization is not expensive.
+				\pgfplots@stored@REMEMBER@MARK@COMMAND
+			\fi
 		\else
-			% sigh... ok, store the marker list (once more again).
-			% They need to be drawn after the clipped area.
-			%
-			% fortunately, the serialization is not expensive.
-			\pgfplots@stored@REMEMBER@MARK@COMMAND
+			% oh - we need a mark layer!
+			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/mark layer}}%
+			\pgfplots@serialize@mark@command
+			\pgfplotsretval
+			\endpgfplotsonlayer
 		\fi
 	\fi
 	\gdef\pgfplots@recorded@marker@stream{}% clear
@@ -7547,6 +7565,11 @@
 % - pgfplots@recorded@marker@stream exists
 % - current plot style is valid
 \def\pgfplots@stored@REMEMBER@MARK@COMMAND{%
+	\pgfplots@serialize@mark@command
+	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotsretval}\to\pgfplots@stored@markerlist
+}%
+
+\def\pgfplots@serialize@mark@command{%
 	\pgfkeysgetvalue{/tikz/current plot style/.@cmd}{\pgfplots@loc@TMPa}%
 	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
 	\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@cmd[current plot style]}%
@@ -7574,8 +7597,7 @@
 	}%
 	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
 	\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@precmd}%
-	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
-	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@loc@TMPa}\to\pgfplots@stored@markerlist
+	\edef\pgfplotsretval{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
 }%
 
 \def\pgfplots@install@plotmark@handler{%
