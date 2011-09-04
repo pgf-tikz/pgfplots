@@ -60,6 +60,7 @@
 
 \newif\ifpgfplotspointisinsmithchartCS
 \newif\ifpgfplots@smithchart@showorigin
+\newif\ifpgfplots@smithchart@mirrored
 
 \pgfplotsset{
 	/pgfplots/xgrid each nth passes y/.initial=,% format: CSV list, each entry of the form '<at> | <at> ':' <eachnth> | <at> 'if <' <xvalue> | <at> ':' <eachnth> 'if <' <xvalue>'
@@ -69,6 +70,10 @@
 	%
 	/pgfplots/xgrid stop at y/.initial=,% individual stop map of the form '<xpos> ':' <stopaty>', separated by white space
 	/pgfplots/ygrid stop at x/.initial=,
+	%
+	% FIXME : this is undocumented:
+	/pgfplots/smithchart mirrored/.is if=pgfplots@smithchart@mirrored,
+	/pgfplots/smithchart mirrored/.default=true,
 	%
 	% this boolean may only be used inside of \addplot. It will be
 	% ignored otherwise.
@@ -89,6 +94,8 @@
 		major tick style={draw=black},
 		xtick align=center,
 		ytick align=center,
+		every axis title shift=1.2\baselineskip,
+		legend style={anchor=center},
 	},
 	/pgfplots/default smithchart xtick/.code=,
 	/pgfplots/default smithchart ytick/.code=,
@@ -146,6 +153,7 @@
 	},
 	/pgfplots/many smithchart ticks/.style={
 		many smithchart ticks*,
+		every axis title shift=6pt,
 		yticklabel in circle,
 		show origin=true,
 	},
@@ -188,6 +196,7 @@
 	},
 	/pgfplots/dense smithchart ticks/.style={
 		yticklabel in circle,
+		every axis title shift=6pt,
 		dense smithchart ticks*,
 		show origin=true,
 		every major grid/.style={black!60},
@@ -468,16 +477,25 @@
 			\let\pgfplots@y=\pgfmathresult
 		\fi
 		%
-		\pgfqpointxy@orig\pgfplots@x\pgfplots@y
+		\pgfplotsqpointxy@smithchart@canvas\pgfplots@x\pgfplots@y
 %\message{pgfplotsqpointxy{#1}{#2} ---> (\pgfplots@x,\pgfplots@y) ---> (\the\pgf@x,\the\pgf@y)}%
 	}%
 }%
+
+\def\pgfplotsqpointxy@smithchart@canvas#1#2{%
+	\ifpgfplots@smithchart@mirrored
+		\pgfqpointxy@orig{-#1}{#2}%
+	\else
+		\pgfqpointxy@orig{#1}{#2}%
+	\fi
+}%
+
 \def\pgfplots@clippath@prepare@for@axistype@smithchartaxis{%
 	\def\pgfplots@clippath@install##1{%
 		\pgfpathellipse
-			{\pgfqpointxy@orig{0}{0}}
-			{\pgfqpointxy@orig{1}{0}}
-			{\pgfqpointxy@orig{0}{1}}%
+			{\pgfplotsqpointxy@smithchart@canvas{0}{0}}
+			{\pgfplotsqpointxy@smithchart@canvas{1}{0}}
+			{\pgfplotsqpointxy@smithchart@canvas{0}{1}}%
 		\pgfplots@clippath@use@{##1}%
 	}%
 }%
@@ -492,7 +510,7 @@
 				\def\pgfplotsretval{0}%
 			\fi
 			\pgfpointdiff
-				{\pgfqpointxy@orig{0}{0}}%
+				{\pgfplotsqpointxy@smithchart@canvas{0}{0}}%
 				{\pgfplotsqpointxy{0}{\pgfplotsretval}}%
 			\pgfpointnormalised{}%
 		\else
@@ -506,7 +524,7 @@
 \def\pgfplotspoint@initialisation@axes@smithchart{%
 	\begingroup
 	%\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
-	\gdef\pgfplotspointminminmin{\pgfqpointxy@orig{0}{0}}%
+	\gdef\pgfplotspointminminmin{\pgfplotsqpointxy@smithchart@canvas{0}{0}}%
 	%
 	% the "x" axis is the diameter of the circle (for fixed y=0)
 	\pgf@x=2\pgf@xx
@@ -1122,9 +1140,9 @@
 	%
 	% This here would suffice in case 'xgrid each nth passes y={}':
 %	\pgfpathellipse
-%		{\pgfqpointxy@orig{\pgfplots@center}{0}}
-%		{\pgfqpointxy@orig{\pgfplots@radius}{0}}
-%		{\pgfqpointxy@orig{0}{\pgfplots@radius}}%
+%		{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@center}{0}}
+%		{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@radius}{0}}
+%		{\pgfplotsqpointxy@smithchart@canvas{0}{\pgfplots@radius}}%
 	%
 	% but we also check for the 'xgrid each nth passes y' feature:
 	\pgfplots@get@current@grid@stop@point xy{\pgfplots@x}%
@@ -1192,22 +1210,23 @@
 	% first, compute the absolute x/y radii:
 	\pgf@xa=\pgfplots@radius\pgf@xx
 	\pgf@xb=\pgfplots@radius\pgf@yy
-	\pgfpathmoveto{\pgfqpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
+	\edef\pgfplots@mirror@sign{\ifpgfplots@smithchart@mirrored -\fi}%
+	\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@start}{\pgfplots@startim}}%
 	% note that the case startangle > endangle is
 	% automatically correct; patharc handles that.
-	%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
+	%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\pgfplots@mirror@sign\the\pgf@xa\space and \the\pgf@xb}}%
 	%\expandafter\pgfpatharc\pgfplots@loc@TMPa
 	%
 	% prefer \pgfpatharctoprecomputed. It is faster and more accurate
 	\edef\pgfplots@loc@TMPa{%
-		{\noexpand\pgfqpointxy@orig{\pgfplots@center}{0}}%
+		{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@center}{0}}%
 		{\pgfplots@startangle}%
 		{\pgfplots@endangle}%
-		{\noexpand\pgfqpointxy@orig{\pgfplots@end}{\pgfplots@endim}}%
-		{\the\pgf@xa}%
+		{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@end}{\pgfplots@endim}}%
+		{\pgfplots@mirror@sign\the\pgf@xa}%
 		{\the\pgf@xb}%
-		{\pgfplots@smithchart@axis@ratioxy}%
-		{\pgfplots@smithchart@axis@ratioyx}%
+		{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioxy}%
+		{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioyx}%
 	}%
 	\expandafter\pgfpatharctoprecomputed\pgfplots@loc@TMPa
 }
@@ -1217,8 +1236,8 @@
 	\let\pgfplots@y\pgfmathresult
 	\pgfplotscoordmath{default}{op}{abs}{{\pgfplots@y}}%
 	\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@almost@zero@thresh}{%
-		\pgfpathmoveto{\pgfqpointxy@orig{-1}{0}}%
-		\pgfpathlineto{\pgfqpointxy@orig{1}{0}}%
+		\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{-1}{0}}%
+		\pgfpathlineto{\pgfplotsqpointxy@smithchart@canvas{1}{0}}%
 	}{%
 		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplots@y}}%
 		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
@@ -1237,9 +1256,9 @@
 		% this here is the correct, complete circle -- together
 		% with a clip path, you get what you want:
 		%\pgfpathellipse
-		%	{\pgfqpointxy@orig{1}{\pgfplots@signedradius}}
-		%	{\pgfqpointxy@orig{\pgfplots@signedradius}{0}}
-		%	{\pgfqpointxy@orig{0}{\pgfplots@signedradius}}%
+		%	{\pgfplotsqpointxy@smithchart@canvas{1}{\pgfplots@signedradius}}
+		%	{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@signedradius}{0}}
+		%	{\pgfplotsqpointxy@smithchart@canvas{0}{\pgfplots@signedradius}}%
 		% But I only want the arc (probably stopped earlier to
 		% improve qualtity of the chart)
 		%
@@ -1343,10 +1362,11 @@
 %\message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space clipped radii = \pgfplots@radius@x*\the\pgf@xx\space and \pgfplots@radius@y*\the\pgf@yy\space ( start angle \pgfplots@startangle, end angle \pgfplots@endangle,  arc limit: \ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty NONE\else \pgfplots@arc@ends@at@x@circle@value\fi)^^J}%
 		\pgf@xa=\pgfplots@radius@x\pgf@xx
 		\pgf@xb=\pgfplots@radius@y\pgf@yy
-		\pgfpathmoveto{\pgfqpointxy@orig{\pgfplots@start}{\pgfplots@startim}}%
+		\edef\pgfplots@mirror@sign{\ifpgfplots@smithchart@mirrored -\fi}%
+		\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@start}{\pgfplots@startim}}%
 		% note that the case startangle > endangle is
 		% automatically correct; patharc handles that.
-		%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\the\pgf@xa\space and \the\pgf@xb}}%
+		%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\pgfplots@mirror@sign\the\pgf@xa\space and \the\pgf@xb}}%
 		%\expandafter\pgfpatharc\pgfplots@loc@TMPa
 		%
 		% prefer \pgfpatharctoprecomputed. It is faster and more accurate
@@ -1356,14 +1376,14 @@
 %			\let\pgfplots@endangle=\pgfplots@loc@TMPa
 		\fi
 		\edef\pgfplots@loc@TMPa{%
-			{\noexpand\pgfqpointxy@orig{1}{\pgfplots@radius@sign\pgfplots@radius@y}}%
+			{\noexpand\pgfplotsqpointxy@smithchart@canvas{1}{\pgfplots@radius@sign\pgfplots@radius@y}}%
 			{\pgfplots@startangle}%
 			{\pgfplots@endangle}%
-			{\noexpand\pgfqpointxy@orig{\pgfplots@end}{\pgfplots@endim}}%
-			{\the\pgf@xa}%
+			{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@end}{\pgfplots@endim}}%
+			{\pgfplots@mirror@sign\the\pgf@xa}%
 			{\the\pgf@xb}%
-			{\pgfplots@smithchart@axis@ratioxy}%
-			{\pgfplots@smithchart@axis@ratioyx}%
+			{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioxy}%
+			{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioyx}%
 		}%
 		\expandafter\pgfpatharctoprecomputed\pgfplots@loc@TMPa
 	}%

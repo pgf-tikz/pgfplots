@@ -20,9 +20,15 @@
 %
 %--------------------------------------------
 
+\pgfutil@ifundefined{pgfplotsset}{%
+	\PackageError{pgfplots}{Sorry, \string\usetikzlibrary{pgfplots.clickable} needs to hook into PGFPlots routines, disabling it -- please provide the command AFTER \string\usepackage{pgfplots}}{}%
+	\endinput
+}{%
+}%
+
+
 \edef\pgfplotscatcodeDQ{\the\catcode`\"}%
 \catcode`\"=12
-
 \newif\ifpgfplots@clickable
 \newif\ifpgfplots@annot@printable
 
@@ -34,7 +40,7 @@
 	/pgfplots/execute at begin axis/.add={}{%
 		\pgfplots@clickable@beginaxis
 	},%
-	clickable coords code/.code={
+	clickable coords code/.code={%
 		\def\pgfplots@clickable@init@@{%
 			\pgfplots@clickable@startcoordcollect
 			\pgfplotsset{%
@@ -159,12 +165,41 @@
 
 % Work-around for a bug in \begindljs of acrotex:
 % if " is active, \begindljs will be wrong.
-\def\begindljs
+%--------------------------------------------------
+% HAS BEEN FIXED IN THE MEANTIME
+% \def\begindljs
+% {%
+%     \iwvo{\string\begingroup}
+%     {\uccode`c=`\%\uppercase{\iwvo{\string\obeyspaces\string\obeylines\string\global\string\let\string^\string^M=\string\jsR c}}}
+%     {\escapechar=-1 \lccode`C=`\%\lowercase{\iwvo{\string\\catcode`\string\\"=12C}}}
+% }
+%-------------------------------------------------- 
+
+% Bugfix to fix incompatibility when '<' and '>' are active (as for
+% \usepackage[spanish]{babel}:
+\def\write@objs@BUGGY
 {%
-    \iwvo{\string\begingroup}
-    {\uccode`c=`\%\uppercase{\iwvo{\string\obeyspaces\string\obeylines\string\global\string\let\string^\string^M=\string\jsR c}}}
-    {\escapechar=-1 \lccode`C=`\%\lowercase{\iwvo{\string\\catcode`\string\\"=12C}}}
+    \iwvo{\begingroup}
+    {\lccode`C=`\%\lowercase{\iwvo{\string\ccpdftex C}}}
+    {\lccode`C=`\%\lowercase{\iwvo{\string\input{dljscc.def}C\the\dljsobjtoks}}}
+    \iwvo{\endgroup}
+    \iwvo{\string\endinput}%
 }
+\def\write@objs@CORRECT
+{%
+	\iwvo{\begingroup}
+	\iwvo{\string\catcode`\string\<=12 }
+	\iwvo{\string\catcode`\string\>=12 }
+	{\lccode`C=`\%\lowercase{\iwvo{\string\ccpdftex C}}}
+	{\lccode`C=`\%\lowercase{\iwvo{\string\input{dljscc.def}C\the\dljsobjtoks}}}
+	\iwvo{\endgroup}
+	\iwvo{\string\endinput}%
+}
+\pgfutil@ifundefined{write@objs}{}{%
+	\ifx\write@objs\write@objs@BUGGY
+		\let\write@objs=\write@objs@CORRECT
+	\fi
+}%
 
 \def\pgfplots@clickable@no{0}
 
@@ -180,9 +215,17 @@
 \gdef\pgfplotsHASH{#}%
 \catcode`\%=12 \gdef\pgfplotsPERCENT{%}}
 
+% this here is a bugfix to resolve an incompatibility between insdljs
+% an \usepackage[spanish]{babel}:
+\def\@roman#1{\romannumeral #1}%
+
 % FIXME : write this stuff DIRECTLY into a pdf using \pdfobj! I don't
 % need ANY TeX code inside of the methods. Maybe I can even use some
 % sort of "include external .js file" command instead of /S /Javascript /JS
+%
+% FIXME : collect this stuff using \beginpgfplotsverbatim ...
+% \endpgfplotsverbatim to avoid the \catcode problems! Who knows
+% whether there are more of them...
 %
 % FIXME : using '\jobname' here produces a bug in insdljs :-(
 % The problem: insdljs creates a macro named 'dlsj\jobname' or

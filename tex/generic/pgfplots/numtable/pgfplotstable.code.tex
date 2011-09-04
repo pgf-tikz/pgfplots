@@ -44,6 +44,7 @@
 \newif\ifpgfplotstabletypeset@force@remake
 \newif\ifpgfplotstable@disable@rowcolstyles
 
+\let\pgfplotstable@outfile=\w@pgf@writea
 
 \input pgfplotstable.coltype.code.tex
 
@@ -341,6 +342,12 @@
 	/pgfplots/table/every last column/.style={},
 	/pgfplots/table/every even column/.style={},
 	/pgfplots/table/every odd column/.style={},
+	/pgfplots/table/every nth row/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
+	/pgfplots/table/every nth row/.style 2 args/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
 	/pgfplots/table/before row/.initial=,
 	/pgfplots/table/after row/.initial=,
 	/pgfplots/table/begin table/.initial={\begin{tabular}},
@@ -464,6 +471,14 @@
 			\fi
 		}
 	},
+	/pgfplots/table/string replace*/.style 2 args={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\def\pgfplots@loc@TMPa{\pgfplotsutilstrreplace{#1}{#2}}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplotsretval}%
+		}
+	},
 	/pgfplots/table/preproc/expr/.code={%
 		\ifpgfplots@usefpu
 			\pgfkeysalso{/pgf/fpu=true,/pgf/fpu/output format=sci}%
@@ -501,7 +516,8 @@
 			\fi
 		}
 	},
-	/pgfplots/table/multiply with/.code={%
+	/pgfplots/table/multiply with/.style={/pgfplots/table/multiply by={#1}},%
+	/pgfplots/table/multiply by/.code={%
 		\pgfmathfloatparsenumber{#1}%
 		\let\pgfplotstable@scale=\pgfmathresult
 		\pgfkeysalso{
@@ -519,7 +535,7 @@
 		}%
 	},
 	/pgfplots/table/divide by/.code={%
-		\pgfkeysalso{/pgfplots/table/multiply with=#1}%
+		\pgfkeysalso{/pgfplots/table/multiply by=#1}%
 		\let\pgfplotstable@divisor=\pgfplotstable@scale
 		\pgfmathfloatcreate{1}{1.0}{0}%
 		\let\pgfplotstable@ONE=\pgfmathresult
@@ -1349,13 +1365,36 @@
 %%%%%%%%%%%%%%%
 
 
+% #1: the original value
+% #2: the output macro
 \long\def\pgfplotstabletypeset@getfinalentry#1#2{%
 	\begingroup
+	\def\pgfkeysdefaultpath{/pgfplots/table/}%
 	\def\pgfplotstablepartno{0}%
 	\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
 	\pgfkeyssetvalue{/pgfplots/table/@unprocessed cell content}{#1}%
+	\ifpgfplotstable@disable@rowcolstyles
+	\else
+		\def\pgfplots@loc@TMPb##1{%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column ##1\pgfplotstablecol}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column \pgfplotstable@colname@for@styles}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+		}%
+		\pgfplots@loc@TMPb{}%
+		% also accept the same with the 'row no' style:
+		\pgfplots@loc@TMPb{no }%
+		\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles%
+	\fi
 	\pgfplotstable@debug@notify@cellcontent%
-	\pgfkeysvalueof{/pgfplots/table/preproc cell content/.@cmd}#1\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfkeyslet{/pgfplots/table/@cell content after rowcol styles}\pgfmathresult%
+	\pgfkeysgetvalue{/pgfplots/table/preproc cell content/.@cmd}\pgfplotstable@assigncell
+	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\pgfkeyslet{/pgfplots/table/@preprocessed cell content}\pgfmathresult%
 	\pgfplotstable@debug@notify@cellcontent@preprocessed%
@@ -1391,6 +1430,7 @@
 
 \def\pgfplotstable@debug@notify@cellcontent{}%
 \def\pgfplotstable@debug@notify@cellcontent@preprocessed{}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles{}%
 \def\pgfplotstable@debug@notify@cellcontent@assigned{}%
 \def\pgfplotstable@debug@notify@cellcontent@postprocessed{}%
 \def\pgfplotstable@debug@notify@preprocess@incol#1{}%
@@ -1410,6 +1450,13 @@
 	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
 	\toks0=\expandafter{\pgfmathresult}%
 	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After '@preproc cell content  : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After applying 'every row * column [no] *' styles : `\the\toks0'}%
 	\endgroup
 }%
 \def\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE{%
@@ -1454,6 +1501,7 @@
 		\let\pgfplotstable@debug@notify@preprocessed@col=\pgfplotstable@debug@notify@preprocessed@col@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent=\pgfplotstable@debug@notify@cellcontent@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@preprocessed=\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles=\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@assigned=\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE
 		\let\pgfplotstable@debug@notify@cellcontent@postprocessed=\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE
 		\let\pgfplotstable@debug@notify@balancingcell=\pgfplotstable@debug@notify@balancingcell@ACTIVE
@@ -1505,6 +1553,60 @@
 		\fi
 	\fi
 }%
+
+% Upon execution, \pgfplotsretval contains a set of /pgfplots/table
+% keys from 'every nth row' styles.
+%
+% @PRECONDITION this macro assumes it is run in \pgfplotstabletypeset.
+\def\pgfplots@each@nth@styles{\let\pgfplotsretval\pgfutil@empty}%
+
+% Defines an 'every nth row' style for an integer #1.
+%
+% #1: integer
+% #2: style arguments
+%
+% All these styles are accumulated into the macro
+% \pgfplots@each@nth@styles. 
+\def\pgfplotstabletypeset@append@every@nth@row#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	% chech for the special 'each nth row={3[+1]}{...} format:
+	\expandafter\pgfutil@in@\expandafter[\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfutil@in@
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@getshift\pgfplots@loc@TMPa%
+		\t@pgfplots@toka={#2}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplotstabletypeset@append@every@nth@row@{\pgfplots@loc@TMPa}{\the\t@pgfplots@toka}{\pgfplots@loc@TMPb}%
+		}%
+		\pgfplots@loc@TMPa
+	\else
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@\expandafter{\pgfplots@loc@TMPa}{#2}{0}%
+	\fi
+}%
+\def\pgfplotstabletypeset@append@every@nth@row@getshift#1[#2]{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifnum#2<0
+		\c@pgf@countc=#1\relax
+		\advance\c@pgf@countc by#2
+		\edef\pgfplots@loc@TMPb{\the\c@pgf@countc}%
+	\else
+		\def\pgfplots@loc@TMPb{#2}%
+	\fi
+}%
+% #3 is an additional shift. It is usually 0
+\def\pgfplotstabletypeset@append@every@nth@row@#1#2#3{%
+	\expandafter\def\expandafter\pgfplots@each@nth@styles\expandafter{%
+		\pgfplots@each@nth@styles
+		\expandafter\pgfplotsmathmodint\expandafter{\the\c@pgfplotstable@rowindex}{#1}%
+		\ifnum\pgfmathresult=#3\relax
+			\ifx\pgfplotsretval\pgfutil@empty
+				\def\pgfplotsretval{#2}%
+			\else
+				\expandafter\def\expandafter\pgfplotsretval\expandafter{\pgfplotsretval,%
+					#2}%
+			\fi
+		\fi
+	}%
+}
 
 \def\pgfplotstable@insertemptycells@forbalance{%
 	\pgfutil@loop
@@ -1702,10 +1804,11 @@
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname}%
 			\expandafter\pgfplotstable@checkspecialchars@pgfkeys\the\t@pgfplots@tokb\pgfplotstable@EOI
 			\ifpgfutil@in@
-				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/{\the\t@pgfplots@tokb}/.try}%
+				\edef\pgfplotstable@colname@for@styles{{\the\t@pgfplots@tokb}}%
 			\else
-				\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\the\t@pgfplots@tokb/.try}%
+				\edef\pgfplotstable@colname@for@styles{\the\t@pgfplots@tokb}%
 			\fi
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\pgfplotstable@colname@for@styles/.try}%
 			\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
 			\t@pgfplots@tokb=\expandafter{\pgfplotstable@displaycolkey}%
 			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
@@ -1901,6 +2004,21 @@
 					\else
 						\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
 						\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+						%
+						\ifnum\c@pgfplotstable@rowindex=0\relax
+						\else
+							% process 'every nth row' styles:
+							\begingroup
+							\pgfplots@each@nth@styles
+							\pgfmath@smuggleone\pgfplotsretval
+							\endgroup
+							\ifx\pgfplotsretval\pgfutil@empty
+							\else
+								\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+								\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
+								\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+							\fi
+						\fi
 					\fi
 					% misuse as temporary variable:
 					\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
@@ -1986,6 +2104,7 @@
 	\endgroup
 	\pgfplots@glob@TMPa% execute 'write to macro' if set.
 }%
+
 
 \newif\ifpgfplotstable@isfirstrow
 \newif\ifpgfplotstable@islastrow

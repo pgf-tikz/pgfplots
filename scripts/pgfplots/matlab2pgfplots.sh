@@ -6,15 +6,14 @@ CONVERT_AXES=1
 OUTFILE=""
 MAXPOINTS=100000
 
-function echoHelp()
+echoHelp()
 {
-	echo -e \
-		"matlab2pgfplots.sh [--maxpoints N]  [--styles [0|1] ]   [ --axes [0|1] ]  [ -o OUTFILE ]  INFILE ...\n"\
-		"converts Matlab figures (.fig-files) to pgfplots-files (.pgf-files).\n"\
-		"This script is a front-end for matlab2pgfplots.m (which needs to be in matlab's search path)\n"\
-		"type\n"\
-		" >> help matlab2pgfplots\n"\
-		"at your matlab prompt for more information.\n"
+	echo "matlab2pgfplots.sh [--maxpoints N]  [--styles [0|1] ]   [ --axes [0|1] ]  [ -o OUTFILE ]  INFILE ..."
+	echo "converts Matlab figures (.fig-files) to pgfplots-files (.pgf-files)."
+	echo "This script is a front-end for matlab2pgfplots.m (which needs to be in matlab's search path)"
+	echo "type"
+	echo " >> help matlab2pgfplots"
+	echo "at your matlab prompt for more information."
 	exit 0
 }
 

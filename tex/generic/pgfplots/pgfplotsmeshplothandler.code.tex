@@ -70,6 +70,8 @@
 	\pgfplots@autocomplete@meshkeys1%
 }%
 \def\pgfplots@autocomplete@meshkeys#1{%
+	% For #1 = 0, the values are only partially completed (which is
+	% also compatible with patch plots)
 	\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 	\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 	\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
@@ -116,7 +118,7 @@
 					\if1#1%
 						% try to get reasonable values:
 						\ifx\pgfplotsplothandlermesh@numpoints\pgfutil@empty
-							\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - or at least '[mesh/num points=<N>]'. But it did not find any of them...}%
+							\pgfplots@error{Sorry, a mesh needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set - or at least '[mesh/num points=<N>]'. But it did not find any of them...}%
 							\def\pgfplotsplothandlermesh@cols{5}%
 							\def\pgfplotsplothandlermesh@rows{5}%
 						\else
@@ -157,7 +159,7 @@
 							\fi
 							\if\pgfplotsretval1
 								\pgfplots@warning{%
-									'plot mesh' did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
+									mesh processing did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
 									Assuming [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@rows] 
 									as sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints) [ = \pgfmathresult].}%
 							\else
@@ -1100,6 +1102,11 @@
 		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 	\fi
 	%
+	\if0\pgfplotsplothandlermesh@matrixinput
+		% mesh input=patches: simply skip empty input lines:
+		\pgfkeyssetvalue{/pgfplots/empty line}{none}%
+	\fi
+	%
 	\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
 	\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
 	\else
@@ -1272,7 +1279,7 @@
 		\pgfplotsplothandlermesh@check@unbounded%
 	}%
 	\ifpgfplots@loc@tmp
-		\pgfplotsplothandlermesh@PIPE@REFINE
+		\expandafter\pgfplotsplothandlermesh@PIPE@REFINE
 	\fi
 }%
 \def\pgfplotsplothandlermesh@PIPE@REFINE@no@op{%
@@ -1380,6 +1387,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % MESH SURVEY
 \newif\ifpgfplotsplothandlermesh@patchtable@hascdata
+\newif\ifpgfplotsplothandlermesh@patchtable@cdata@individual
 \def\pgfplotsplothandlersurveystart@mesh@patchtable{%
 	\pgfplotsarraynewempty\pgfplots@verts
 }%
@@ -1439,17 +1447,22 @@
 	\let\pgfplotsplothandlermesh@patchtable@numverts=\pgfplotsretval
 	%
 	\ifpgfplotsplothandlermesh@patchtable@hascdata
-		\ifnum\pgfplotsplothandlermesh@patchtable@numverts<\pgfplotstablecols\relax
-			% prepare a pointer to data column: use the column
-			% after the last vertex index.
-			% this thing constitutes the "default" cdata source for
-			% 'point meta=explicit'.
-			\pgfplotstablereadgetptrtocolindex
-				{\pgfplotsplothandlermesh@patchtable@numverts}
-				{\pgfplots@table@PTR@CDATA}%
+		\ifpgfplotsplothandlermesh@patchtable@cdata@individual
 		\else
-			\let\pgfplots@table@PTR@CDATA=\relax
+			\ifnum\pgfplotsplothandlermesh@patchtable@numverts<\pgfplotstablecols\relax
+				% prepare a pointer to data column: use the column
+				% after the last vertex index.
+				% this thing constitutes the "default" cdata source for
+				% 'point meta=explicit'.
+				\pgfplotstablereadgetptrtocolindex
+					{\pgfplotsplothandlermesh@patchtable@numverts}
+					{\pgfplots@table@PTR@CDATA}%
+			\else
+				\let\pgfplots@table@PTR@CDATA=\relax
+			\fi
 		\fi
+	\else
+		\pgfplotsplothandlermesh@patchtable@cdata@individualfalse
 	\fi
 	%
 	\c@pgf@countb=0
@@ -1471,10 +1484,13 @@
 	\let\pgfplotsexceptionmsg=\pgfplotsplothandlermesh@patchtable@rowlistener@exceptionmsg
 	%
 	\ifpgfplotsplothandlermesh@patchtable@hascdata
-		\ifx\pgfplots@table@PTR@CDATA\relax
-			\let\pgfplots@current@point@meta=\pgfutil@empty
+		\ifpgfplotsplothandlermesh@patchtable@cdata@individual
 		\else
-			\pgfplotstablereadevalptr\pgfplots@table@PTR@CDATA\pgfplots@current@point@meta
+			\ifx\pgfplots@table@PTR@CDATA\relax
+				\let\pgfplots@current@point@meta=\pgfutil@empty
+			\else
+				\pgfplotstablereadevalptr\pgfplots@table@PTR@CDATA\pgfplots@current@point@meta
+			\fi
 		\fi
 	\fi
 	%
@@ -1490,6 +1506,13 @@
 			\let\pgfplots@current@vertexindex=\pgfmathresult
 			%
 			\pgfplotsarrayselect\pgfplots@current@vertexindex\of\pgfplots@verts\to\pgfplots@stored@pt
+			%
+			\ifpgfplotsplothandlermesh@patchtable@cdata@individual
+				\c@pgf@countc=\c@pgf@countb\relax
+				\advance\c@pgf@countc by\pgfplotsplothandlermesh@patchtable@numverts\relax
+				\expandafter\getthisrowno\expandafter{\the\c@pgf@countc}\pgfplots@current@point@meta
+			\fi
+			%
 			\expandafter\pgfplotsplothandlermesh@patchtable@stream\pgfplots@stored@pt
 		\fi
 		\advance\c@pgf@countb by1
@@ -1644,6 +1667,8 @@
 		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
 		\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
 		\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
+		\pgfplotscolormapgetcolorspace\pgfplots@loc@TMPa
+		\pgfkeyslet{/pgfplots/surf shading/colorspace}\pgfplotsretval
 		\if2\pgfplotsplothandlermesh@shader
 			% shader=interp
 			\let\pgfplotsplothandlermesh@definecolor=\relax
@@ -1835,6 +1860,10 @@
 
 
 \def\pgfplotsplothandlermesh@init@jumphandling{%
+	% For matrix input, a "jump" should result in something
+	% visible although it must not destroy the matrix structure.
+	%
+	% try this here:
 	\def\pgfplotsplothandlervisualizejump{%
 		\pgfplotstreampoint{\global\pgf@x=-16000.0pt \global\pgf@y=-16000.0pt }%
 	}%

@@ -40,7 +40,7 @@ Sets the width of the final picture to \marg{dimen}. If no |height| is specified
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{scale only axis=\mchoice{true,false} (initially false)}
-If |scale only axis| is enabled, label, tick and legend dimensions won't influence the size of the axis rectangle, that means |width| and |height| apply only to the axis rectangle
+If |scale only axis| is enabled, label, tick and legend dimensions won't influence the size of the axis rectangle, that means |width| and |height| apply only to the axis rectangle.
 
 If |scale only axis=false| (the default), \PGFPlots\ will try to produce the desired width \emph{including} labels, titles and ticks.
 \end{pgfplotskey}
@@ -53,7 +53,7 @@ Sets the unit vectors for $x$ (or $y$). Every logical plot coordinate $(x,y)$ is
 The unit vectors $e_x$ and $e_y$ determine the paper position in the current (always two dimensional) image.
 
 The key |x=|\marg{dimen} simply sets $e_x = (\meta{dimen},0)^T $ while |y=|\marg{dimen} sets $e_y = (0,\meta{dimen})^T$.
-Here, \marg{dimen} is any \TeX\ size like |1mm|, |2cm| or |5pt|. It is allowed to specify a negative \marg{dimen}.
+Here, \marg{dimen} is any \TeX\ size like |1mm|, |2cm| or |5pt|. Note that you should not use negative values for \meta{dimen} (consider using |x dir| and its variants to reverse axis directions).
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[x=1cm,y=1cm]
@@ -64,7 +64,7 @@ Here, \marg{dimen} is any \TeX\ size like |1mm|, |2cm| or |5pt|. It is allowed t
 
 \begin{codeexample}[]
 \begin{tikzpicture}
-\begin{axis}[x=1cm,y=-0.5cm]
+\begin{axis}[x=1cm,y=0.5cm,y dir=reverse]
 \addplot expression[domain=0:3] {2*x};
 \end{axis}
 \end{tikzpicture}
@@ -104,11 +104,48 @@ The second syntax, |x={(|\meta{x}|,|\meta{y}|)}| sets $e_x = (\meta{x},\meta{y})
 \end{codeexample}
 	won't have any effect because an axis rescales its coordinates (see the |width| option).
 
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	x={(1cm,-0.5cm)},
+	y=1cm,
+	z=0cm,
+	axis on top,
+	scale mode=scale uniformly,
+	]
+	\addplot3[surf,shader=interp] {x*y};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\paragraph{Explicit units for 3D axes:} As of version~1.5, it is also possible to supply unit vectors to three-dimensional axes. In this case, the following extra assumptions need to be satisfied:
+\begin{enumerate}
+	\item If you want to control three-dimensional units, you need to provide \emph{all} of |x|, |y|, and |z| keys. For two--dimensional axes, it is also supported to supply just one of |x| or |y|.
+	\item Any provided three-dimensional unit vectors are assumed to form a \emph{right--handed coordinate system}. In other words: take your right hand, let the thumb point into the |x| direction, the index finger in |y| direction and the middle finger in |z| direction. If that is impossible, the \PGFPlots\ output will be wrong. The reason for this assumption is that \PGFPlots\ needs to compute the view direction out of the provided units (see below).
+
+	Consider using |x dir=reverse| or its variants in case you want to reverse directions.
+
+	\item For three-dimensional axes, \PGFPlots\ computes a view direction out of the provided unit vectors. The view direction is required to realize the |z buffer| feature (i.e.\ to decide about depths)\footnote{\PGFPlots\ provides a debug option called \texttt{view dir=\marg{x}\marg{y}\marg{z}} to override the view direction, should that ever be interesting.}.
+\end{enumerate}
+This feature is used to realize the \verbpdfref{\addplot3 graphics} feature, compare the examples in Section~\ref{sec:plotgraphics3d} on page~\pageref{sec:plotgraphics3d}.
+
 \paragraph{Limitations:} Unfortunately, skewed axes are \textbf{not available for bar plots}.
 \index{Errors!Skewed axes and bar plots}%
 \index{Bar Plots!Skewed axes problems}%
-Furthermore, support for custom vectors in 3D plots is currently \textbf{experimental} and may not work at all, sorry.
 \end{pgfplotsxykeylist}
+
+\begin{pgfplotskey}{scale mode=\mchoice{auto,none,stretch to fill,scale uniformly} (initially auto)}
+	Specifies how |width|, |height|, and the three unit vector keys |x|, |y|, and |z| are combined to produce the final image.
+
+	The initial choice \declaretext{auto} chooses one of the other possible choices depending on the actual context. More precisely, it is the same as |none| if at least one of |x|, |y|, or |z| is provided (meaning that these keys are the final unit size). If no unit is provided, it defaults to |stretch to fill|.
+
+	The choice |none| does not apply any rescaling at all. Use this if prescribed lengths of |x|, |y| (and perhaps |z|) should be used. In other words: it ignores |width| and |height|.
+
+	The choice |stretch to fill| takes |x|, |y|, and |z| as they have been found (either from user input or from some automatic processing) and rescales the axis with two \emph{separate} scales: one which results in the proper |width| and one which results in the proper |height|. As a consequence, the unit vectors are modified and distorted such that the final image fits into the prescribed dimensions. This is usually what one expects unless one provides unit directions explicitly.
+	
+	The choice |scale uniformly| is similar -- but it applies only \emph{one} scaling factor to fit into the prescribed dimensions. This scaling factor will be the same for both, |width| and |height|. Naturally, this will result in unsatisfactory results because either the final width or the final height will not be met. Therefore, this choice will enlarge or shrink limits to get the desired dimensions. Thus, the unit vectors have exactly the same size \emph{relations and angles} as they had before the scaling; only their magnitude is changed uniformly. But due to the given constraints, parts of the image may be empty or may no longer be visible. In case the outcome needs manual improvements, you can improve the visibility by modifying |width| and/or |height| (more freedom is not supported for this choice). Note that \PGFPlots\ implements this rescaling \textbf{if and only if} $e_{yx} = 0$ (for two--dimensional axes) or $e_{zx} = 0$ (for three-dimensional axes). In other words: for two--dimensional axes, the |y| vector has to be parallel to the canvas $y$ direction and for three-dimensional axes, the same holds for the |z| vector. The idea is to rescale only the vertical part of one unit vector and to change the limits of that respective axis simultaneously. The |scale uniformly| choice is used to realize the \verbpdfref{\addplot3 graphics} feature, see the documentation in Section~\ref{sec:plotgraphics3d} on page~\pageref{sec:plotgraphics3d} for its examples.
+
+\end{pgfplotskey}
 
 \begin{pgfplotsxykey}{\x mode=\mchoice{normal,linear,log} (initially normal)}
 	Allows to choose between linear (=normal) or logarithmic axis scaling or logplots for each $x,y,z$-combination.
@@ -119,7 +156,7 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 
 {\def\pgfmanualpdflabel#1#2{}
 \begin{pgfplotsxykey}{\x\ dir=\mchoice{normal,reverse} (initially normal)}
-	Allows to revert axis directions such that values are given in decreasing order.
+	Allows to reverse axis directions such that values are given in decreasing order.
 
 	This key is documented in all detail on page~\pageref{key:pgfplots:xydir}.
 \end{pgfplotsxykey}
@@ -128,7 +165,7 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 \begin{pgfplotskey}{axis equal=\marg{true,false} (initially false)}
 	Each unit vector is set to the same length while the axis dimensions stay constant. Afterwards, the size ratios for each unit in $x$ and $y$ will be the same.
 	
-	Axis limits will be enlarge to compensate for the scaling effect.
+	Axis limits will be enlarged to compensate for the scaling effect.
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}[axis equal=false,grid=major]
@@ -156,6 +193,8 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 	\end{loglogaxis}
 \end{tikzpicture}
 \end{codeexample}
+
+	The configuration |axis equal=true| is actually just a style which sets |unit vector ratio=1 1 1,unit rescale keep size=true|.
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{axis equal image=\marg{true,false} (initially false)}
@@ -187,9 +226,10 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 	\end{loglogaxis}
 \end{tikzpicture}
 \end{codeexample}
+	The configuration |axis equal image=true| is actually just a style which sets |unit vector ratio=1 1 1,unit rescale keep size=false|.
 \end{pgfplotskey}
 
-\begin{pgfplotskey}{unit vector ration=\marg{rx ry rz} (initially empty)}
+\begin{pgfplotskey}{unit vector ratio=\marg{rx ry rz} (initially empty)}
 	Allows to provide custom unit vector ratios. 
 
 	The key allows to tell \PGFPlots\ that, for example, one unit in $x$ direction should be twice as long as one unit in $y$ direction:
@@ -207,7 +247,7 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 \end{codeexample}
 	\noindent Providing |unit vector ratio=2 1| means that $\frac{||e_x||}{||e_y||} = 2$ where each coordinate $(x,y)$ is placed at $x e_x + y e_y \in \R^2$ (see the documentation for |x| and |y| options). Note that |axis equal| is nothing but |unit vector ratio=1 1 1|.
 
-	The arguments \meta{rx}, \meta{ry}, and \meta{rz} are ratios for $x$, $y$ and $z$ vectors, respectively. For two--dimensional axes, only \meta{rx} and \meta{ry} are considered; they are provided relative to the $y$ axis. In other words: the $x$ unit vector will be \meta{rx} $/$ \meta{ry} times longer than the $y$ unit vector. For three--dimensional axes, all three arguments can be provided; they are interpreted relative to the $z$ unit vector. Thus, a three dimensional axis with |unit vector ratio=1 2 4| will have an $x$ unit which is $\nicefrac 14$ the length of the $z$ unit, and a $y$ unit which is $\nicefrac24$ the length of the $z$ unit. 
+	The arguments \meta{rx}, \meta{ry}, and \meta{rz} are ratios for $x$, $y$ and $z$ vectors, respectively. For two--dimensional axes, only \meta{rx} and \meta{ry} are considered; they are provided relative to the $y$ axis. In other words: the $x$ unit vector will be \meta{rx} $/$ \meta{ry} times longer than the $y$ unit vector. For three-dimensional axes, all three arguments can be provided; they are interpreted relative to the $z$ unit vector. Thus, a three dimensional axis with |unit vector ratio=1 2 4| will have an $x$ unit which is $\nicefrac 14$ the length of the $z$ unit, and a $y$ unit which is $\nicefrac24$ the length of the $z$ unit. 
 	
 	Trailing values of |1| can be omitted, i.e.\ |unit vector ratio=2 1| is the same as |unit vector ratio=2|; and |unit vector ratio=3 2 1| is the same as |unit vector ratio=3 2|.
 	An empty value |unit vector ratio={}| disables unit vector rescaling.
@@ -217,7 +257,7 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 		unit rescale keep size=\marg{true,false} (initially true)}
 	In the default configuration, \PGFPlots\ maintains the original axis dimensions even though |unit vector ratio| involves different scalings. 
 
-	It does so by enlargeing the limits.
+	It does so by enlarging the limits.
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}[footnotesize,xlabel=$x$,ylabel=$y$,unit vector ratio=]
@@ -291,3 +331,9 @@ Furthermore, support for custom vectors in 3D plots is currently \textbf{experim
 \end{tikzpicture}
 \end{codeexample}
 \end{pgfplotsxykeylist}
+
+\begin{pgfplotskey}{scale=\marg{uniform scale}}
+	A style which sets |x post scale|, |y post scale|, and |z post scale| to the same \meta{uniform scale} value.
+
+	This is effectively the same as if you rescale the complete axis (without changing sizes of descriptions).
+\end{pgfplotskey}

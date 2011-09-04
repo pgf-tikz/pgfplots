@@ -206,7 +206,9 @@
 % \pgfplotsutil@ifdefinedui{\csname abc\endcsname} -> no
 % \pgfplotsutil@ifdefinedui{a_file_name} -> no
 \def\pgfplotsutil@ifdefinedui#1#2#3{%
-	\def\pgfplotsutil@@arg@ifdefined{#1}%
+	{\toks0={#1}% this construction is necessary to handle '#' characters in '#1'
+	\xdef\pgfplotsutil@@arg@ifdefined{\the\toks0}%
+	}%
 	\pgfplots@command@to@string\pgfplotsutil@@arg@ifdefined\pgfplotsutil@@arg@ifdefined
 	\expandafter\pgfplotsutil@trim\expandafter{\pgfplotsutil@@arg@ifdefined}%
 	\pgfutil@ifundefined{\pgfplotsretval}{#3}{#2}%
@@ -215,7 +217,9 @@
 % '#1' after '#1' has been normalized.
 % It invokes '#3' if '#1#2' is defined and '#4' if not.
 \def\pgfplotsutil@ifdefinedui@withsuffix#1#2#3#4{%
-	\def\pgfplotsutil@@arg@ifdefined{#1}%
+	{\toks0={#1}%
+	\xdef\pgfplotsutil@@arg@ifdefined{\the\toks0}%
+	}%
 	\pgfplots@command@to@string\pgfplotsutil@@arg@ifdefined\pgfplotsutil@@arg@ifdefined
 	\expandafter\pgfplotsutil@trim\expandafter{\pgfplotsutil@@arg@ifdefined}%
 	\pgfutil@ifundefined{\pgfplotsretval #2}{#4}{#3}%
@@ -575,13 +579,24 @@
 % scopes.
 %
 % This loop *can* be nested.
-\def\pgfplotsforeachungrouped#1{\pgfplotsforeachungrouped@{#1}}%
-\long\def\pgfplotsforeachungrouped@#1in #2#3{%
-	\pgfplotsforeachungrouped@isuniform{#2}%
-	\ifpgfplots@loc@tmp
-		\pgfplotsforeachungroupeduniform@{#1}#2\relax{#3}%
+\def\pgfplotsforeachungrouped#1{%
+	\pgfutil@ifnextchar/{\pgfplotsforeachungrouped@{#1}}{\pgfplotsforeachungrouped@{#1}/{}}%
+}%
+\long\def\pgfplotsforeachungrouped@#1/#2in #3#4{%
+	\def\pgfplots@foreach@loc@TMPa{#2}%
+	\ifx\pgfplots@foreach@loc@TMPa\pgfutil@empty
+		\pgfplotsforeachungrouped@isuniform{#3}%
+		\ifpgfplots@loc@tmp
+			% special handling:
+			% \foreach #1 in {a,b,...,c} can be improved:
+			\pgfplotsforeachungroupeduniform@{#1}#3\relax{#4}%
+		\else
+			% invoke  \foreach #1 in {#3} and transport results:
+			\pgfplotsforeachungroupednonuniform@#1{#3}{#4}%
+		\fi
 	\else
-		\pgfplotsforeachungroupednonuniform@#1{#2}{#3}%
+		% invoke  \foreach #1/#2 in {#3} and transport results:
+		\pgfplotsforeachungroupedslashed@#1/#2{#3}{#4}%
 	\fi
 }
 \let\pgfplots@original@pgfmathadd@=\pgfmathadd@
@@ -661,6 +676,25 @@
 		#3%
 	}%
 }
+\long\def\pgfplotsforeachungroupedslashed@#1/#2#3#4{%
+	\pgfplotsapplistXXglobalnewempty
+	\foreach\pgfplots@foreach@loc@TMPa/\pgfplots@foreach@loc@TMPb in {#3} {%
+		\edef\pgfplots@foreach@loc@TMPa{\pgfplots@foreach@loc@TMPa/\pgfplots@foreach@loc@TMPb}%
+		\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfplots@foreach@loc@TMPa,}%
+	}%
+	\pgfplotsapplistXXgloballet\pgfplots@foreach@loc@TMPa
+	\pgfplotsapplistXXglobalclear
+	\expandafter\pgfplotsforeachentryinCSVisterminated\expandafter\pgfplots@foreach@loc@TMPa\expandafter{\pgfplots@foreach@loc@TMPa}{%
+		\expandafter\pgfplotsforeachungroupedslashed@@\pgfplots@foreach@loc@TMPa\pgfplots@EOI
+		\let#1=\pgfplots@foreach@loc@TMPa
+		\let#2=\pgfplots@foreach@loc@TMPb
+		#4%
+	}%
+}
+\def\pgfplotsforeachungroupedslashed@@#1/#2\pgfplots@EOI{%
+	\def\pgfplots@foreach@loc@TMPa{#1}%
+	\def\pgfplots@foreach@loc@TMPb{#2}%
+}%
 
 % Sets \ifpgfplots@loc@tmp to true if and only if '#1' is of the form
 % #1 = <number1>,<number2>,...,<number3>.
@@ -743,6 +777,12 @@
 % Both, #1 and #2 will be provided as floating point numbers unless
 % configured otherwise with \pgfplotsforeachlogarithmicsetoutput,
 % see above.
+%
+% Arithmethics will be carried out with the math class
+% '\pgfplotsforeachlogarithmicmathid'.
+% This macro should expand to something which is usable inside of
+% \pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{....}
+% the default is 'float'
 % 
 % FIXME : THIS CAN'T BE NESTED YET!
 \def\pgfplotsforeachlogarithmicungrouped[#1]#2/#3{\pgfplotsforeachlogarithmicungrouped@[#1]{#2}{#3}}%
@@ -751,18 +791,18 @@
 	% 	\pgfplots@foreach@loc@TMPd = N in fixed point
 	% 	\pgfplots@foreach@loc@TMPc = N-1 in float :
 	\edef\pgfplots@plot@samples@@{#1}%
-	\pgfmathfloatcreate{1}{1.0}{0}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{one}%
 	\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
-	\pgfmathfloatparsenumber{\pgfplots@plot@samples@@}%
-	\expandafter\pgfmathfloatsubtract@\expandafter{\pgfmathresult}{\pgfplots@foreach@loc@TMPa}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{parsenumber}{\pgfplots@plot@samples@@}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{op}{subtract}{{\pgfmathresult}{\pgfplots@foreach@loc@TMPa}}%
 	\let\pgfplots@foreach@loc@TMPc=\pgfmathresult
 	%
 	\edef\pgfplots@loc@TMPb{#4}%
 	\expandafter\pgfplotsforeachlogarithmicungrouped@readdomain\pgfplots@loc@TMPb\relax
 	% compute mesh width into \pgfplots@foreach@loc@TMPc:
 	%  \pgfplots@foreach@loc@TMPc := h := ( log(xmax) - log(xmin) ) / (N-1)
-	\pgfmathfloatsubtract@{\pgfplots@foreach@loc@TMPb}{\pgfplots@foreach@loc@TMPa}%
-	\pgfmathfloatdivide@{\pgfmathresult}{\pgfplots@foreach@loc@TMPc}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{op}{subtract}{{\pgfplots@foreach@loc@TMPb}{\pgfplots@foreach@loc@TMPa}}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{op}{divide}{{\pgfmathresult}{\pgfplots@foreach@loc@TMPc}}%
 	\let\pgfplots@foreach@loc@TMPc=\pgfmathresult
 	%
 	% apply local scoping here:
@@ -774,13 +814,14 @@
 	\pgfutil@loop
 	\ifnum\c@pgf@counta<\pgfplots@plot@samples@@
 		% compute exp(log(min) + i * h)
-		\expandafter\pgfmathfloatparsenumber\expandafter{\the\c@pgf@counta}%
-		\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@foreach@loc@TMPc}%
-		\expandafter\pgfmathfloatadd@\expandafter{\pgfmathresult}{\pgfplots@foreach@loc@TMPa}%
+		\edef\pgfplots@loc@TMPa{\the\c@pgf@counta}%
+		\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{parsenumber}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{op}{multiply}{{\pgfmathresult}{\pgfplots@foreach@loc@TMPc}}%
+		\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{op}{add}{{\pgfmathresult}{\pgfplots@foreach@loc@TMPa}}%
 		\let\pgfplots@loc@TMPa=\pgfmathresult
 		\pgfplotsforeachlogarithmicungrouped@finalizeresult%
 		\let#3=\pgfmathresult
-		\pgfmathfloatexp@{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{exp}{\pgfplots@loc@TMPa}%
 		\pgfplotsforeachlogarithmicungrouped@finalizeresult%
 		\let#2=\pgfmathresult
 		%
@@ -800,16 +841,16 @@
 \def\pgfplotsforeachlogarithmicungrouped@finalizeresult{}%
 
 
+\def\pgfplotsforeachlogarithmicmathid{float}
+
 % defines 
 %  \pgfplots@foreach@loc@TMPa := log(firstintervalpt)
 % and
 %  \pgfplots@foreach@loc@TMPb := log(secondintervalpt)
 \def\pgfplotsforeachlogarithmicungrouped@readdomain#1:#2\relax{%
-	\pgfmathfloatparsenumber{#1}%
-	\pgfmathfloatln@{\pgfmathresult}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{log}{#1}%
 	\let\pgfplots@foreach@loc@TMPa=\pgfmathresult
-	\pgfmathfloatparsenumber{#2}%
-	\pgfmathfloatln@{\pgfmathresult}%
+	\pgfplotscoordmath{\pgfplotsforeachlogarithmicmathid}{log}{#2}%
 	\let\pgfplots@foreach@loc@TMPb=\pgfmathresult
 }
 
@@ -1483,6 +1524,33 @@
 	% ok, first four are sorted.
 }%
 
+% A variant of \pgfutil@ifnextchar which allows the '#' character
+% inside of either '#2' or '#3'.
+%
+% It is slightly more expensive and relies on \t@pgfplots@tokc
+\long\def\pgfplotsutil@ifnextchar#1#2#3{%
+  \let\pgfplotsutil@reserved@d=#1%
+  \t@pgfplots@tokc={#2}%
+  \edef\pgfplotsutil@reserved@a{\the\t@pgfplots@tokc}%
+  \t@pgfplots@tokc={#3}%
+  \def\pgfplotsutil@reserved@b{\the\t@pgfplots@tokc}%
+  \futurelet\pgfplotsutil@let@token\pgfplotsutil@ifnch}
+\def\pgfplotsutil@ifnch{%
+  \ifx\pgfplotsutil@let@token\pgfplotsutil@sptoken
+    \let\pgfplotsutil@reserved@c\pgfplotsutil@xifnch
+  \else
+    \ifx\pgfplotsutil@let@token\pgfplotsutil@reserved@d
+      \let\pgfplotsutil@reserved@c\pgfplotsutil@reserved@a
+    \else
+      \let\pgfplotsutil@reserved@c\pgfplotsutil@reserved@b
+    \fi
+  \fi
+  \pgfplotsutil@reserved@c}
+{%
+  \def\:{\global\let\pgfplotsutil@sptoken= } \:
+  \def\:{\pgfplotsutil@xifnch} \expandafter\gdef\: {\futurelet\pgfplotsutil@let@token\pgfplotsutil@ifnch}
+}
+
 \input pgfplotsliststructure.code.tex
 \input pgfplotsliststructureext.code.tex
 \input pgfplotsarray.code.tex
@@ -1490,6 +1558,7 @@
 \input pgfplotstableshared.code.tex
 \input pgfplotsdeque.code.tex
 \input pgfplotsbinary.code.tex
+\input pgfplotsutil.verb.code.tex
 
 \usepgfplotslibrary{surfshading}
 

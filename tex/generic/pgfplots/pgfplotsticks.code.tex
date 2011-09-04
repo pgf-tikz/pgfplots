@@ -481,7 +481,12 @@
 		\or
 			% scaled #1 ticks=manual. Invoke manual tick scaling code:
 			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@tick@scale@#1\endcsname
+			\begingroup
+			\pgfkeys{/pgf/fpu=true}%
 			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\pgfmathfloatparsenumber\pgfmathresult%
 		\fi
 		% .. and this here provides \tick as fixed point repr:
 		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
@@ -781,11 +786,17 @@
 	\def\pgfplots@scaled@ticks@z@choice{0}%
 	\csname pgfplots@#1minorticksfalse\endcsname
 	\csname pgfplots@#1minorgridsfalse\endcsname
+	\expandafter\let\expandafter\pgfplots@ticklabel@pos@orig\csname pgfplots@#1ticklabel@pos\endcsname%
 	\expandafter\let\expandafter\axis@TMP\csname pgfplots@extra@#1ticklabel\endcsname
 	\expandafter\let\csname pgfplots@#1ticklabel\endcsname=\axis@TMP
 %	\pgfplotsset{/pgfplots/every extra #1 tick}%
 	% use a scope here such that line width and draw color can be set.
 	\scope[/pgfplots/.cd,/pgfplots/every extra #1 tick]
+	\expandafter\let\expandafter\pgfplots@ticklabel@pos@\csname pgfplots@#1ticklabel@pos\endcsname
+	\ifx\pgfplots@ticklabel@pos@\pgfplots@ticklabel@pos@orig
+	\else
+		\pgfplots@init@ticklabelaxisspec
+	\fi
 	\pgfplots@prepare@tick@coordlists@for{#1}{#2}%
 	\pgfplots@drawgridlines@onorientedsurf%
 	\pgfplots@drawticklines@onorientedsurf%
@@ -1805,34 +1816,12 @@
 				\pgfmathfloatparsenumber{\Hmacro}%
 				\let\Hmacro=\pgfmathresult
 			\fi
-			\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
 %\message{Got T^{-1}(H#1) = \Hmacro}%
-			% modify the mantisse:
-			\ifdim\H<2pt
-				\ifdim\H<1.5pt
-					\H=1.0pt
-				\else
-					\H=2.0pt
-				\fi
-			\else
-				\ifdim\H<4.9999pt
-					\ifdim\H<3.5pt
-						\H=2.0pt\relax
-					\else
-						\H=5.0pt\relax
-					\fi
-				\else
-					\ifdim\H<7.5pt
-						\H=5.0pt\relax
-					\else
-						\H=1.0pt\relax
-						\advance\pgfmathfloat@a@E by1
-					\fi
-				\fi
-			\fi
-			\aftergroup\pgfplots@isuniformticktrue
-			\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+			%
+			\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\Hmacro
 			\let\Hmacro=\pgfmathresult
+			%
+			\aftergroup\pgfplots@isuniformticktrue
 			% The following code is carried out in floating point
 			% arithmetics because it requires large data ranges.
 			%
@@ -1979,6 +1968,7 @@
 					\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
 				\endgroup
 			}{%
+				% Case logarithmic axes and too few ticks.
 				\aftergroup\pgfplots@isuniformtickfalse
 				% ok, do something special.
 				%
@@ -2007,31 +1997,8 @@
 				% SEARCH for the NEXT FEASABLE H.
 				\edef\Hmacro{\pgf@sys@tonumber\H}%
 				\pgfmathfloatparsenumber{\Hmacro}%
-				\expandafter\pgfmathfloat@decompose\pgfmathresult\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
-				% Determine properly snapped mantisse...
-				\ifdim\H<2pt
-					\ifdim\H<1.5pt
-						\H=1.0pt
-					\else
-						\H=2.0pt
-					\fi
-				\else
-					\ifdim\H<4.9999pt
-						\ifdim\H<3.5pt
-							\H=2.0pt\relax
-						\else
-							\H=5.0pt\relax
-						\fi
-					\else
-						\ifdim\H<7.5pt
-							\H=5.0pt\relax
-						\else
-							\H=1.0pt\relax
-							\advance\pgfmathfloat@a@E by1
-						\fi
-					\fi
-				\fi
-				\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+				\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\pgfmathresult
+				%
 				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 				\let\Hmacro=\pgfmathresult
 				\H=\Hmacro pt %
@@ -2080,6 +2047,58 @@
 	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@glob@TMPb
 %\message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
 }
+
+% Takes the distance between adjacent ticks as floating point number
+% and returns a normalized tick distance.
+% 
+%
+% The idea is to get "nice" (human readable) distances instead of
+% strange fractions or real numbers.
+%
+% The result will be assigned to \pgfmathresult (in float).
+% 
+% #1 the axis (x or y or z)
+% #2 the unnormalized tick distance computed so far
+%
+% Example:
+% \pgfmathfloatparsenumber{x}{1234}
+% \pgfplots@assign@default@tick@foraxis@normalizetickdist\pgfmathresult
+% \pgfmathfloatotfixed\pgfmathresult
+% -->
+%
+%  \pgfmathresult={1200}
+% or something like that. 
+\def\pgfplots@assign@default@tick@foraxis@normalizetickdist#1#2{%
+	\begingroup
+	\let\H=\pgf@xb
+	\expandafter\pgfmathfloat@decompose#2\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
+	% modify the mantisse:
+	\ifdim\H<2pt
+		\ifdim\H<1.5pt
+			\H=1.0pt
+		\else
+			\H=2.0pt
+		\fi
+	\else
+		\ifdim\H<4.9999pt
+			\ifdim\H<3.5pt
+				\H=2.0pt\relax
+			\else
+				\H=5.0pt\relax
+			\fi
+		\else
+			\ifdim\H<7.5pt
+				\H=5.0pt\relax
+			\else
+				\H=1.0pt\relax
+				\advance\pgfmathfloat@a@E by1
+			\fi
+		\fi
+	\fi
+	\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
 
 % Helper method for 
 %  \pgfplots@apply@data@scale@trafo@to@options@for
