@@ -64,10 +64,8 @@
 \newif\ifpgfplots@warn@for@filter@discards
 \newif\ifpgfplots@isuniformtick
 \newif\ifpgfplots@clip@limits
-\newif\ifpgfplots@clip
 \newif\ifpgfplots@plot@coords@mathparser
 \pgfplots@plot@coords@mathparsertrue
-\pgfplots@cliptrue
 \newif\ifpgfplots@enlargelimits
 \newif\ifpgfplots@enlargelimits@rel@thresh
 \newif\ifpgfplots@enlargelimits@auto
@@ -497,8 +495,8 @@
 	/pgfplots/shared with tikz/.is family,
 	/pgfplots/layer family/.is family,
 	/pgfplots/error bars/.is family,
-	/pgfplots/set layers/.initial=,
-	/pgfplots/set layers/.default={axis background,main,axis foreground,unclipped axis foreground},
+	/pgfplots/use layers/.initial=,
+	/pgfplots/use layers/.default={axis background,main,axis foreground,unclipped axis foreground},
 	/pgfplots/on layer/.initial=,
 	% mark layer can be 'auto', 'like plot', or a layer name.
 	/pgfplots/mark layer/.initial=,
@@ -1541,7 +1539,11 @@
 	/pgfplots/clip limits/.default=true,
 	/pgfplots/clip limits=true,
 	/pgfplots/clip limits/.belongs to family=/pgfplots,
-	/pgfplots/clip/.is if=pgfplots@clip,
+	/pgfplots/clip/.is choice,
+	/pgfplots/clip/false/.code=	\def\pgfplots@clipmode{0},
+	/pgfplots/clip/true/.code=	\def\pgfplots@clipmode{1},
+	/pgfplots/clip/plots individually/.code=	\def\pgfplots@clipmode{2},
+	/pgfplots/clip=true,
 	% will be used if it exists:
 	%/pgfplots/axis background/.style={},
 	%
@@ -7583,19 +7585,19 @@
 \newif\ifpgfplots@layered@graphics
 
 \def\pgfplots@prepare@layered@graphics{%
-	\pgfkeysgetvalue{/pgfplots/set layers}\pgfplots@loc@TMPa
+	\pgfkeysgetvalue{/pgfplots/use layers}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		% DEFAULT.
 		\pgfplots@layered@graphicsfalse
 	\else
 		\def\pgfplots@loc@TMPb{false}%
 		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-			% "set layers=false"
+			% "use layers=false"
 			\pgfplots@layered@graphicsfalse
 		\else
 			\def\pgfplots@loc@TMPb{main}%
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-				% "set layers=main"
+				% "use layers=main"
 				\pgfplots@layered@graphicsfalse
 			\else
 				\pgfplots@layered@graphicstrue
@@ -7727,8 +7729,8 @@
 			\fi
 		}%
 		\let\pgfplotsretval=\pgfplots@loc@TMPc
+%\message{\string\pgfplotsgetlayerforstyle{#1} = '\pgfplotsretval'^^J}%
 	\fi
-\message{\string\pgfplotsgetlayerforstyle{#1} = '\pgfplotsretval'^^J}%
 }%
 
 \def\pgfplots@BEGIN@init@and@draw@axis{%
@@ -7770,7 +7772,8 @@
 			\pgfplots@draw@axis
 		\fi
 		% CLIPPING:
-		\ifpgfplots@clip
+		\if1\pgfplots@clipmode
+			% 'clip=true':
 			\pgfplots@clippath@install{\pgfusepath{clip}}%
 		\fi
 		\pgfplotspointbb@assertvaluesexist%
@@ -8116,6 +8119,16 @@
 	\pgfplots@error{Can't install a clippath here - the command has not yet been prepared.}%
 }%
 
+
+% Generates a path representing the outline of the axis.
+% Example:
+%
+% \pgfplotspathaxisoutline
+% \pgfusepath{clip}
+\def\pgfplotspathaxisoutline{%
+	\pgfplots@clippath@install{}%
+}%
+
 % This is the counterpart for \pgfplots@BEGIN@init@and@draw@axis
 \def\pgfplots@END@init@and@draw@axis{%
 	\endscope%
@@ -8129,19 +8142,12 @@
 	% This here looks better, I think... markers should not be obscured by descriptions.
 	\ifpgfplots@clip@marker@paths
 	\else
-		% Note that layer changes are expensive. That's why I collect
-		% the pgfplots@stored@markerlist here and assign the layer
-		% just one time:
-		\pgfplotsonlayer{unclipped axis foreground}%
 		\pgfplotslistforeach\pgfplots@stored@markerlist\as\pgfplots@loc@TMPa{%
-			\scope% make sure that 'fill opacity' and 'dotted' styles remain local!
 %\message{Executing marker stuff: \meaning\pgfplots@loc@TMPa]]]]]}%
 %\tracingmacros=2\tracingcommands=2
 			\pgfplots@loc@TMPa
-			\endscope
 		}%
 		\global\pgfplotslistnewempty\pgfplots@stored@markerlist% clear.
-		\endpgfplotsonlayer
 	\fi
 	%
 	\begingroup
@@ -10023,10 +10029,15 @@
 				% axis = 2d and plot=3d is forbidden here.
 				\pgfplots@curplot@threedimfalse
 			\fi
+			\global\let\pgfplots@stored@markerlist@last=\relax
 			%
 			% this code here means we REALLY have a plotting
 			% command!
 			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+			\if2\pgfplots@clipmode
+				% clip=plots individually:
+				\pgfplots@clippath@install{\pgfusepath{clip}}%
+			\fi
 			%
 			\pgfplots@prepare@layered@graphics@marks
 			%
@@ -10043,6 +10054,10 @@
 				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 			\fi
 			\endscope
+			\if2\pgfplots@clipmode
+				% clip=plots individually:
+				\pgfplots@stored@markerlist@last
+			\fi
 			\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
 			\endgroup
 		\fi
