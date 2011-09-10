@@ -6334,12 +6334,12 @@
 % of anchors.
 \pgfdeclareshape{pgfplots@low@level@shape}{%
 	% The '(0,0)' point is the LOWER LEFT OUTER CORNER.
-	\savedanchor\upperrightcorner{
+	\savedanchor\upperrightcorner{%
 		\global\pgf@x=\wd\pgfnodepartimagebox
 		\global\pgf@y=\ht\pgfnodepartimagebox
 	}%
 	\savedanchor\lowerleftinnercorner{%
-		\pgfqpoint{\pgfplots@savedanchor@inner@lowerleft@x\relax}{\pgfplots@savedanchor@inner@lowerleft@y\relax}%
+		\pgfplotspointlowerleftinnercorner%
 	}%
 	\savedanchor\innerdiagonal{\pgfplotspointbbdiagonal}%
 	\savedanchor\origin{%
@@ -6601,7 +6601,7 @@
 			\global\pgf@y=\ht\pgfnodepartimagebox
 		}%
 		\savedanchor\lowerleftinnercorner{%
-			\pgfqpoint{\pgfplots@savedanchor@inner@lowerleft@x\relax}{\pgfplots@savedanchor@inner@lowerleft@y\relax}%
+			\pgfplotspointlowerleftinnercorner%
 		}%
 		\savedanchor\xaxisvec{\pgfplotspointxaxis}%
 		\savedanchor\yaxisvec{\pgfplotspointyaxis}%
@@ -7733,12 +7733,11 @@
 	\fi
 }%
 
-\def\pgfplots@BEGIN@init@and@draw@axis{%
-	\pgfplots@determinedefaultvalues
+\def\pgfplots@BEGIN@cell@picture[#1]{%
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
 		\pgfinterruptpicture
 		\pgfplots@prepare@layered@graphics
-		\tikzpicture[/pgfplots/every axis]%
+		\tikzpicture[#1]%
 		% set baseline for sub-picture to default value.
 		% the baseline option will be applied to the OUTER picture.
 		\pgfsetbaseline{\pgf@picminy}%
@@ -7755,6 +7754,58 @@
 			\xdef\pgfplots@glob@TMPa{{\aa}{\ab}{\ba}{\bb}}%
 		\endgroup
 		\expandafter\pgfsettransformentries\pgfplots@glob@TMPa{0pt}{0pt}%
+}%
+\def\pgfplots@END@cell@picture{%
+		\endtikzpicture%
+		\begingroup
+			% Protocol sizes for the axis-shape.
+			% That needs to be done globally, do avoid all those
+			% \endgroup's in and after \endpgfinterruptpicture ...
+			\ifdim\pgf@picmaxx=-16000pt\relax%
+				\pgf@picmaxx=0pt\relax%
+				\pgf@picminx=0pt\relax%
+				\pgf@picmaxy=0pt\relax%
+				\pgf@picminy=0pt\relax%
+			\fi%
+			%
+			\xdef\pgfplots@saveddimen@picminx{\the\pgf@picminx}%
+			\xdef\pgfplots@saveddimen@picminy{\the\pgf@picminy}%
+			%
+			\ifpgfplots@deprecated@anchors
+				\pgfplotspointminminmin
+			\else
+				\pgfplotspointbblowerleft
+			\fi
+			\pgf@xa=\pgf@x
+			\advance\pgf@xa by-\pgf@picminx
+			\pgf@ya=\pgf@y
+			\advance\pgf@ya by-\pgf@picminy
+			\xdef\pgfplotspointlowerleftinnercorner{%
+				\global\pgf@x=\the\pgf@xa\space
+				\global\pgf@y=\the\pgf@ya\space
+			}%
+			%
+			% FIXME : can I use \pgfplotspointupperrightcorner ( which
+			% is never used currently) to replace the
+			% \savedanchor\upperrightcorner ?
+			\global\pgf@x=\pgf@picmaxx
+			\global\pgf@y=\pgf@picmaxy
+			\global\advance\pgf@x by-\pgf@picminx
+			\global\advance\pgf@y by-\pgf@picminy
+			\xdef\pgfplotspointupperrightcorner{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+			%
+			\pgfplotspointaxisorigin
+			\global\advance\pgf@x by-\pgf@picminx
+			\global\advance\pgf@y by-\pgf@picminy
+			\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+		\endgroup
+		\endpgfinterruptpicture
+	\egroup\egroup% end of pgfnodepartimagebox
+}%
+
+\def\pgfplots@BEGIN@init@and@draw@axis{%
+	\pgfplots@determinedefaultvalues
+	\pgfplots@BEGIN@cell@picture[/pgfplots/every axis]%
 		%
 		%
 		\pgfplots@draw@axis@pre
@@ -9163,11 +9214,11 @@
 		\pgfkeysgetvalue{/tikz/alias/.@cmd}\pgfplots@old@alias@impl
 	}{}%
 	\pgfkeysdef{/tikz/name}{%
-		\xdef\pgfplots@named@child@node@list{\pgfplots@named@child@node@list,{##1}}%
+		\pgfplots@add@named@child@node{##1}%
 		\pgfplots@old@name@impl##1\pgfeov
 	}%
 	\pgfkeysdef{/tikz/alias}{%
-		\xdef\pgfplots@named@child@node@list{\pgfplots@named@child@node@list,{##1}}%
+		\pgfplots@add@named@child@node{##1}%
 		\pgfplots@old@alias@impl##1\pgfeov
 	}%
 	%
@@ -9288,6 +9339,10 @@
 	\pgfplots@set@options@sanitize
 	\pgfplots@notify@options@are@set
 }
+
+\def\pgfplots@add@named@child@node#1{%
+	\xdef\pgfplots@named@child@node@list{\pgfplots@named@child@node@list,{#1}}%
+}%
 
 \def\pgfplots@notify@options@are@set{}%
 
@@ -10070,41 +10125,9 @@
 	%
 	\pgfplots@create@axis@descriptions
 	%
-	\endtikzpicture%
-	\begingroup
-		% Protocol sizes for the axis-shape.
-		% That needs to be done globally, do avoid all those
-		% \endgroup's in and after \endpgfinterruptpicture ...
-		\ifdim\pgf@picmaxx=-16000pt\relax%
-			\pgf@picmaxx=0pt\relax%
-			\pgf@picminx=0pt\relax%
-			\pgf@picmaxy=0pt\relax%
-			\pgf@picminy=0pt\relax%
-		\fi%
-		%
-		\xdef\pgfplots@saveddimen@picminx{\the\pgf@picminx}%
-		\xdef\pgfplots@saveddimen@picminy{\the\pgf@picminy}%
-		%
-		\ifpgfplots@deprecated@anchors
-			\pgfplotspointminminmin
-		\else
-			\pgfplotspointbblowerleft
-		\fi
-		\pgf@xa=\pgf@x
-		\advance\pgf@xa by-\pgf@picminx
-		\xdef\pgfplots@savedanchor@inner@lowerleft@x{\the\pgf@xa}%
-		%
-		\pgf@xa=\pgf@y
-		\advance\pgf@xa by-\pgf@picminy
-		\xdef\pgfplots@savedanchor@inner@lowerleft@y{\the\pgf@xa}%
-		%
-		\pgfplotspointaxisorigin
-		\global\advance\pgf@x by-\pgf@picminx
-		\global\advance\pgf@y by-\pgf@picminy
-		\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
-	\endgroup
-	\endpgfinterruptpicture
-	\egroup\egroup% end of pgfnodepartimagebox
+	% this here does \endtikzpicture\endpgfinterruptpicture 
+	% (and stores sizes):
+	\pgfplots@END@cell@picture
 	%
 	\let\tikz@fig@name=\pgfplots@fig@name
 	\tikz@fig@mustbenamed
