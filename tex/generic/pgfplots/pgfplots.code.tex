@@ -1319,9 +1319,13 @@
 	},%
 % 'axis' options:
 	/pgfplots/anchor/.belongs to family=/pgfplots,
-	% note that there is a special 'anchor=internal' which does not introduce cell pictures
 	/pgfplots/anchor/.store in=			\pgfplots@anchorname,
 	/pgfplots/anchor=south west,
+	/pgfplots/cell picture/.is choice,
+	/pgfplots/cell picture/false/.code=\def\pgfplots@cell@picture@mode{0},
+	/pgfplots/cell picture/true/.code=\def\pgfplots@cell@picture@mode{1},
+	/pgfplots/cell picture/if necessary/.code=\def\pgfplots@cell@picture@mode{2},
+	/pgfplots/cell picture/true,
 	/pgfplots/log origin x/.is choice,
 	/pgfplots/log origin x/infty/.code={\def\pgfplots@log@origin@choice@x{0}},
 	/pgfplots/log origin x/0/.code={\def\pgfplots@log@origin@choice@x{1}},
@@ -7738,40 +7742,82 @@
 	\fi
 }%
 
-% The purpose of this method is to check for the (only) case where no cell picture is necessary: anchor=internal.
+% The purpose of this method is to check for the cases where no cell picture is necessary.
 % The idea behind this anchor is to insert the axis DIRECTLY into the embedding tikzpicture, without
 % a posteriori shifting. 
 %
-% A posteriori shifting == anchors. Thus, 'anchor=internal' effectively DISABLES shifts based on the axis' anchor.
-% It will still prepare the anchors correctly, but it does not shift this axis (in other words: other node can align
+% A posteriori shifting == anchors whose dimensions are not fixed
+% until the complete axis has been "typeset". 
+%
+% Disabling the cell picture will still prepare ALL anchors correctly,
+% but it disables many of the anchor choices when it comes to the
+% alignment of the current axis (in other words: other node can align
 % using the anchors of this axis, but this axis cannot be aligned based on its anchors).
 %
-% The motivation for this feature was to implement multi-axis support together with layered graphics.
-% But the approach failed, I did not complete it:
-% The problem is that the origin of an axis can be arbitrary; it depends strongly on the data scaling trafo. It may
-% not even be part of the picture. Thus, one would need a data (!) shift transformation such that the lower left
-% corner is (0,0) -- this would allow for multi-axis alignment without a cell picture.
+% The motivation for this feature is to implement multi-axis support together with layered graphics.
 %
-% The 'anchor=internal' feature may be interesting for SVG export, however - so
-% I decided to keep it here (it should not hurt).
+% The 'cell picture=false' feature may be interesting for SVG export as
+% well.
 \def\pgfplots@prepare@cell@picture{%
-	\edef\pgfplots@loc@TMPa{\pgfplots@anchorname}%
-	\def\pgfplots@loc@TMPb{internal}
-	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-		% anchor=internal
+	\if1\pgfplots@cell@picture@mode
+		% cell picture=true
+	\else
+		% cell picture=false or cell picture=if necessary
 		%
-		% This is a very special case: it is only used to express the
-		% fact that we want to disable cell pictures
-		\let\pgfplots@BEGIN@cell@picture=\pgfplots@BEGIN@cell@picture@DISABLED
-		\let\pgfplots@END@cell@picture=\pgfplots@END@cell@picture@DISABLED
-		\def\pgfplots@add@named@child@node##1{}% do nothing here
-		\let\pgfplots@finally@correct@child@node@positions=\relax
-		\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
-			\pgftransformshift{\pgfqpointscale{1}{\pgfplotspointorigininternal}}%
-		}%	
-		\def\pgfplots@anchorname{image}% 
+		% anchor processing is special in this case! The standard
+		% anchor processing uses a posteriori shifts. This feature
+		% here REQUIRES a priori shifts.
+		% Prepare special handling for these shifts:
+		\pgfplots@ifcellpicture@required{%
+			\if2\pgfplots@cell@picture@mode
+				% cell picture=if necessary: OK, proceed as for 'cell picture=true'
+			\else
+				\pgfplots@error{Sorry, 'cell picture=false' is UNSUPPORTED for 'anchor=\pgfplots@anchorname'.}%
+			\fi
+		}{%
+			\edef\pgfplots@anchorname@internal{\pgfplots@anchorname}%
+			\def\pgfplots@anchorname{image}% 
+			%
+			\let\pgfplots@BEGIN@cell@picture=\pgfplots@BEGIN@cell@picture@DISABLED
+			\let\pgfplots@END@cell@picture=\pgfplots@END@cell@picture@DISABLED
+			\def\pgfplots@add@named@child@node##1{}% do nothing here
+			\let\pgfplots@finally@correct@child@node@positions=\relax
+			%
+			% translate the coordinate system before the 'current axis'
+			% node is generated. 
+			\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
+				\pgftransformshift{%
+					\pgfpointdiff{%
+						\begingroup
+						% we need to respect the transformation taken
+						% in \pgfplots@BEGIN@cell@picture@DISABLED
+						% here (do not take it twice):
+						\pgfpointanchor{current axis}{\pgfplots@anchorname@internal}%
+						\pgf@process{}%
+						\endgroup
+					}{%
+						% This is necessary in order to prepare the
+						% outer anchors (which assume that '(0,0)' is at 'outer
+						% south west') or 'current axis':
+						\pgfplotspointorigininternal%
+					}%
+				}%
+			}%	
+		}%
 	\fi
 }
+
+\long\def\pgfplots@ifcellpicture@required#1#2{%
+	\edef\pgfplots@shapename{pgfplots@low@level@shape@INNER}%
+	\pgfutil@ifundefined{pgf@anchor@\pgfplots@shapename @\pgfplots@anchorname}{%
+		% we need to compute the anchor a posteriorily.
+		#1%
+	}{%
+		% OK, an a priori anchor is available - we do not really need
+		% a cell picture:
+		#2%
+	}%
+}%
 
 \def\pgfplots@BEGIN@cell@picture[#1]{%
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
@@ -7794,61 +7840,6 @@
 			\xdef\pgfplots@glob@TMPa{{\aa}{\ab}{\ba}{\bb}}%
 		\endgroup
 		\expandafter\pgfsettransformentries\pgfplots@glob@TMPa{0pt}{0pt}%
-}%
-\def\pgfplots@END@cell@picture{%
-		\endtikzpicture%
-		\begingroup
-			% Protocol sizes for the axis-shape.
-			% That needs to be done globally, do avoid all those
-			% \endgroup's in and after \endpgfinterruptpicture ...
-			\ifdim\pgf@picmaxx=-16000pt\relax%
-				\pgf@picmaxx=0pt\relax%
-				\pgf@picminx=0pt\relax%
-				\pgf@picmaxy=0pt\relax%
-				\pgf@picminy=0pt\relax%
-			\fi%
-			%
-			\xdef\pgfplotspointorigininternal{\global\pgf@x=\the\pgf@picminx\space\global\pgf@y=\the\pgf@picminy\space}%
-			%
-			\ifpgfplots@deprecated@anchors
-				\pgfplotspointminminmin
-			\else
-				\pgfplotspointbblowerleft
-			\fi
-			\pgf@xa=\pgf@x
-			\advance\pgf@xa by-\pgf@picminx
-			\pgf@ya=\pgf@y
-			\advance\pgf@ya by-\pgf@picminy
-			\xdef\pgfplotspointlowerleftinnercorner{%
-				\global\pgf@x=\the\pgf@xa\space
-				\global\pgf@y=\the\pgf@ya\space
-			}%
-			%
-			\global\pgf@x=\pgf@picmaxx
-			\global\pgf@y=\pgf@picmaxy
-			\global\advance\pgf@x by-\pgf@picminx
-			\global\advance\pgf@y by-\pgf@picminy
-			\xdef\pgfplotspointupperrightcorner{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
-			%
-			\pgfplotspointaxisorigin
-			\global\advance\pgf@x by-\pgf@picminx
-			\global\advance\pgf@y by-\pgf@picminy
-			\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
-		\endgroup
-		\endpgfinterruptpicture
-	\egroup\egroup% end of pgfnodepartimagebox
-	%
-	% restore any shift transformations provided to an axis.
-	% These would be lost otherwise.
-	\pgftransformshift{\pgfplots@savedtransformshift}%
-	%
-	% allow positioning of colorbars with this hook.
-	% It is \relax unless this here is a color bar axis.
-	% Its intention is to re-define `\pgfplots@at':
-	\pgfplots@colorbar@position@hook%
-	%
-    \pgftransformshift{\pgfplots@at}%
-	%
 }%
 
 \def\pgfplots@END@cell@picture{%
@@ -7913,6 +7904,13 @@
 \def\pgfplots@BEGIN@cell@picture@DISABLED[#1]{%
 	\begingroup
 	\pgfinterruptboundingbox
+		%
+		% prepare a priori anchor transformation (see
+		% \pgfplots@prepare@cell@picture for details):
+		\pgftransformshift{%
+			\pgfqpointscale{-1}{\pgfpointanchor{current axis}{\pgfplots@anchorname@internal}}%
+		}%
+		%
 		% allow positioning of colorbars with this hook.
 		% It is \relax unless this here is a color bar axis.
 		% Its intention is to re-define `\pgfplots@at':
