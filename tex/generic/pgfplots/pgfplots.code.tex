@@ -7779,7 +7779,7 @@
 			\fi
 		}{%
 			\edef\pgfplots@anchorname@internal{\pgfplots@anchorname}%
-			\def\pgfplots@anchorname{image}% 
+			%\def\pgfplots@anchorname{image}% 
 			%
 			\let\pgfplots@BEGIN@cell@picture=\pgfplots@BEGIN@cell@picture@DISABLED
 			\let\pgfplots@END@cell@picture=\pgfplots@END@cell@picture@DISABLED
@@ -7789,10 +7789,11 @@
 			% translate the coordinate system before the 'current axis'
 			% node is generated. 
 			\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
-				\pgftransformshift{%
-					\pgfplotspointorigininternal%
-				}%
+				\setbox\pgfnodepartimagebox=\hbox{}%
 				\iffalse
+				\pgftransformshift{%
+					\pgfqpointscale{1}{\pgfplotspointorigininternal}%
+				}%
 				\pgftransformshift{%
 					\pgfpointdiff{%
 						% This is necessary in order to prepare the
@@ -7955,17 +7956,7 @@
 	% incorrectly
 	% b) the shifts of the axis' node are incorrect
 	%
-	% prepare a priori anchor transformation (see
-	% \pgfplots@prepare@cell@picture for details):
-	\pgftransformshift{%
-		\pgfqpointscale{-1}{%
-			\pgfplotspointdescriptionbyanchor{\pgfplots@anchorname@internal}%
-		}
-\message{cell picture=false: installing shift for anchor=\pgfplots@anchorname@internal: (\the\pgf@x,\the\pgf@y)^^J}%
-	}%
 	%
-	% FIXME 
-	%\pgfplots@define@preliminary@current@axis@node
 	%
 	\begingroup
 	\pgfinterruptboundingbox
@@ -7978,6 +7969,14 @@
 		%
 		\pgftransformshift{\pgfplots@at}%
 		%
+		% prepare a priori anchor transformation (see
+		% \pgfplots@prepare@cell@picture for details):
+		\pgftransformshift{%
+			\pgfqpointscale{-1}{\pgfplotspointdescriptionbyanchor{\pgfplots@anchorname@internal}}%
+		}%
+		%
+		\pgfplots@define@preliminary@current@axis@node
+		%
 		\scope[#1]%
 }%
 \def\pgfplots@END@cell@picture@DISABLED{%
@@ -7985,13 +7984,19 @@
 		\begingroup
 			\pgfplots@END@cell@picture@preparepoints
 		\endgroup
-		\endpgfinterruptboundingbox
+	\endpgfinterruptboundingbox
 	\endgroup
+	%
+	%
+	{%
+		\pgftransformshift{\pgfplotspointorigininternal}%
+		\node[rectangle,draw] at (0pt,0pt) {origininternal};
+		\pgfpathcircle{\pgfpointorigin}{2pt}\pgfusepath{fill}% FIXME
+		\draw[->] \pgfextra \pgfpathmoveto\pgfpointorigin \pgfpathlineto\pgfplotspointorigininternal\endpgfextra;
+	}%
 }%
 
 \def\pgfplots@BEGIN@init@and@draw@axis{%
-	\pgfplots@determinedefaultvalues
-	\pgfplots@BEGIN@cell@picture[/pgfplots/every axis]%
 		%
 		%
 		\pgfplots@draw@axis@pre
@@ -10238,73 +10243,75 @@
 	%  All plotting commands have been read.
 	%  -> apply postponed drawing commands!
 	% --------------------
-	\pgfplots@BEGIN@init@and@draw@axis
-	\pgfplots@stacked@initialise
-	\global\pgfplotslistnewempty\pgfplots@stored@markerlist
-	\ifpgfplots@stacked@reverse
-		% This here applies any scaling trafos and assembles a
-		% NEW \pgfplots@stored@plotlist!
-		\pgfplots@stacked@finalize@stored@plots
-	\fi
-	\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
-		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
+	\pgfplots@determinedefaultvalues
+	\pgfplots@BEGIN@cell@picture[/pgfplots/every axis]%
+		\pgfplots@BEGIN@init@and@draw@axis
+		\pgfplots@stacked@initialise
+		\global\pgfplotslistnewempty\pgfplots@stored@markerlist
+		\ifpgfplots@stacked@reverse
+			% This here applies any scaling trafos and assembles a
+			% NEW \pgfplots@stored@plotlist!
+			\pgfplots@stacked@finalize@stored@plots
+		\fi
+		\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
+			\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
 %\message{^^JProcessing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';^^J  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd'^^J postcommand '\meaning\pgfplots@stored@current@postcmd'^^J}%
 %\message{DATA: '\meaning\pgfplots@stored@current@data';^^J}%
-		% The precmd sets all required variables needed to
-		% finalize a plot.
-		% @see the stream preparation routines.
-		\pgfplots@stored@current@precmd
-		\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}%
-		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
-			\pgfplots@stored@current@data%
-		\else
-			\begingroup
-			\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
-			\ifpgfplots@threedim
+			% The precmd sets all required variables needed to
+			% finalize a plot.
+			% @see the stream preparation routines.
+			\pgfplots@stored@current@precmd
+			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}%
+			\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+				\pgfplots@stored@current@data%
 			\else
-				% axis = 2d and plot=3d is forbidden here.
-				\pgfplots@curplot@threedimfalse
+				\begingroup
+				\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
+				\ifpgfplots@threedim
+				\else
+					% axis = 2d and plot=3d is forbidden here.
+					\pgfplots@curplot@threedimfalse
+				\fi
+				\global\let\pgfplots@stored@markerlist@last=\relax
+				%
+				% this code here means we REALLY have a plotting
+				% command!
+				\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+				\if2\pgfplots@clipmode
+					% clip=plots individually:
+					\pgfplots@clippath@install{\pgfusepath{clip}}%
+				\fi
+				%
+				\pgfplots@prepare@layered@graphics@marks
+				%
+				% de-activate the FPU here! I fear its number
+				% format may cause errors when used in low-level
+				% routines.
+				\pgfkeys{/pgf/fpu=false}%
+				%
+				\ifpgfplots@stacked@reverse
+					% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
+					\pgfplots@stacked@draw@reversed@plot
+				\else
+					% modifies \pgfplots@stored@markerlist if necessary.
+					\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
+				\fi
+				\endscope
+				\if2\pgfplots@clipmode
+					% clip=plots individually:
+					\pgfplots@stored@markerlist@last
+				\fi
+				\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
+				\endgroup
 			\fi
-			\global\let\pgfplots@stored@markerlist@last=\relax
-			%
-			% this code here means we REALLY have a plotting
-			% command!
-			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
-			\if2\pgfplots@clipmode
-				% clip=plots individually:
-				\pgfplots@clippath@install{\pgfusepath{clip}}%
-			\fi
-			%
-			\pgfplots@prepare@layered@graphics@marks
-			%
-			% de-activate the FPU here! I fear its number
-			% format may cause errors when used in low-level
-			% routines.
-			\pgfkeys{/pgf/fpu=false}%
-			%
-			\ifpgfplots@stacked@reverse
-				% has already been processed above, in \pgfplots@stacked@finalize@stored@plots.
-				\pgfplots@stacked@draw@reversed@plot
-			\else
-				% modifies \pgfplots@stored@markerlist if necessary.
-				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
-			\fi
-			\endscope
-			\if2\pgfplots@clipmode
-				% clip=plots individually:
-				\pgfplots@stored@markerlist@last
-			\fi
-			\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
-			\endgroup
-		\fi
-		\endpgfplotsonlayer
-		\pgfplots@stored@current@postcmd
-	}%
-	\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
-	%
-	\pgfplots@END@init@and@draw@axis
-	%
-	\pgfplots@create@axis@descriptions
+			\endpgfplotsonlayer
+			\pgfplots@stored@current@postcmd
+		}%
+		\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
+		%
+		\pgfplots@END@init@and@draw@axis
+		%
+		\pgfplots@create@axis@descriptions
 	%
 	% this here does \endtikzpicture\endpgfinterruptpicture 
 	% (and stores sizes):
@@ -10334,8 +10341,10 @@
 	}{}%
 	%
 	\begingroup
+\pgfgettransform\pgfplots@loc@TMPa\message{TRANSFORMATION before beforenode \meaning\pgfplots@loc@TMPa^^J}%
 	\pgfplots@beforenode
 	%
+\pgfgettransform\pgfplots@loc@TMPa\message{TRANSFORMATION before node\meaning\pgfplots@loc@TMPa^^J}%
 	\ifpgfplots@deprecated@anchors
 		\pgfplots@restore@deprecated@lowlevel@shape
 		\pgfmultipartnode{\pgfplots@shapename}{\pgfplots@anchorname}{\tikz@fig@name}{\pgfusepath{discard}}%
