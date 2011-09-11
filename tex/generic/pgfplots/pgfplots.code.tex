@@ -6272,13 +6272,7 @@
 	\fi
 }
 
-
-% This here is a low-weight node. It can ONLY be used during axis
-% descriptions and is completely useless otherwise.
-%
-% See pgfplots@low@level@shape below.
-\pgfdeclareshape{pgfplots@low@level@shape@INNER}{%
-	\nodeparts{image}%
+\def\pgfplots@low@level@shape@INNER@define{%
 	\anchor{image}{\pgfpointorigin}%
 	%
 	%
@@ -6321,8 +6315,17 @@
 			{\pgfplotsqpointdescriptionxy{0}{0}}
 			{\pgfplotsqpointdescriptionxy{1}{0}}%
 	}%
+}
+
+% This here is a low-weight node. It can ONLY be used during axis
+% descriptions and is completely useless otherwise.
+%
+% See pgfplots@low@level@shape below.
+\pgfdeclareshape{pgfplots@low@level@shape@INNER}{%
+	\nodeparts{image}%
 	%%
 	%%
+	\pgfplots@low@level@shape@INNER@define
 	%%
 	%%
 	\anchorborder{}%
@@ -7787,21 +7790,26 @@
 			% node is generated. 
 			\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
 				\pgftransformshift{%
+					\pgfplotspointorigininternal%
+				}%
+				\iffalse
+				\pgftransformshift{%
 					\pgfpointdiff{%
-						\begingroup
-						% we need to respect the transformation taken
-						% in \pgfplots@BEGIN@cell@picture@DISABLED
-						% here (do not take it twice):
-						\pgfpointanchor{current axis}{\pgfplots@anchorname@internal}%
-						\pgf@process{}%
-						\endgroup
-					}{%
 						% This is necessary in order to prepare the
 						% outer anchors (which assume that '(0,0)' is at 'outer
 						% south west') or 'current axis':
 						\pgfplotspointorigininternal%
+					}{%
+						\begingroup
+						% we need to respect the transformation taken
+						% in \pgfplots@BEGIN@cell@picture@DISABLED
+						% here (do not take it twice):
+						\pgfqpointscale{-1}{\pgfpointanchor{current axis}{south west}}%
+						\pgf@process{}%
+						\endgroup
 					}%
 				}%
+				\fi
 			}%	
 		}%
 	\fi
@@ -7819,7 +7827,20 @@
 	}%
 }%
 
+\def\pgfplots@define@preliminary@current@axis@node{%
+	\begingroup
+	\pgfplots@sys@beforenode
+	% create a leight-weight 'current axis' node for anchor references
+	% (which may happen during both, the axis descriptions or any
+	% path/plot commands). 
+	\pgfmultipartnode{pgfplots@low@level@shape@INNER}{image}{current axis}{\pgfusepath{discard}}%
+	\endgroup
+}%
+
 \def\pgfplots@BEGIN@cell@picture[#1]{%
+	%
+	\pgfplots@define@preliminary@current@axis@node
+	%
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
 		\pgfinterruptpicture
 		\pgfplots@prepare@layered@graphics
@@ -7901,15 +7922,45 @@
 	\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 }
 
+% this here is essentially the same as
+%		\pgfpointanchor{current axis}{#1}
+% but it does not need a node.
+\def\pgfplotspointdescriptionbyanchor#1{%
+	\begingroup
+	\edef\pgfplotspointdescriptionbyanchor@{#1}%
+	\gdef\pgfplots@glob@TMPa{0}%
+	% do a linear search through all anchors of
+	% shape pgfplots@low@level@shape@INNER :
+	\def\anchor##1##2{%
+		\def\pgfplots@loc@TMPa{##1}%
+		\ifx\pgfplots@loc@TMPa\pgfplotspointdescriptionbyanchor@
+			\pgf@process{##2}%
+			\gdef\pgfplots@glob@TMPa{1}%
+		\fi
+	}%
+	\pgfplots@low@level@shape@INNER@define
+	\if0\pgfplots@glob@TMPa
+		\pgfplots@error{The anchor '#1' is unsupported in this context.}%
+	\fi
+	\endgroup
+}%
+
 \def\pgfplots@BEGIN@cell@picture@DISABLED[#1]{%
+	% prepare a priori anchor transformation (see
+	% \pgfplots@prepare@cell@picture for details):
+	\pgftransformshift{%
+		\pgfqpointscale{-1}{%
+			\pgfplotspointdescriptionbyanchor{\pgfplots@anchorname@internal}%
+		}
+\message{cell picture=false: installing shift for anchor=\pgfplots@anchorname@internal: (\the\pgf@x,\the\pgf@y)^^J}%
+	}%
+	%
+	% FIXME 
+	%\pgfplots@define@preliminary@current@axis@node
+	%
 	\begingroup
 	\pgfinterruptboundingbox
 		%
-		% prepare a priori anchor transformation (see
-		% \pgfplots@prepare@cell@picture for details):
-		\pgftransformshift{%
-			\pgfqpointscale{-1}{\pgfpointanchor{current axis}{\pgfplots@anchorname@internal}}%
-		}%
 		%
 		% allow positioning of colorbars with this hook.
 		% It is \relax unless this here is a color bar axis.
@@ -8222,6 +8273,7 @@
 	% clip path routine; it will be used quite often.
 	%
 	\let\pgfplots@clippath@install@pathcmd=\pgfplots@clippath@install
+	\iffalse
 		\pgf@resetpathsizes% FIXME: this here should not be necessary!
 		\pgfsysprotocol@getcurrentprotocol\pgfplots@loc@TMPa%
 		\begingroup
@@ -8239,6 +8291,7 @@
 		\endgroup
 		\let\pgfplots@clippath@install@clip@protocolled=\pgfplots@glob@TMPa
 		\pgfsysprotocol@setcurrentprotocol\pgfplots@loc@TMPa%
+	\fi
 	%
 	% Replace \pgfplots@clippath@install by one which makes use of the
 	% optimized version (if ##1=\pgfusepath{clip})
@@ -10171,14 +10224,6 @@
 	\expandafter\pgfplotsset\expandafter{\pgfplots@late@options}%
 	%
 	%\end{axis}:
-	%
-	\begingroup
-	\pgfplots@sys@beforenode
-	% create a leight-weight 'current axis' node for anchor references
-	% (which may happen during both, the axis descriptions or any
-	% path/plot commands). 
-	\pgfmultipartnode{pgfplots@low@level@shape@INNER}{image}{current axis}{\pgfusepath{discard}}%
-	\endgroup
 	%
 	% --------------------
 	%  All plotting commands have been read.
