@@ -118,6 +118,7 @@
 \let\pgfnodepartimagebox=\pgfnodeparttextbox
 \newif\ifpgfplotsplothandlermesh@internaldepth
 \newif\ifpgfplotsplothandlermesh@hide@refined@edges
+\newif\ifpgfplots@has@cell@picture
 
 \newif\ifpgfplots@collect@firstplot@astick
 \newif\ifpgfplots@units@use
@@ -483,6 +484,14 @@
 }%
 
 \pgfkeys{%
+	% <key name>/.define layer set={<layer list>}{<style definition>}
+	/handlers/.define layer set/.code 2 args={%
+		\pgfkeyssetvalue{\pgfkeyscurrentpath/list}{#1}%
+		\pgfkeysdef{\pgfkeyscurrentpath}{\pgfkeysalso{#2}}%
+	}%
+}
+
+\pgfkeys{%
 	/pgfplots/search path for tikz/.search also={/tikz,/pgfplots},
 	/pgfplots/.is family,
 	/pgfplots/scale/.is family,
@@ -493,10 +502,59 @@
 	/pgfplots/style commands/.is family,
 	/pgfplots/naming commands/.is family,
 	/pgfplots/shared with tikz/.is family,
-	/pgfplots/layer family/.is family,
 	/pgfplots/error bars/.is family,
-	/pgfplots/use layers/.initial=,
-	/pgfplots/use layers/.default={axis background,main,axis foreground,unclipped axis foreground},
+	%
+	% pgfplots uses the following (implicit) layers:
+	% context:			   & associated layer name: \\
+	% background path      & axis background   \\
+	% grid lines           & axis grid         \\
+	% tick lines		   & axis ticks        \\
+	% axis lines		   & axis lines        \\
+	% tick labels		   & axis tick labels  \\
+	% plots				   & main              \\
+	% axis descriptions	   & axis descriptions \\
+	% plot marks		   & (see 'mark layer')\\
+	% the 'axis on top' key will change that order by moving all plot- and mark-related paths upwards (they are drawn earlier).
+	% None of these layers is mandatory; each can be omitted.
+	% The magic layer name 'discard' can be used as /dev/null layer.
+	/pgfplots/set layers/.code={%
+		\def\pgfplots@loc@TMPa{#1}%
+		\def\pgfplots@loc@TMPb{none}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\pgfkeysalso{%
+				/pgfplots/activate layers=false,
+				/pgfplots/set layers*={},
+			}%
+		\else
+			\pgfkeysalso{%
+				/pgfplots/activate layers=true,
+				/pgfplots/cell picture=if necessary,
+				/pgfplots/set layers*={#1},
+			}%
+		\fi
+	},
+	% same as 'set layers=none':
+	/pgfplots/activate layers/.is if=pgfplots@layered@graphics,
+	/pgfplots/activate layers/.default=true,
+	/pgfplots/set layers*/.code=\pgfplots@key@set@layers{#1},
+	/pgfplots/set layers*/.default={/pgfplots/layers/standard},
+	/pgfplots/@layer set/.initial=,
+	/pgfplots/layers/.search also=/pgfplots,
+	/pgfplots/layers/standard/.define layer set={axis background,axis grid,axis ticks,axis lines,axis tick labels,main,axis descriptions,axis foreground}{
+		grid style=			{/pgfplots/on layer=axis grid},
+		tick style=			{/pgfplots/on layer=axis ticks},
+		axis line style=	{/pgfplots/on layer=axis lines},
+		label style=		{/pgfplots/on layer=axis descriptions},
+		legend style=		{/pgfplots/on layer=axis descriptions},
+		title style=		{/pgfplots/on layer=axis descriptions},
+		colorbar style=		{/pgfplots/on layer=axis descriptions},
+		ticklabel style=	{/pgfplots/on layer=axis tick labels},
+		axis background style={/pgfplots/on layer=axis background},
+		3d box foreground style={/pgfplots/on layer=axis foreground},
+	},
+	/pgfplots/layers/axis on top/.define layer set={axis background,main,axis grid,axis ticks,axis lines,axis tick labels,axis descriptions,axis foreground}{
+		/pgfplots/layers/standard
+	},
 	/pgfplots/on layer/.initial=,
 	% mark layer can be 'auto', 'like plot', or a layer name.
 	/pgfplots/mark layer/.initial=,
@@ -1550,7 +1608,8 @@
 	/pgfplots/clip/plots individually/.code=	\def\pgfplots@clipmode{2},
 	/pgfplots/clip=true,
 	% will be used if it exists:
-	%/pgfplots/axis background/.style={},
+	/pgfplots/axis background/.style={},
+	/pgfplots/axis background style/.style={/pgfplots/axis background/.append style={#1}},
 	%
 	% 2d: 'unit vector ratio=2 1   is relative to y axis (x is twice as large as y)
 	% 3d: 'unit vector ratio=2 2 1 is relative to z axis (x and y are both twice as large as z)
@@ -3695,7 +3754,13 @@
 	\pgfplotsextra\endscope%
 }%
 
-\def\pgfplots@replacement@for@onlayer#1{\pgfplotsextra{\pgfplotsonlayer{#1}}}%
+\def\pgfplots@replacement@for@onlayer#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplots@replacement@for@onlayer@{#1}%
+}
+\def\pgfplots@replacement@for@onlayer@#1{%
+	\pgfplotsextra{\pgfplotsonlayer{#1}{axis environment content}}%
+}%
 \def\pgfplots@replacement@for@endonlayer{\pgfplotsextra{\endpgfplotsonlayer}}%
 
 {
@@ -4229,7 +4294,7 @@
 	\ifx\pgfplots@createlegend@toname\pgfutil@empty
 		% DRAW:
 		\pgfplotsgetlayerforstyle{every axis legend}%
-		\pgfplotsonlayer\pgfplotsretval
+		\pgfplotsonlayer\pgfplotsretval{legend style}%
 		\pgfplots@already@computed@legend@node
 		\endpgfplotsonlayer
 	\else
@@ -7036,7 +7101,8 @@
 				\pgfplots@error{Sorry, your choice for '3d box' and 'axis x line' is incompatible.}%
 			\else
 				% 3d box=complete or complete*
-				\pgfplotsonlayer{axis foreground}%
+				\pgfplotsgetlayerforstyle{every 3d box foreground}%
+				\pgfplotsonlayer{\pgfplotsretval}{every 3d box foreground}%
 				\begingroup
 				\pgfplots@layered@graphicsfalse% no distinction of layers here.
 				\pgfplotsset{every 3d box foreground}%
@@ -7596,23 +7662,74 @@
 
 \newif\ifpgfplots@layered@graphics
 
-\def\pgfplots@prepare@layered@graphics{%
-	\pgfkeysgetvalue{/pgfplots/use layers}\pgfplots@loc@TMPa
+
+% Shortcut for '\pgfplotsset{set layers={#1}}'.
+%	
+% USAGE:
+% 1. \pgfplotssetlayers{<layer config name>} (one declared with /.define layer set)
+% 2. \pgfplotssetlayers (no braces)
+% 3. \pgfplotssetlayers{<comma-separated-list-of-layers>}
+%
+% This command immediately installs a \pgfsetlayers command. It also prepares following axes.
+% ATTENTION: this might affect tikzpictures as well.
+%
+\def\pgfplotssetlayers{%
+	\pgfutil@ifnextchar\bgroup{\pgfplotssetlayers@}{\pgfplotsset{set layers}}%
+}%
+\def\pgfplotssetlayers@#1{%
+	\pgfplotsset{set layers={#1}}%
+}%
+
+% This method checks if '#1' is a well-known layer set. If that is the case, the layer set is initialized.
+% If there is no such layer set, #1 is assumed to be a comma-separated-list of layer names.
+% These layers are defined if they do not exist already.
+%
+% POSTCONDITION:
+%   - a \pgfsetlayers{<list>} is issued
+%   - '/pgfplots/@layer set' is defined such that any following axes can initialized their layers.
+\def\pgfplots@key@set@layers#1{%
+	% 
+	% auto detect if '#1' is a defined layer set:
+	\pgfkeysifdefined{#1/list}{%
+		\def\pgfkeyscurrentname{#1}%
+	}{%
+		\pgfkeysifdefined{/pgfplots/layers/#1/list}{%
+			\edef\pgfkeyscurrentname{/pgfplots/layers/#1}%
+		}{%
+			\let\pgfkeyscurrentname\pgfutil@empty
+		}%
+	}%
+	\ifx\pgfkeyscurrentname\pgfutil@empty
+		% OK. The argument is NO layer set configuration.
+		\pgfplots@key@set@layers@{#1}%
+		\pgfkeyslet{/pgfplots/@layer set}\pgfutil@empty%
+	\else
+		% OK, The argument is the key name of some '/.define layer set' key.
+		% Remember it for later and initialize the layers:
+		\pgfkeyslet{/pgfplots/@layer set}\pgfkeyscurrentname%
+		\pgfkeysgetvalue{\pgfkeyscurrentname/list}\pgfplots@loc@TMPa
+		\expandafter\pgfplots@key@set@layers@\expandafter{\pgfplots@loc@TMPa}%
+	\fi
+}
+% a simple method which (immediately) invokes \pgfsetlayers{#1}.
+%
+% The only difference is that it creates missing layers on-the-fly.
+\def\pgfplots@key@set@layers@#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		% DEFAULT.
-		\pgfplots@layered@graphicsfalse
+		\pgfsetlayers{main}%
 	\else
 		\def\pgfplots@loc@TMPb{false}%
 		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 			% "use layers=false"
-			\pgfplots@layered@graphicsfalse
+			\pgfsetlayers{main}%
 		\else
 			\def\pgfplots@loc@TMPb{main}%
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 				% "use layers=main"
-				\pgfplots@layered@graphicsfalse
+				\pgfsetlayers{main}%
 			\else
-				\pgfplots@layered@graphicstrue
 				% declare all layers, and collect the normalised list
 				% into \pgfplots@loc@TMPd
 				\def\pgfplots@loc@TMPd{}%
@@ -7633,10 +7750,54 @@
 					\fi
 				}%
 				% activate layers:
+				\pgfplots@log3{Setting layers '\pgfplots@loc@TMPd'...}%
 				\expandafter\pgfsetlayers\expandafter{\pgfplots@loc@TMPd}%
 			\fi
 		\fi
 	\fi
+}%
+
+\def\pgfplots@prepare@layered@graphics{%
+	\global\let\pgfplots@layer@active=\pgfutil@empty
+	% check if there are no layers at all.
+	\ifpgfplots@layered@graphics
+		\pgfutil@ifundefined{pgf@layerlist}{%
+		}{%
+			\ifx\pgf@layerlist\pgfutil@empty
+				\pgfplots@layered@graphicsfalse
+			\else
+				\def\pgfplots@loc@TMPa{main}%
+				\ifx\pgf@layerlist\pgfplots@loc@TMPa
+					\pgfplots@layered@graphicsfalse
+				\fi
+			\fi
+		}%
+	\fi
+	\ifpgfplots@layered@graphics
+		\pgfutil@ifundefined{pgf@layerlist}{%
+		}{%
+			\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgf@layerlist}\as\pgfplots@loc@TMPa{%
+				\t@pgfplots@toka=\expandafter{\pgfplots@layer@active}%
+				\t@pgfplots@tokb=\expandafter{\csname pgfplots@layer@active@\pgfplots@loc@TMPa\endcsname}%
+				\xdef\pgfplots@layer@active{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			}%
+		}%
+	\fi
+}%
+
+% #1 layer name
+% #2 context information:
+\def\pgfplots@assert@layer@is@active#1#2{%
+	\pgfplotsutilifstringequal{#1}{discard}{}{%
+		\begingroup
+		\def\b@foundit{0}%
+		\expandafter\def\csname pgfplots@layer@active@#1\endcsname{\def\b@foundit{1}}%
+		\pgfplots@layer@active
+		\if0\b@foundit
+			\pgfplotsthrow{inactive layer}{#1}{#2}\pgfeov%
+		\fi
+		\endgroup
+	}%
 }%
 
 % validates 'mark layer' such that it can be queried afterwards.
@@ -7678,7 +7839,9 @@
 		\pgfkeyslet{/pgfplots/mark layer}\pgfutil@empty%
 	\fi
 }%
-\def\pgfplotsonlayer#1{%
+
+% #2: context information (for improved error recovery)
+\def\pgfplotsonlayer#1#2{%
 	\begingroup
 	\def\b@pgfplotsonlayer@started{0}%
 	\ifpgfplots@layered@graphics
@@ -7686,6 +7849,7 @@
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
 			\def\b@pgfplotsonlayer@started{1}%
+			\pgfplots@assert@layer@is@active{#1}{#2}%
 			\pgfonlayer{#1}%
 		\fi
 	\fi
@@ -7762,70 +7926,52 @@
 % The 'cell picture=false' feature may be interesting for SVG export as
 % well.
 \def\pgfplots@prepare@cell@picture{%
-	\if1\pgfplots@cell@picture@mode
-		% cell picture=true
-	\else
+	\pgfplots@ifcellpicture@required{%
+		\pgfplots@has@cell@picturetrue
+		\if2\pgfplots@cell@picture@mode
+			% cell picture=if necessary: OK, proceed as for 'cell picture=true'
+		\else
+			\pgfplots@error{Sorry, 'cell picture=false' is UNSUPPORTED for 'anchor=\pgfplots@anchorname'.}%
+		\fi
+	}{%
 		% cell picture=false or cell picture=if necessary
 		%
 		% anchor processing is special in this case! The standard
 		% anchor processing uses a posteriori shifts. This feature
 		% here REQUIRES a priori shifts.
 		% Prepare special handling for these shifts:
-		\pgfplots@ifcellpicture@required{%
-			\if2\pgfplots@cell@picture@mode
-				% cell picture=if necessary: OK, proceed as for 'cell picture=true'
-			\else
-				\pgfplots@error{Sorry, 'cell picture=false' is UNSUPPORTED for 'anchor=\pgfplots@anchorname'.}%
-			\fi
-		}{%
-			\edef\pgfplots@anchorname@internal{\pgfplots@anchorname}%
-			%\def\pgfplots@anchorname{image}% 
-			%
-			\let\pgfplots@BEGIN@cell@picture=\pgfplots@BEGIN@cell@picture@DISABLED
-			\let\pgfplots@END@cell@picture=\pgfplots@END@cell@picture@DISABLED
-			\def\pgfplots@add@named@child@node##1{}% do nothing here
-			\let\pgfplots@finally@correct@child@node@positions=\relax
-			%
-			% translate the coordinate system before the 'current axis'
-			% node is generated. 
-			\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
-				\setbox\pgfnodepartimagebox=\hbox{}%
-				\iffalse
-				\pgftransformshift{%
-					\pgfqpointscale{1}{\pgfplotspointorigininternal}%
-				}%
-				\pgftransformshift{%
-					\pgfpointdiff{%
-						% This is necessary in order to prepare the
-						% outer anchors (which assume that '(0,0)' is at 'outer
-						% south west') or 'current axis':
-						\pgfplotspointorigininternal%
-					}{%
-						\begingroup
-						% we need to respect the transformation taken
-						% in \pgfplots@BEGIN@cell@picture@DISABLED
-						% here (do not take it twice):
-						\pgfqpointscale{-1}{\pgfpointanchor{current axis}{south west}}%
-						\pgf@process{}%
-						\endgroup
-					}%
-				}%
-				\fi
-			}%	
-		}%
-	\fi
+		\pgfplots@has@cell@picturefalse
+		\edef\pgfplots@anchorname@internal{\pgfplots@anchorname}%
+		%\def\pgfplots@anchorname{image}% 
+		%
+		\let\pgfplots@BEGIN@cell@picture=\pgfplots@BEGIN@cell@picture@DISABLED
+		\let\pgfplots@END@cell@picture=\pgfplots@END@cell@picture@DISABLED
+		\def\pgfplots@add@named@child@node##1{}% do nothing here
+		\let\pgfplots@finally@correct@child@node@positions=\relax
+		%
+		% translate the coordinate system before the 'current axis'
+		% node is generated. 
+		\expandafter\def\expandafter\pgfplots@beforenode\expandafter{\pgfplots@beforenode
+			\setbox\pgfnodepartimagebox=\hbox{}%
+		}%	
+	}%
 }
 
 \long\def\pgfplots@ifcellpicture@required#1#2{%
-	\edef\pgfplots@shapename{pgfplots@low@level@shape@INNER}%
-	\pgfutil@ifundefined{pgf@anchor@\pgfplots@shapename @\pgfplots@anchorname}{%
-		% we need to compute the anchor a posteriorily.
+	\if1\pgfplots@cell@picture@mode
+		% cell picture=true
 		#1%
-	}{%
-		% OK, an a priori anchor is available - we do not really need
-		% a cell picture:
-		#2%
-	}%
+	\else
+		\edef\pgfplots@shapename{pgfplots@low@level@shape@INNER}%
+		\pgfutil@ifundefined{pgf@anchor@\pgfplots@shapename @\pgfplots@anchorname}{%
+			% we need to compute the anchor a posteriorily.
+			#1%
+		}{%
+			% OK, an a priori anchor is available - we do not really need
+			% a cell picture:
+			#2%
+		}%
+	\fi
 }%
 
 \def\pgfplots@define@preliminary@current@axis@node{%
@@ -7842,9 +7988,11 @@
 	%
 	\pgfplots@define@preliminary@current@axis@node
 	%
+	\pgfplotsutil@BEGIN@cell@picture[#1]%
+}%
+\def\pgfplotsutil@BEGIN@cell@picture[#1]{%
 	\setbox\pgfnodepartimagebox=\hbox\bgroup\bgroup
 		\pgfinterruptpicture
-		\pgfplots@prepare@layered@graphics
 		\tikzpicture[#1]%
 		% set baseline for sub-picture to default value.
 		% the baseline option will be applied to the OUTER picture.
@@ -7862,12 +8010,18 @@
 			\xdef\pgfplots@glob@TMPa{{\aa}{\ab}{\ba}{\bb}}%
 		\endgroup
 		\expandafter\pgfsettransformentries\pgfplots@glob@TMPa{0pt}{0pt}%
-}%
+}
 
-\def\pgfplots@END@cell@picture{%
+\def\pgfplotsutil@END@cell@picture#1{%
 		\endtikzpicture%
 		\begingroup
-			\pgfplots@END@cell@picture@preparepoints0%
+			\ifdim\pgf@picmaxx=-16000pt\relax%
+				\pgf@picmaxx=0pt\relax%
+				\pgf@picminx=0pt\relax%
+				\pgf@picmaxy=0pt\relax%
+				\pgf@picminy=0pt\relax%
+			\fi%
+			#1
 		\endgroup
 		\endpgfinterruptpicture
 	\egroup\egroup% end of pgfnodepartimagebox
@@ -7884,18 +8038,14 @@
     \pgftransformshift{\pgfplots@at}%
 	%
 }%
+\def\pgfplots@END@cell@picture{%
+	\pgfplotsutil@END@cell@picture{\pgfplots@END@cell@picture@preparepoints}%
+}%
 
-% #1: 1 if the points need to be transformed, 0 if not.
-\def\pgfplots@END@cell@picture@preparepoints#1{%
+\def\pgfplots@END@cell@picture@preparepoints{%
 	% Protocol sizes for the axis-shape.
 	% That needs to be done globally, do avoid all those
 	% \endgroup's in and after \endpgfinterruptpicture ...
-	\ifdim\pgf@picmaxx=-16000pt\relax%
-		\pgf@picmaxx=0pt\relax%
-		\pgf@picminx=0pt\relax%
-		\pgf@picmaxy=0pt\relax%
-		\pgf@picminy=0pt\relax%
-	\fi%
 	%
 	\xdef\pgfplotspointorigininternal{\global\pgf@x=\the\pgf@picminx\space\global\pgf@y=\the\pgf@picminy\space}%
 	%
@@ -7906,7 +8056,7 @@
 	\fi
 	\pgf@xa=\pgf@x
 	\pgf@ya=\pgf@y
-	\if1#1\relax \pgf@pos@transform\pgf@xa\pgf@ya \fi
+	\pgf@pos@transform\pgf@xa\pgf@ya
 	\advance\pgf@xa by-\pgf@picminx
 	\advance\pgf@ya by-\pgf@picminy
 	\xdef\pgfplotspointlowerleftinnercorner{%
@@ -7921,7 +8071,7 @@
 	\xdef\pgfplotspointupperrightcorner{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	%
 	\pgfplotspointaxisorigin
-	\if1#1\relax \pgf@pos@transform\pgf@x\pgf@y \fi
+	\pgf@pos@transform\pgf@x\pgf@y
 	\global\advance\pgf@x by-\pgf@picminx
 	\global\advance\pgf@y by-\pgf@picminy
 	\xdef\pgfplotspointaxisorigin{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
@@ -7951,17 +8101,6 @@
 }%
 
 \def\pgfplots@BEGIN@cell@picture@DISABLED[#1]{%
-	% FIXME : This is NOT correct up to now. But the approach appears
-	% to be correct.
-	%
-	% It seems that
-	% a) the tick label size required for the auto-label-placement
-	% appears to be incorrect, causing the labels to be shifted
-	% incorrectly
-	% b) the shifts of the axis' node are incorrect
-	%
-	%
-	%
 	\begingroup
 	\pgfinterruptboundingbox
 		%
@@ -7986,7 +8125,7 @@
 \def\pgfplots@END@cell@picture@DISABLED{%
 		\endscope%
 		\begingroup
-			\pgfplots@END@cell@picture@preparepoints1%
+			\pgfplots@END@cell@picture@preparepoints%
 		\endgroup
 	\endpgfinterruptboundingbox
 	\endgroup
@@ -7999,11 +8138,14 @@
 		\pgfplots@draw@axis@is@prepared
 		\scope
 		%
-		\pgfkeysifdefined{/pgfplots/axis background/.@cmd}{%
-			\pgfplotsonlayer{axis background}%
+		\pgfkeysgetvalue{/pgfplots/axis background/.@cmd}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfplots@empty@style@key
+		\else
+			\pgfplotsgetlayerforstyle{/pgfplots/axis background}%
+			\pgfplotsonlayer{\pgfplotsretval}{axis background}%
 			\path[/pgfplots/axis background] \pgfextra{\pgfplots@clippath@install{}};%
 			\endpgfplotsonlayer
-		}{}%
+		\fi
 		%
 		\ifpgfplots@axis@on@top
 		\else
@@ -9387,6 +9529,14 @@
 	\pgfkeysdeactivatefamily{/pgfplots/naming commands}%
 	\pgfkeysdeactivatefamily{/pgfplots/shared with tikz}%
 	%
+	% retrieve layer configurations.
+	\pgfkeysgetvalue{/pgfplots/@layer set}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		% ah, yes: then set its style:
+		\pgfqkeys{/pgfplots/layers}{\pgfplots@loc@TMPa}% note that this here should not need key filtering; it adjusts only styles (hopefully ;) )
+	\fi
+	%
 	% Now, any 'name' and 'alias' options have been processed. 
 	%
 	% Remember their current meaning and reset the tikz options!
@@ -9412,7 +9562,7 @@
 	}%
 	%
 	% Now, continue to process the 'every' styles. Please note that
-	% the 'legend style={}' like options have already been processed;
+	% options like 'legend style={}' have already been processed;
 	% their values are already inside of the associated 'every'
 	% styles.
 	%
@@ -9521,7 +9671,7 @@
 		% this may happen, for example with 
 		% 'x grid style={on layer=...}'
 		% because 'x grid style' is not processed by the key filtering
-		% above.
+		% above (it is extracted later).
 		\pgfkeyslet{/tikz/on layer}\pgfutil@empty%
 	}%
 	%
@@ -10052,6 +10202,8 @@
 	%
 	\pgfplots@set@options{#1}%
 	%
+	\pgfplots@prepare@layered@graphics
+	%
 	\pgfplots@prepare@cell@picture
 	%
 	%
@@ -10257,7 +10409,7 @@
 			% finalize a plot.
 			% @see the stream preparation routines.
 			\pgfplots@stored@current@precmd
-			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}%
+			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}{a plot or graphical element (or inherited from the axis)}%
 			\ifx\pgfplots@stored@current@cmd\pgfutil@empty
 				\pgfplots@stored@current@data%
 			\else
@@ -10296,6 +10448,7 @@
 				\if2\pgfplots@clipmode
 					% clip=plots individually:
 					\pgfplots@stored@markerlist@last
+					\global\let\pgfplots@stored@markerlist@last=\relax
 				\fi
 				\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
 				\endgroup
@@ -10476,6 +10629,8 @@
 
 \tikzaddtikzonlycommandshortcutlet\loglogaxis\pgfplots@environment@loglogaxis
 \tikzaddtikzonlycommandshortcutlet\endloglogaxis\endpgfplots@environment@loglogaxis
+
+%\input pgfplots.multiaxis.code.tex
 
 \pgfplotsdefineaxistype{rectangle}{%
 	% do nothing, this is the default anyway.
