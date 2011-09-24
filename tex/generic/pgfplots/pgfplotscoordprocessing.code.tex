@@ -7351,6 +7351,12 @@
 	\fi
 }%
 
+% This is the pgfplots implementation for 'node[pos=<fraction>]'.
+% Besides modifications of the transformation matrix, it also defines the COORDINATES of the point to
+% /data point/x
+% /data point/y
+% /data point/z
+% (or more keys which depend on the plot handler).
 \def\pgfplots@plot@timer{%
 	\pgfplotstransformplotattime{\tikz@time}%
 }
@@ -7359,7 +7365,7 @@
 % current plot with fraction #1.
 %
 % This does actually nothing more than using
-% \pgfplotstransformplotattime{#1} as shift and using the slope of the
+% \pgfplotspointplotattime{#1} as shift and using the slope of the
 % curve at that point to set up the 'sloped' rotation (if enabled).
 \def\pgfplotstransformplotattime#1{%
   \pgftransformshift{\pgfplotspointplotattime{#1}}%
@@ -7371,109 +7377,167 @@
   \fi%
 }
 
+\def\pgfplotspointplotattimeclearcache{%
+	\global\let\pgfplotspointplotattime@cache=\pgfutil@empty
+}%
+\pgfplotspointplotattimeclearcache
+
+% Checks if the cache for \pgfplotspointplotattime has a cached entry for '#1'.
+% POSTCONDITION:
+%   if \ifpgfplots@loc@tmp is true, the value(s) from the cache have been retrieved successfully.
+%   if \ifpgfplots@loc@tmp is false, there is not hit.
+\def\pgfplotspointplotattimegetfromcache#1{%
+	\pgf@xa=#1pt %
+	\pgfplotspointplotattime@cache
+	\pgfkeysifdefined{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}{%
+		\pgfkeysvalueof{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}%
+		\pgfplots@loc@tmptrue
+	}{%
+		\pgfplots@loc@tmpfalse
+	}%
+}%
+\def\pgfplotspointplotattimeaddtocache#1{%
+	\pgf@xa=#1pt %
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimefirst{\pgfplotspointplotattimefirst}%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimesecond{\pgfplotspointplotattimesecond}%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimecoords{\pgfplotspointplotattimecoords}%
+	}%
+	\t@pgfplots@toka=\expandafter{\pgfplotspointplotattime@cache}%
+	\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+	\xdef\pgfplotspointplotattime@cache{%
+		\the\t@pgfplots@toka
+		\noexpand\pgfkeyssetvalue{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}{\the\t@pgfplots@tokb}%
+	}%
+}
+
 % Sets (\pgf@x,\pgf@y) to the point of the current plot with fraction #1.
 % For #1 = 0, this is the first point.
 % For #1 = 1, this is the last point.
 % For #1 = 0.5, it is the middle of the plot.
+% The argument '#1' is optional: if you leave it away, the current value of the 'pos' key will be used.
 % This method will work for most plot handlers, although some of them might be unsupported.
 %
-% As a side-effect, it defines the (global) macros \pgfplotspointplotattimefirst and \pgfplotspointplotattimesecond
-% in order to allow the computation of gradients. These macros can be decoded using
+% As a side-effect, it defines the (global) macros 
+% - \pgfplotspointplotattimefirst  the start coordinate of the line segment containing #1
+% - \pgfplotspointplotattimesecond the end   coordinate of the line segment containing #1
+% - \pgfplotspointplotattimecoords the coordinates of #1
+% The first two are interesting in order to allow the computation of gradients. 
+% 
+% Any of these macros can be decoded using
 % \pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimesecond
 % \pgfplotsaxisvisphasegetpoint
-\def\pgfplotspointplotattime#1{%
-	\begingroup
-	%
-	\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
-	%
-	\def\pgfplots@coord@stream@start@{%
-		\ifx\pgfplots@pos@segment\pgfutil@empty
-			\let\c@pgfplots@segments=\pgfutil@empty
-		\else
-			\def\c@pgfplots@segments{0}%
-			\c@pgf@countd=\pgfplots@pos@segment\relax
-			\edef\pgfplots@pos@segment{\the\c@pgf@countd}%
-		\fi
-		\pgfplotscoordmath{default}{zero}%
-		\let\pgfplots@len@total=\pgfmathresult
-		\let\pgfplots@last@processed=\pgfutil@empty
-		\def\pgfplots@last@was@empty{1}%
-	}%
-	\def\pgfplotspointattime@do{}%
-	\def\pgfplots@coord@stream@coord@{%
-%\message{plot at time (#1, segment \pgfplots@pos@segment): processing (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)^^J}%
-		\ifx\pgfplots@current@point@x\pgfutil@empty
-			\if1\pgfplots@last@was@empty
+%
+% @see \pgfplotsplothandlerpointtokeys
+\def\pgfplotspointplotattime{%
+	\pgfutil@ifnextchar\bgroup{\pgfplotspointplotattime@}{\pgfplotspointplotattime@{\tikz@time}}%
+}
+\def\pgfplotspointplotattime@#1{%
+	\pgfplotspointplotattimegetfromcache{#1}%
+	\ifpgfplots@loc@tmp
+		% CACHE HIT! 
+%\message{CACHE HIT for \string\pgfplotspointplotattime{#1}^^J}%
+	\else
+%\message{NO cache hit for \string\pgfplotspointplotattime{#1}^^J}%
+		\begingroup
+		%
+		\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
+		%
+		% 1. compute the total length of the plot (by integrating along a linear spline)
+		%
+		\def\pgfplots@coord@stream@start@{%
+			\ifx\pgfplots@pos@segment\pgfutil@empty
+				\let\c@pgfplots@segments=\pgfutil@empty
 			\else
-				% oh. a jump... start new length segment
-				\ifx\c@pgfplots@segments\pgfutil@empty
-				\else
-					\ifx\pgfplots@pos@segment\c@pgfplots@segments
-						\let\pgfplots@coord@stream@coord@=\relax
-					\fi
-					\pgfplotsutil@advancestringcounter\c@pgfplots@segments
-				\fi
+				\def\c@pgfplots@segments{0}%
+				\c@pgf@countd=\pgfplots@pos@segment\relax
+				\edef\pgfplots@pos@segment{\the\c@pgf@countd}%
 			\fi
+			\pgfplotscoordmath{default}{zero}%
+			\let\pgfplots@len@total=\pgfmathresult
 			\let\pgfplots@last@processed=\pgfutil@empty
 			\def\pgfplots@last@was@empty{1}%
-		\else
-			\ifx\pgfplots@pos@segment\c@pgfplots@segments
-				\ifx\pgfplots@last@processed\pgfutil@empty
+		}%
+		\def\pgfplotspointattime@do{}%
+		\def\pgfplots@coord@stream@coord@{%
+%\message{plot at time (#1, segment \pgfplots@pos@segment): processing (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)^^J}%
+			\ifx\pgfplots@current@point@x\pgfutil@empty
+				\if1\pgfplots@last@was@empty
 				\else
-					\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-					\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
-					\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
-					\let\pgfplots@len@total=\pgfmathresult
-%\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplots@len@total^^J}%
-					\pgfplotspointattime@do
+					% oh. a jump... start new length segment
+					\ifx\c@pgfplots@segments\pgfutil@empty
+					\else
+						\ifx\pgfplots@pos@segment\c@pgfplots@segments
+							\let\pgfplots@coord@stream@coord@=\relax
+						\fi
+						\pgfplotsutil@advancestringcounter\c@pgfplots@segments
+					\fi
 				\fi
-				%
-				\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+				\let\pgfplots@last@processed=\pgfutil@empty
+				\def\pgfplots@last@was@empty{1}%
+			\else
+				\ifx\pgfplots@pos@segment\c@pgfplots@segments
+					\ifx\pgfplots@last@processed\pgfutil@empty
+					\else
+						\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+						\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
+						\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
+						\let\pgfplots@len@total=\pgfmathresult
+%\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplots@len@total^^J}%
+						\pgfplotspointattime@do
+					\fi
+					%
+					\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+				\fi
+				\def\pgfplots@last@was@empty{0}%
 			\fi
-			\def\pgfplots@last@was@empty{0}%
-		\fi
-	}%
-	\def\pgfplots@coord@stream@end@{}%
-	\let\pgfplots@coord@stream@coord@orig=\pgfplots@coord@stream@coord@
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
-	%
-	% Now, we have the total length. Now, try to find time #1!
-	\edef\pgfplots@time{#1}%
-	\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
-	%
-	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total}}%
-	\let\pgfplots@len@thresh=\pgfmathresult
-	%
-	\pgfplotscoordmath{default}{zero}%
-	\let\pgfplots@len@last=\pgfmathresult
-	\let\pgfplots@len@last@last=\pgfplots@len@last
-%\message{plot at time (#1, segment \pgfplots@pos@segment): total length=\pgfplots@len@total; target len \pgfplots@len@thresh\space (#1)^^J}%
-	%
-	\def\pgfplots@HIT{0}%
-	\let\pgfplots@last@last=\pgfutil@empty
-	\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@orig
-	\def\pgfplotspointattime@do{%
-		\pgfplotscoordmath{default}{if less than}
-			{\pgfplots@len@thresh}
-			{\pgfplots@len@total}
-			{% HIT!
-				\def\pgfplots@HIT{1}%
-				\pgfplotspointattime@pointbetween@two
-				\let\pgfplots@coord@stream@coord@=\relax
-			}{%
-			}%
+		}%
+		\def\pgfplots@coord@stream@end@{}%
+		\let\pgfplots@coord@stream@coord@orig=\pgfplots@coord@stream@coord@
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+		%
+		% Now, we have the total length. Now, try to find time #1!
+		\edef\pgfplots@time{#1}%
+		\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
+		%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total}}%
+		\let\pgfplots@len@thresh=\pgfmathresult
+		%
+		\pgfplotscoordmath{default}{zero}%
+		\let\pgfplots@len@last=\pgfmathresult
 		\let\pgfplots@len@last@last=\pgfplots@len@last
-		\let\pgfplots@len@last=\pgfplots@len@total
-		\let\pgfplots@last@last=\pgfplots@last@processed
-		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-	}%
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
-	\if\pgfplots@HIT0%
-		\let\pgfplots@last@processed=\pgfplots@last@last
-		\let\pgfplots@len@last=\pgfplots@len@last@last
-		\pgfplotspointattime@pointbetween@two
+%\message{plot at time (#1, segment \pgfplots@pos@segment): total length=\pgfplots@len@total; target len \pgfplots@len@thresh\space (#1)^^J}%
+		%
+		\def\pgfplots@HIT{0}%
+		\let\pgfplots@last@last=\pgfutil@empty
+		\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@orig
+		\def\pgfplotspointattime@do{%
+			\pgfplotscoordmath{default}{if less than}
+				{\pgfplots@len@thresh}
+				{\pgfplots@len@total}
+				{% HIT!
+					\def\pgfplots@HIT{1}%
+					\pgfplotspointattime@pointbetween@two
+					\let\pgfplots@coord@stream@coord@=\relax
+				}{%
+				}%
+			\let\pgfplots@len@last@last=\pgfplots@len@last
+			\let\pgfplots@len@last=\pgfplots@len@total
+			\let\pgfplots@last@last=\pgfplots@last@processed
+			\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+		}%
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+		\if\pgfplots@HIT0%
+			\let\pgfplots@last@processed=\pgfplots@last@last
+			\let\pgfplots@len@last=\pgfplots@len@last@last
+			\pgfplotspointattime@pointbetween@two
+		\fi
+		\endgroup
+		\pgfplotspointplotattimeaddtocache{#1}%
 	\fi
-	\endgroup
+	\pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimecoords
+	\pgfplotsplothandlerpointtokeys{/data point/pos \tikz@time}%
+	\pgfplotsplothandlerpointtokeys{/data point}%
 }
 \def\pgfplotspointattime@pointbetween@two{%
 	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@len@thresh}{\pgfplots@len@last}}%
@@ -7484,9 +7548,12 @@
 	\let\pgfplots@time@between@two=\pgfmathresult
 %\message{HIT between \pgfplots@len@last\space and \pgfplots@len@total\space (\pgfplots@time@between@two)^^J}%
 	\ifx\pgfplots@last@processed\pgfutil@empty
+		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 	\else
 		\pgfplotsplothandlersurveypointattime{\pgfplots@time@between@two}{\pgfplots@last@processed}{\pgfplots@cur}%
 	\fi
+	\pgfplotsplothandlerserializepointto\pgfplots@loc@TMPa
+	\global\let\pgfplotspointplotattimecoords=\pgfplots@loc@TMPa
 	\pgfplotsaxisvisphasegetpoint
 	\global\let\pgfplotspointplotattimefirst=\pgfplots@last@processed
 	\global\let\pgfplotspointplotattimesecond=\pgfplots@cur
@@ -7514,9 +7581,13 @@
 		\tikz@make@last@position{\pgfplotlastpoint}%  
 	}%
 	\let\pgfplots@plot@timer@args=\pgfplots@coord@stream@finalize@storedcoords@START@coords
+	\pgfplotspointplotattimeclearcache
 	\let\tikz@timer=\pgfplots@plot@timer%
 	\endpgfextra
 	#2;
+	%
+	\pgfplotspointplotattimeclearcache
+	%
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
 		\ifpgfplots@clip@marker@paths
