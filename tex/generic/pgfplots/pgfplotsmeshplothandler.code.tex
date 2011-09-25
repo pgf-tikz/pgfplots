@@ -246,14 +246,20 @@
 %% 
 %% Helper structs for patch plots (surfaces)
 
-\def\pgfplotspatchvertex#1#2#3#4\endvertex{%
-	\def\pgfplotspatchvertexstruct{{#1}{#2}{#3}#4}%
+% #1: the canvas x coordinate
+% #2: the canvas y coordinate
+% #3: the point meta data (cdata)
+% #4: the vertex'es depth (if required)
+% #5: the 3d coordinates of the vertex (will only be stored if it is deemed necessary)
+\def\pgfplotspatchvertex#1#2#3#4:#5\endvertex{%
+	\def\pgfplotspatchvertexstruct{{#1}{#2}{#3}#4:#5}%
 	\def\pgfplotspatchvertexx{#1}%
 	\def\pgfplotspatchvertexy{#2}%
 	\def\pgfplotspatchvertexmeta{#3}%
 	\def\pgfplotspatchvertexdepth{#4}%
+	\def\pgfplotspatchvertexcoords{#5}%
 }%
-\def\pgfplotspointpatchvertex#1#2#3#4\endvertex{%
+\def\pgfplotspointpatchvertex#1#2#3#4:#5\endvertex{%
 	\global\pgf@x=#1
 	\global\pgf@y=#2
 }%
@@ -275,36 +281,36 @@
 	\pgf@yb=0pt
 	\pgfplotscoordmath{meta}{zero}%
 }%
-\def\pgfplotspatchvertexadd#1#2#3#4\times#5{%
+\def\pgfplotspatchvertexadd#1#2#3#4:#5\times#6{%
 	\global\pgf@x=#1
 	\global\pgf@y=#2
-	\advance\pgf@xa by#5\pgf@x
-	\advance\pgf@ya by#5\pgf@y
+	\advance\pgf@xa by#6\pgf@x
+	\advance\pgf@ya by#6\pgf@y
 	\let\pgfmathresult@=\pgfmathresult
-	\pgfplotscoordmath{meta}{parsenumber}{#5}%
+	\pgfplotscoordmath{meta}{parsenumber}{#6}%
 	\pgfplotscoordmath{meta}{op}{multiply}{{#3}{\pgfmathresult}}%
 	\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
 	\def\pgfplotspatchvertexdepth{#4}%
 	\ifx\pgfplotspatchvertexdepth\pgfutil@empty
 	\else
 		\global\pgf@y=#4pt
-		\advance\pgf@yb by#5\pgf@y
+		\advance\pgf@yb by#6\pgf@y
 	\fi
 }%
 \def\pgfplotspatchvertexfinish#1{%
-	\edef#1{{\the\pgf@xa}{\the\pgf@ya}{\pgfmathresult}\ifx\pgfplotspatchvertexdepth\pgfutil@empty\else\pgf@sys@tonumber\pgf@yb\fi}%
+	\edef#1{{\the\pgf@xa}{\the\pgf@ya}{\pgfmathresult}\ifx\pgfplotspatchvertexdepth\pgfutil@empty\else\pgf@sys@tonumber\pgf@yb\fi:}%
 }
 % Same as \pgfplotspatchvertexadd, but it only adds the X and Y
 % coordinates (ignoring the rest).
-\def\pgfplotspatchvertexaddXY#1#2#3#4\times#5{%
+\def\pgfplotspatchvertexaddXY#1#2#3#4:#5\times#6{%
 	\global\pgf@x=#1
 	\global\pgf@y=#2
-	\advance\pgf@xa by#5\pgf@x
-	\advance\pgf@ya by#5\pgf@y
+	\advance\pgf@xa by#6\pgf@x
+	\advance\pgf@ya by#6\pgf@y
 }%
 % Same as \pgfplotspatchvertexfinish, but it only saves X and Y.
 \def\pgfplotspatchvertexfinishXY#1{%
-	\edef#1{{\the\pgf@xa}{\the\pgf@ya}{}}%
+	\edef#1{{\the\pgf@xa}{\the\pgf@ya}{}:}%
 }
 
 % #1 class name
@@ -400,6 +406,9 @@
 			},%
 			recursive refine@={%
 				\pgfplots@error{refine: not yet implemented for \pgfplotspatchclassname}%
+			},%
+			compute normal={%
+				\pgfplotsplothandlermesh@compute@normal@default
 			},%
 		}%
 	}{}%
@@ -566,7 +575,40 @@
 	get pdf shading type/.style={get pdf shading type*={\def\pgfplotsretval{#1}}},
 	get pdf shading type*/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get pdf shading type\endcsname{#1}},%
+	%
+	% A method which defines \pgfplotsretvalu,\pgfplotsretvalv,\pgfplotsretvalw to be the normal of the current segment.
+	% The values will be given in \pgfplotscoordmath{pgfbasic}
+	% 
+	% This method REQUIRES that 3d coordinates are stored (see \pgfplotsplothandlermesh@serialize@logical@coords).
+	compute normal/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ compute normal\endcsname##1{#1}},%
 }
+
+% This implements 'compute normal' :
+\def\pgfplotsplothandlermesh@compute@normal@default{%
+	\begingroup
+	\c@pgf@countd=0
+	\pgfplotspatchclass{\pgfplotspatchclassname}{foreach vertex}{%
+		\expandafter\let\csname point\the\c@pgf@countd\endcsname=\pgfplotspatchvertexcoords
+		\advance\c@pgf@countd by1 %
+	}%
+	\pgfplotsmathvectorsubtract{\csname point1\endcsname}{\csname point0\endcsname}{default}%
+	\let\diffA=\pgfplotsretval
+	\pgfplotsmathvectorsubtract{\csname point2\endcsname}{\csname point0\endcsname}{default}%
+	\let\diffB=\pgfplotsretval
+	\pgfplotsmathvectorcrossprod{\diffA}{\diffB}{default}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+	\expandafter\pgfplotsplothandlermesh@compute@normal@set@macros\pgfplotsretval\pgfplots@EOI
+}%
+\def\pgfplotsplothandlermesh@compute@normal@set@macros#1,#2,#3\pgfplots@EOI{%
+	\def\pgfmathresult{#1}\let\pgfplotsretvalu=\pgfmathresult
+	\def\pgfmathresult{#2}\let\pgfplotsretvalv=\pgfmathresult
+	\def\pgfmathresult{#3}\let\pgfplotsretvalw=\pgfmathresult
+	% \pgfplotscoordmath{default}{tofixed}{#1}\let\pgfplotsretvalu=\pgfmathresult
+	% \pgfplotscoordmath{default}{tofixed}{#2}\let\pgfplotsretvalv=\pgfmathresult
+	% \pgfplotscoordmath{default}{tofixed}{#3}\let\pgfplotsretvalw=\pgfmathresult
+}%
 
 \def\pgfplotspatchclass@recursiverefine#1{%
 	\c@pgf@counta=#1
@@ -1239,6 +1281,22 @@
 	\edef\pgfplotsretval{\pgfmathresult}%
 }%
 
+% expands to logical (3d) coordinates 
+\def\pgfplotsplothandlermesh@serialize@logical@coords{}% empty by default
+\def\pgfplotsplothandlermesh@serialize@logical@coords@doit{%
+	\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z
+}
+
+% the inverse for \pgfplotsplothandlermesh@serialize@logical@coords: it defines \pgfplots@current@point@[xyz].
+% You should only call it if you know that there IS something to deserialize.
+\def\pgfplotsplothandlermesh@deserialize@logical@coords#1{%
+	\expandafter\pgfplotsplothandlermesh@deserialize@logical@coords@#1\relax
+}%
+\def\pgfplotsplothandlermesh@deserialize@logical@coords@#1,#2,#3\relax{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+}%
 
 % The patch visualization works like a PIPELINE:
 %
@@ -1267,7 +1325,7 @@
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
 	% calls \pgfplotspatchready when ready
-	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%%
 }%
 \def\pgfplotspatchready{%
 	\pgfplotsplothandlermesh@PIPE@CHECKJUMP
@@ -1562,13 +1620,45 @@
 	\fi
 }%
 
+\let\pgfplotsplothandlermesh@colormap@hook=\relax
+\def\pgfplotsplothandlermesh@colormap@hook@depends@on@patch@normal{%
+	\begingroup
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{compute normal}%
+	\pgfplotsmathfloatviewdepthxyz{\pgfplotsretvalu}{\pgfplotsretvalv}{\pgfplotsretvalw}%
+%\message{normal DOT view = \pgfmathresult\space(normal = \pgfplotsretvalu,\pgfplotsretvalv,\pgfplotsretvalw)^^J}%
+	\pgfmathfloatgetflags\pgfmathresult\c@pgf@counta
+	\ifcase\c@pgf@counta
+		% 0 :
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname
+	\or
+		% >0
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname
+	\or
+		% <0:
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname@bg
+	\else
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname
+	\fi
+	\endgroup
+	\pgfkeyslet{/pgfplots/colormap name}\pgfplots@glob@TMPc
+}%
 
 \def\pgfplotsplothandlermesh@init@cdata{%
 	% Ok, we have color data.
 	%
+	\pgfkeysgetvalue{/pgfplots/mesh/background colormap name}\pgfplotsplothandlermesh@colormapname@bg
+	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsplothandlermesh@colormapname
+	\ifx\pgfplotsplothandlermesh@colormapname@bg\pgfutil@empty
+	\else
+		\let\pgfplotsplothandlermesh@colormap@hook=\pgfplotsplothandlermesh@colormap@hook@depends@on@patch@normal
+		% actually store 3d coordinates:
+		\let\pgfplotsplothandlermesh@serialize@logical@coords=\pgfplotsplothandlermesh@serialize@logical@coords@doit
+	\fi
+	%
 	% Prepare:
 	\def\pgfplotsplothandlermesh@definecolor{%
 		\pgfplotsplothandlermesh@get@flat@color
+		\pgfplotsplothandlermesh@colormap@hook
 		\pgfplotscolormapdefinemappedcolor{\pgfplotsretval}%
 		\pgfplots@drawoptions
 	}%
@@ -1584,6 +1674,7 @@
 }%
 \def\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke{%
 	\pgfplotsplothandlermesh@get@flat@color
+	\pgfplotsplothandlermesh@colormap@hook
 	\pgfplotscolormapdefinemappedcolor{\pgfplotsretval}%
 	%
 	\ifx\pgfplotsplothandlermesh@usepathfill\relax
@@ -2044,7 +2135,7 @@
 	\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
+	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%
 	\ifnum\c@pgfplots@scanlineindex>0
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i}%
@@ -2058,7 +2149,7 @@
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}%
+	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%
 	\expandafter\pgfplotsdequepushback\pgfplots@loc@TMPa\to{lastscanline}%
 	\advance\c@pgfplots@scanlineindex by1
 	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
@@ -2095,7 +2186,7 @@
 	% 	'jm == (j-1)'
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval}% FIXME relies on pgfplots macros
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}% FIXME relies on pgfplots macros
 %\message{##\the\c@pgfplots@scanlineindex: prepare rectangle with corner \meaning\pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
