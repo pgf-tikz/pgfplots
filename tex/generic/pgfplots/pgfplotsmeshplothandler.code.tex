@@ -1397,6 +1397,11 @@
 % invoked when a patch is completely processed.
 % This might be replaced by the z buffering algorithm
 \def\pgfplotsplothandlermesh@PIPE@FINISH{%
+	\pgfplotsplothandlermesh@PIPE@interior@exterior@styles
+}%
+
+\def\pgfplotsplothandlermesh@PIPE@interior@exterior@styles{%
+	\pgfplotsplothandlermesh@interior@exterior@hook
 	\pgfplotsplothandlermesh@VISUALIZE
 }%
 
@@ -1672,31 +1677,43 @@
 	\fi
 }%
 
-\let\pgfplotsplothandlermesh@colormap@hook=\relax
-\def\pgfplotsplothandlermesh@colormap@hook@depends@on@patch@normal{%
+\let\pgfplotsplothandlermesh@interior@exterior@hook=\relax
+\def\pgfplotsplothandlermesh@interior@exterior@hook@active{%
 	\begingroup
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{compute normal}%
 	%
 	\pgfplotsmathvectorscalarproduct{\pgfplots@view@dir@threedim}{\pgfplotsretval}{default}%
 	\pgfplotscoordmath{default}{if is}{\pgfplotsretval}{-}{%
 		% <0:
-		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname@bg
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@is@interior
 	}{%
 		% >=0:
-		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@colormapname
+		\global\let\pgfplots@glob@TMPc\pgfplotsplothandlermesh@is@exterior
 	}%
 	\endgroup
-	\pgfkeyslet{/pgfplots/colormap name}\pgfplots@glob@TMPc
+	\pgfplots@glob@TMPc
+}%
+
+% only used if
+% \pgfplotsplothandlermesh@interior@exterior@hook@active is
+% active
+\def\pgfplotsplothandlermesh@is@interior{%
+	\pgfkeyslet{/pgfplots/colormap name}\pgfplotsplothandlermesh@colormapname@interior
+	\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsplothandlermesh@shader@colormap@interior
+}%
+\def\pgfplotsplothandlermesh@is@exterior{%
+	\pgfkeyslet{/pgfplots/colormap name}\pgfplotsplothandlermesh@colormapname
+	\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsplothandlermesh@shader@colormap
 }%
 
 \def\pgfplotsplothandlermesh@init@cdata{%
 	% Ok, we have color data.
 	%
-	\pgfkeysgetvalue{/pgfplots/mesh/background colormap name}\pgfplotsplothandlermesh@colormapname@bg
+	\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplotsplothandlermesh@colormapname@interior
 	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsplothandlermesh@colormapname
-	\ifx\pgfplotsplothandlermesh@colormapname@bg\pgfutil@empty
+	\ifx\pgfplotsplothandlermesh@colormapname@interior\pgfutil@empty
 	\else
-		\let\pgfplotsplothandlermesh@colormap@hook=\pgfplotsplothandlermesh@colormap@hook@depends@on@patch@normal
+		\let\pgfplotsplothandlermesh@interior@exterior@hook=\pgfplotsplothandlermesh@interior@exterior@hook@active
 		% actually store 3d coordinates:
 		\let\pgfplotsplothandlermesh@serialize@logical@coords=\pgfplotsplothandlermesh@serialize@logical@coords@doit
 	\fi
@@ -1704,7 +1721,6 @@
 	% Prepare:
 	\def\pgfplotsplothandlermesh@definecolor{%
 		\pgfplotsplothandlermesh@get@flat@color
-		\pgfplotsplothandlermesh@colormap@hook
 		\pgfplotscolormapdefinemappedcolor{\pgfplotsretval}%
 		\pgfplots@drawoptions
 	}%
@@ -1720,7 +1736,6 @@
 }%
 \def\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke{%
 	\pgfplotsplothandlermesh@get@flat@color
-	\pgfplotsplothandlermesh@colormap@hook
 	\pgfplotscolormapdefinemappedcolor{\pgfplotsretval}%
 	%
 	\ifx\pgfplotsplothandlermesh@usepathfill\relax
@@ -1801,9 +1816,20 @@
 			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get pdf shading type}%
 		\fi
 		\pgfkeyslet{/pgfplots/surf shading/shading type}\pgfplotsretval%
-		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
-		\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
-		\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
+		%
+		\pgfplotsplothandlermesh@set@shader@colormap
+		\let\pgfplotsplothandlermesh@shader@colormap=\pgfplotsretval
+		\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\begingroup
+			\pgfkeyslet{/pgfplots/colormap name}\pgfplots@loc@TMPa
+			\pgfplotsplothandlermesh@set@shader@colormap
+			\pgfmath@smuggleone\pgfplotsretval
+			\endgroup
+			\let\pgfplotsplothandlermesh@shader@colormap@interior=\pgfplotsretval
+		\fi
+		%
 		\pgfplotscolormapgetcolorspace\pgfplots@loc@TMPa
 		\pgfkeyslet{/pgfplots/surf shading/colorspace}\pgfplotsretval
 		\if2\pgfplotsplothandlermesh@shader
@@ -2072,6 +2098,12 @@
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
 }
 
+\def\pgfplotsplothandlermesh@set@shader@colormap{%
+	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
+	\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
+	\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
+}%
+
 {
 \dimen0=-16000.0pt
 \xdef\pgfplotsplothandlermesh@check@unbounded@text{\the\dimen0}%
@@ -2148,7 +2180,7 @@
 		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplotsplothandlermesh@zbuffer@sort@iflessthen
 		\pgfkeysdef{/pgfplots/array/unscope pre}{%
 			\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@output
-			\def\pgfplotspatchready{\pgfplotsplothandlermesh@VISUALIZE}%
+			\def\pgfplotspatchready{\pgfplotsplothandlermesh@PIPE@interior@exterior@styles}%
 			\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
 				\expandafter\pgfplotsplothandlermesh@draw@zbufferelement\curelem%
 			}%
