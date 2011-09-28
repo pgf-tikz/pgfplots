@@ -1266,11 +1266,15 @@
 }%
 \def\pgfplotsplothandlermesh@patchclass@defaulttext{default}%
 
-\def\pgfplotsplothandlermeshnormalscale{0.1}%
+\def\pgfplotsplothandlermeshnormalscale{0.3}%
 \pgfkeys{/pgfplots/every patch normal/.style={-stealth,red}}
+
+% implements 'show normals'. Keep in mind that this is more-or-less a
+% debugging helper, not productive code.
 \def\pgfplotsplothandlermesh@show@normals{%
-	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{compute normal}\relax%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{compute normal}%
 	\let\pgfplots@normal@vector=\pgfplotsretval
+\message{got normal \pgfplots@normal@vector^^J}%
 	\pgfplotsmathvectorlength{\pgfplotsretval}{default}%
 	\pgfplotscoordmath{default}{parsenumber}{\pgfplotsplothandlermeshnormalscale}% FIXME
 	\pgfplotscoordmath{default}{op}{divide}{{\pgfmathresult}{\pgfplotsretval}}%
@@ -1320,10 +1324,14 @@
 	\edef\pgfplotsretval{\pgfmathresult}%
 }%
 
-% expands to logical (3d) coordinates 
+% A command which defines \pgfplotsretval to be either empty or to
+% the (x,y,z) 3d coordinates of the data point. The points should be
+% untransformed.
+%
+% Note that this is unnecessary for most applications of mesh plots.
 \def\pgfplotsplothandlermesh@serialize@logical@coords{}% empty by default
 \def\pgfplotsplothandlermesh@serialize@logical@coords@doit{%
-	\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z
+	\pgfplotsmathvectordatascaletrafoinverse{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}{default}%
 }
 
 % the inverse for \pgfplotsplothandlermesh@serialize@logical@coords: it defines \pgfplots@current@point@[xyz].
@@ -1362,9 +1370,11 @@
 \def\pgfplotsplothandlermesh@PIPE@DECODE#1{%
 	\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
+	\let\pgfplots@view@depth=\pgfplotsretval
 	\pgf@process{#1}%
 	% calls \pgfplotspatchready when ready
-	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%%
+	\pgfplotsplothandlermesh@serialize@logical@coords
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplots@view@depth:\pgfplotsretval}%%
 }%
 \def\pgfplotspatchready{%
 	\pgfplotsplothandlermesh@PIPE@CHECKJUMP
@@ -2170,8 +2180,10 @@
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE#1{%
 	\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
+	\let\pgfplots@view@depth=\pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%
+	\pgfplotsplothandlermesh@serialize@logical@coords
+	\edef\pgfplotsplothandlermesh@i{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplots@view@depth:\pgfplotsretval}%
 	\ifnum\c@pgfplots@scanlineindex>0
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i}%
@@ -2184,8 +2196,10 @@
 % the pgf@plotstreampoint routine for the first scan line:
 \def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
+	\let\pgfplots@view@depth=\pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}%
+	\pgfplotsplothandlermesh@serialize@logical@coords
+	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplots@view@depth:\pgfplotsretval}%
 	\expandafter\pgfplotsdequepushback\pgfplots@loc@TMPa\to{lastscanline}%
 	\advance\c@pgfplots@scanlineindex by1
 	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
@@ -2221,8 +2235,10 @@
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
+	\let\pgfplots@view@depth=\pgfplotsretval
 	\pgf@process{#1}%
-	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplotsretval:\pgfplotsplothandlermesh@serialize@logical@coords}% FIXME relies on pgfplots macros
+	\pgfplotsplothandlermesh@serialize@logical@coords
+	\edef\pgfplotsplothandlermesh@i@j{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplots@view@depth:\pgfplotsretval}% FIXME relies on pgfplots macros
 %\message{##\the\c@pgfplots@scanlineindex: prepare rectangle with corner \meaning\pgfplotsplothandlermesh@i@j.}%
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
