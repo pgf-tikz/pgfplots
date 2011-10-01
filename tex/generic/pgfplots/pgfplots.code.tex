@@ -517,6 +517,9 @@
 	% the 'axis on top' key will change that order by moving all plot- and mark-related paths upwards (they are drawn earlier).
 	% None of these layers is mandatory; each can be omitted.
 	% The magic layer name 'discard' can be used as /dev/null layer.
+	%
+	% the <layer set name> must be defined
+	% set layers={<layer set name>}
 	/pgfplots/set layers/.code={%
 		\def\pgfplots@loc@TMPa{#1}%
 		\def\pgfplots@loc@TMPb{none}%
@@ -528,8 +531,15 @@
 		\else
 			\pgfkeysalso{%
 				/pgfplots/activate layers=true,
-				/pgfplots/cell picture=if necessary,
 				/pgfplots/set layers*={#1},
+			}%
+			\pgfplotsifinaxis{%
+				\pgfkeysalso{/pgfplots/cell picture=if necessary}%
+			}{%
+				% we wrote it outside of an axis. In this case, we can
+				% assume that it prepares multiple axis - which
+				% REQUIRES to disable cell pictures.
+				\pgfkeysalso{/pgfplots/cell picture=false}%
 			}%
 		\fi
 	},
@@ -538,7 +548,7 @@
 	/pgfplots/activate layers/.default=true,
 	/pgfplots/set layers*/.code=\pgfplots@key@set@layers{#1},
 	/pgfplots/set layers*/.default={/pgfplots/layers/standard},
-	/pgfplots/@layer set/.initial=,
+	/pgfplots/@set layers arg/.initial=,
 	/pgfplots/layers/.search also=/pgfplots,
 	/pgfplots/layers/standard/.define layer set={axis background,axis grid,axis ticks,axis lines,axis tick labels,main,axis descriptions,axis foreground}{
 		grid style=			{/pgfplots/on layer=axis grid},
@@ -7684,8 +7694,8 @@
 % These layers are defined if they do not exist already.
 %
 % POSTCONDITION:
-%   - a \pgfsetlayers{<list>} is issued
-%   - '/pgfplots/@layer set' is defined such that any following axes can initialized their layers.
+%   - a \pgfsetlayers{<list>} is issued (immediately)
+%   - '/pgfplots/@set layers arg' is defined such that any following axes can initialized their layers.
 \def\pgfplots@key@set@layers#1{%
 	% 
 	% auto detect if '#1' is a defined layer set:
@@ -7701,11 +7711,11 @@
 	\ifx\pgfkeyscurrentname\pgfutil@empty
 		% OK. The argument is NO layer set configuration.
 		\pgfplots@key@set@layers@{#1}%
-		\pgfkeyslet{/pgfplots/@layer set}\pgfutil@empty%
+		\pgfkeyslet{/pgfplots/@set layers arg}\pgfutil@empty%
 	\else
 		% OK, The argument is the key name of some '/.define layer set' key.
 		% Remember it for later and initialize the layers:
-		\pgfkeyslet{/pgfplots/@layer set}\pgfkeyscurrentname%
+		\pgfkeyslet{/pgfplots/@set layers arg}\pgfkeyscurrentname%
 		\pgfkeysgetvalue{\pgfkeyscurrentname/list}\pgfplots@loc@TMPa
 		\expandafter\pgfplots@key@set@layers@\expandafter{\pgfplots@loc@TMPa}%
 	\fi
@@ -7952,11 +7962,9 @@
 }
 
 \long\def\pgfplots@ifcellpicture@required#1#2{%
-	\def\pgfplots@loc@TMPa{#1}%
-	\def\pgfplots@loc@TMPb{#1}%
 	\if1\pgfplots@cell@picture@mode
 		% cell picture=true
-		\pgfplots@loc@TMPa
+		#1\relax
 	\else
 		% cell picture=false | cell picture=if necessary
 		\edef\pgfplots@shapename{pgfplots@low@level@shape@INNER}%
@@ -7966,12 +7974,16 @@
 				% cell picture=false is forbidden here...
 				\pgfplots@error{Sorry, 'cell picture=false' is UNSUPPORTED for 'anchor=\pgfplots@anchorname'.}%
 			\fi
-			\pgfplots@loc@TMPa
+			\if2\pgfplots@cell@picture@mode
+				\pgfplots@log3{'cell picture=if necessary' resulted in 'cell picture=true'}%
+			\fi
+			#1\relax
 		}{%
+			\pgfplots@log3{'cell picture=if necessary' resulted in 'cell picture=false'}%
 			% OK, an a priori anchor is available - we do not really need
 			% a cell picture and this is compatible with the input
 			% options:
-			\pgfplots@loc@TMPb
+			#2\relax
 		}%
 	\fi
 }%
@@ -9531,8 +9543,8 @@
 	\pgfkeysdeactivatefamily{/pgfplots/naming commands}%
 	\pgfkeysdeactivatefamily{/pgfplots/shared with tikz}%
 	%
-	% retrieve layer configurations.
-	\pgfkeysgetvalue{/pgfplots/@layer set}\pgfplots@loc@TMPa
+	% retrieve layer configurations (the one set with 'set layers*').
+	\pgfkeysgetvalue{/pgfplots/@set layers arg}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
 		% ah, yes: then set its style:
@@ -10512,8 +10524,14 @@
 	\else
 		\global\let\pgfplots@glob@TMPa=\relax
 	\fi
+	\pgf@remember@layerlist@globally
+	\aftergroup\pgf@restore@layerlist@from@global
 	\endgroup
 	\pgfplots@glob@TMPa
+	%
+	% once more again - just to be sure that it works with LaTeX which
+	% introduces a further grouping level:
+	\aftergroup\pgf@restore@layerlist@from@global
 }
 
 \def\pgfplots@beforenode{%
