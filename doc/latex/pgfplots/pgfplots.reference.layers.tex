@@ -4,6 +4,7 @@
 
 It is important that several parts of an axis are drawn ``on top'' of others. Usually, \PGFPlots\ ensures this by drawing them in a suitable sequence (usually background followed by grid lines, followed by tick lines and tick labels, followed by plots and finally axis descriptions). While this works reasonable in most cases, there are cases where more control is desired. One common use-case is if multiple axes shall be drawn into the same picture: here, the sequence from above should be applied to all involved axes simultaneously. 
 
+\subsubsection{Using Predefined Layers}
 The main key to control layered graphics with \PGFPlots\ is |set layers|:
 
 \pgfkeys{
@@ -31,9 +32,52 @@ The main key to control layered graphics with \PGFPlots\ is |set layers|:
   	
 	As soon as the key |set layers=|\meta{layer configuration name} is encountered, \PGFPlots\ calls |\pgfsetlayers|\marg{layer names} with the layer names of the respective configuration. Usually, this \emph{replaces} the current layer configuration of the embedding |tikzpicture| (see |/.define layer set| for how to merge layer names). Furthermore, |set layers| stores the name of \meta{layer configuration name} such that every following |axis| knows how to map graphical elements to layer names.
 	
+
+    \paragraph{Limitation: inner anchors.} Note that most use-cases of layered graphics merge the layers of \PGFPlots\ with those of its embedding |tikzpicture|: drawing commands of \Tikz\ and multiple axes of \PGFPlots\ will use the same layers. In order to allow this merging, \PGFPlots\ will implicitly set either |cell picture=false| or |cell picture=if necessary|. The precise meaning of these keys is technical, but their consequence is that the use of layer graphics \emph{is only possible if you use inner anchors}. 
+
+    To repeat: any axis which uses layered graphics should use one of the following values of |anchor|: |north|, |north west|, |west|, |south west|, |south|, |south east|, |east|, |north east|, |north|, |center|, |origin|, |above origin|, |left of origin|, |right of origin|, |below origin|. In case you really need another anchor, \PGFPlots\ requires the use of |cell picture=true|, causing the layers to be local for that specific axis.
+
+    \paragraph{Limitation: usage within the picture.} Standard usages as within the examples of this manual will always work. But since the layer name configuration is essentially part of a \PGF\ picture (at a low level), one cannot arbitrarily set them; \PGF\ will complain if they are changed within some nested \TeX\ groups or \LaTeX\ environments. Typically, you will never need to worry about this. Nevertheless, here is the list of supported positions for |set layers|:
+    \begin{enumerate}
+        \item Directly within the picture:
+\begin{codeexample}[code only]
+\begin{tikzpicture}
+	\pgfplotssetlayers
+	\begin{axis}
+		...
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	(note that |\pgfplotssetlayers| is the same as |\pgfplotsset{set layers}|).
+	 \item As option for one or more axes which is/are directly within the picture:
+\begin{codeexample}[code only]
+\begin{tikzpicture}
+	\begin{axis}[set layers]
+		...
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+		In this case, only the \emph{last} activated layer configuration will apply to the picture.
+	\item outside of any picture:
+\begin{codeexample}[code only]
+\pgfplotssetlayers
+\begin{tikzpicture}
+	\begin{axis}
+		...
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+    \end{enumerate}
+	The first two examples will fail if you surround the layer configuration with \TeX\ groups or \LaTeX\ environments.
 \end{pgfplotskey}
 
-
+\begin{command}{\pgfplotssetlayers}
+    An alias for |\pgfplotsset{set layers}|. It activates the |layers/default| layer configuration.
+     
+\end{command}
+\begin{command}{\pgfplotssetlayers\marg{layer configuration name}}
+    An alias for |\pgfplotsset{set layers=|\marg{layer configuration name}|}|.
+\end{command}
 
 \begin{handler}{{.define layer set}=\marg{ordered list}\marg{style definitions}}
 	Allows to define a new layer set named \meta{key}. Afterwards, \meta{key} is a valid argument for |set layers=|\meta{key}.
@@ -63,5 +107,69 @@ The main key to control layered graphics with \PGFPlots\ is |set layers|:
 }
 \end{codeexample}
 	\noindent This definition declares a couple of layers, and it adjusts \PGFPlots\ styles by adding an |on layer| commands. The arguments for |on layer| are the elements of \meta{ordered list}.
+
+    Since the second argument \meta{style definitions} defines \meta{key} to be a normal style key, one can simply use \meta{key} in order to set \meta{style definitions}. This allows to inherit them. For example, the |layers/axis on top| layer configuration is defined by means of
+\begin{codeexample}[code only]
+\pgfplotsset{
+	/pgfplots/layers/axis on top/.define layer set=
+        {axis background,main,axis grid,axis ticks,axis lines,axis tick labels,%
+            axis descriptions,axis foreground}
+        {/pgfplots/layers/standard}
+}
+\end{codeexample}
+    \noindent i.e.\ it only redefines the \emph{sequence} of the layers and re-uses the style definitions of |layers/standard|.
+
+    Any number of layer configurations can be defined. 
 \end{handler}
+
+
+\subsubsection{Changing the Layer of Graphic Elements}
+There are a couple of keys which change the layer of a graphical element. 
+
+\begin{pgfplotskey}{on layer=\marg{layer name}}
+    Providing this key somewhere in a \PGFPlots\ style or inside of a \PGFPlots\ axis will change the layer for all graphical elements for which the style applies.
+
+    For example,
+\begin{codeexample}[code only]
+...
+\begin{axis}[set layers,grid style={/pgfplots/on layer=axis foreground}]
+...
+\end{codeexample}
+    \noindent will change the layer for any grid lines.
+
+    The argument \meta{layer name} is expected to be part of the current layer configuration, i.e.\ the argument of |set layers| should contain it.
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{mark layer=\mchoice{auto,like plot,\meta{layer name}} (initially auto)}
+    This key can be used to define the layer for plot |mark|s. If you write |\addplot[/pgfplots/on layer=\meta{name}]|, the
+    layer will be used for the complete plot. Plot marks are treated with special care, so you can define an own layer for plot marks. 
+
+    The initial choice \declaretext{auto} will automatically define a ``suitable'' choice, leaving the responsability with \PGFPlots.
+
+    The choice \declaretext{like plot} will pack the marks onto the same layer as the plot they belong to.
+
+    Finally, one can provide any \meta{layer name}, just as for |on layer|.
+\end{pgfplotskey}
+
+\begin{command}{\pgfplotsonlayer\marg{layer name}}
+    A low-level command which will check if the current axis has layer support activated and, if so, calls |\pgfonlayer|\marg{layer name}.
+
+    There must be a |\endpgfplotsonlayer| to delimit the environment.
+\end{command}
+\begin{command}{\endpgfplotsonlayer}
+    The end of |\pgfplotsonlayer|.
+\end{command}
+
+\begin{command}{\pgfonlayer\marg{layer name}}
+    A low-level command of \PGF\ which will collect everything until the matching |\endpgfonlayer| into layer \meta{layer name}.
+
+    The \meta{layer name} must be active, i.e.\ it must be part of the layer names of |set layers|. 
+    
+    The only special case is if you call |\pgfdeclarelayer{discard}| somewhere and use |\pgfonlayer{discard}| -- this layer has a ``magical name'' in that it servers as |/dev/null|: it does not need to be active and everything assigned to this layer will be thrown away if it is not part of the layer name configuration.
+
+    There must be a |\endpgfonlayer| to delimit the environment.
+\end{command}
+\begin{command}{\endpgfonlayer}
+    The end of |\pgfonlayer|.
+\end{command}
 }
