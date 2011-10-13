@@ -141,7 +141,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh
 	if [ $$? -ne 0 ]; then \
 		echo "CHECKOUT FAILED." $(AUTO_INDENT_PIPE); \
 		echo "(cleaning $(TMP_REPOSITORY))..." $(AUTO_INDENT_PIPE); \
-		rm -fr $(WORKING_DIR); \
+		rm -fr $(TMP_REPOSITORY); \
 		exit 1; \
 	fi
 	@cd references || exit 1;\
