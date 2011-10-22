@@ -1462,7 +1462,7 @@
 	contour/filled/.is if=pgfplotsplothandlercontour@filled,
 	contour/filled/.default=true,
 	% EXPERIMENTAL: WILL CHANGE EVENTUALLY!
-	% this is necessary for contour filled:
+	% this is (only) used for contour filled:
 	% data limits={(xmin,ymin,zmin,cmin) (xmax,ymax,ymax,cmax}
 	contour/data limits/.initial=,% FIXME EXPERIMENTAL
 	contour/every contour label/.style={%
@@ -1611,6 +1611,7 @@
 	%
 	\ifpgfplotsplothandlercontour@filled
 		\pgfseteorule
+		\let\pgfplotsplothandlercontour@sequence@sort@cmp=\pgfutil@empty
 		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
 		\pgfplotsplothandlercontour@init@limits
 	\fi
@@ -1829,18 +1830,58 @@
 	\fi
 }%
 
-
+% #1: the transformed point meta of the last contour.
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted#1{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		\ifx\pgfplotsplothandlercontour@sequence@sort@cmp\pgfutil@empty
+			% we need to determine the sorting:
+			\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+				\def\pgfplotsplothandlercontour@sequence@sort@cmp{+}%
+			}{%
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\def\pgfplotsplothandlercontour@sequence@sort@cmp{-}%
+				}{%
+					% undecided - the contours have the same label.
+				}%
+			}%
+		\else
+			\if +\pgfplotsplothandlercontour@sequence@sort@cmp
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{ASCENDING}%
+				}{%
+				}%
+			\else
+				\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{DESCENDING}%
+				}{%
+				}%
+			\fi
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted@fail#1{%
+	\begingroup
+	\pgfplotscoordmath{float}{tostring}{\pgfplots@current@point@meta}%
+	\let\offending=\pgfmathresult
+	\pgfplotscoordmath{float}{tostring}{\pgfplotsplothandlercontour@lastcontour}%
+	\let\lastcontour=\pgfmathresult
+	\pgfplots@error{Sorry, filled contours implicitly assume that the contour levels are SORTED (in the given case, they appear to be sorted in #1 order). Please make sure your input data has sorted contour levels. The offending level is \offending; the previous contour level is \lastcontour}%
+	\endgroup
+}
 \def\pgfplotsplothandlercontour@preparenewcontourline{%
 	\if0\pgfplotsplothandlercontour@haspendingjump
 %\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
 		% a completely new level has been
 		% started, not due to jumps inside of one level.
 		%
+		\let\pgfplotspointmetatransformed@lastcontour=\pgfplotspointmetatransformed
 		% thus, we need to compute 'mapped color':
 		\pgfplotsaxisvisphasetransformpointmeta
 		\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
 		\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/contour/draw color}}%
 		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsplothandlercontour@filled@assert@is@sorted{\pgfplotspointmetatransformed@lastcontour}%
 			\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/contour/fill color}}%
 		\fi
 		%
