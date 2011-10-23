@@ -64,7 +64,7 @@ UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
-DEFAULT_REFERENCE_BRANCH=1.3.1
+DEFAULT_REFERENCE_BRANCH=$(git rev-parse HEAD)
 .SECONDARY: $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 $(shell mkdir -p gnuplot references/gnuplot)

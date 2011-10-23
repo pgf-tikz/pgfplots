@@ -5697,7 +5697,18 @@
 	%\pgfplots@apply@unit@ratio@find@reference@checkexplicitlimits
 	%
 	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
+		% set \pgfplots@loc@TMPa := 1 if and only if the axis is 3d
+		\def\pgfplots@loc@TMPa{0}%
 		\ifpgfplots@threedim
+			% ah, it IS 3d!
+			\ifdim\pgfplots@z@veclength pt=0pt
+				% hm. It has view = {0}{90} (i.e. it is 2d)
+				\def\pgfplots@loc@TMPa{0}%
+			\else
+				\def\pgfplots@loc@TMPa{1}%
+			\fi
+		\fi
+		\if1\pgfplots@loc@TMPa
 			% 3D is more complicated than 2D:
 			% for every fixed reference axis, we have to check *two*
 			% scaling factors.
@@ -5794,11 +5805,15 @@
 	%
 	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
 		\ifpgfplots@threedim
-			\def\pgfplots@optimum@sofar@axis{z}%
+			\ifdim\pgfplots@z@veclength pt=0pt
+				\def\pgfplots@optimum@sofar@axis{y}%
+			\else
+				\def\pgfplots@optimum@sofar@axis{z}%
+			\fi
 		\else
 			\def\pgfplots@optimum@sofar@axis{y}%
 		\fi
-		\pgfplots@warning{The algorithm to realize 'unit vector ratio' failed! It could not determine the axis which shall be scaled and decided to use 'unit vector ratio axis=\pgfplots@optimum@sofar@axis'.}%
+		\pgfplots@warning{The algorithm to implement 'unit vector ratio' failed! It could not determine the axis which shall be scaled and decided to use 'unit vector ratio axis=\pgfplots@optimum@sofar@axis'.}%
 	\fi
 	\let\pgfplots@apply@unit@ratio@reference=\pgfplots@optimum@sofar@axis
 	\pgfmath@smuggleone\pgfplots@apply@unit@ratio@reference
@@ -5893,6 +5908,9 @@
 		}%
 	\else
 		\def\pgfplots@loc@TMPa{1}%
+	\fi
+	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+		\def\pgfplots@loc@TMPa{0}%
 	\fi
 	\if1\pgfplots@loc@TMPa
 		%
@@ -6009,46 +6027,58 @@
 	% Part 1: compute
 	% #2 * ||e_ref|| / ||e_#1||.
 	%
-	\pgfmathmultiply@
-		{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
-		{\csname pgfplots@#1@inverseveclength\endcsname}%
-	\pgfmathmultiply@
-		{\pgfmathresult}%
-		{#2}%
-	\global\let\pgfplots@glob@TMPa=\pgfmathresult
-	% 
-	% also compute 1/s, required as temporary value:
-	%\pgfmathmultiply@
-	%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
-	%	{\csname pgfplots@#1@veclength\endcsname}%
-	%\ifdim#2pt=1pt
-	%\else
-	%	\pgfmathdivide@{\pgfmathresult}{#2}%
-	%\fi
-	%\global\let\pgfplots@glob@TMPb=\pgfmathresult
-	%
-	% Part 2: handle data scaling trafo scales:
-	\begingroup
-		\def\pgfplots@tmp@exponentref{0}%
-		\def\pgfplots@tmp@exponentK{0}%
-		\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference }{%
-			\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference }%
-		}{}%
-		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-			\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
-		}{}%
-		\c@pgf@counta=\pgfplots@tmp@exponentref\relax
-		\advance\c@pgf@counta by-\pgfplots@tmp@exponentK\relax
-		\ifnum\c@pgf@counta=0
-		\else
-			\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
-			\global\let\pgfplots@glob@TMPa=\pgfmathresult
-		%	\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
-		%	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\def\pgfplots@loc@TMPa{1}%
+	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+		\def\pgfplots@loc@TMPa{0}%
+	\else
+		\ifdim\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname pt=0pt
+			\def\pgfplots@loc@TMPa{0}%
 		\fi
-		\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
-	\endgroup
-	\let\pgfmathresult=\pgfplots@glob@TMPa
+	\fi
+	\if0\pgfplots@loc@TMPa
+		\def\pgfmathresult{16001}%
+	\else
+		\pgfmathmultiply@
+			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
+			{\csname pgfplots@#1@inverseveclength\endcsname}%
+		\pgfmathmultiply@
+			{\pgfmathresult}%
+			{#2}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		% 
+		% also compute 1/s, required as temporary value:
+		%\pgfmathmultiply@
+		%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
+		%	{\csname pgfplots@#1@veclength\endcsname}%
+		%\ifdim#2pt=1pt
+		%\else
+		%	\pgfmathdivide@{\pgfmathresult}{#2}%
+		%\fi
+		%\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		%
+		% Part 2: handle data scaling trafo scales:
+		\begingroup
+			\def\pgfplots@tmp@exponentref{0}%
+			\def\pgfplots@tmp@exponentK{0}%
+			\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference }{%
+				\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference }%
+			}{}%
+			\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+				\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
+			}{}%
+			\c@pgf@counta=\pgfplots@tmp@exponentref\relax
+			\advance\c@pgf@counta by-\pgfplots@tmp@exponentK\relax
+			\ifnum\c@pgf@counta=0
+			\else
+				\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
+				\global\let\pgfplots@glob@TMPa=\pgfmathresult
+			%	\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
+			%	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+			\fi
+			\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
+		\endgroup
+		\let\pgfmathresult=\pgfplots@glob@TMPa
+	\fi
 %\message{\string\pgfplots@getscale@unit@vector@reltoreference{#1}{#2} (reference \pgfplots@apply@unit@ratio@reference) = \pgfmathresult.^^J}%
 }
 
