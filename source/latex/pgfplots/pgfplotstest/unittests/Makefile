@@ -45,12 +45,12 @@
 # which forces remake, even if modtimes are unchanged 
 #
 #
-# SPECIALITIES:
+# SPECIALTIES:
 # create a file unittest_*.diff.accepted containing accepted diff results 
 # (in case you approved that they are "not an error"). 
 # The file should contain what the failure-output of the 'make test.diff' target.
 
-UNIT_SOURCES=$(wildcard *.tex)
+UNIT_SOURCES=$(wildcard unittest_*.tex)
 
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
