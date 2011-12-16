@@ -9434,18 +9434,6 @@
 		\pgfplotsset{/tikz/draw,#1}%
 		\pgfplots@invoke@pgfkeyscode{/handler config/all/.@cmd}{}% unrestrict
 		%
-		% remember these technical things: they will be
-		% reset in \path (see below!), so we will need to re-activate
-		% them.
-		% The re-activation is done in 'every path' (see below).
-		% FIXME : is that portable!?
-		\pgfplots@assert@tikzinternal@exists{tikz@options}%
-		\pgfplots@assert@tikzinternal@exists{tikz@mode}%
-		\let\pgfplots@drawoptions=\tikz@options
-		\let\pgfplots@drawmodes=\tikz@mode
-		%
-		\pgfplots@check@for@default@plot@mark%
-		%
 		% the final plot processing uses
 		% foreach stored \addplot command :
 		%   \scope[current plot style]
@@ -9456,16 +9444,61 @@
 		%  have been set in \scope!
 		% -> ad-hoc-solution:
 		%    restore the modes manually.
+		\pgfplots@every@addplot@path@prepare%
+		%
+		\pgfplots@check@for@default@plot@mark%
+		%
 		%
 		% This is done here. The \pgfplots@drawmodes is ONLY set
 		% inside of this scope, so we can check for that particular
 		% case:
 		\pgfkeys{/tikz/every path/.append code={%
-			\pgfplots@restore@drawmodes
+				% FIXME : is that portable!?
+				\pgfplots@every@addplot@path
+				\pgfplots@every@addplot@firstpath
+				\let\pgfplots@every@addplot@firstpath=\pgfutil@empty
 			}%
 		}%
 	}%
 }%
+
+\def\pgfplots@every@addplot@path{}
+\def\pgfplots@every@addplot@firstpath{}
+
+\def\pgfplots@every@addplot@path@prepare{%
+	\let\pgfplots@every@addplot@path=\pgfutil@empty
+	\let\pgfplots@every@addplot@firstpath=\pgfutil@empty
+	%
+	% remember these technical things: they will be
+	% reset in \path (see below!), so we will need to re-activate
+	% them.
+	% The re-activation is done in 'every path'.
+	\pgfplots@assert@tikzinternal@exists{tikz@options}%
+	\pgfplots@assert@tikzinternal@exists{tikz@mode}%
+	\let\pgfplots@drawoptions=\tikz@options
+	\let\pgfplots@drawmodes=\tikz@mode
+	\pgfplots@everypath@prepare@append{\pgfplots@every@addplot@path}{\pgfplots@restore@drawmodes}%
+	%
+	\iftikz@decoratepath
+		\pgfplots@everypath@prepare@append{\pgfplots@every@addplot@firstpath}{\tikz@decoratepathtrue}%
+	\fi
+	\pgfplots@everypath@prepare@append@macrorestore{\pgfplots@every@addplot@firstpath}\tikz@preactions
+	\pgfplots@everypath@prepare@append@macrorestore{\pgfplots@every@addplot@firstpath}\tikz@postactions
+}%
+\long\def\pgfplots@everypath@prepare@append#1#2{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb={#2}%
+	\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+}%
+\long\def\pgfplots@everypath@prepare@append@macrorestore#1#2{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb=\expandafter{#2}%
+	\edef#1{%
+		\the\t@pgfplots@toka
+		\noexpand\def\noexpand#2{\the\t@pgfplots@tokb}%
+	}%
+}%
+
 
 \newif\ifpgfplots@drawmodes@append
 
@@ -9865,7 +9898,7 @@
 			%
 			% this code here means we REALLY have a plotting
 			% command!
-			\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+			\scope[current plot style] % this sets BOTH pgfplots and tikz options.
 			%
 			% de-activate the FPU here! I fear its number
 			% format may cause errors when used in low-level
