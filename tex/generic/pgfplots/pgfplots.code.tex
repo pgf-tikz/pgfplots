@@ -8078,6 +8078,16 @@
 \def\pgfplotspointaxisxy#1#2{\pgfplots@evalute@tikz@coord@system@interface#1,#2\pgfplots@coord@end}%
 \def\pgfplotspointaxisxyz#1#2#3{\pgfplots@evalute@tikz@coord@system@interface#1,#2,#3\pgfplots@coord@end}%
 
+\tikzdeclarecoordinatesystem{axis direction}{%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@evalute@tikz@coord@system@interface[ noshift]%
+			#1\noexpand\pgfplots@coord@end
+	}%
+	\pgfplots@loc@TMPa
+}
+\def\pgfplotspointaxisdirectionxy#1#2{\pgfplots@evalute@tikz@coord@system@interface[ noshift]#1,#2\pgfplots@coord@end}%
+\def\pgfplotspointaxisdirectionxyz#1#2#3{\pgfplots@evalute@tikz@coord@system@interface[ noshift]#1,#2,#3\pgfplots@coord@end}%
+
 % rel axis cs:
 \tikzdeclarecoordinatesystem{rel axis}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface@rel\pgfplots@loc@TMPa\pgfplots@coord@end}
 \def\pgfplotspointrelaxisxy#1#2{\pgfplots@evalute@tikz@coord@system@interface@rel#1,#2\pgfplots@coord@end}%
@@ -8087,35 +8097,61 @@
 \tikzdeclarecoordinatesystem{axis description}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface@axis@description\pgfplots@loc@TMPa\pgfplots@coord@end}
 \def\pgfplots@evalute@tikz@coord@system@interface@axis@description#1,#2\pgfplots@coord@end{\pgfplotspointdescriptionxy{#1}{#2}}
 
-\def\pgfplotstransformcoordinatex#1{\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}}%
-\def\pgfplotstransformcoordinatey#1{\pgfplots@evalute@tikz@coord@system@interface@for{y}{#1}}%
-\def\pgfplotstransformcoordinatez#1{\pgfplots@evalute@tikz@coord@system@interface@for{z}{#1}}%
+\def\pgfplotstransformcoordinatex#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{x}{#1}}%
+\def\pgfplotstransformcoordinatey#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{y}{#1}}%
+\def\pgfplotstransformcoordinatez#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{z}{#1}}%
 
-% Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
-\long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
-	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
-	\edef\pgfmathresult{#2}%
+\def\pgfplotstransformdirectionx#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{x}{#1}}%
+\def\pgfplotstransformdirectiony#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{y}{#1}}%
+\def\pgfplotstransformdirectionz#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{z}{#1}}%
+
+\def\pgfplots@declare@mathfunctions{%
+	\pgfmathdeclarefunction{transformdirectionx}{1}{\pgfplotstransformdirectionx{##1}}%
+	\pgfmathdeclarefunction{transformdirectiony}{1}{\pgfplotstransformdirectiony{##1}}%
+	\pgfmathdeclarefunction{transformdirectionz}{1}{\pgfplotstransformdirectionz{##1}}%
+	%
+	\pgfmathdeclarefunction{transformcoordinatex}{1}{\pgfplotstransformcoordinatex{##1}}%
+	\pgfmathdeclarefunction{transformcoordinatey}{1}{\pgfplotstransformcoordinatey{##1}}%
+	\pgfmathdeclarefunction{transformcoordinatez}{1}{\pgfplotstransformcoordinatez{##1}}%
+}%
+
+% Assigns \pgfmathresult := canvas coordinate (#3) for axis #2.
+%
+% A "canvas coordinate" here means an argument for \pgfplotsqpointxyz.
+%
+% #1: a command suffix which will be handed over to the datascale
+% #2: an axis (x,y, or z)
+% #3: the high-level coordinate which should be transformed
+% trafo (typically an empty string)
+\long\def\pgfplots@evalute@tikz@coord@system@interface@for[#1]#2#3{%
+	\pgfkeysgetvalue{/pgfplots/#2 coord trafo/.@cmd}\pgfplots@loc@TMPc
+	\edef\pgfmathresult{#3}%
 	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
 	\else
 		\expandafter\pgfplots@loc@TMPc\expandafter{\pgfmathresult}\pgfeov
 	\fi
 	\let\pgfplots@loc@TMPc=\pgfmathresult% FIXME: is that necessary? I doubt it... but just to make sure...
-	\csname ifpgfplots@#1islinear\endcsname
-		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-			\pgfplotscoordmath{#1}{parsenumber}{\pgfplots@loc@TMPc}%
-			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfmathresult}%
+	\csname ifpgfplots@#2islinear\endcsname
+		\pgfplotscoordmath{#2}{parsenumber}{\pgfplots@loc@TMPc}%
+		\pgfplots@if{pgfplots@apply@datatrafo@#2}{%
+			\pgfplotscoordmath{#2}{datascaletrafo#1}{\pgfmathresult}%
 		}{}%
 	\else
-		\pgfplotscoordmath{#1}{log}{\pgfplots@loc@TMPc}%
+		\pgfplotscoordmath{#2}{log}{\pgfplots@loc@TMPc}%
 	\fi
 }
 
-\long\def\pgfplots@evalute@tikz@coord@system@interface#1,#2\pgfplots@coord@end{%
+\def\pgfplots@evalute@tikz@coord@system@interface{%
+	\pgfutil@ifnextchar[%
+		{\pgfplots@evalute@tikz@coord@system@interface@}%
+		{\pgfplots@evalute@tikz@coord@system@interface@[]}%
+}
+\long\def\pgfplots@evalute@tikz@coord@system@interface@[#1]#2,#3\pgfplots@coord@end{%
 	\global\let\pgfplots@glob@TMPc=\pgfutil@empty
 	\begingroup
-	\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}%
+	\pgfplots@evalute@tikz@coord@system@interface@for[#1]{x}{#2}%
 	\let\pgfplots@evaluate@tikz@coord@x=\pgfmathresult
-	\edef\pgfplots@loc@TMPa{#2}%
+	\edef\pgfplots@loc@TMPa{#3}%
 	\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@loc@TMPa}%
 	\ifpgfutil@in@
 		\def\pgfplots@loc@TMPb##1,##2\pgfplots@EOI{%
@@ -8123,12 +8159,12 @@
 			\def\pgfplots@axiscs@z{##2}%
 		}%
 		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI
-		\pgfplots@evalute@tikz@coord@system@interface@for{y}{\pgfplots@axiscs@y}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{y}{\pgfplots@axiscs@y}%
 		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
-		\pgfplots@evalute@tikz@coord@system@interface@for{z}{\pgfplots@axiscs@z}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{z}{\pgfplots@axiscs@z}%
 		\let\pgfplots@evaluate@tikz@coord@z=\pgfmathresult
 	\else
-		\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{y}{#3}%
 		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
 		\let\pgfplots@evaluate@tikz@coord@z=\pgfutil@empty
 	\fi
@@ -9713,6 +9749,7 @@
 	%
 	%
 	%
+	%
 	% --------------------
 	% Allocations:
 	% --------------------
@@ -9793,6 +9830,8 @@
 		\global\pgfplots@threedimtrue
 		\pgfplots@autocompute@all@limitsfalse
 	\fi
+	%
+	\pgfplots@declare@mathfunctions
 	%
 	% check for axis-wide 'point meta min' :
 	\pgfkeysgetvalue{/pgfplots/point meta min}\pgfplots@loc@TMPa

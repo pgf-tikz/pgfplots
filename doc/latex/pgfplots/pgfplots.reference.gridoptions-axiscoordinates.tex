@@ -125,10 +125,69 @@ It can be used to draw any \Tikz-graphics at axis coordinates. It is used like
 \end{tikzpicture}
 \end{codeexample}
 
-\paragraph{Attention:} Whenever you draw additional graphics, consider using |axis cs|! It applies any logarithms, data scaling transformations or whatever \PGFPlots\ usually does!
+Whenever you draw additional graphics, consider using |axis cs|! It applies any custom transformations (including |symbolic x coords|), logarithms, data scaling transformations or whatever \PGFPlots\ usually does and provides a low level \pgfname\ coordinate as result.
 
-There is also a low--level interface to access the transformations and coordinates, see Section~\ref{sec:pgfplots:lowlevel} on page~\pageref{sec:pgfplots:lowlevel}.
+In case you need only one component (say, the $y$ component) of such a vector, you can use the |\pgfplotstransformcoordinatey| command, see Section~\ref{sec:basic:coordinates} for details about basic level access.
+
+The result of |axis cs| is always an absoute position inside of an axis. This means, in particular, that \emph{adding} two points has unexpected effects: the expression |(axis cs:0,0) ++ (axis cs:1,0)| is not necessarily the same as |(axis cs:1,0)|. The background for such unexpected effects is that \PGFPlots\ applies a \emph{shifted} linear transformation which moves the origin in order to support its high accuracy and high data range (compare the documentation of |disabledatascaling|).
+
+In order to express \emph{relative} positions (or lengths), you need to use |axis direction cs|.
 \end{coordinatesystem}
+
+\begin{coordinatesystem}{axis direction cs}
+	While |axis cs| allows to supply \emph{absolute positions}, |axis direction cs| supplies \emph{directions}. It allows to express \emph{relative} positions, includings lengths and dimensions, by means of axis coordinates.
+
+	As noted in the documentation for |axis cs|, adding two coordinates by means of the \tikzname\ |++| operator may have unexpected effects. The correct way for |++| operations is |axis direction cs|:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\draw[red,-stealth] 
+		(axis cs:1000,0) 
+		-- % = line-to
+	 	++ % = calculate a vector sum
+	    (axis direction cs:1000,0);
+
+	\addplot [only marks,mark=*] coordinates { (1000,0) (2000,1) };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent Here, the target of the red arrow is the position |(axis cs:2000,0)| as expected.
+
+	Using relative positions is mainly useful for linear axes. Applying this command to log-axes might still work, but it requires more care.
+
+	One use-case is to supply lengths -- for example in order to support |circle| or |ellipse| paths. The correct way to draw an ellipse in \PGFPlots\ would be to specify the two involved radii by means of two |(axis direction cs:|\meta{x,y}|)| expressions. This is possible if you use the basic level macros |\pgfpathellipse| and |\pgfplotspointaxisdirectionxy|. Please refer to the documentation of |\pgfplotspointaxisdirectionxy| for two examples of drawing arbitrary ellipses by means of this method. 
+	
+	Suppose we want to draw an ellipse whose radii are parallel to the axes. In this case, we can employ \tikzname's |ellipse| path construction as follows:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	xmin=-3,   xmax=3,
+	ymin=-3,   ymax=3,
+	extra x ticks={-1,1},
+	extra y ticks={-2,2},
+	extra tick style={grid=major},
+]
+	\draw[black] (axis cs:0,0)
+		ellipse [
+			x radius=transformdirectionx(1),
+			y radius=transformdirectiony(2)];
+
+	\draw[red]   (axis cs:0,0)
+		ellipse [rotate=90,
+			x radius=transformdirectionx(1),
+			y radius=transformdirectiony(2)];
+	% see \pgfplotspointaxisdirectionxy for arbitrary ellipses
+
+	\addplot [only marks,mark=*] coordinates { (0,0) };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Here, the \declareandlabel{transformdirectionx} math command does the same as |axis direction cs|, but only in $x$ direction. The result of |transformdirectionx| is a dimensionless unit which can be interpreted relative to the current \pgfname\ $x$ unit vector $e_x$ (see |\pgfplotstransformdirectionx| for details). Since the |x radius| key of \tikzname\ converts dimensionless input variables $s$ to $s \cdot e_x$, the expression |x radius=transformdirectionx(1)| leads to a first radius of $1$~axis unit and |y radius=transformdirectiony(2)| leads to a second radius of $2$~axis units.
+
+	There are the math commands |transformdirectionx|, \declareandlabel{transformdirectiony}, and |\declareandlabel{transformdirectionz}. Each of them defines |\pgfmathresult| to contain the result of |\pgfplotstransformdirectionx| (or its variants for $y$ and $z$, respectively).
+	
+\end{coordinatesystem}
+
 
 \begin{coordinatesystem}{rel axis cs}
 The ``relative axis coordinate system'', |rel axis cs|, uses the complete axis vectors as units. That means `$x=0$' denotes the point on the lower $x$ axis range and `$x=1$' the point on the upper $x$ axis range (see the remark below for |x dir=reverse|).
