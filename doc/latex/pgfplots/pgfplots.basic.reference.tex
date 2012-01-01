@@ -98,6 +98,21 @@ Invoke them:
 
 The result is `\pgfmathresult'.
 \end{codeexample}
+	\noindent The math engine in \pgfname\ typically uses \TeX's internal arithmetics. That means: it is well suited for numbers in the range $[-16384,16384]$ and has a precision of $5$ digits.
+
+	The number range is typically too small for plotting applications. \PGFPlots\ improves the number range by means of |\pgfkeys{/pgf/fpu}\pgfmathparse{1+41}| to activate the ``floating point unit'' (fpu) and to apply all following operations in floating point. 
+
+	In \PGFPlots, the key |/pgfplots/use fpu| is typically on, which means that any coordinate arithmetics are carried out with the |fpu|. However, all \pgfname\ related drawing operations still use the standard math engine.
+
+	In case you ever need to process numbers of extended precision, you may want to use
+\begin{codeexample}[]
+\pgfkeys{/pgf/fpu}%
+\pgfmathparse{1000*1000}
+
+The result is `\pgfmathprintnumber{\pgfmathresult}'.
+\end{codeexample}
+	Note that results of the |fpu| are typically not in human-readable format, so |\pgfmathprintnumber| is the preferred way to typeset such numbers.
+
 	Please refer to \cite{tikz} for more details.
 \end{command}
 
@@ -209,14 +224,57 @@ The number is printed using the current number printing options, see the manual 
 \end{command}
 
 \subsection{Specifying Basic Coordinates}
+\label{sec:basic:coordinates}
 
 \begin{commandlist}{%
 	\pgfplotspointaxisxy\marg{x coordinate}\marg{y coordinate},%
 	\pgfplotspointaxisxyz\marg{x coordinate}\marg{y coordinate}\marg{z coordinate}}
-	Point commands like |\pgfpointxy| which take logical, absolute coordinates and return a low--level point. Every transformation from user transformations to logarithms are applied.
+	Point commands like |\pgfpointxy| which take logical, absolute coordinates and return a low--level point. Every transformation from user transformations to logarithms is applied.
 
 	Since the transformations are initialized after the axis is complete, this command needs to be postponed (see |\pgfplotsextra|).
+
+	This command is the basic--level variant of |axis cs:|\meta{x coordinate}|,|\meta{y coordinate}|,|\meta{z coordinate}.
 \end{commandlist}
+
+\begin{commandlist}{%
+	\pgfplotspointaxisdirectionxy\marg{x coordinate}\marg{y coordinate},%
+	\pgfplotspointaxisdirectionxyz\marg{x coordinate}\marg{y coordinate}\marg{z coordinate}}
+	Point commands like |\pgfpointxy| which take logical, \emph{relative} coordinates and return a low--level point. Every transformation from user transformations to logarithms is applied. The difference to |\pgfplotspointaxisxy| is that the shift of the linear transformation is skipped here (compare |disabledatascaling|). 
+
+	This command is the basic--level variant of |axis direction cs:|\meta{x coordinate}|,|\meta{y coordinate}|,|\meta{z coordinate}.  Please refer to the documentation of |axis direction cs| for more details.
+
+	Use this command whenever something of \emph{relative} character like directions or lengths need to be supplied. One use-case is to draw ellipses:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	xmin=-3,   xmax=3,
+	ymin=-3,   ymax=3,
+	extra x ticks={-1,1},
+	extra y ticks={-2,2},
+	extra tick style={grid=major},
+]
+	\draw[red] \pgfextra{
+	  \pgfpathellipse{\pgfplotspointaxisxy{0}{0}}
+		{\pgfplotspointaxisdirectionxy{1}{0}}
+		{\pgfplotspointaxisdirectionxy{0}{2}}
+	  % see also the documentation of 
+	  % 'axis direction cs' which
+	  % allows a simpler way to draw this ellipse
+	};
+	\draw[blue] \pgfextra{
+	  \pgfpathellipse{\pgfplotspointaxisxy{0}{0}}
+		{\pgfplotspointaxisdirectionxy{1}{1}}
+		{\pgfplotspointaxisdirectionxy{0}{2}}
+	};
+	\addplot [only marks,mark=*] coordinates { (0,0) };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	Since the transformations are initialized after the axis is complete, this command needs to be provided either inside of a \tikzname\ |\path| command (like |\draw| in the example above) or inside of |\pgfplotsextra|.
+
+\end{commandlist}
+
 
 \begin{commandlist}{%
 	\pgfplotspointrelaxisxy\marg{rel x coordinate}\marg{rel y coordinate},%
@@ -236,13 +294,80 @@ The number is printed using the current number printing options, see the manual 
 	They are used for |axis description cs|, see Section~\ref{pgfplots:sec:axis:description:cs}.
 \end{commandlist}
 
+\begin{commandlist}{\pgfplotspointaxisorigin}
+	A point coordinate at the origin, $(0,0,0)$. If the origin is not part of the axis limits, the nearest point on the boundary is returned instead.
+
+	This is the same coordinate as returned by the |origin| anchor.
+\end{commandlist}
+
+\begin{commandlist}{%
+	\pgfplotstransformcoordinatex\marg{x coordinate of an axis},%
+	\pgfplotstransformcoordinatey\marg{y coordinate of an axis},%
+	\pgfplotstransformcoordinatey\marg{z coordinate of an axis}}
+	Defines |\pgfmathresult| to be the low-level \PGF\ coordinate corresponding to the input argument.
+
+	The command applies any |[xyz] coord trafo| keys, data scalings and/or logarithms or whatever \PGFPlots\ does to map input coordinates to internal coordinates.
+
+	The result can be used inside of a |\pgfpointxy| statement (i.e.\ it still needs to be scaled with the respective \PGF\ unit vector).
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[xmin=0,xmax=2,ymin=0,ymax=5]
+	\pgfplotsextra{%
+		\pgfplotstransformcoordinatex{1}%
+		\let\xcoord=\pgfmathresult
+		\pgfplotstransformcoordinatey{1}%
+		\let\ycoord=\pgfmathresult
+		\pgfpathcircle
+			{\pgfqpointxy{\xcoord}{\ycoord}}
+			{5pt}%
+		\pgfusepath{fill}%
+	}%
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The result of this command is also available as math method |transformcoordinatex| (see the documentation for |axis cs|).
+
+	Please note that the transformations are only initialised if the axis is complete. This means you need to provide |\pgfplotsextra| as is shown in the example above.
+\end{commandlist}
+
+\begin{commandlist}{%
+	\pgfplotstransformdirectionx\marg{x direction of an axis},%
+	\pgfplotstransformdirectiony\marg{y direction of an axis},%
+	\pgfplotstransformdirectiony\marg{z direction of an axis}}
+	Defines |\pgfmathresult| to be a low-level \PGF\ \emph{direction vector component}.
+
+	A direction vector needs to be \emph{added} to some coordinate in order to get a coordinate, compare the documentation for |\pgfplotspointaxisdirectionxy| and |axis direction cs|.
+
+	The argument \meta{x direction of an axis} is processed in (almost) the same way as for |\pgfplotstransformcoordinatex|. The only difference is that \emph{directions} need no shifting transformation. 
+
+	The result of this command is also available as math method |transformdirectionx| (see the documentation for |axis direction cs|).
+
+	See |axis direction cs| for details and examples about this command.
+\end{commandlist}
+
+\begin{command}{\pgfplotsconvertunittocoordinate\marg{x, y or z}\marg{dimension}}
+	Converts a dimension (with unit!) to a corresponding $x$, $y$ or $z$ coordinate. The result will be written to |\pgfmathresult| (without units).
+
+	It is possible to use the result as arguments for the |\pgfpointxyz| commands.
+
+	The effect is to multiply \meta{dimension} with the inverse length of the unit vector for the specified axis. These lengths are precomputed in \PGFPlots\ so the operation is fast.
+\begin{codeexample}[code only]
+\pgfplotsconvertunittocoordinate{x}{5pt}
+% now, the command uses exactly 5pt in x direction:
+\pgfqpointxyz{\pgfmathresult}{4}{3}
+\end{codeexample}
+\end{command}
+
+
 \begin{commandlist}{%
 	\pgfplotspointunitx,%
 	\pgfplotspointunity,%
 	\pgfplotspointunitz}%
-	Low--level point commands which return the $x$, $y$ or $z$ unit vectors.
+	Low--level point commands which return the canvas $x$, $y$ or $z$ unit vectors.
 
-	The point |\pgfplotspointxyz{1}{0}{0}| is the same as |\pgfplotspointunitx|, the |{0}{1}{0}| coordinate the unit $y$ vector and the |{0}{0}{1}| coordinate the unit $z$ vector.
+	The |\pgfplotspointunitx| is the \pgfname\ unit vector in $x$ direction.
+
+	These vectors are essentially the same as |\pgfqpointxyz{1}{0}{0}|, |\pgfqpointxyz{0}{1}{0}|, and |\pgfqpointxyz{0}{0}{1}|, respectively.
 
 	The unit $z$ vector is only defined for three dimensional axes.
 \end{commandlist}
@@ -257,12 +382,6 @@ The number is printed using the current number printing options, see the manual 
 	Macros which expand to the vector length $\lVert x_i \rVert$ of the respective unit vector $x_i$ or the inverse vector length, $1/\lVert x_i \rVert$. These macros can be used inside of |\pgfmathparse|, for example.
 
 	The $x_i$ are the |\pgfplotspointunitx| variants.
-\end{commandlist}
-
-\begin{commandlist}{\pgfplotspointaxisorigin}
-	A point coordinate at the origin, $(0,0,0)$. If the origin is not part of the axis limits, the nearest point on the boundary is returned instead.
-
-	This is the same coordinate as returned by the |origin| anchor.
 \end{commandlist}
 
 \begin{command}{\pgfplotsqpointoutsideofaxis\marg{three-char-string}\marg{coordinate}\marg{normal distance}}
@@ -301,47 +420,6 @@ The number is printed using the current number printing options, see the manual 
 	Expands to the largest distance of a tick position to its tick label bounding box in direction of the outer unit normal vector. It does also include the value of the |ticklabel shift| key.
 
 	This value is used for |ticklabel cs|.
-\end{command}
-
-\begin{commandlist}{%
-	\pgfplotstransformcoordinatex\marg{x coordinate of an axis},%
-	\pgfplotstransformcoordinatey\marg{y coordinate of an axis},%
-	\pgfplotstransformcoordinatey\marg{z coordinate of an axis}}
-	Defines |\pgfmathresult| to be the low-level \PGF\ coordinate corresponding to the input argument.
-
-	The command applies any |[xyz] coord trafo| keys, data scalings and/or logarithms or whatever \PGFPlots\ does to map input coordinates to internal coordinates.
-
-	The result can be used inside of a |\pgfpointxy| statement (i.e.\ it still needs to be scaled with the respective \PGF\ unit vector).
-\begin{codeexample}[]
-\begin{tikzpicture}
-	\begin{axis}[xmin=0,xmax=2,ymin=0,ymax=5]
-	\pgfplotsextra{%
-		\pgfplotstransformcoordinatex{1}%
-		\let\xcoord=\pgfmathresult
-		\pgfplotstransformcoordinatey{1}%
-		\let\ycoord=\pgfmathresult
-		\pgfpathcircle
-			{\pgfqpointxy{\xcoord}{\ycoord}}
-			{5pt}%
-		\pgfusepath{fill}%
-	}%
-	\end{axis}
-\end{tikzpicture}
-\end{codeexample}
-	Please note that the transformations are only initialised if the axis is complete! This means you need to provide |\pgfplotsextra| as is shown in the example above.
-\end{commandlist}
-
-\begin{command}{\pgfplotsconvertunittocoordinate\marg{x, y or z}\marg{dimension}}
-	Converts a dimension (with unit!) to a corresponding $x$, $y$ or $z$ coordinate. The result will be written to |\pgfmathresult| (without units).
-
-	It is possible to use the result as arguments for the |\pgfpointxyz| commands.
-
-	The effect is to multiply \meta{dimension} with the inverse length of the unit vector for the specified axis. These lengths are precomputed in \PGFPlots\ so the operation is fast.
-\begin{codeexample}[code only]
-\pgfplotsconvertunittocoordinate{x}{5pt}
-% now, the command uses exactly 5pt in x direction:
-\pgfqpointxyz{\pgfmathresult}{4}{3}
-\end{codeexample}
 \end{command}
 
 \begin{commandlist}{\pgfplotsmathfloatviewdepthxyz\marg{x}\marg{y}\marg{z},

@@ -2548,7 +2548,6 @@
 		datascaletrafo inverse to fixed=	\edef\pgfmathresult{##1},
 		datascaletrafo noshift inverse to fixed=	\edef\pgfmathresult{##1},
 		datascaletrafo noshift=		\edef\pgfmathresult{##1},
-		datascaletrafo noshift=		\edef\pgfmathresult{##1},
 		datascaletrafo undo shift=	\edef\pgfmathresult{##1},
 		datascaletrafo redo shift=	\edef\pgfmathresult{##1},
 		#2%
@@ -6393,7 +6392,15 @@
 	% high level user interface functions:
 	\let\pgfplotstable@coordindex@old=\coordindex
 	\def\coordindex{\pgfplotstablerow}%
-	\let\lineno=\coordindex% is the same here
+	\def\lineno{\coordindex}% is the same here
+	% These macros are-unfortunately- not accessable here. And the
+	% worst is: error messages are impossible either because they are
+	% not executed... try to provide useful hints:
+	\def\thisrow##1{thisrow_unavailable_load_table_directly}%
+	\def\thisrowno##1{thisrowno_unavailable_load_table_directly}%
+	% this should work.
+	\def\getthisrow##1##2{\pgfplotstablegetelem{\coordindex}{##1}\of{#3}{##2}}%
+	\def\getthisrowno##1##2{\pgfplotstablegetelem{\coordindex}{[index]##1}\of{#3}{##2}}%
 	%
 	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@x}\of#3\to\addplot@tbl@x
 	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@y}\of#3\to\addplot@tbl@y
@@ -7416,8 +7423,10 @@
 
 \def\pgfplotspointplotattimeclearcache{%
 	\global\let\pgfplotspointplotattime@cache=\pgfutil@empty
+	\gdef\pgfplotspointplotattime@cachesize{0}%
 }%
 \pgfplotspointplotattimeclearcache
+\def\pgfplotspointplotattime@cachesize@max{20}
 
 % Checks if the cache for \pgfplotspointplotattime has a cached entry for '#1'.
 % POSTCONDITION:
@@ -7434,6 +7443,10 @@
 	}%
 }%
 \def\pgfplotspointplotattimeaddtocache#1{%
+	\pgfplotsutil@advancestringcounter@global\pgfplotspointplotattime@cachesize
+	\ifnum\pgfplotspointplotattime@cachesize=\pgfplotspointplotattime@cachesize@max
+		\pgfplotspointplotattimeclearcache
+	\fi
 	\pgf@xa=#1pt %
 	\edef\pgfplots@loc@TMPa{%
 		\noexpand\gdef\noexpand\pgfplotspointplotattimefirst{\pgfplotspointplotattimefirst}%
@@ -7460,6 +7473,8 @@
 % - \pgfplotspointplotattimesecond the end   coordinate of the line segment containing #1
 % - \pgfplotspointplotattimecoords the coordinates of #1
 % The first two are interesting in order to allow the computation of gradients. 
+%	\pgfplotsplothandlerpointtokeys{/data point}%
+% for the \pgfplotspointplotattimecoords point
 % 
 % Any of these macros can be decoded using
 % \pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimesecond
@@ -7470,6 +7485,10 @@
 	\pgfutil@ifnextchar\bgroup{\pgfplotspointplotattime@}{\pgfplotspointplotattime@{\tikz@time}}%
 }
 \def\pgfplotspointplotattime@#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfplots@error{Sorry, the provided fraction of the plot is empty (maybe the argument of 'pos' has been cleared by the tikz node processing). Please provide a valid 'pos' argument}%
+	\else
 	\pgfplotspointplotattimegetfromcache{#1}%
 	\ifpgfplots@loc@tmp
 		% CACHE HIT! 
@@ -7573,8 +7592,19 @@
 		\pgfplotspointplotattimeaddtocache{#1}%
 	\fi
 	\pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimecoords
-	\pgfplotsplothandlerpointtokeys{/data point/pos \tikz@time}%
+	\pgfplotscoordmath{x}{tofixed}{\pgfplots@current@point@x}%
+	\pgfplots@coord@inv@trafo@apply{x}{\pgfmathresult}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{y}{tofixed}{\pgfplots@current@point@y}%
+	\pgfplots@coord@inv@trafo@apply{y}{\pgfmathresult}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{tofixed}{\pgfplots@current@point@z}%
+		\pgfplots@coord@inv@trafo@apply{z}{\pgfmathresult}%
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
 	\pgfplotsplothandlerpointtokeys{/data point}%
+	\fi
 }
 \def\pgfplotspointattime@pointbetween@two{%
 	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@len@thresh}{\pgfplots@len@last}}%
@@ -7594,6 +7624,19 @@
 	\pgfplotsaxisvisphasegetpoint
 	\global\let\pgfplotspointplotattimefirst=\pgfplots@last@processed
 	\global\let\pgfplotspointplotattimesecond=\pgfplots@cur
+}%
+
+
+% #1 : either x,y, or z
+% #2 : the argument on which the inv trafo shall be applied. It has to
+% be a fixed point number.
+\def\pgfplots@coord@inv@trafo@apply#1#2{%
+	\edef\pgfmathresult{#2}%
+	\pgfkeysgetvalue{/pgfplots/#1 coord inv trafo/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov
+	\fi
 }%
 
 % INPUT: 
