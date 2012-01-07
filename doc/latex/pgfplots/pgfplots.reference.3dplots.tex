@@ -685,10 +685,14 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 	Set |faceted color=none| to disable edge colors.
 \end{pgfplotskey}
 
+{
+\tikzset{external/figure name/.add={}{interior_colormap_}}%
+\tikzset{
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/mesh/},
+}%
 \begin{pgfplotskeylist}{%
 	mesh/interior colormap=\marg{map name}\marg{colormap specification},%
 	mesh/interior colormap name=\marg{map name}}
-\tikzset{external/figure name/.add={}{interior_colormap_}}%
 	Allows to use a different |colormap| for the ``other side'' of the surface.
 
 	Each mesh has two sides: one which ``points'' to the view's origin and one which points away from it. This key allows to define a second |colormap| for the side which points away from the view's origin. The motivation is to distinguish between the outer side and the interior parts of a surface:
@@ -735,12 +739,66 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 \end{tikzpicture}
 \end{codeexample}
 
-	The implementation of |mesh/interior colormap| works well for most examples; in particular, if the number of samples is large enough to resolve the boundary between inner and outer colormap. However, it might produce spurious artifacts if the mesh widths is too small. This may change in future versions\footnote{Please feel to provide suggestions.}. %Consider using |mesh/refines=1| to refine your mesh automatically.
+	The implementation of |mesh/interior colormap| works well for most examples; in particular, if the number of samples is large enough to resolve the boundary between inner and outer colormap. However, it might still produce spurious artifacts:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Example needing fine-tuning,
+	xlabel=$x$,
+	ylabel=$y$]
+\addplot3[surf,
+  mesh/interior colormap=
+    {blueblack}{color=(black) color=(blue)},
+  colormap/blackwhite, 
+  domain=0:1] 
+	{sin(deg(8*pi*x))* exp(-20*(y-0.5)^2) 
+	+ exp(-(x-0.5)^2*30 
+		- (y-0.25)^2 - (x-0.5)*(y-0.25))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent The previous example has need for improvement with respect to a couple of aspects: first, it has small overshoots near some of the meshes vertices (especially on top of the hills). These can be fixed using |miter limit=1|. Second, the boundary between blue and black is incorrect. This can be improved by means of an increased sampling density (|samples=31|). In addition, we can configure \PGFPlots\ to move the boundary between the two colormaps in favor of the blue region using |mesh/interior colormap thresh| as follows:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Example of before with fine-tuning,
+	xlabel=$x$,
+	ylabel=$y$]
+\addplot3[surf,
+  mesh/interior colormap=
+    {blueblack}{color=(black) color=(blue)},
+  % slightly increase sampling quality (was 25):
+  samples=31,    
+  % avoids overshooting corners:
+  miter limit=1, 
+  % move boundary between inner and outer:
+  mesh/interior colormap thresh=0.1,
+  colormap/blackwhite, 
+  domain=0:1] 
+	{sin(deg(8*pi*x))* exp(-20*(y-0.5)^2) 
+	+ exp(-(x-0.5)^2*30 
+		- (y-0.25)^2 - (x-0.5)*(y-0.25))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent This improves the display.
+	\paragraph{Call for volunteers:} it would be nice if the fine--tuning of these keys would be unnecessary. If someone has well--founded suggestions (like knowledge and perhaps exhaustive experiments) on how to improve the feature, let me know.
 
 	Note that |mesh/interior colormap| cannot be combined with |mesh/refines| currently.
 	
 	Note that |mesh/interior colormap| will increase compilation times due to the computation of normal vectors.
 \end{pgfplotskeylist}
+
+\begin{pgfplotskey}{mesh/interior colormap thresh=\marg{Number between $-1.0$ and $+1.0$} (initially 0)}
+	A threshold which moves the boundary between the |colormap| and |interior colormap| in favor of |colormap| (if the value is negative) or in favor of |interior colormap| (if the value is positive). 
+	
+	The extreme value $-1$ essentially deactivates |interior colormap| whereas the other extreme $+1$ deactivates |colormap|.
+
+	See above for an example.
+\end{pgfplotskey}
+}%
 
 \begin{pgfplotskey}{surf shading/precision=\mchoice{pdf,postscript,ps} (initially postscript)}
 	A key to configure how the low level driver for |shader=interp| writes its data. The choice |pdf| uses 32~bit binary coordinates (which is lossless). The resulting |.pdf| files appear to be correct, but they can't be converted to postscript -- the converter software always complains about an error. 
