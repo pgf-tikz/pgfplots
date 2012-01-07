@@ -7,7 +7,7 @@
 % 
 % It is based on Till Tantau's PGF package.
 %
-% Copyright 2007/2008/2009 by Christian Feuersänger.
+% Copyright 2007-2012 by Christian Feuersänger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 \input pgfplotsplothandlers.code.tex
 \input pgfplotscoordprocessing.code.tex
 \input pgfplotsticks.code.tex
+\input pgfplots.paths.code.tex
 
 
 
@@ -483,6 +484,8 @@
 	%
 	%
 }%
+
+\newif\ifpgfplotsplothandlermesh@shownormals
 
 \pgfkeys{%
 	% <key name>/.define layer set={<layer list>}{<style definition>}
@@ -1208,6 +1211,7 @@
 		/pgfplots/minor ytick={#1},
 		/pgfplots/minor ztick={#1},
 	},
+	/pgfplots/minor tick/.belongs to family=/pgfplots/tick,
 	/pgfplots/minor tick length/.estore in=\pgfplots@subtickwidth,
 	/pgfplots/minor tick length/.belongs to family=/pgfplots/tick,
 	/pgfplots/major tick length/.estore in=\pgfplots@tickwidth,
@@ -1253,6 +1257,36 @@
 	% #1 = basis
 	% #2 = exponent
 	/pgfplots/log number format basis/.code 2 args={$#1^{\pgfmathprintnumber{#2}}$},
+	%
+	% #1= number formatting options
+	/pgfplots/log ticks with fixed point/.style={
+		/pgfplots/log number format basis/.code 2 args={
+			\begingroup
+			\edef\pgfplots@exponent{##2}%
+			\pgfkeysalso{/pgf/fpu}%
+			% configure the style to avoid crap like
+			% 10,000.2  or 0.000999937 :
+			\pgfqkeys{/pgf/number format}{%
+				% it is rounded relative to its (individual!) order of
+				% magnitude:
+				fixed relative,
+				% ... and with three digits relative to its order of
+				% magnitude. This should avoid rounding problems
+				% since it is applied to each tick number
+				% individually.
+				precision=3,
+			}%
+			\ifdim##1pt=10pt
+				\def\pgfplots@baselog{2.30258509299405}%
+			\else
+				\pgfmathparse{ln(##1)}%
+				\let\pgfplots@baselog=\pgfmathresult
+			\fi
+			\pgfmathparse{exp(\pgfplots@exponent*\pgfplots@baselog)}%
+			\pgfmathprintnumber[#1]\pgfmathresult
+			\endgroup
+		},
+	},
 	% takes #1 = [xyz]:
 	/pgfplots/log basis ticks/.style={%
 		/pgfplots/every #1 tick label/.append style={%
@@ -1568,6 +1602,8 @@
 				};%
 		}%
 	},	
+	/pgfplots/line legend/.style/.code={\pgfplots@error{This style is supposed to be constant.}},%
+	/pgfplots/line legend/.append style/.code={\pgfplots@error{This style is supposed to be constant.}},%
 	/pgfplots/line legend,
 	/pgfplots/legend image code/.belongs to family=/pgfplots/legend,
 	/pgfplots/reverse legend/.is if=pgfplots@reverse@legend,
@@ -1597,7 +1633,7 @@
 	/pgfplots/at/.belongs to family=/pgfplots,
 	/pgfplots/trim axis left/.code={%
 		\pgfutil@ifundefined{pgfsettrimleft}{%
-			\pgfplots@error{Sorry, the 'trim axis left' requires a more recent PGF version. At the time of this writing, only the experimental PGF version available from texexample.net supports it.}%
+			\pgfplots@error{Sorry, the 'trim axis left' requires a more recent PGF version.}%
 		}{%
 			\pgfkeysalso{/tikz/trim left=(current axis.south west)}%
 		}%
@@ -1605,7 +1641,7 @@
 	/tikz/trim axis left/.style={/pgfplots/trim axis left},
 	/pgfplots/trim axis right/.code={%
 		\pgfutil@ifundefined{pgfsettrimleft}{%
-			\pgfplots@error{Sorry, the 'trim axis right' requires a more recent PGF version. At the time of this writing, only the experimental PGF version available from texexample.net supports it.}%
+			\pgfplots@error{Sorry, the 'trim axis right' requires a more recent PGF version.}%
 		}{%
 			\pgfkeysalso{/tikz/trim right=(current axis.south east)}%
 		}%
@@ -2533,6 +2569,40 @@
 			};
 		},%
 	},%
+	/pgfplots/nodes near coords*/.default={\pgfmathprintnumber\pgfplotspointmeta},
+	/pgfplots/scatter explicit color/.style 2 args={%
+		/pgfplots/scatter/@pre marker code/.code=,%
+		/pgfplots/scatter/@post marker code/.code=,%
+		/pgfplots/scatter explicit color*={#1}{#2},%
+	},%
+	/pgfplots/scatter explicit color*/.style 2 args={%
+		/pgfplots/point meta=explicit symbolic,
+		/pgfplots/scatter/true*,%
+		/pgfplots/scatter/@pre marker code/.append code={%
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfutil@definecolor{mapped color}{#1}{\pgfplotspointmeta}}%
+			\pgfplots@loc@TMPa
+			\scope[#2]%
+		},%
+		/pgfplots/scatter/@post marker code/.prefix code={%
+			\endscope
+		},%
+	},
+	/pgfplots/scatter rgb/.style={%
+		/pgfplots/scatter/@pre marker code/.code=,%
+		/pgfplots/scatter/@post marker code/.code=,%
+		/pgfplots/scatter rgb*={#1},%
+	},
+	/pgfplots/scatter rgb*/.style={/pgfplots/scatter explicit color*={rgb}{#1}},
+	/pgfplots/scatter rgb*/.default={draw=mapped color!80!black,fill=mapped color},
+	%
+	/pgfplots/scatter cmyk/.style={%
+		/pgfplots/scatter/@pre marker code/.code=,%
+		/pgfplots/scatter/@post marker code/.code=,%
+		/pgfplots/scatter cmyk*={#1},%
+	},
+	/pgfplots/scatter cmyk*/.style={/pgfplots/scatter explicit color*={cmyk}{#1}},
+	/pgfplots/scatter cmyk*/.default={draw=mapped color!80!black,fill=mapped color},
+	%
 	/pgfplots/visualization depends on/list/.initial=,%
 	/pgfplots/visualization depends on/.style={%
 		/pgfplots/visualization depends on/list/.add={}{,{#1}}%
@@ -2816,6 +2886,21 @@
 	/pgfplots/mesh/cols/.initial=,
 	/pgfplots/mesh/scanline verbose/.is if=pgfplots@scanline@verbose,%
 	/pgfplots/mesh/scanline verbose/.default=true,
+	%
+	% this is currently only a debug feature. Perhaps it will never
+	% reach production state because of the lacking z buffering for
+	% this technique.
+	/pgfplots/mesh/show normals/.is if=pgfplotsplothandlermesh@shownormals,
+	/pgfplots/mesh/show normals/.default=true,
+	/pgfplots/mesh/show normals length factor/.initial=50,
+	/pgfplots/every patch normal/.style={-stealth,red},
+	%
+	/pgfplots/mesh/interior colormap/.code 2 args={%
+		\pgfplotscreatecolormap{#1}{#2}%
+		\pgfkeysalso{/pgfplots/mesh/interior colormap name=#1}%
+	},
+	/pgfplots/mesh/interior colormap name/.initial=,
+	/pgfplots/mesh/interior colormap thresh/.initial=0,
 	/pgfplots/mesh/check/.code={%
 		\pgfplotsutilifstringequal{#1}{false}{%
 			\def\pgfplots@mesh@checkmode{0}%
@@ -3222,6 +3307,7 @@
 	/pgfplots/compat/anchors/1.3/.code= {\pgfplots@deprecated@anchorsfalse},%
 	/pgfplots/compat/anchors/1.4/.style= 	{/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/anchors/1.5/.style= 	{/pgfplots/compat/anchors/1.3},%
+	/pgfplots/compat/anchors/1.5.1/.style= 	{/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/anchors/newest/.style= {/pgfplots/compat/anchors/1.3},%
 	/pgfplots/compat/anchors/default/.style={/pgfplots/compat/anchors/1.3},%
 	%
@@ -3230,8 +3316,19 @@
 	/pgfplots/compat/empty line/1.3/.style= {/pgfplots/compat/empty line/pre 1.3},%
 	/pgfplots/compat/empty line/1.4/.code= 	{\pgfplots@emptyline@compatfalse},%
 	/pgfplots/compat/empty line/1.5/.style= {/pgfplots/compat/empty line/1.4},%
+	/pgfplots/compat/empty line/1.5.1/.style= {/pgfplots/compat/empty line/1.4},%
 	/pgfplots/compat/empty line/newest/.style= {/pgfplots/compat/empty line/1.4},%
 	/pgfplots/compat/empty line/default/.style={/pgfplots/compat/empty line/1.4},%
+	%
+	/pgfplots/compat/path replacement/.is choice,
+	/pgfplots/compat/path replacement/pre 1.3/.code= {\pgfplots@path@replace@ellipsefalse},
+	/pgfplots/compat/path replacement/1.3/.style=    {/pgfplots/compat/path replacement/pre 1.3},%
+	/pgfplots/compat/path replacement/1.4/.style=  	 {/pgfplots/compat/path replacement/pre 1.3},
+	/pgfplots/compat/path replacement/1.5/.style=    {/pgfplots/compat/path replacement/pre 1.3},%
+	/pgfplots/compat/path replacement/1.5.1/.code=   {\pgfplots@path@replace@ellipsetrue},%
+	/pgfplots/compat/path replacement/newest/.style= {/pgfplots/compat/path replacement/1.5.1},%
+	/pgfplots/compat/path replacement/default/.style={/pgfplots/compat/path replacement/pre 1.3},%
+	%ellipse/.is if=pgfplots@path@replace@ellipse,
 	%
 	/pgfplots/compat/labels/.is choice,
 	/pgfplots/compat/labels/pre 1.3/.style={%
@@ -3242,6 +3339,7 @@
 		/pgfplots/ylabel near ticks},%
 	/pgfplots/compat/labels/1.4/.style=		{/pgfplots/compat/labels/1.3},%
 	/pgfplots/compat/labels/1.5/.style=		{/pgfplots/compat/labels/1.3},%
+	/pgfplots/compat/labels/1.5.1/.style=	{/pgfplots/compat/labels/1.3},%
 	/pgfplots/compat/labels/newest/.style=	{/pgfplots/compat/labels/1.3},%
 	/pgfplots/compat/labels/default/.style=	{/pgfplots/compat/labels/pre 1.3},% maintain backwards compatibility for labels :-(
 	%
@@ -3256,13 +3354,16 @@
 		\def\pgfplots@compat@scaling@zunitfix@enable{1}%
 		\def\pgfplots@compat@scaling@coordmath{float}},
 	/pgfplots/compat/scaling/1.5/.style={/pgfplots/compat/scaling/1.4},
+	/pgfplots/compat/scaling/1.5.1/.style={/pgfplots/compat/scaling/1.4},
 	/pgfplots/compat/scaling/newest/.style={/pgfplots/compat/scaling/1.4},
 	/pgfplots/compat/scaling/default/.style={/pgfplots/compat/scaling/1.4},
+	%
 	/pgfplots/compat/general/.is choice,
 	/pgfplots/compat/general/pre 1.3/.style={/pgfplots/log origin=infty},%
 	/pgfplots/compat/general/1.3/.style={/pgfplots/compat/general/pre 1.3},
 	/pgfplots/compat/general/1.4/.style={/pgfplots/compat/general/pre 1.3},%
 	/pgfplots/compat/general/1.5/.style={/pgfplots/compat/general/newest},%
+	/pgfplots/compat/general/1.5.1/.style={/pgfplots/compat/general/newest},%
 	/pgfplots/compat/general/newest/.style={/pgfplots/log origin=0},
 	/pgfplots/compat/general/default/.style={/pgfplots/compat/general/newest},
 	/pgfplots/compat/.style={%
@@ -3273,6 +3374,7 @@
 		/pgfplots/compat/empty line=#1,%
 		/pgfplots/compat/scaling=#1,%
 		/pgfplots/compat/general=#1,%
+		/pgfplots/compat/path replacement=#1,%
 	},%
 	/pgfplots/compat/.default=pre 1.3,% this is used if you type '\pgfplotsset{compat}' without value
 	/pgfplots/compat=default,% this is the initial config.
@@ -4840,26 +4942,14 @@
 			\def\pgfplots@loc@TMPb{data}%
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 				% we have #1tick = data
-				%
-				% Since we have entered this method, we know that these
-				% coordinate ARE ALREADY in floating point representation.
-				\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@firstplot@coords@#1\endcsname
+				\edef\pgfplots@loc@TMPa{\csname pgfplots@firstplot@coords@#1\endcsname}%
 				\expandafter\pgfplotsutil@unify@short@csv@list\expandafter{\pgfplots@loc@TMPa}%
-				\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
-				\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}}%
-				\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks@isfloat\pgfplots@loc@TMPa
-					{\pgfplotscoordmath{#1}{datascaletrafo}}%
-					\to\pgfplots@loc@TMPc
-				% clear structure:
-				\expandafter\global\expandafter\let\csname pgfplots@firstplot@coords@#1\endcsname=\pgfutil@empty
-			\else
-				\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
-%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
-				\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@toka}}%
-				\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@loc@TMPa
-					{\pgfplotscoordmath{#1}{datascaletrafo}}%
-					\to\pgfplots@loc@TMPc
+				\let\pgfplots@loc@TMPa=\pgfplotsretval
 			\fi
+%\message{Converting #1tick='\csname pgfplots@#1tick\endcsname'}%
+			\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\expandafter{\pgfplots@loc@TMPa}%
+				{\pgfplotscoordmath{#1}{datascaletrafo}}%
+				\to\pgfplots@loc@TMPc
 			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@loc@TMPc
 		\fi
 		%
@@ -4876,10 +4966,17 @@
 		%
 		% Convert any minor tick lists in the same way.
 		\pgfkeysgetvalue{/pgfplots/minor #1tick}\pgfplots@loc@TMPa
+		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
 		\else
-			\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}}%
-			\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\pgfplots@loc@TMPa
+			\def\pgfplots@loc@TMPb{data}%
+			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+				% we have #1tick = data
+				\edef\pgfplots@loc@TMPa{\csname pgfplots@firstplot@coords@#1\endcsname}%
+				\expandafter\pgfplotsutil@unify@short@csv@list\expandafter{\pgfplots@loc@TMPa}%
+				\let\pgfplots@loc@TMPa=\pgfplotsretval
+			\fi
+			\expandafter\pgfplots@apply@data@scale@trafo@to@user@ticks\expandafter{\pgfplots@loc@TMPa}%
 				{\pgfplotscoordmath{#1}{datascaletrafo}}%
 				\to\pgfplots@loc@TMPc
 			\pgfkeyslet{/pgfplots/minor #1tick}\pgfplots@loc@TMPc
@@ -4892,11 +4989,19 @@
 		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
 		\def\pgfplots@loc@TMPb{data}%
 		\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfplots@loc@TMPb
-			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@firstplot@coords@#1\endcsname
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@firstplot@coords@#1\endcsname}%
 			\expandafter\pgfplotsutil@unify@short@csv@list\expandafter{\pgfplots@loc@TMPa}%
 			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplotsretval%
-			% clear structure:
-			\expandafter\global\expandafter\let\csname pgfplots@firstplot@coords@#1\endcsname=\pgfutil@empty
+		\fi
+		\pgfkeysgetvalue{/pgfplots/minor #1tick}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\def\pgfplots@loc@TMPb{data}%
+			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+				\edef\pgfplots@loc@TMPa{\csname pgfplots@firstplot@coords@#1\endcsname}%
+				\expandafter\pgfplotsutil@unify@short@csv@list\expandafter{\pgfplots@loc@TMPa}%
+				\pgfkeyslet{/pgfplots/minor #1tick}\pgfplotsretval
+			\fi
 		\fi
 		\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfutil@empty
 		\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfutil@empty
@@ -5038,6 +5143,10 @@
 	\ifpgfplots@threedim
 		\pgfplots@check@and@apply@datatrafo@for z%
 	\fi
+	% clear structure:
+	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	\pgfplots@datascaletrafo@initialisedtrue
 %\message{transformed: x = [\pgfplots@xmin:\pgfplots@xmax]  y = [\pgfplots@ymin:\pgfplots@ymax].}%
 	%
@@ -5779,7 +5888,18 @@
 	%\pgfplots@apply@unit@ratio@find@reference@checkexplicitlimits
 	%
 	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
+		% set \pgfplots@loc@TMPa := 1 if and only if the axis is 3d
+		\def\pgfplots@loc@TMPa{0}%
 		\ifpgfplots@threedim
+			% ah, it IS 3d!
+			\ifdim\pgfplots@z@veclength pt=0pt
+				% hm. It has view = {0}{90} (i.e. it is 2d)
+				\def\pgfplots@loc@TMPa{0}%
+			\else
+				\def\pgfplots@loc@TMPa{1}%
+			\fi
+		\fi
+		\if1\pgfplots@loc@TMPa
 			% 3D is more complicated than 2D:
 			% for every fixed reference axis, we have to check *two*
 			% scaling factors.
@@ -5876,11 +5996,15 @@
 	%
 	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
 		\ifpgfplots@threedim
-			\def\pgfplots@optimum@sofar@axis{z}%
+			\ifdim\pgfplots@z@veclength pt=0pt
+				\def\pgfplots@optimum@sofar@axis{y}%
+			\else
+				\def\pgfplots@optimum@sofar@axis{z}%
+			\fi
 		\else
 			\def\pgfplots@optimum@sofar@axis{y}%
 		\fi
-		\pgfplots@warning{The algorithm to realize 'unit vector ratio' failed! It could not determine the axis which shall be scaled and decided to use 'unit vector ratio axis=\pgfplots@optimum@sofar@axis'.}%
+		\pgfplots@warning{The algorithm to implement 'unit vector ratio' failed! It could not determine the axis which shall be scaled and decided to use 'unit vector ratio axis=\pgfplots@optimum@sofar@axis'.}%
 	\fi
 	\let\pgfplots@apply@unit@ratio@reference=\pgfplots@optimum@sofar@axis
 	\pgfmath@smuggleone\pgfplots@apply@unit@ratio@reference
@@ -5975,6 +6099,9 @@
 		}%
 	\else
 		\def\pgfplots@loc@TMPa{1}%
+	\fi
+	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+		\def\pgfplots@loc@TMPa{0}%
 	\fi
 	\if1\pgfplots@loc@TMPa
 		%
@@ -6091,46 +6218,58 @@
 	% Part 1: compute
 	% #2 * ||e_ref|| / ||e_#1||.
 	%
-	\pgfmathmultiply@
-		{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
-		{\csname pgfplots@#1@inverseveclength\endcsname}%
-	\pgfmathmultiply@
-		{\pgfmathresult}%
-		{#2}%
-	\global\let\pgfplots@glob@TMPa=\pgfmathresult
-	% 
-	% also compute 1/s, required as temporary value:
-	%\pgfmathmultiply@
-	%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
-	%	{\csname pgfplots@#1@veclength\endcsname}%
-	%\ifdim#2pt=1pt
-	%\else
-	%	\pgfmathdivide@{\pgfmathresult}{#2}%
-	%\fi
-	%\global\let\pgfplots@glob@TMPb=\pgfmathresult
-	%
-	% Part 2: handle data scaling trafo scales:
-	\begingroup
-		\def\pgfplots@tmp@exponentref{0}%
-		\def\pgfplots@tmp@exponentK{0}%
-		\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference }{%
-			\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference }%
-		}{}%
-		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-			\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
-		}{}%
-		\c@pgf@counta=\pgfplots@tmp@exponentref\relax
-		\advance\c@pgf@counta by-\pgfplots@tmp@exponentK\relax
-		\ifnum\c@pgf@counta=0
-		\else
-			\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
-			\global\let\pgfplots@glob@TMPa=\pgfmathresult
-		%	\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
-		%	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+	\def\pgfplots@loc@TMPa{1}%
+	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+		\def\pgfplots@loc@TMPa{0}%
+	\else
+		\ifdim\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname pt=0pt
+			\def\pgfplots@loc@TMPa{0}%
 		\fi
-		\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
-	\endgroup
-	\let\pgfmathresult=\pgfplots@glob@TMPa
+	\fi
+	\if0\pgfplots@loc@TMPa
+		\def\pgfmathresult{16001}%
+	\else
+		\pgfmathmultiply@
+			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
+			{\csname pgfplots@#1@inverseveclength\endcsname}%
+		\pgfmathmultiply@
+			{\pgfmathresult}%
+			{#2}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+		% 
+		% also compute 1/s, required as temporary value:
+		%\pgfmathmultiply@
+		%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
+		%	{\csname pgfplots@#1@veclength\endcsname}%
+		%\ifdim#2pt=1pt
+		%\else
+		%	\pgfmathdivide@{\pgfmathresult}{#2}%
+		%\fi
+		%\global\let\pgfplots@glob@TMPb=\pgfmathresult
+		%
+		% Part 2: handle data scaling trafo scales:
+		\begingroup
+			\def\pgfplots@tmp@exponentref{0}%
+			\def\pgfplots@tmp@exponentK{0}%
+			\pgfplots@if{pgfplots@apply@datatrafo@\pgfplots@apply@unit@ratio@reference }{%
+				\pgfplots@letcsname{pgfplots@tmp@exponentref}={pgfplots@data@scale@trafo@EXPONENT@\pgfplots@apply@unit@ratio@reference }%
+			}{}%
+			\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+				\pgfplots@letcsname{pgfplots@tmp@exponentK}={pgfplots@data@scale@trafo@EXPONENT@#1}%
+			}{}%
+			\c@pgf@counta=\pgfplots@tmp@exponentref\relax
+			\advance\c@pgf@counta by-\pgfplots@tmp@exponentK\relax
+			\ifnum\c@pgf@counta=0
+			\else
+				\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPa}{\c@pgf@counta}%
+				\global\let\pgfplots@glob@TMPa=\pgfmathresult
+			%	\pgfplotsmathmultiplypowten@{\pgfplots@glob@TMPb}{-\c@pgf@counta}%
+			%	\global\let\pgfplots@glob@TMPb=\pgfmathresult
+			\fi
+			\xdef\pgfplots@glob@TMPc{\the\c@pgf@counta}%
+		\endgroup
+		\let\pgfmathresult=\pgfplots@glob@TMPa
+	\fi
 %\message{\string\pgfplots@getscale@unit@vector@reltoreference{#1}{#2} (reference \pgfplots@apply@unit@ratio@reference) = \pgfmathresult.^^J}%
 }
 
@@ -6250,9 +6389,8 @@
 		%
 		%\let\pgfplots@rectangle@width=\pgfutil@empty
 		%\let\pgfplots@rectangle@height=\pgfutil@empty
-		\def\pgfplots@view@dir@threedim@x{0}%
-		\def\pgfplots@view@dir@threedim@y{0}%
-		\def\pgfplots@view@dir@threedim@z{1}%
+		\pgfplotsmathvectorfromstring{0,0,1}{default}%
+		\let\pgfplots@view@dir@threedim=\pgfplotsretval
 		%
 		\pgfpointdiff
 			{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
@@ -6312,7 +6450,7 @@
 			\def\pgfplots@tmp@yisaxisparallel{1}%
 		\fi
 	\fi
-%\message{Pgfplots debug: initialised unit vectors to x=(\the\pgf@xx,\the\pgf@xy), y=(\the\pgf@yx,\the\pgf@yy), z=(\the\pgf@zx,\the\pgf@zy), n = (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z).^^J }%
+%\message{Pgfplots debug: initialised unit vectors to x=(\the\pgf@xx,\the\pgf@xy), y=(\the\pgf@yx,\the\pgf@yy), z=(\the\pgf@zx,\the\pgf@zy), n = (\pgfplots@view@dir@threedim).^^J }%
 	%
 	\let\pgfplotsmathfloatviewdepthxyz@=\pgfplotsmathfloatviewdepthxyz@infigure
 	\let\pgfplotsmathviewdepthxyz@=\pgfplotsmathviewdepthxyz@infigure
@@ -6337,6 +6475,7 @@
 	\ifpgfplots@threedim
 		\pgfplots@axis@apply@post@scale z
 	\fi
+	\pgfplots@rescale@view@dir
 }
 \def\pgfplots@axis@apply@post@scale#1{%
 	%
@@ -7324,7 +7463,7 @@
 %     will be initialised.
 %
 % ABOUT THE ALGORITHM:
-% Given \pgfplots@view@dir@threedim@[xyz], we know the view direction (in 3D!).
+% Given \pgfplots@view@dir@threedim, we know the view direction (in 3D!).
 % Now, we compute the scalar products <n,(1,0,0)'>  <n,(0,1,0)'> and
 % <n,(0,0,1)'> between the view direction n and the unit vectors in 3D
 % space. Of course, these scalar products are just specific components
@@ -7343,29 +7482,30 @@
 	\expandafter\def\csname pgfplots@surfviewdepth@v2v\endcsname{f}% 
 	\expandafter\def\csname pgfplots@surfviewdepth@vv2\endcsname{f}% 
 	\ifpgfplots@threedim
+		\pgfplotsmathvectortocomponents\pgfplots@view@dir@threedim{pgfplots@loc@}{default}%
 		% respect reversed axes here. If I am not mistaken, it should
 		% be completely sufficient to flip signs here:
-		\ifdim\pgfplots@view@dir@threedim@x pt\if\pgfkeysvalueof{/pgfplots/x dir/value}n>\else<\fi0pt
+		\pgfplotscoordmath{default}{if is}{\pgfplots@loc@x}{\if\pgfkeysvalueof{/pgfplots/x dir/value}n+\else-\fi}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@0vv\endcsname{f}% foreground
 			\expandafter\def\csname pgfplots@surfviewdepth@1vv\endcsname{b}% background
-		\else
+		}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@0vv\endcsname{b}% 
 			\expandafter\def\csname pgfplots@surfviewdepth@1vv\endcsname{f}% 
-		\fi
-		\ifdim\pgfplots@view@dir@threedim@y pt\if\pgfkeysvalueof{/pgfplots/y dir/value}n>\else<\fi0pt
+		}%
+		\pgfplotscoordmath{default}{if is}{\pgfplots@loc@y}{\if\pgfkeysvalueof{/pgfplots/y dir/value}n+\else-\fi}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@v0v\endcsname{f}% foreground
 			\expandafter\def\csname pgfplots@surfviewdepth@v1v\endcsname{b}% background
-		\else
+		}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@v0v\endcsname{b}% 
 			\expandafter\def\csname pgfplots@surfviewdepth@v1v\endcsname{f}% 
-		\fi
-		\ifdim\pgfplots@view@dir@threedim@z pt\if\pgfkeysvalueof{/pgfplots/z dir/value}n>\else<\fi0pt
+		}%
+		\pgfplotscoordmath{default}{if is}{\pgfplots@loc@z}{\if\pgfkeysvalueof{/pgfplots/z dir/value}n+\else-\fi}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@vv0\endcsname{f}% foreground
 			\expandafter\def\csname pgfplots@surfviewdepth@vv1\endcsname{b}% background
-		\else
+		}{%
 			\expandafter\def\csname pgfplots@surfviewdepth@vv0\endcsname{b}% 
 			\expandafter\def\csname pgfplots@surfviewdepth@vv1\endcsname{f}% 
-		\fi
+		}%
 	\else
 		% FIXME : it might be better to implement that stuff here
 		% implicilty using the 3D algorithms.
@@ -8409,6 +8549,7 @@
 			\noexpand\pgfpathlineto{\the\toks1 }%
 			\noexpand\pgfpathlineto{\the\toks2 }%
 			\noexpand\pgfpathlineto{\the\toks3 }%
+			\noexpand\pgfpathclose
 			\noexpand\pgfplots@clippath@use@{##1}%
 		}%
 		\endgroup
@@ -8468,7 +8609,7 @@
 	}%
 	%
 }%
-\def\pgfplots@clippath@install@test{\pgfusepath{clip}X}%
+\def\pgfplots@clippath@install@test{\pgfusepath{clip}X}%  FIXME : deactivated
 
 \def\pgfplotspointbb@assertvaluesexist{%
 	\ifx\pgfplotspoint@bb@@@\relax
@@ -8580,6 +8721,16 @@
 \def\pgfplotspointaxisxy#1#2{\pgfplots@evalute@tikz@coord@system@interface#1,#2\pgfplots@coord@end}%
 \def\pgfplotspointaxisxyz#1#2#3{\pgfplots@evalute@tikz@coord@system@interface#1,#2,#3\pgfplots@coord@end}%
 
+\tikzdeclarecoordinatesystem{axis direction}{%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@evalute@tikz@coord@system@interface[ noshift]%
+			#1\noexpand\pgfplots@coord@end
+	}%
+	\pgfplots@loc@TMPa
+}
+\def\pgfplotspointaxisdirectionxy#1#2{\pgfplots@evalute@tikz@coord@system@interface[ noshift]#1,#2\pgfplots@coord@end}%
+\def\pgfplotspointaxisdirectionxyz#1#2#3{\pgfplots@evalute@tikz@coord@system@interface[ noshift]#1,#2,#3\pgfplots@coord@end}%
+
 % rel axis cs:
 \tikzdeclarecoordinatesystem{rel axis}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface@rel\pgfplots@loc@TMPa\pgfplots@coord@end}
 \def\pgfplotspointrelaxisxy#1#2{\pgfplots@evalute@tikz@coord@system@interface@rel#1,#2\pgfplots@coord@end}%
@@ -8589,35 +8740,61 @@
 \tikzdeclarecoordinatesystem{axis description}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface@axis@description\pgfplots@loc@TMPa\pgfplots@coord@end}
 \def\pgfplots@evalute@tikz@coord@system@interface@axis@description#1,#2\pgfplots@coord@end{\pgfplotspointdescriptionxy{#1}{#2}}
 
-\def\pgfplotstransformcoordinatex#1{\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}}%
-\def\pgfplotstransformcoordinatey#1{\pgfplots@evalute@tikz@coord@system@interface@for{y}{#1}}%
-\def\pgfplotstransformcoordinatez#1{\pgfplots@evalute@tikz@coord@system@interface@for{z}{#1}}%
+\def\pgfplotstransformcoordinatex#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{x}{#1}}%
+\def\pgfplotstransformcoordinatey#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{y}{#1}}%
+\def\pgfplotstransformcoordinatez#1{\pgfplots@evalute@tikz@coord@system@interface@for[]{z}{#1}}%
 
-% Assigns \pgfmathresult := canvas coordinate (#2) for axis #1.
-\long\def\pgfplots@evalute@tikz@coord@system@interface@for#1#2{%
-	\pgfkeysgetvalue{/pgfplots/#1 coord trafo/.@cmd}\pgfplots@loc@TMPc
-	\edef\pgfmathresult{#2}%
+\def\pgfplotstransformdirectionx#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{x}{#1}}%
+\def\pgfplotstransformdirectiony#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{y}{#1}}%
+\def\pgfplotstransformdirectionz#1{\pgfplots@evalute@tikz@coord@system@interface@for[ noshift]{z}{#1}}%
+
+\def\pgfplots@declare@mathfunctions{%
+	\pgfmathdeclarefunction{transformdirectionx}{1}{\pgfplotstransformdirectionx{##1}}%
+	\pgfmathdeclarefunction{transformdirectiony}{1}{\pgfplotstransformdirectiony{##1}}%
+	\pgfmathdeclarefunction{transformdirectionz}{1}{\pgfplotstransformdirectionz{##1}}%
+	%
+	\pgfmathdeclarefunction{transformcoordinatex}{1}{\pgfplotstransformcoordinatex{##1}}%
+	\pgfmathdeclarefunction{transformcoordinatey}{1}{\pgfplotstransformcoordinatey{##1}}%
+	\pgfmathdeclarefunction{transformcoordinatez}{1}{\pgfplotstransformcoordinatez{##1}}%
+}%
+
+% Assigns \pgfmathresult := canvas coordinate (#3) for axis #2.
+%
+% A "canvas coordinate" here means an argument for \pgfplotsqpointxyz.
+%
+% #1: a command suffix which will be handed over to the datascale
+% #2: an axis (x,y, or z)
+% #3: the high-level coordinate which should be transformed
+% trafo (typically an empty string)
+\long\def\pgfplots@evalute@tikz@coord@system@interface@for[#1]#2#3{%
+	\pgfkeysgetvalue{/pgfplots/#2 coord trafo/.@cmd}\pgfplots@loc@TMPc
+	\edef\pgfmathresult{#3}%
 	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
 	\else
 		\expandafter\pgfplots@loc@TMPc\expandafter{\pgfmathresult}\pgfeov
 	\fi
 	\let\pgfplots@loc@TMPc=\pgfmathresult% FIXME: is that necessary? I doubt it... but just to make sure...
-	\csname ifpgfplots@#1islinear\endcsname
-		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-			\pgfplotscoordmath{#1}{parsenumber}{\pgfplots@loc@TMPc}%
-			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfmathresult}%
+	\csname ifpgfplots@#2islinear\endcsname
+		\pgfplotscoordmath{#2}{parsenumber}{\pgfplots@loc@TMPc}%
+		\pgfplots@if{pgfplots@apply@datatrafo@#2}{%
+			\pgfplotscoordmath{#2}{datascaletrafo#1}{\pgfmathresult}%
 		}{}%
 	\else
-		\pgfplotscoordmath{#1}{log}{\pgfplots@loc@TMPc}%
+		\pgfplotscoordmath{#2}{log}{\pgfplots@loc@TMPc}%
 	\fi
 }
 
-\long\def\pgfplots@evalute@tikz@coord@system@interface#1,#2\pgfplots@coord@end{%
+\def\pgfplots@evalute@tikz@coord@system@interface{%
+	\pgfutil@ifnextchar[%
+		{\pgfplots@evalute@tikz@coord@system@interface@}%
+		{\pgfplots@evalute@tikz@coord@system@interface@[]}%
+}
+\long\def\pgfplots@evalute@tikz@coord@system@interface@[#1]#2,#3\pgfplots@coord@end{%
 	\global\let\pgfplots@glob@TMPc=\pgfutil@empty
 	\begingroup
-	\pgfplots@evalute@tikz@coord@system@interface@for{x}{#1}%
+	\pgfplots@evalute@tikz@coord@system@interface@for[#1]{x}{#2}%
 	\let\pgfplots@evaluate@tikz@coord@x=\pgfmathresult
-	\edef\pgfplots@loc@TMPa{#2}%
+	\edef\pgfplots@loc@TMPa{#3}%
 	\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@loc@TMPa}%
 	\ifpgfutil@in@
 		\def\pgfplots@loc@TMPb##1,##2\pgfplots@EOI{%
@@ -8625,12 +8802,12 @@
 			\def\pgfplots@axiscs@z{##2}%
 		}%
 		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI
-		\pgfplots@evalute@tikz@coord@system@interface@for{y}{\pgfplots@axiscs@y}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{y}{\pgfplots@axiscs@y}%
 		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
-		\pgfplots@evalute@tikz@coord@system@interface@for{z}{\pgfplots@axiscs@z}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{z}{\pgfplots@axiscs@z}%
 		\let\pgfplots@evaluate@tikz@coord@z=\pgfmathresult
 	\else
-		\pgfplots@evalute@tikz@coord@system@interface@for{y}{#2}%
+		\pgfplots@evalute@tikz@coord@system@interface@for[#1]{y}{#3}%
 		\let\pgfplots@evaluate@tikz@coord@y=\pgfmathresult
 		\let\pgfplots@evaluate@tikz@coord@z=\pgfutil@empty
 	\fi
@@ -9669,11 +9846,21 @@
 	\ifx\pgfplots@ztick\pgfplots@loc@TMPa
 		\pgfplots@collect@firstplot@asticktrue
 	\fi
-	\ifpgfplots@collect@firstplot@astick
-		\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
-		\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
-		\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
+	\pgfkeysgetvalue{/pgfplots/minor xtick}\pgfplots@loc@TMPb
+	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+		\pgfplots@collect@firstplot@asticktrue
 	\fi
+	\pgfkeysgetvalue{/pgfplots/minor ytick}\pgfplots@loc@TMPb
+	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+		\pgfplots@collect@firstplot@asticktrue
+	\fi
+	\pgfkeysgetvalue{/pgfplots/minor ztick}\pgfplots@loc@TMPb
+	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+		\pgfplots@collect@firstplot@asticktrue
+	\fi
+	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	\pgfkeysalso{/pgfplots/.search also=/tikz}%
 	%
 	\pgfkeysifdefined{/tikz/on layer}{}{%
@@ -9990,18 +10177,6 @@
 		\pgfplotsset{/tikz/draw,#1}%
 		\pgfplots@invoke@pgfkeyscode{/handler config/all/.@cmd}{}% unrestrict
 		%
-		% remember these technical things: they will be
-		% reset in \path (see below!), so we will need to re-activate
-		% them.
-		% The re-activation is done in 'every path' (see below).
-		% FIXME : is that portable!?
-		\pgfplots@assert@tikzinternal@exists{tikz@options}%
-		\pgfplots@assert@tikzinternal@exists{tikz@mode}%
-		\let\pgfplots@drawoptions=\tikz@options
-		\let\pgfplots@drawmodes=\tikz@mode
-		%
-		\pgfplots@check@for@default@plot@mark%
-		%
 		% the final plot processing uses
 		% foreach stored \addplot command :
 		%   \scope[current plot style]
@@ -10012,16 +10187,61 @@
 		%  have been set in \scope!
 		% -> ad-hoc-solution:
 		%    restore the modes manually.
+		\pgfplots@every@addplot@path@prepare%
+		%
+		\pgfplots@check@for@default@plot@mark%
+		%
 		%
 		% This is done here. The \pgfplots@drawmodes is ONLY set
 		% inside of this scope, so we can check for that particular
 		% case:
 		\pgfkeys{/tikz/every path/.append code={%
-			\pgfplots@restore@drawmodes
+				% FIXME : is that portable!?
+				\pgfplots@every@addplot@path
+				\pgfplots@every@addplot@firstpath
+				\let\pgfplots@every@addplot@firstpath=\pgfutil@empty
 			}%
 		}%
 	}%
 }%
+
+\def\pgfplots@every@addplot@path{}
+\def\pgfplots@every@addplot@firstpath{}
+
+\def\pgfplots@every@addplot@path@prepare{%
+	\let\pgfplots@every@addplot@path=\pgfutil@empty
+	\let\pgfplots@every@addplot@firstpath=\pgfutil@empty
+	%
+	% remember these technical things: they will be
+	% reset in \path (see below!), so we will need to re-activate
+	% them.
+	% The re-activation is done in 'every path'.
+	\pgfplots@assert@tikzinternal@exists{tikz@options}%
+	\pgfplots@assert@tikzinternal@exists{tikz@mode}%
+	\let\pgfplots@drawoptions=\tikz@options
+	\let\pgfplots@drawmodes=\tikz@mode
+	\pgfplots@everypath@prepare@append{\pgfplots@every@addplot@path}{\pgfplots@restore@drawmodes}%
+	%
+	\iftikz@decoratepath
+		\pgfplots@everypath@prepare@append{\pgfplots@every@addplot@firstpath}{\tikz@decoratepathtrue}%
+	\fi
+	\pgfplots@everypath@prepare@append@macrorestore{\pgfplots@every@addplot@firstpath}\tikz@preactions
+	\pgfplots@everypath@prepare@append@macrorestore{\pgfplots@every@addplot@firstpath}\tikz@postactions
+}%
+\long\def\pgfplots@everypath@prepare@append#1#2{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb={#2}%
+	\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+}%
+\long\def\pgfplots@everypath@prepare@append@macrorestore#1#2{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb=\expandafter{#2}%
+	\edef#1{%
+		\the\t@pgfplots@toka
+		\noexpand\def\noexpand#2{\the\t@pgfplots@tokb}%
+	}%
+}%
+
 
 \newif\ifpgfplots@drawmodes@append
 
@@ -10198,6 +10418,7 @@
 	%
 	\pgfplots@install@abbrev@commands
 	\pgfplots@stacked@initialise
+	\pgfplotsplothandlers@init
 	%
 	%
 	% The explicit specification of 'x' and 'y' as 1pt is to avoid
@@ -10216,6 +10437,7 @@
 	\pgfplots@prepare@layered@graphics
 	%
 	\pgfplots@prepare@cell@picture
+	%
 	%
 	%
 	% --------------------
@@ -10298,6 +10520,8 @@
 		\global\pgfplots@threedimtrue
 		\pgfplots@autocompute@all@limitsfalse
 	\fi
+	%
+	\pgfplots@declare@mathfunctions
 	%
 	% check for axis-wide 'point meta min' :
 	\pgfkeysgetvalue{/pgfplots/point meta min}\pgfplots@loc@TMPa
@@ -10405,6 +10629,11 @@
 	\pgfplots@determinedefaultvalues
 	\pgfplots@BEGIN@cell@picture[/pgfplots/every axis]%
 		\pgfplots@BEGIN@init@and@draw@axis
+		%
+		% replace some of tikz's paths (like ellipse and path): make them
+		% aware of any transformations:
+		\pgfplots@install@path@replacements
+		%
 		\pgfplots@stacked@initialise
 		\global\pgfplotslistnewempty\pgfplots@stored@markerlist
 		\ifpgfplots@stacked@reverse
@@ -10436,6 +10665,9 @@
 				% this code here means we REALLY have a plotting
 				% command!
 				\scope[current plot style] % this does set BOTH pgfplots and tikz options.
+				% FIXME : what, precisely, was the motivation to use a
+				% scope here? It causes a lot of problems and
+				% work-arounds. Is it worth the effort!?
 				\ifpgfplots@clip
 					\if2\pgfplots@clipmode
 						% clip=true and 'clip mode=individual'

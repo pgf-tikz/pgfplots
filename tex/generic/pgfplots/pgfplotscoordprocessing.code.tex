@@ -1774,8 +1774,9 @@
 %   \pgfplots@[xyz]@veclength,
 %   \pgfplots@[xyz]@inverseveclength
 %   are set properly
-%   \pgfplots@view@dir@threedim@[xyz] will contain the three components
-%   of 'n' (without the suffix 'pt', but in units of 'pt').
+%   \pgfplots@view@dir@threedim will contain the three components
+%   of 'n' (without the suffix 'pt', but in units of 'pt') (see
+%   \pgfplotsmathvectorfromstring).
 \def\pgfplotssetaxesfromazel#1#2#3{%
 	\begingroup
 	\pgfmathparse{#1}%
@@ -1874,13 +1875,18 @@
 	\pgfsetyvec{\pgfplots@glob@TMPb}%
 	\pgfsetzvec{\pgfplots@glob@TMPc}%
 	\def\pgfplots@loc@TMPa##1##2##3{%
-		\def\pgfplots@view@dir@threedim@x{##1}%
-		\def\pgfplots@view@dir@threedim@y{##2}%
-		\def\pgfplots@view@dir@threedim@z{##3}%
+		\pgfplotsmathvectorfromstring{##1,##2,##3}{default}%
+		\let\pgfplots@view@dir@threedim=\pgfplotsretval
 	}%
 	\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPd\relax
 	\def#3{0}%
 	\pgfplots@scale@plotbox@to@widthheight
+}%
+
+\def\pgfplotspointviewdir{%
+	%\pgfplotsmathvectordatascaletrafoinverse{\pgfplots@view@dir@threedim}{default}%
+	\let\pgfplotsretval=\pgfplots@view@dir@threedim
+	\pgfplotspointfromcsvvector{\pgfplotsretval}{default}%
 }%
 
 \def\message@pgfplots@units{%
@@ -1891,14 +1897,17 @@
 	\fi
 	\pgfmathparse{veclen(\pgf@xx,\pgf@xy)/\Z}\let\X=\pgfmathresult
 	\pgfmathparse{veclen(\pgf@yx,\pgf@yy)/\Z}\let\Y=\pgfmathresult
+	\expandafter\ifx\csname pgfplots@view@dir@threedim\endcsname\relax
+		\def\normal{view = (---),^^J}%
+	\else
+		\pgfplotsmathvectortostring{\pgfplots@view@dir@threedim}{default}%
+		\edef\normal{view = (\pgfplotsretval),^^J}%
+	\fi
 	\message{^^J 
 		x = (\the\pgf@xx,\the\pgf@xy),^^J 
 		y =(\the\pgf@yx,\the\pgf@yy),^^J 
 		z = (\the\pgf@zx,\the\pgf@zy),^^J 
-		\expandafter\ifx\csname pgfplots@view@dir@threedim@x\endcsname\relax
-		\else
-			n = (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z),^^J
-		\fi
+		\normal
 		unit vector ratio=[\X\space\Y\space 1],^^J}%
 	\endgroup
 }%
@@ -1958,7 +1967,6 @@
 % 	- the @veclength and @inverseveclength have been re-scaled as
 % 	well.
 \def\pgfplots@scaleaxes@to@BB#1#2{%
-%\message{before scaling:}\message@pgfplots@units
 	\if0\pgfplots@scale@mode@choice
 		% scale mode=auto
 		\def\pgfplots@scale@mode@choice{2}% stretch to fill
@@ -1971,8 +1979,26 @@
 	% FIXME 
 	% I suppose I should call \pgfplotsgetnormalforcurrentview now?
 	\pgfplots@computeunitvectorlengths
-%\message{after scaling:}\message@pgfplots@units
 }%
+
+\def\pgfplots@rescale@view@dir{%
+	\expandafter\ifx\csname pgfplots@view@dir@threedim\endcsname\relax
+	\else
+		\pgfplotsmathvectorfromstring{\pgfplots@x@inverseveclength,\pgfplots@y@inverseveclength,\pgfplots@z@inverseveclength}{default}%
+		\pgfplotsmathvectorscaleindividually{\pgfplots@view@dir@threedim}{\pgfplotsretval}{default}%
+		\let\pgfplots@view@dir@threedim=\pgfplotsretval
+		%
+		% normalize. This is not absolutely required -- but it is used
+		% to accumulate point depth (for the mesh handler) in pgfmath
+		% arithmetics. At least \pgfplotsmathviewdepthxyz should use
+		% a properly scaled view dir.
+		\pgfplotsmathvectorlength{\pgfplots@view@dir@threedim}{default}%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplotsretval}}%
+		\pgfplotsmathvectorscale{\pgfplots@view@dir@threedim}{\pgfmathresult}{default}%
+		\let\pgfplots@view@dir@threedim=\pgfplotsretval
+	\fi
+}%
+
 \def\pgfplots@BB@for@plotbox@relative{%
 	% We just need the
 	% relative sizes, i.e.
@@ -2254,7 +2280,7 @@
 	\fi
 }%
 
-% Defines \pgfplots@view@dir@threedim@[xyz] according to the actual
+% Defines \pgfplots@view@dir@threedim according to the actual
 % configuration of x,y,z (2d) unit vectors, assuming the associated
 % unit vectors form a right-handed-system.
 %
@@ -2338,7 +2364,7 @@
 	\pgfkeysgetvalue{/pgfplots/view dir}\pgfplots@loc@TMPc
 	\ifx\pgfplots@loc@TMPc\pgfutil@empty
 	\begingroup	
-		\xdef\pgfplots@view@dir@threedim@z{-1}% hold it at some arbitrary value
+		\def\pgfplots@view@dir@threedim@z{-1}% hold it at some arbitrary value
 		\pgf@xa=-\pgfplots@view@dir@threedim@z\pgf@zx
 		\pgf@ya=-\pgfplots@view@dir@threedim@z\pgf@zy
 		\edef\pgfplots@loc@TMPa{%
@@ -2352,8 +2378,8 @@
 		}%
 		\expandafter\pgfutilsolvetwotwoleq\pgfplots@loc@TMPa
 		\def\pgfplots@loc@TMPb##1##2{%
-			\xdef\pgfplots@view@dir@threedim@x{##1}%
-			\xdef\pgfplots@view@dir@threedim@y{##2}%
+			\def\pgfplots@view@dir@threedim@x{##1}%
+			\def\pgfplots@view@dir@threedim@y{##2}%
 		}%
 		\expandafter\pgfplots@loc@TMPb\pgfmathresult
 		%
@@ -2411,21 +2437,23 @@
 			\fi
 		\fi
 		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@x}%
-		\global\let\pgfplots@view@dir@threedim@x\pgfmathresult
+		\let\pgfplots@view@dir@threedim@x\pgfmathresult
 		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@y}%
-		\global\let\pgfplots@view@dir@threedim@y\pgfmathresult
+		\let\pgfplots@view@dir@threedim@y\pgfmathresult
 		\pgfmathmultiply@{\pgfplots@scale}{\pgfplots@view@dir@threedim@z}%
-		\global\let\pgfplots@view@dir@threedim@z\pgfmathresult
+		\let\pgfplots@view@dir@threedim@z\pgfmathresult
+		\pgfplotsmathvectorfromstring{\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z}{default}%
+		\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
+		\let\pgfplots@view@dir@threedim=\pgfplotsretval
 	\else
 		\def\pgfplots@loc@TMPb##1##2##3{%
-			\xdef\pgfplots@view@dir@threedim@x{##1}%
-			\xdef\pgfplots@view@dir@threedim@y{##2}%
-			\xdef\pgfplots@view@dir@threedim@z{##3}%
+			\pgfplotsmathvectorfromstring{##1,##2,##3}{default}%
+			\let\pgfplots@view@dir@threedim=\pgfplotsretval
 		}%
 		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPc
 	\fi
-%\message{\string\pgfplotsgetnormalforcurrentview:  got (\pgfplots@view@dir@threedim@x,\pgfplots@view@dir@threedim@y,\pgfplots@view@dir@threedim@z)^^J}%
+%\message{\string\pgfplotsgetnormalforcurrentview:  got (\pgfplots@view@dir@threedim)^^J}%
 }%
 
 % ==================================================================================
@@ -2521,7 +2549,6 @@
 		datascaletrafo noshift inverse=		\edef\pgfmathresult{##1},
 		datascaletrafo inverse to fixed=	\edef\pgfmathresult{##1},
 		datascaletrafo noshift inverse to fixed=	\edef\pgfmathresult{##1},
-		datascaletrafo noshift=		\edef\pgfmathresult{##1},
 		datascaletrafo noshift=		\edef\pgfmathresult{##1},
 		datascaletrafo undo shift=	\edef\pgfmathresult{##1},
 		datascaletrafo redo shift=	\edef\pgfmathresult{##1},
@@ -6368,7 +6395,15 @@
 	% high level user interface functions:
 	\let\pgfplotstable@coordindex@old=\coordindex
 	\def\coordindex{\pgfplotstablerow}%
-	\let\lineno=\coordindex% is the same here
+	\def\lineno{\coordindex}% is the same here
+	% These macros are-unfortunately- not accessable here. And the
+	% worst is: error messages are impossible either because they are
+	% not executed... try to provide useful hints:
+	\def\thisrow##1{thisrow_unavailable_load_table_directly}%
+	\def\thisrowno##1{thisrowno_unavailable_load_table_directly}%
+	% this should work.
+	\def\getthisrow##1##2{\pgfplotstablegetelem{\coordindex}{##1}\of{#3}{##2}}%
+	\def\getthisrowno##1##2{\pgfplotstablegetelem{\coordindex}{[index]##1}\of{#3}{##2}}%
 	%
 	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@x}\of#3\to\addplot@tbl@x
 	\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplots@plot@tbl@y}\of#3\to\addplot@tbl@y
@@ -7237,8 +7272,17 @@
 }
 
 % Takes the current point (defined by a set of macros) as input and defines \pgf@x and \pgf@y 
-% as the output point.
+% as the output point. It also defines
+% \pgfplots@current@point@x and its variants to contain the
+% transformed canvas coords (those which can be given to
+% \pgfplotsqpointxyz).
+%
+% Furthermore, it defines keys '/data point/x untransformed' to
+% contain the untransformed coords.
 \def\pgfplotsaxisvisphasegetpoint{%
+	\pgfkeyslet{/data point/x untransformed}\pgfplots@current@point@x
+	\pgfkeyslet{/data point/y untransformed}\pgfplots@current@point@y
+	\pgfkeyslet{/data point/z untransformed}\pgfplots@current@point@z
 	\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
 	\pgfplotsaxisvisphasepreparedatapoint
 	\ifpgfplots@curplot@threedim
@@ -7361,6 +7405,12 @@
 	\fi
 }%
 
+% This is the pgfplots implementation for 'node[pos=<fraction>]'.
+% Besides modifications of the transformation matrix, it also defines the COORDINATES of the point to
+% /data point/x
+% /data point/y
+% /data point/z
+% (or more keys which depend on the plot handler).
 \def\pgfplots@plot@timer{%
 	\pgfplotstransformplotattime{\tikz@time}%
 }
@@ -7369,7 +7419,7 @@
 % current plot with fraction #1.
 %
 % This does actually nothing more than using
-% \pgfplotstransformplotattime{#1} as shift and using the slope of the
+% \pgfplotspointplotattime{#1} as shift and using the slope of the
 % curve at that point to set up the 'sloped' rotation (if enabled).
 \def\pgfplotstransformplotattime#1{%
   \pgftransformshift{\pgfplotspointplotattime{#1}}%
@@ -7381,109 +7431,190 @@
   \fi%
 }
 
+\def\pgfplotspointplotattimeclearcache{%
+	\global\let\pgfplotspointplotattime@cache=\pgfutil@empty
+	\gdef\pgfplotspointplotattime@cachesize{0}%
+}%
+\pgfplotspointplotattimeclearcache
+\def\pgfplotspointplotattime@cachesize@max{20}
+
+% Checks if the cache for \pgfplotspointplotattime has a cached entry for '#1'.
+% POSTCONDITION:
+%   if \ifpgfplots@loc@tmp is true, the value(s) from the cache have been retrieved successfully.
+%   if \ifpgfplots@loc@tmp is false, there is not hit.
+\def\pgfplotspointplotattimegetfromcache#1{%
+	\pgf@xa=#1pt %
+	\pgfplotspointplotattime@cache
+	\pgfkeysifdefined{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}{%
+		\pgfkeysvalueof{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}%
+		\pgfplots@loc@tmptrue
+	}{%
+		\pgfplots@loc@tmpfalse
+	}%
+}%
+\def\pgfplotspointplotattimeaddtocache#1{%
+	\pgfplotsutil@advancestringcounter@global\pgfplotspointplotattime@cachesize
+	\ifnum\pgfplotspointplotattime@cachesize=\pgfplotspointplotattime@cachesize@max
+		\pgfplotspointplotattimeclearcache
+	\fi
+	\pgf@xa=#1pt %
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimefirst{\pgfplotspointplotattimefirst}%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimesecond{\pgfplotspointplotattimesecond}%
+		\noexpand\gdef\noexpand\pgfplotspointplotattimecoords{\pgfplotspointplotattimecoords}%
+	}%
+	\t@pgfplots@toka=\expandafter{\pgfplotspointplotattime@cache}%
+	\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+	\xdef\pgfplotspointplotattime@cache{%
+		\the\t@pgfplots@toka
+		\noexpand\pgfkeyssetvalue{/data point/@pos \the\pgf@xa/segment \pgfkeysvalueof{/tikz/pos segment}}{\the\t@pgfplots@tokb}%
+	}%
+}
+
 % Sets (\pgf@x,\pgf@y) to the point of the current plot with fraction #1.
 % For #1 = 0, this is the first point.
 % For #1 = 1, this is the last point.
 % For #1 = 0.5, it is the middle of the plot.
+% The argument '#1' is optional: if you leave it away, the current value of the 'pos' key will be used.
 % This method will work for most plot handlers, although some of them might be unsupported.
 %
-% As a side-effect, it defines the (global) macros \pgfplotspointplotattimefirst and \pgfplotspointplotattimesecond
-% in order to allow the computation of gradients. These macros can be decoded using
+% As a side-effect, it defines the (global) macros 
+% - \pgfplotspointplotattimefirst  the start coordinate of the line segment containing #1
+% - \pgfplotspointplotattimesecond the end   coordinate of the line segment containing #1
+% - \pgfplotspointplotattimecoords the coordinates of #1
+% The first two are interesting in order to allow the computation of gradients. 
+%	\pgfplotsplothandlerpointtokeys{/data point}%
+% for the \pgfplotspointplotattimecoords point
+% 
+% Any of these macros can be decoded using
 % \pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimesecond
 % \pgfplotsaxisvisphasegetpoint
-\def\pgfplotspointplotattime#1{%
-	\begingroup
-	%
-	\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
-	%
-	\def\pgfplots@coord@stream@start@{%
-		\ifx\pgfplots@pos@segment\pgfutil@empty
-			\let\c@pgfplots@segments=\pgfutil@empty
-		\else
-			\def\c@pgfplots@segments{0}%
-			\c@pgf@countd=\pgfplots@pos@segment\relax
-			\edef\pgfplots@pos@segment{\the\c@pgf@countd}%
-		\fi
-		\pgfplotscoordmath{default}{zero}%
-		\let\pgfplots@len@total=\pgfmathresult
-		\let\pgfplots@last@processed=\pgfutil@empty
-		\def\pgfplots@last@was@empty{1}%
-	}%
-	\def\pgfplotspointattime@do{}%
-	\def\pgfplots@coord@stream@coord@{%
-%\message{plot at time (#1, segment \pgfplots@pos@segment): processing (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)^^J}%
-		\ifx\pgfplots@current@point@x\pgfutil@empty
-			\if1\pgfplots@last@was@empty
+%
+% @see \pgfplotsplothandlerpointtokeys
+\def\pgfplotspointplotattime{%
+	\pgfutil@ifnextchar\bgroup{\pgfplotspointplotattime@}{\pgfplotspointplotattime@{\tikz@time}}%
+}
+\def\pgfplotspointplotattime@#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfplots@error{Sorry, the provided fraction of the plot is empty (maybe the argument of 'pos' has been cleared by the tikz node processing). Please provide a valid 'pos' argument}%
+	\else
+	\pgfplotspointplotattimegetfromcache{#1}%
+	\ifpgfplots@loc@tmp
+		% CACHE HIT! 
+%\message{CACHE HIT for \string\pgfplotspointplotattime{#1}^^J}%
+	\else
+%\message{NO cache hit for \string\pgfplotspointplotattime{#1}^^J}%
+		\begingroup
+		%
+		\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
+		%
+		% 1. compute the total length of the plot (by integrating along a linear spline)
+		%
+		\def\pgfplots@coord@stream@start@{%
+			\ifx\pgfplots@pos@segment\pgfutil@empty
+				\let\c@pgfplots@segments=\pgfutil@empty
 			\else
-				% oh. a jump... start new length segment
-				\ifx\c@pgfplots@segments\pgfutil@empty
-				\else
-					\ifx\pgfplots@pos@segment\c@pgfplots@segments
-						\let\pgfplots@coord@stream@coord@=\relax
-					\fi
-					\pgfplotsutil@advancestringcounter\c@pgfplots@segments
-				\fi
+				\def\c@pgfplots@segments{0}%
+				\c@pgf@countd=\pgfplots@pos@segment\relax
+				\edef\pgfplots@pos@segment{\the\c@pgf@countd}%
 			\fi
+			\pgfplotscoordmath{default}{zero}%
+			\let\pgfplots@len@total=\pgfmathresult
 			\let\pgfplots@last@processed=\pgfutil@empty
 			\def\pgfplots@last@was@empty{1}%
-		\else
-			\ifx\pgfplots@pos@segment\c@pgfplots@segments
-				\ifx\pgfplots@last@processed\pgfutil@empty
+		}%
+		\def\pgfplotspointattime@do{}%
+		\def\pgfplots@coord@stream@coord@{%
+%\message{plot at time (#1, segment \pgfplots@pos@segment): processing (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)^^J}%
+			\ifx\pgfplots@current@point@x\pgfutil@empty
+				\if1\pgfplots@last@was@empty
 				\else
-					\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-					\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
-					\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
-					\let\pgfplots@len@total=\pgfmathresult
-%\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplots@len@total^^J}%
-					\pgfplotspointattime@do
+					% oh. a jump... start new length segment
+					\ifx\c@pgfplots@segments\pgfutil@empty
+					\else
+						\ifx\pgfplots@pos@segment\c@pgfplots@segments
+							\let\pgfplots@coord@stream@coord@=\relax
+						\fi
+						\pgfplotsutil@advancestringcounter\c@pgfplots@segments
+					\fi
 				\fi
-				%
-				\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+				\let\pgfplots@last@processed=\pgfutil@empty
+				\def\pgfplots@last@was@empty{1}%
+			\else
+				\ifx\pgfplots@pos@segment\c@pgfplots@segments
+					\ifx\pgfplots@last@processed\pgfutil@empty
+					\else
+						\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+						\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
+						\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@len@total}}%
+						\let\pgfplots@len@total=\pgfmathresult
+%\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplots@len@total^^J}%
+						\pgfplotspointattime@do
+					\fi
+					%
+					\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+				\fi
+				\def\pgfplots@last@was@empty{0}%
 			\fi
-			\def\pgfplots@last@was@empty{0}%
-		\fi
-	}%
-	\def\pgfplots@coord@stream@end@{}%
-	\let\pgfplots@coord@stream@coord@orig=\pgfplots@coord@stream@coord@
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
-	%
-	% Now, we have the total length. Now, try to find time #1!
-	\edef\pgfplots@time{#1}%
-	\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
-	%
-	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total}}%
-	\let\pgfplots@len@thresh=\pgfmathresult
-	%
-	\pgfplotscoordmath{default}{zero}%
-	\let\pgfplots@len@last=\pgfmathresult
-	\let\pgfplots@len@last@last=\pgfplots@len@last
-%\message{plot at time (#1, segment \pgfplots@pos@segment): total length=\pgfplots@len@total; target len \pgfplots@len@thresh\space (#1)^^J}%
-	%
-	\def\pgfplots@HIT{0}%
-	\let\pgfplots@last@last=\pgfutil@empty
-	\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@orig
-	\def\pgfplotspointattime@do{%
-		\pgfplotscoordmath{default}{if less than}
-			{\pgfplots@len@thresh}
-			{\pgfplots@len@total}
-			{% HIT!
-				\def\pgfplots@HIT{1}%
-				\pgfplotspointattime@pointbetween@two
-				\let\pgfplots@coord@stream@coord@=\relax
-			}{%
-			}%
+		}%
+		\def\pgfplots@coord@stream@end@{}%
+		\let\pgfplots@coord@stream@coord@orig=\pgfplots@coord@stream@coord@
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+		%
+		% Now, we have the total length. Now, try to find time #1!
+		\edef\pgfplots@time{#1}%
+		\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
+		%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@time}{\pgfplots@len@total}}%
+		\let\pgfplots@len@thresh=\pgfmathresult
+		%
+		\pgfplotscoordmath{default}{zero}%
+		\let\pgfplots@len@last=\pgfmathresult
 		\let\pgfplots@len@last@last=\pgfplots@len@last
-		\let\pgfplots@len@last=\pgfplots@len@total
-		\let\pgfplots@last@last=\pgfplots@last@processed
-		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
-	}%
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
-	\if\pgfplots@HIT0%
-		\let\pgfplots@last@processed=\pgfplots@last@last
-		\let\pgfplots@len@last=\pgfplots@len@last@last
-		\pgfplotspointattime@pointbetween@two
+%\message{plot at time (#1, segment \pgfplots@pos@segment): total length=\pgfplots@len@total; target len \pgfplots@len@thresh\space (#1)^^J}%
+		%
+		\def\pgfplots@HIT{0}%
+		\let\pgfplots@last@last=\pgfutil@empty
+		\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@orig
+		\def\pgfplotspointattime@do{%
+			\pgfplotscoordmath{default}{if less than}
+				{\pgfplots@len@thresh}
+				{\pgfplots@len@total}
+				{% HIT!
+					\def\pgfplots@HIT{1}%
+					\pgfplotspointattime@pointbetween@two
+					\let\pgfplots@coord@stream@coord@=\relax
+				}{%
+				}%
+			\let\pgfplots@len@last@last=\pgfplots@len@last
+			\let\pgfplots@len@last=\pgfplots@len@total
+			\let\pgfplots@last@last=\pgfplots@last@processed
+			\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+		}%
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
+		\if\pgfplots@HIT0%
+			\let\pgfplots@last@processed=\pgfplots@last@last
+			\let\pgfplots@len@last=\pgfplots@len@last@last
+			\pgfplotspointattime@pointbetween@two
+		\fi
+		\endgroup
+		\pgfplotspointplotattimeaddtocache{#1}%
 	\fi
-	\endgroup
+	\pgfplotsplothandlerdeserializepointfrom\pgfplotspointplotattimecoords
+	\pgfplotscoordmath{x}{tofixed}{\pgfplots@current@point@x}%
+	\pgfplots@coord@inv@trafo@apply{x}{\pgfmathresult}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotscoordmath{y}{tofixed}{\pgfplots@current@point@y}%
+	\pgfplots@coord@inv@trafo@apply{y}{\pgfmathresult}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{tofixed}{\pgfplots@current@point@z}%
+		\pgfplots@coord@inv@trafo@apply{z}{\pgfmathresult}%
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	\pgfplotsplothandlerpointtokeys{/data point}%
+	\fi
 }
 \def\pgfplotspointattime@pointbetween@two{%
 	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@len@thresh}{\pgfplots@len@last}}%
@@ -7494,12 +7625,28 @@
 	\let\pgfplots@time@between@two=\pgfmathresult
 %\message{HIT between \pgfplots@len@last\space and \pgfplots@len@total\space (\pgfplots@time@between@two)^^J}%
 	\ifx\pgfplots@last@processed\pgfutil@empty
+		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 	\else
 		\pgfplotsplothandlersurveypointattime{\pgfplots@time@between@two}{\pgfplots@last@processed}{\pgfplots@cur}%
 	\fi
+	\pgfplotsplothandlerserializepointto\pgfplots@loc@TMPa
+	\global\let\pgfplotspointplotattimecoords=\pgfplots@loc@TMPa
 	\pgfplotsaxisvisphasegetpoint
 	\global\let\pgfplotspointplotattimefirst=\pgfplots@last@processed
 	\global\let\pgfplotspointplotattimesecond=\pgfplots@cur
+}%
+
+
+% #1 : either x,y, or z
+% #2 : the argument on which the inv trafo shall be applied. It has to
+% be a fixed point number.
+\def\pgfplots@coord@inv@trafo@apply#1#2{%
+	\edef\pgfmathresult{#2}%
+	\pgfkeysgetvalue{/pgfplots/#1 coord inv trafo/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov
+	\fi
 }%
 
 % INPUT: 
@@ -7524,9 +7671,13 @@
 		\tikz@make@last@position{\pgfplotlastpoint}%  
 	}%
 	\let\pgfplots@plot@timer@args=\pgfplots@coord@stream@finalize@storedcoords@START@coords
+	\pgfplotspointplotattimeclearcache
 	\let\tikz@timer=\pgfplots@plot@timer%
 	\endpgfextra
 	#2;
+	%
+	\pgfplotspointplotattimeclearcache
+	%
 	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
 	\else
 		\pgfkeysgetvalue{/pgfplots/mark layer}\pgfplots@loc@TMPa
@@ -8785,6 +8936,7 @@
 %\message{z buffer=auto mode chose  z buffer= \ifcase\pgfplotsplothandlermesh@zbuffer@choice NONE \or reverse x seq \or reverse y seq \or reverse xy seq \or sort\or default \fi. mesh ordering = \ifcase\pgfplots@plot@mesh@ordering x varies/rowwise\or y varies/colwise\fi}%
 		% 'z buffer' is no longer 'auto' now:
 			\pgfplots@apply@zbuffer{#1}%
+			\pgfmath@smuggleone\pgfplotsplothandlermesh@zbuffer@choice
 			\endgroup
 		\else
 			% mesh input=patches
@@ -8898,19 +9050,20 @@
 % '#1' is BEHIND #2 with respect to the current 3D view.
 \def\pgfplots@apply@zbuffer@SORT@iflessthan#1#2#3#4\pgfeov{%
 	\pgfplotsaxisdeserializedatapointfrom{#1}%
-	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
-	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfmathresult
+	\pgfplotsmathvectorfromstring{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}{default}%
+	\pgfplotsmathvectorscalarproduct{\pgfplots@view@dir@threedim}{\pgfplotsretval}{default}%
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@a=\pgfplotsretval
 	%
 	\pgfplotsaxisdeserializedatapointfrom{#2}%
-	\pgfplotsmathfloatviewdepthxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
-	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfmathresult
+	\pgfplotsmathvectorfromstring{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}{default}%
+	\pgfplotsmathvectorscalarproduct{\pgfplots@view@dir@threedim}{\pgfplotsretval}{default}%
+	\let\pgfplots@apply@zbuffer@SORT@iflessthan@b=\pgfplotsretval
 	%
-	\pgfmathfloatlessthan@{\pgfplots@apply@zbuffer@SORT@iflessthan@b}{\pgfplots@apply@zbuffer@SORT@iflessthan@a}%
-	\ifpgfmathfloatcomparison
+	\pgfplotscoordmath{default}{if less than}{\pgfplots@apply@zbuffer@SORT@iflessthan@b}{\pgfplots@apply@zbuffer@SORT@iflessthan@a}{%
 		#3\relax
-	\else
+	}{%
 		#4\relax
-	\fi
+	}%
 }%
 
 
@@ -8922,53 +9075,51 @@
 % The arguments need to be numbers (will be parsed with
 % \pgfmathfloatparsenumber).
 % @see \pgfplotsmathviewdepthxyz
+% DEPRECATED use \pgfplotsmathvectorviewdepth instead!
 \def\pgfplotsmathfloatviewdepthxyz#1#2#3{%
+	\begingroup
 	\pgfmathfloatparsenumber{#1}\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfmathfloatparsenumber{#2}\let\pgfplots@loc@TMPb=\pgfmathresult
 	\pgfmathfloatparsenumber{#3}\let\pgfplots@loc@TMPc=\pgfmathresult
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}}%
 	\expandafter\pgfplotsmathfloatviewdepthxyz@\pgfplots@loc@TMPa
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+% #1: a 3d vector of the form x,y,z  in 'default' coordmath format
+% defines \pgfplotsretval to the view depth
+% of the point
+%
+% Use \pgfplotsmathvectorfromstring{x,y,z}{default}  to transform a
+% vector into the requested format.
+%
+% Use \pgfplotscoordmath{default}{tofixed}{\pgfplotsretval} to
+% transform the result into fixed point representation.
+\def\pgfplotsmathvectorviewdepth#1{%
+	\pgfplotsmathvectorscalarproduct{#1}{\pgfplots@view@dir@threedim}{default}%
 }%
 
 \def\pgfplotsmathfloatviewdepthxyz@#1#2#3{%
 	\pgfplots@error{Sorry, you can't use \string\pgfplotsmathfloatviewdepthxyz\space in this context.}%
 }%
 \def\pgfplotsmathfloatviewdepthxyz@infigure#1#2#3{%
-	\pgfmathfloatmultiplyfixed@{#1}{\pgfplots@view@dir@threedim@x}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfmathfloatmultiplyfixed@{#2}{\pgfplots@view@dir@threedim@y}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfmathfloatadd@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\ifpgfplots@curplot@threedim
-		\pgfmathfloatmultiplyfixed@{#3}{\pgfplots@view@dir@threedim@z}%
-		\let\pgfplots@loc@TMPc=\pgfmathresult
-		\pgfmathfloatadd@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
-		\let\pgfplots@loc@TMPb=\pgfmathresult
-	\fi
-	\let\pgfmathresult=\pgfplots@loc@TMPb
+	\pgfplotsmathvectorfromstring{\pgfplots@view@dir@threedim}{float}%
+	\pgfplotsmathvectorscalarproduct{#1,#2,#3}{\pgfplotsretval}{float}% FIXME : \pgfplots@view@dir@threedim might have a different math format!
+	\let\pgfmathresult=\pgfplotsretval
 }%
 
 % Similar to \pgfplotsmathfloatviewdepthxyz, but this always relies on
 % fixed point arithmetics.
+% DEPRECATED use \pgfplotsmathvectorviewdepth instead
 \def\pgfplotsmathviewdepthxyz#1#2#3{\pgfplotsmathviewdepthxyz@{#1}{#2}{#3}}
 \def\pgfplotsmathviewdepthxyz@#1#2#3{%
 	\pgfplots@error{Sorry, you can't use \string\pgfplotsmathviewdepthxyz\space in this context.}%
 }
 \def\pgfplotsmathviewdepthxyz@infigure#1#2#3{%
-	\pgfmath@basic@multiply@{#1}{\pgfplots@view@dir@threedim@x}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfmath@basic@multiply@{#2}{\pgfplots@view@dir@threedim@y}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfmath@basic@add@{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\ifpgfplots@curplot@threedim
-		\pgfmath@basic@multiply@{#3}{\pgfplots@view@dir@threedim@z}%
-		\let\pgfplots@loc@TMPc=\pgfmathresult
-		\pgfmath@basic@add@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
-		\let\pgfplots@loc@TMPb=\pgfmathresult
-	\fi
-	\let\pgfmathresult=\pgfplots@loc@TMPb
+	\pgfplotsmathvectorfromstring{\pgfplots@view@dir@threedim@unitlength}{pgfbasic}%
+	\pgfplotsmathvectorscalarproduct{#1,#2,#3}{\pgfplotsretval}{pgfbasic}% FIXME : \pgfplots@view@dir@threedim might have a different math format!
+	\let\pgfmathresult=\pgfplotsretval
 }%
 
 

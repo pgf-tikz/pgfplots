@@ -302,6 +302,19 @@
 
 \def\pgfplotssurveyphaseinputclass{direct}
 
+\def\pgfplotsplothandlers@init{%
+	\def\pgfplotsplothandlers@init@##1{%
+		\expandafter\def\expandafter##1\expandafter{%
+			##1%
+			\let\pgfplotsplothandlersurveydifflen=\pgfplotsplothandlersurveydifflen@snaptonearest
+			\let\pgfplotsplothandlersurveypointattime=\pgfplotsplothandlersurveypointattime@snaptonearest
+		}%
+	}%
+	\pgfplotsutilforeachcommasep{\pgfplothandlerdiscard,\pgfplothandlerxbar,\pgfplothandlerybar,\pgfplothandlerxbarinterval,\pgfplothandlerybarinterval}\as\pgfplots@loc@TMPa{%
+		\expandafter\pgfplotsplothandlers@init@\expandafter{\pgfplots@loc@TMPa}%
+	}%
+}%
+
 % Resets the plot handler routines.
 %
 % This is necessary before installing a new plot handler!
@@ -310,6 +323,7 @@
 	\let\pgfplotsplothandlername=\pgfplotsplothandlername@default
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@default
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@default
+	\let\pgfplotsplothandlerpointtokeys=\pgfplotsplothandlerpointtokeys@default
 	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@default
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@default
 	\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@default
@@ -382,12 +396,31 @@
 	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}%
 }%
 
+% \pgfplotsplothandlerdeserializepointfrom{<\macro>}
 % the counterpart for \pgfplotsplothandlerserializepointto.
-% It should restore the state as it was before the serialization.
+% It restores the state as it was before the serialization.
 %
 % #1: the serialized information.
 \def\pgfplotsplothandlerdeserializepointfrom@default#1{%
 	\expandafter\pgfplotsplothandlerdeserializepointfrom@default@#1\relax
+}%
+
+% \pgfplotsplothandlerpointtokeys{<key prefix>}
+%
+% Takes the current point and copies its values to a set of keys.
+%
+% For example, if the current point has the three coordinates x=1,
+% y=2, z=3,
+% \pgfplotsplothandlerpointtokeys{/data point/first/}
+% will define the keys
+% /data point/first/x/.initial=1
+% /data point/first/y/.initial=2
+% /data point/first/z/.initial=3
+%
+\def\pgfplotsplothandlerpointtokeys@default#1{%
+	\pgfkeyslet{#1/x}\pgfplots@current@point@x
+	\pgfkeyslet{#1/y}\pgfplots@current@point@y
+	\pgfkeyslet{#1/z}\pgfplots@current@point@z
 }%
 
 \def\pgfplotsplothandlerdeserializepointfrom@default@#1,#2,#3\relax{%
@@ -425,11 +458,15 @@
 %
 % #1 a fraction (a number between 0 and 1) in the format of
 % \pgfplotscoordmath{default}
-% #2 a serialized point
-% #3 a serialized point
+% #2 a serialized point denoting the start
+% #3 a serialized point denoting the end
+%
+% In other words: #1 = 0.0 should result in #2 and #1 = 1.0 should
+% result in #3.
 %
 % POSTCONDITION: the current point will be set to the point
-% in-between.
+% in-between. The current point is set in terms of logical coordinates
+% (i.e. \pgfplots@current@point@x and its variants)
 \def\pgfplotsplothandlersurveypointattime@default#1#2#3{%
 	\begingroup
 	\pgfplotsplothandlerdeserializepointfrom{#2}%
@@ -441,7 +478,7 @@
 	\def\pgfplots@loc@TMPa##1{%
 		\pgfplotscoordmath{##1}{op}{subtract}{{\csname pgfplots@current@point@##1\endcsname}{\csname pgfplots@last@##1\endcsname}}%
 		\let\pgfplots@diff=\pgfmathresult
-		\pgfplotscoordmathparsemacro{##1}{#1}%
+		\pgfplotscoordmath{##1}{parsenumber}{#1}%
 		\pgfplotscoordmath{##1}{op}{multiply}{{\pgfmathresult}{\pgfplots@diff}}%
 		\pgfplotscoordmath{##1}{op}{add}{{\csname pgfplots@last@##1\endcsname}{\pgfmathresult}}%
 		\expandafter\let\csname pgfplots@current@point@##1\endcsname=\pgfmathresult
@@ -466,6 +503,9 @@
 % coordinates. 
 % #1 a serialized point
 % #2 a serialized point
+%
+% The return value is assigned to \pgfmathresult in
+% \pgfplotscoordmath{default} format.
 \def\pgfplotsplothandlersurveydifflen@default#1#2{%
 	\begingroup
 		\pgfplotsplothandlerdeserializepointfrom{#1}%
@@ -501,6 +541,15 @@
 	\endgroup
 }%
 
+% \pgfplotsplothandlertransformslopedattime{<time fraction>}{<start>}{<end>}
+%
+% Installs a PGF rotation matrix such that it fits the gradient of the
+% current plot segment between <start> and <end>.
+%
+% #1: a fraction such that 0.0 is <start> and 1.0 is <end>
+% #2: the <start> point (a macro containing the result of \pgfplotsplothandlerserializepointto)
+% #3: the <end> point   (a macro containing the result of \pgfplotsplothandlerserializepointto)
+%
 \def\pgfplotsplothandlertransformslopedattime@default#1#2#3{%
     \pgf@process{%
 		\pgfplotsplothandlerdeserializepointfrom{#2}%
@@ -527,8 +576,32 @@
     {\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
     {\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
 }%
+
+
+
 \pgfplotsresetplothandler
 
+% The following two methods constitutes implementations for
+% 'node[pos=<faction>]' which do not interpolate. They only snap to
+% the nearest coordinate.
+%
+% For example, \addplot[scatter] ... node[pos=0.5] {}  should use a
+% unit distance and should not interpolate between scatter points.
+\def\pgfplotsplothandlersurveydifflen@snaptonearest#1#2{%
+	% FIXME : this implies that #1 and #2 are "adjacent" in the
+	% coordinate stream!
+	\pgfplotscoordmath{default}{one}%
+}%
+\def\pgfplotsplothandlersurveypointattime@snaptonearest#1#2#3{%
+	\pgfplotscoordmath{default}{parsenumber}{0.5}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{#1}%
+	\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+	}{%
+		\pgfplotsplothandlerdeserializepointfrom{#3}%
+	}%
+}%
 % ==================================
 
 % Defines 
@@ -1132,6 +1205,7 @@
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@quiver
 	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@quiver
 	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@quiver
+	\let\pgfplotsplothandlerpointtokeys=\pgfplotsplothandlerpointtokeys@quiver
 	\let\pgfplotsplothandlerquiver@vis@hook=\pgfutil@empty
 	%
 	\ifpgfplots@xislinear \else \pgfplotsplothandlerquivererror \fi
@@ -1216,6 +1290,12 @@
 	\def\pgfplots@quiver@u{#4}%
 	\def\pgfplots@quiver@v{#5}%
 	\def\pgfplots@quiver@w{#6}%
+}%
+\def\pgfplotsplothandlerpointtokeys@quiver#1{%
+	\pgfplotsplothandlerpointtokeys@default
+	\pgfkeyslet{#1/u}\pgfplots@quiver@u
+	\pgfkeyslet{#1/v}\pgfplots@quiver@v
+	\pgfkeyslet{#1/w}\pgfplots@quiver@w
 }%
 \def\pgfplotsplothandlervisbegin@quiver{%
 	\def\pgfplots@quiver@has@handled@point@meta{0}%
@@ -1582,6 +1662,9 @@
 	contour/labels=true,
 	contour/filled/.is if=pgfplotsplothandlercontour@filled,
 	contour/filled/.default=true,
+	% EXPERIMENTAL: WILL CHANGE EVENTUALLY!
+	% this is (only) used for contour filled:
+	% data limits={(xmin,ymin,zmin,cmin) (xmax,ymax,ymax,cmax}
 	contour/data limits/.initial=,% FIXME EXPERIMENTAL
 	contour/every contour label/.style={%
 		sloped,%
@@ -1679,6 +1762,8 @@
 \def\pgfplotsplothandlersurveystart@contourmatlabformat{%
 	\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
 	\def\c@pgfplotsplothandlercontourprepared@matlabformat@count{0}%
+	\pgfmathfloatparsenumber{nan}%
+	\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
 }
 \def\pgfplotsplothandlersurveypoint@contourmatlabformat{%
 	\ifnum\c@pgfplotsplothandlercontourprepared@matlabformat@cur=\c@pgfplotsplothandlercontourprepared@matlabformat@count\relax
@@ -1688,7 +1773,14 @@
 		\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
 		%
 		\pgfmathfloatparsenumber{\pgfplots@current@point@x}%
+		\let\pgfplots@loc@TMPa=\pgfplotsplothandlercontourprepared@matlabformat@meta
 		\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
+		%
+		\ifx\pgfplots@loc@TMPa\pgfplotsplothandlercontourprepared@matlabformat@meta
+			% oh. We have two successive segments of the SAME contour
+			% level. Call the jump handler:
+			\pgfplotsscanlinecomplete
+		\fi
 		%
 	\else
 		\let\pgfplots@current@point@z=\pgfplotsplothandlercontourprepared@matlabformat@meta
@@ -1720,6 +1812,7 @@
 	%
 	\ifpgfplotsplothandlercontour@filled
 		\pgfseteorule
+		\let\pgfplotsplothandlercontour@sequence@sort@cmp=\pgfutil@empty
 		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
 		\pgfplotsplothandlercontour@init@limits
 	\fi
@@ -1938,18 +2031,58 @@
 	\fi
 }%
 
-
+% #1: the transformed point meta of the last contour.
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted#1{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		\ifx\pgfplotsplothandlercontour@sequence@sort@cmp\pgfutil@empty
+			% we need to determine the sorting:
+			\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+				\def\pgfplotsplothandlercontour@sequence@sort@cmp{+}%
+			}{%
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\def\pgfplotsplothandlercontour@sequence@sort@cmp{-}%
+				}{%
+					% undecided - the contours have the same label.
+				}%
+			}%
+		\else
+			\if +\pgfplotsplothandlercontour@sequence@sort@cmp
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{ASCENDING}%
+				}{%
+				}%
+			\else
+				\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{DESCENDING}%
+				}{%
+				}%
+			\fi
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted@fail#1{%
+	\begingroup
+	\pgfplotscoordmath{float}{tostring}{\pgfplots@current@point@meta}%
+	\let\offending=\pgfmathresult
+	\pgfplotscoordmath{float}{tostring}{\pgfplotsplothandlercontour@lastcontour}%
+	\let\lastcontour=\pgfmathresult
+	\pgfplots@error{Sorry, filled contours implicitly assume that the contour levels are SORTED (in the given case, they appear to be sorted in #1 order). Please make sure your input data has sorted contour levels. The offending level is \offending; the previous contour level is \lastcontour}%
+	\endgroup
+}
 \def\pgfplotsplothandlercontour@preparenewcontourline{%
 	\if0\pgfplotsplothandlercontour@haspendingjump
 %\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
 		% a completely new level has been
 		% started, not due to jumps inside of one level.
 		%
+		\let\pgfplotspointmetatransformed@lastcontour=\pgfplotspointmetatransformed
 		% thus, we need to compute 'mapped color':
 		\pgfplotsaxisvisphasetransformpointmeta
 		\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
 		\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/contour/draw color}}%
 		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsplothandlercontour@filled@assert@is@sorted{\pgfplotspointmetatransformed@lastcontour}%
 			\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/contour/fill color}}%
 		\fi
 		%

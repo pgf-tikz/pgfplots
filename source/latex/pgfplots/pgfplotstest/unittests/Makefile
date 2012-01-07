@@ -45,12 +45,12 @@
 # which forces remake, even if modtimes are unchanged 
 #
 #
-# SPECIALITIES:
+# SPECIALTIES:
 # create a file unittest_*.diff.accepted containing accepted diff results 
 # (in case you approved that they are "not an error"). 
 # The file should contain what the failure-output of the 'make test.diff' target.
 
-UNIT_SOURCES=$(wildcard *.tex)
+UNIT_SOURCES=$(wildcard unittest_*.tex)
 
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
@@ -64,8 +64,10 @@ UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
-DEFAULT_REFERENCE_BRANCH=1.3.1
-.SECONDARY: $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)
+DEFAULT_REFERENCE_BRANCH:=$(shell git rev-parse HEAD)
+
+.PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)  $(UNIT_PDF_REFERENCES)
+
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 $(shell mkdir -p gnuplot references/gnuplot)
 # -------------------------------------------------
@@ -123,7 +125,7 @@ cleanreferences:
 references: $(UNIT_PDF_REFERENCES)
 
 %.checkoutreferencerev.sh:
-	@if [ ! -f $@ ]; then echo "generating $@..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
+	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 

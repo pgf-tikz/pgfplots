@@ -167,7 +167,7 @@ Enough for now, let's continue.
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	Again, note the subtle difference to the common matrix indexing where a column has the second index fixed. \PGFPlots\ refers to the way one would write down a function on a sheet of paper (this is consistent with how Matlab (tm) displays discrete functions with matrices).
+	Again, note the subtle difference to the common matrix indexing where a column has the second index fixed. \PGFPlots\ refers to the way one would write down a function on a sheet of paper (this is consistent with how Matlab (\textregistered) displays discrete functions with matrices).
 
 \end{pgfplotskey}
 
@@ -625,7 +625,7 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	\noindent In principle, there is nothing wrong with the idea as such, and it looks quite good -- but it enlarges the resulting pdf document considerably and might take a long time to render. It works as follows: for every mesh element (either triangle for |patch| plots or rectangle for lattice plots), it creates a low level shading. It then fills the single mesh element with that shading, and strokes the edges with |faceted color|. The declaration of that many low level shadings is rather inefficient in terms of pdf objects (large output files) and might render slowly\footnote{My experience is as follows: Acrobat reader can efficiently render huge \texttt{interp} shadings. But it is very slow for \texttt{faceted interp} shadings. Linux viewers like xpdf, okular and evince take a very long time to render \texttt{interp} shadings, but are fast for \texttt{faceted interp} shadings.}. For orthogonal plots (like |view={0}{90}|), the effect of |faceted interp| can be gained with less cost if one uses two separate |\addplot| commands: one with |surf| and one with |mesh|. Handle this choice with care.
+	\noindent In principle, there is nothing wrong with the idea as such, and it looks quite good -- but it enlarges the resulting pdf document considerably and might take a long time to render. It works as follows: for every mesh element (either triangle for |patch| plots or rectangle for lattice plots), it creates a low level shading. It then fills the single mesh element with that shading, and strokes the edges with |faceted color|. The declaration of that many low level shadings is rather inefficient in terms of pdf objects (large output files) and might render slowly\footnote{My experience is as follows: Acrobat reader can efficiently render huge \texttt{interp} shadings. But it is very slow for \texttt{faceted interp} shadings. Linux viewers like xpdf are reasonably efficient for \texttt{interp} (at least with my bugfixes to libpoppler) and are also fast for \texttt{faceted interp} shadings.}. For orthogonal plots (like |view={0}{90}|), the effect of |faceted interp| can be gained with less cost if one uses two separate |\addplot| commands: one with |surf| and one with |mesh|. Handle this choice with care.
 
 	\paragraph{Details:}
 	\begin{itemize}
@@ -648,10 +648,8 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 				\item It uses the current color map in any case, ignoring |draw| and |fill|.
 				\item For surface plots with lots of points, |shader=interp| produces smaller |pdf| documents, requires less compilation time in \TeX\ and requires less time to display in Acrobat Reader than |shader=flat|.
 
-				\item So, the postscript driver \emph{truncates} coordinates to 24 bit -- which might result in a loss of precision (the truncation is not very intelligent). See the |surf shading/precision| key for details. To improve compatibility, this 24 bit truncation algorithm is enabled by default also for pdf documents.
-				\item 
-				At the time of this writing, few viewers provide satisfying support for |shader=interp|. The Acrobat Reader has full and fast support for interpolated shadings. But some free Linux viewers like xpdf,
-				okular and evince need a long time and do not display the colors correctly\footnote{The author of this package has submitted bugfixes to xpdf/libpoppler, so this issue will hopefully be fixed with upcoming versions.} (evince even shows transparency). I hope this message will soon become outdated... if not, provide bug reports to the Linux community to communicate the need to improve support for Type 4 (|patch|) and Type 5 pdf (|surf|) and Type 7 (|patch| and elements of the |patchplots| library) shadings.
+				\item The postscript driver \emph{truncates} coordinates to 24 bit -- which might result in a loss of precision (the truncation is not very intelligent). See the |surf shading/precision| key for details. To improve compatibility, this 24 bit truncation algorithm is enabled by default also for pdf documents.
+				\item The choice |shader=interp| works well with either Acrobat Reader or recent versions of free viewers\footnote{The author of this package has submitted bugfixes to xpdf/libpoppler which should be part of the current stable versions of many viewers.}. However, some free viewers show colors incorrectly (like evince).  I hope this message will soon become outdated... if not, provide bug reports to the Linux community to communicate the need to improve support for Type 4 (|patch|) and Type 5 pdf (|surf|) and Type 7 (|patch| and elements of the |patchplots| library) shadings.
 				\item The |interp| shader yields the same outcome as |faceted interp,faceted color=none|, although |faceted interp| requires much more ressources.
 			\end{itemize}
 	\end{itemize}
@@ -686,6 +684,121 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 
 	Set |faceted color=none| to disable edge colors.
 \end{pgfplotskey}
+
+{
+\tikzset{external/figure name/.add={}{interior_colormap_}}%
+\tikzset{
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/mesh/},
+}%
+\begin{pgfplotskeylist}{%
+	mesh/interior colormap=\marg{map name}\marg{colormap specification},%
+	mesh/interior colormap name=\marg{map name}}
+	Allows to use a different |colormap| for the ``other side'' of the surface.
+
+	Each mesh has two sides: one which ``points'' to the view's origin and one which points away from it. This key allows to define a second |colormap| for the side which points away from the view's origin. The motivation is to distinguish between the outer side and the interior parts of a surface:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+  axis lines=center,
+  axis on top,
+  xlabel={$x$}, ylabel={$y$}, zlabel={$z$},
+  domain=0:1,
+  y domain=0:2*pi,
+  xmin=-1.5, xmax=1.5,
+  ymin=-1.5, ymax=1.5, zmin=0.0,
+  mesh/interior colormap=
+  	{blueblack}{color=(black) color=(blue)},
+  colormap/blackwhite, 
+  samples=10,
+  samples y=40,
+  z buffer=sort,
+ ]
+  \addplot3[surf] 
+  	({x*cos(deg(y))},{x*sin(deg(y))},{x});
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	\noindent The |interior colormap| is often the one for the ```inner side''. However, the orientation of the surface depends on its normal vectors: \PGFPlots\ computes them using the right-hand-rule. The right-hand-rule applied to a triangle means to take the first encountered point, point the thumb in direction of the second point and the first finger in direction of the third point. Then, the normal for that triangle is the third finger (i.e.\ the cross--product of the involved oriented edges). For rectangular patches, \PGFPlots\ uses the normal of one of its triangles\footnote{This may change in future versions.}. Consequently, |mesh/interior colormap| will only work if the involved patch segments are consistently oriented. 
+	
+	A patch whose normal vector points into the same direction as the view direction uses the standard |colormap name|. A patch whose normal vector points into the opposite direction (i.e.\ in direction of the viewport) uses |mesh/interior colormap|.
+
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+  	hide axis,
+	xlabel=$x$,ylabel=$y$,
+	mesh/interior colormap name=hot,
+	colormap/blackwhite, 
+ ]
+  \addplot3[domain=-1.5:1.5,surf]
+  	{-exp(-x^2-y^2)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The implementation of |mesh/interior colormap| works well for most examples; in particular, if the number of samples is large enough to resolve the boundary between inner and outer colormap. However, it might still produce spurious artifacts:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Example needing fine-tuning,
+	xlabel=$x$,
+	ylabel=$y$]
+\addplot3[surf,
+  mesh/interior colormap=
+    {blueblack}{color=(black) color=(blue)},
+  colormap/blackwhite, 
+  domain=0:1] 
+	{sin(deg(8*pi*x))* exp(-20*(y-0.5)^2) 
+	+ exp(-(x-0.5)^2*30 
+		- (y-0.25)^2 - (x-0.5)*(y-0.25))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent The previous example has need for improvement with respect to a couple of aspects: first, it has small overshoots near some of the meshes vertices (especially on top of the hills). These can be fixed using |miter limit=1|. Second, the boundary between blue and black is incorrect. This can be improved by means of an increased sampling density (|samples=31|). In addition, we can configure \PGFPlots\ to move the boundary between the two colormaps in favor of the blue region using |mesh/interior colormap thresh| as follows:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Example of before with fine-tuning,
+	xlabel=$x$,
+	ylabel=$y$]
+\addplot3[surf,
+  mesh/interior colormap=
+    {blueblack}{color=(black) color=(blue)},
+  % slightly increase sampling quality (was 25):
+  samples=31,    
+  % avoids overshooting corners:
+  miter limit=1, 
+  % move boundary between inner and outer:
+  mesh/interior colormap thresh=0.1,
+  colormap/blackwhite, 
+  domain=0:1] 
+	{sin(deg(8*pi*x))* exp(-20*(y-0.5)^2) 
+	+ exp(-(x-0.5)^2*30 
+		- (y-0.25)^2 - (x-0.5)*(y-0.25))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent This improves the display.
+	\paragraph{Call for volunteers:} it would be nice if the fine--tuning of these keys would be unnecessary. If someone has well--founded suggestions (like knowledge and perhaps exhaustive experiments) on how to improve the feature, let me know.
+
+	Note that |mesh/interior colormap| cannot be combined with |mesh/refines| currently.
+	
+	Note that |mesh/interior colormap| will increase compilation times due to the computation of normal vectors.
+\end{pgfplotskeylist}
+
+\begin{pgfplotskey}{mesh/interior colormap thresh=\marg{Number between $-1.0$ and $+1.0$} (initially 0)}
+	A threshold which moves the boundary between the |colormap| and |interior colormap| in favor of |colormap| (if the value is negative) or in favor of |interior colormap| (if the value is positive). 
+	
+	The extreme value $-1$ essentially deactivates |interior colormap| whereas the other extreme $+1$ deactivates |colormap|.
+
+	See above for an example.
+\end{pgfplotskey}
+}%
 
 \begin{pgfplotskey}{surf shading/precision=\mchoice{pdf,postscript,ps} (initially postscript)}
 	A key to configure how the low level driver for |shader=interp| writes its data. The choice |pdf| uses 32~bit binary coordinates (which is lossless). The resulting |.pdf| files appear to be correct, but they can't be converted to postscript -- the converter software always complains about an error. 
@@ -1177,7 +1290,7 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	Patch plots make use of the |mesh| configuration, including the |shader|. Thus, the example above uses the initial |shader=faceted| (which uses the \emph{mean} color data to determine a triangle's color and a related stroke color). The |shader=interp| yields the following result\footnote{At the time of this writing, many free readers, especially those for Linux, have difficulties displaying the correct color maps and take a long time to render. Acrobat reader displays the shading according to the pdf standard. Bugfixes for xpdf/libpoppler are currently about to be tested.}:
+	Patch plots make use of the |mesh| configuration, including the |shader|. Thus, the example above uses the initial |shader=faceted| (which uses the \emph{mean} color data to determine a triangle's color and a related stroke color). The |shader=interp| yields the following result:
 \begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}
@@ -1459,7 +1572,7 @@ There are currently \emph{no} equivalents of |const plot| and its variants or th
 
 	The choice |patch type=|\declareandlabel{line} expects $n=2$ vertices which make up a line. It is used for one-dimensional |mesh| plots (see Section~\ref{sec:1d:mesh} for examples).
 
-	There are more values for |patch type| like |bilinear|, |triangle quadr|, |biquadratic|, |coons| and |tensor bezier|. Please refer to the separate |patchplots| library in Section~\ref{sec:lib:patchplots}.
+	There are more values for |patch type| like |bilinear|, |triangle quadr|, |biquadratic|, |coons|, |polygon| and |tensor bezier|. Please refer to the separate |patchplots| library in Section~\ref{sec:lib:patchplots}.
 \end{pgfplotskey}
 
 \begin{stylekey}{/pgfplots/every patch}
