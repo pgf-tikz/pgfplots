@@ -25,23 +25,6 @@
 %
 %--------------------------------------------
 
-\def\pgfplotslibrarysurf@initstream{%
-	\pgfutil@ifundefined{directlua}{%
-		% Ah - standard pdftex.
-	}{%
-		% Ah - we are running in luatex. Ok.
-		%
-		% At the time of this writing, LUA does not allow binary output which has been
-		% created by means of catcode modifications & TeX string concatenation.
-		% binary output in LUA needs to be (re)implemented in LUA (see inline code 
-		% comments below).
-		% For the moment, I encode everything in ASCII:
-		\def\pgfplotslibrarysurf@filter@encode{ASCIIHexEncode}%
-		\def\pgfplotslibrarysurf@filter@decode{ASCIIHexDecode}%
-		%
-	}%
-}%
-
 % The lowlevel call for surface shadings. It uses a pattern type 2
 % dictionary as fill color and has thus several things to do. This is
 % a little bit more complicated than using the '/sh' operator (as
@@ -95,7 +78,7 @@
 		% decode the stream. We have to deactivate compression here:
 		\pdfcompresslevel=0
 	\fi
-	\immediate\pdfobj stream attr {%
+	\def\pgfplots@loc@TMPa{%
 		% stream length will be computed automatically
 		/ShadingType \pgfplotslibrarysurf@type\space
 		/BitsPerCoordinate \pgfplotslibrarysurf@bitspercoordinate\space
@@ -112,39 +95,25 @@
 		\else
 			/Filter /\pgfplotslibrarysurf@filter@decode\space
 		\fi
-	} {%
-		\pgfplotslibrarysurf@binarystream
 	}%
-%--------------------------------------------------
-%this here is writes correct binary streams in LUA:
-%--------------------------------------------------
-% \directlua{
-%  	  pdf.immediateobj("stream", string.char(string.byte("\pgfplotslibrarysurf@binarystream",0,10)), "/value 18");
-% }%
-%-------------------------------------------------- 
-% here are some experiments with lua and binary conversion.
-% Result in short: I cannot create binary strings in TeX and convert
-% them back to a binary stream - I have to create them in Lua right
-% from the beginning. 
-%
-% But I keep this here for later reference anyway:
-%--------------------------------------------------
-% \edef\temp{\pgfplotscharno{0}\pgfplotscharno{1}\pgfplotscharno{255}}
-% \directlua{T = [[ \temp ]];}
-% \directlua{dofile('P.lua')}
-% pdf.immediateobj("stream", string.char(255) .. string.char(0), "/value 1");
-% 
-% str = "123"; 
-% texio.write(str);
-% texio.write(string.char(string.byte(str,1,#str)));
-% 
-% texio.write("T length = " .. #T .. " type = "  .. type(T) )
-% texio.write("  bytes = " .. table.concat({string.byte(T,1,#T) }, " "))
-%-------------------------------------------------- 
-%
-% seems as if I need to reimplement the "binary string concatenation" in lua
-%-------------------------------------------------- 
-	\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	\pgfutil@ifundefined{directlua}{%
+		% pdftex:
+		\immediate\pdfobj stream attr {%
+			\pgfplots@loc@TMPa
+		} {%
+			\pgfplotslibrarysurf@binarystream
+		}%
+		\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	}{%
+		% special handling for luatex (see docs for \pgfplotsbinarytoluabinary):
+		\pgfplotsbinarytoluabinary{\pgfplotslibrarysurf@binarystream}%
+		\edef\pgfplots@loc@TMPa{%
+			\directlua{%
+				tex.print(pdf.immediateobj("stream", pgfplotsretval, "\pgfplots@loc@TMPa"));
+				pgfplotsretval=nil;
+			}%
+		}%
+	}%
 	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
 	\pgf@sys@bp@correct\pgf@x%
 	\pgf@sys@bp@correct\pgf@y%
