@@ -45,34 +45,11 @@
 % but can't be used inside of \edef (it is not expandable) whereas
 % \pgfplotscharno is.
 \def\pgfplotscharno#1{\csname pgfp@bin@#1\endcsname}%
+\let\pgfplotscharno@bincatcode=\pgfplotscharno
 
 \def\pgfplotscharno@lualatex#1{#1,}
 
-\pgfutil@ifundefined{directlua}{%
-	\def\pgfplots@glob@TMPa{pgfplotsbinary.data.code.tex}%
-}{%
-	\let\pgfplots@glob@TMPa=\pgfutil@empty%
-	% Ah - we use LuaTeX!
-	% At the time of this writing, LUA does not allow binary output which has been
-	% created by means of catcode modifications & TeX string concatenation.
-	% binary output in LUA needs to be (re)implemented in LUA (see inline code 
-	% comments below).
-	%
-	% There are two possible work-arounds: 
-	% (a) Base64 encoding
-	% (b) binary encoding using special LUA handling. 
-	% This is what I do. Set the 'encode filter' such that it reinitializes the encoder:
-	% we patch \pgfplotscharno with a special routine which collects
-	% only the integer indices:
-	\let\pgfplotscharno=\pgfplotscharno@lualatex
-	% later, the user has to convert this list into a binary lua
-	% string before he can use it. See \pgfplotsbinarytoluabinary
-}%
-
-\ifx\pgfplots@glob@TMPa\pgfutil@empty
-\else
-	\input \pgfplots@glob@TMPa\relax
-\fi
+\input pgfplotsbinary.data.code.tex
 
 % Defines the LUA (!) value pgfplotsretval to be a binary string
 % containing the pgfplots binary value #1.
@@ -94,12 +71,7 @@
 	% I only need to get the integer numbers. To this end, I patch \pgfplotscharno 
 	% and create the binary string here:
 	\directlua{%
-		bytes = { #1 };
-		% unpack extracts only the indices (we can't provide a table to string.char).
-		% note that pdf.immediateobj has been designed to avoid sanity checking for invalid UTF strings -
-		% in other words: it accepts binary strings.
-		pgfplotsretval=string.char(unpack(bytes));
-		bytes=nil;
+		pgfplotsretval = pgfplotsGetLuaBinaryStringFromCharIndices({#1});
 	}%
 }%
 
@@ -248,6 +220,25 @@
 	%
 	% The standard method - it results in binary encoded numbers.
 	binary encoding/.code={%
+		\pgfutil@ifundefined{directlua}{%
+			\let\pgfplotscharno=\pgfplotscharno@bincatcode
+		}{%
+			% Ah - we use LuaTeX!
+			% At the time of this writing, LUA does not allow binary output which has been
+			% created by means of catcode modifications & TeX string concatenation.
+			% binary output in LUA needs to be (re)implemented in LUA (see inline code 
+			% comments below).
+			%
+			% There are two possible work-arounds: 
+			% (a) Base64 encoding
+			% (b) binary encoding using special LUA handling. 
+			% This is what I do. Set the 'encode filter' such that it reinitializes the encoder:
+			% we patch \pgfplotscharno with a special routine which collects
+			% only the integer indices:
+			\let\pgfplotscharno=\pgfplotscharno@lualatex
+			% later, the user has to convert this list into a binary lua
+			% string before he can use it. See \pgfplotsbinarytoluabinary
+		}%
 		\edef\pgfplotsbinary@ZERO{\pgfplotscharno0}%
 		\edef\pgfplotsbinary@ZERO@LINEARMAP{\pgfplotscharno{128}}%
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
@@ -277,6 +268,7 @@
 	% Please note that 'bytes' sets the number of binary bytes - the
 	% actual encoding length is exactly twice as large.
 	ASCIIHexEncode/.code={%
+		\let\pgfplotscharno=\pgfplotscharno@bincatcode
 		\edef\pgfplotsbinary@ZERO{\pgfplotscharno{48}}%
 		\edef\pgfplotsbinary@ZERO@LINEARMAP{\pgfplotscharno{56}}%
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
@@ -326,6 +318,7 @@
 	% @ATTENTION bytes is ALWAYS 4, regardless of the setting of
 	% 'bytes'!
 	ASCII85Encode/.code={%
+		\let\pgfplotscharno=\pgfplotscharno@bincatcode
 		\edef\pgfplotsbinary@ZERO{\pgfplotscharno{33}}%
 		\edef\pgfplotsbinary@ZERO@LINEARMAP{\pgfplotscharno{42}}%
 		\let\pgfplotsbinary@ZERO@HIGHEST=\pgfplotsbinary@ZERO
