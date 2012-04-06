@@ -104,6 +104,10 @@ print OUTHTML
 <body>
 <h2>PGFPlots Gallery</h2>
 <h4>The following graphics have been generated with the LaTeX Packages <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a> and <a href="http://pgfplots.sourceforge.net/pgfplotstable.pdf">PGFPlotsTable</a>.</h4>
+
+They have been extracted from the reference manuals.
+
+<a href="http://pgfplots.sourceforge.net">PGFPlots Home</a>
 ';
 
 for($j = 2; $j<=$#ARGV; ++$j ) {
