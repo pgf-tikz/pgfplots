@@ -1,3 +1,6 @@
+
+pgfplotsGetLuaBinaryStringFromCharIndicesChunkSize = 7000;
+
 -- Takes a table containing an arbitrary number of integers in the range 0..255 and converts it 
 -- into a binary stream of the corresponding binary chars.
 --
@@ -13,7 +16,7 @@ function pgfplotsGetLuaBinaryStringFromCharIndices(charIndices)
 	--   pgfplotsretval=string.char(unpack(charIndices));
 	-- we have to create it incrementally using chunks:
 	local len = #charIndices;
-	local chunkSize = 7000;
+	local chunkSize = pgfplotsGetLuaBinaryStringFromCharIndicesChunkSize;
 	local buf = {};
 	-- ok, append all full chunks of chunkSize first:
 	local numFullChunks = math.floor(len/chunkSize);
