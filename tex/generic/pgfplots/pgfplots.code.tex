@@ -5669,7 +5669,7 @@
 			\edef\pgfplots@loc@TMPa{-#3}%
 		\fi
 		\begingroup
-			\pgf@xa=#3\relax
+			\pgf@xa=\pgfplots@loc@TMPa\relax
 			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
 		\endgroup
 % FIXME : '\pgfplots@loc@TMPa' contains 'pt' leading to missing
@@ -5707,12 +5707,6 @@
 		%
 		% That means we also need to apply the scaling trafo!
 		%
-		\if r\pgfplots@loc@dirvalue
-			\def\pgfplots@loc@dirvalue{-}%
-		\else
-			\def\pgfplots@loc@dirvalue{}%
-		\fi
-		%
 		% 1. Check whether we have a complete vector of type (x,y):
 		\expandafter\pgfutil@in@\expandafter(\expandafter{\pgfplots@loc@TMPb}%
 		\ifpgfutil@in@
@@ -5737,8 +5731,8 @@
 				}{}%
 				\csname pgfset#1vec\endcsname{%
 					\pgfqpoint
-						{\pgfplots@loc@dirvalue\pgfplots@loc@TMPb pt}
-						{\pgfplots@loc@dirvalue\pgfplots@loc@TMPc pt}}%
+						{\if r\pgfplots@loc@dirvalue -\fi\pgfplots@loc@TMPb pt}
+						{\if r\pgfplots@loc@dirvalue -\fi\pgfplots@loc@TMPc pt}}%
 			}%
 			\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb%
 			%
@@ -5765,11 +5759,9 @@
 				\pgfplotscoordmath{#1}{datascaletrafo noshift inverse to fixed}{\pgfmathresult}%
 				\edef\pgfplots@loc@TMPb{\pgfmathresult pt}%
 			}{\relax}%
+			\edef\pgfplots@loc@TMPb{\if r\pgfplots@loc@dirvalue -\fi\pgfplots@loc@TMPb}%
 			\begingroup
 				\pgf@xa=\pgfplots@loc@TMPb\relax
-				\if r\pgfplots@loc@dirvalue
-					\multiply\pgf@xa by-1
-				\fi
 				\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
 			\endgroup
 			\ifcase#2\relax
@@ -7593,51 +7585,64 @@
 			\def\pgfplots@loc@axischar@for@first{x}%
 		\fi
 	\fi
-	\pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 00}{%
-		% -> both, v00 or v11 are on CH.
+	%\if2\csname pgfplots@#1axislinesnum\endcsname
+		% axis #1 lines=center .
+	\iffalse
+		% FIXME : while this here seems reasonable, it is not fully
+		% implemented. The "outer normal" is missing and one other
+		% component produces a NYI-warning
 		%
-		% Decide whether the '{0.5}{0}{0}' point is above or below
-		% the {0.5}{0.5}{0.5}
-		% point. This '<' operation is based on the '#1ticklabel pos'
-		% key, the 2D projection of the axis and the argument '#2'.
-		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 00}%
-		\pgfqpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}%
-		\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
-			\if u\csname pgfplots@#1ticklabel@pos\endcsname
-				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+		% well, for 3d, this implies that all others also have
+		% "center". And since "0" == lower, "1" == upper", "2" ==
+		% center, we have to use center:
+		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 22}%
+	\else
+		\pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 00}{%
+			% -> both, v00 or v11 are on CH.
+			%
+			% Decide whether the '{0.5}{0}{0}' point is above or below
+			% the {0.5}{0.5}{0.5}
+			% point. This '<' operation is based on the '#1ticklabel pos'
+			% key, the 2D projection of the axis and the argument '#2'.
+			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 00}%
+			\pgfqpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}%
+			\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
+				\if u\csname pgfplots@#1ticklabel@pos\endcsname
+					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+				\fi
+			\else
+				\if l\csname pgfplots@#1ticklabel@pos\endcsname
+					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+				\fi
 			\fi
-		\else
-			\if l\csname pgfplots@#1ticklabel@pos\endcsname
-				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+		}{%
+			% -> both, v01 or v10 are on CH
+			%--------------------------------------------------
+			% \pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 01}{% FIXME : eliminate sanity assertion if possible
+			% }{%
+			% 	\pgfplots@error{INTERNAL ERROR}%
+			% }%
+			%-------------------------------------------------- 
+			% Decide whether the '{0.5}{1}{0}' point is above or below
+			% the {0.5}{0.5}{0.5} point. Again, the '<' operation is based
+			% on the '#1ticklabel pos' key, the projection and #2.
+			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 10}%
+			% compute the middle point on \pgfplots@loc@to@threedim 10
+			\pgfpointadd
+				{\csname pgfplotspoint\pgfplots@loc@axischar@for@first axis\endcsname}
+				{\pgfpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}}%
+			%
+			\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
+				\if u\csname pgfplots@#1ticklabel@pos\endcsname
+					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
+				\fi
+			\else
+				\if l\csname pgfplots@#1ticklabel@pos\endcsname
+					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
+				\fi
 			\fi
-		\fi
-	}{%
-		% -> both, v01 or v10 are on CH
-		%--------------------------------------------------
-		% \pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 01}{% FIXME : eliminate sanity assertion if possible
-		% }{%
-		% 	\pgfplots@error{INTERNAL ERROR}%
-		% }%
-		%-------------------------------------------------- 
-		% Decide whether the '{0.5}{1}{0}' point is above or below
-		% the {0.5}{0.5}{0.5} point. Again, the '<' operation is based
-		% on the '#1ticklabel pos' key, the projection and #2.
-		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 10}%
-		% compute the middle point on \pgfplots@loc@to@threedim 10
-		\pgfpointadd
-			{\csname pgfplotspoint\pgfplots@loc@axischar@for@first axis\endcsname}
-			{\pgfpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}}%
-		%
-		\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
-			\if u\csname pgfplots@#1ticklabel@pos\endcsname
-				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
-			\fi
-		\else
-			\if l\csname pgfplots@#1ticklabel@pos\endcsname
-				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
-			\fi
-		\fi
-	}%
+		}%
+	\fi
 }%
 \def\pgfplots@init@ticklabelaxisspec@twodim@for#1#2{%
 	\if#1x%
@@ -10023,6 +10028,9 @@
 			 {/pgf/key filters/defined}}%
 	\def\pgfplots@label@tikzopts{}%
 	\pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@label@tikzopts}%
+	% FIXME : this fails if 'error bars/.cd,/pgfplots/.cd' is used inside of #1 --
+	% the second /pgfplots/.cd will be applied, but the error bars
+	% command not
 	\pgfqkeysfiltered{/tikz}{#1}%
 	%
 	\pgfkeysgetvalue{/pgfplots/legend image code/.@cmd}{\pgfplots@curlegendcode}%
@@ -10521,7 +10529,12 @@
 		\pgfplots@autocompute@all@limitsfalse
 	\fi
 	%
-	\pgfplots@declare@mathfunctions
+	\pgfutil@ifundefined{pgfmathdeclarefunction}{%
+		% SKIP: \pgfmathdeclarefunction is unavailable in pgf 2.00 .
+		% UPGRADE TO PGF 2.10 to use these math functions.
+	}{%
+		\pgfplots@declare@mathfunctions
+	}%
 	%
 	% check for axis-wide 'point meta min' :
 	\pgfkeysgetvalue{/pgfplots/point meta min}\pgfplots@loc@TMPa

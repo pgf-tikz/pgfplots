@@ -104,6 +104,10 @@ print OUTHTML
 <body>
 <h2>PGFPlots Gallery</h2>
 <h4>The following graphics have been generated with the LaTeX Packages <a href="http://pgfplots.sourceforge.net/pgfplots.pdf">PGFPlots</a> and <a href="http://pgfplots.sourceforge.net/pgfplotstable.pdf">PGFPlotsTable</a>.</h4>
+
+They have been extracted from the reference manuals.
+
+<a href="http://pgfplots.sourceforge.net">PGFPlots Home</a>
 ';
 
 for($j = 2; $j<=$#ARGV; ++$j ) {
@@ -122,12 +126,20 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 
 	if( $ARGV[$j] =~ m/pgfplotstable.tex/ ) {
 		$largegraphics = 1;
-		$autoheaders = '
+		$autoheaders = $autoheaders.'
+\usepackage{pgfplotstable}
 \usepackage{array}
 \usepackage{colortbl}
 \usepackage{booktabs}
 \usepackage{eurosym}
 \usepackage{amsmath}
+';
+	}
+
+	@libName = ($ARGV[$j] =~ m/pgfplots\.libs\.(.*)\.tex/ );
+	if ($#libName >=0 ) {
+		$autoheaders = $autoheaders.'
+\usepgfplotslibrary{'.$libName[0].'}
 ';
 	}
 
@@ -165,6 +177,10 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 			open(OUTFILE,">",$outfile) or die( "could not open $outfile for writing");
 			print OUTFILE $header;
 			print OUTFILE $autoheaders;
+			print OUTFILE "\\usepackage{pgfplotstable}\n" if ($match =~ /pgfplotstable/);
+			print OUTFILE "\\usepackage{hyperref}\n" if ($match =~ /\\url/);
+			print OUTFILE "\\usepackage{textcomp}\n" if ($match =~ /\\textdegree/);
+			print OUTFILE "\\usepackage{listings}\n" if ($match =~ /\\lst/);
 			print OUTFILE $prefix;
 			print OUTFILE "\n\\begin{document}\n";
 			print OUTFILE $match;

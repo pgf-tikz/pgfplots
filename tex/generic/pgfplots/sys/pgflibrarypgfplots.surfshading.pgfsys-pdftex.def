@@ -25,7 +25,6 @@
 %
 %--------------------------------------------
 
-
 % The lowlevel call for surface shadings. It uses a pattern type 2
 % dictionary as fill color and has thus several things to do. This is
 % a little bit more complicated than using the '/sh' operator (as
@@ -54,7 +53,7 @@
 		\pgfusepath{fill}%
 		\endpgfpicture
 	}%
-	\pdfxform resources{
+	\immediate\pdfxform resources{
 		/Pattern << \pgfplots@glob@TMPa >> % write the pattern resource dictionary
 	}\pgfutil@tempboxa
 	\leavevmode
@@ -71,7 +70,15 @@
 %
 %
 \def\pgfplotssys@do@surfshading@fillpaths#1{%
-	\immediate\pdfobj stream attr {%
+	\ifx\pgfplotslibrarysurf@filter@decode\pgfutil@empty
+	\else
+		% Unfortunately, there is a bug in pdftex/luatex: if we
+		% provide a /Filter as attr, and pdftex compresses the stream,
+		% it overwrites the /Filter argument -- and the viewer cannot
+		% decode the stream. We have to deactivate compression here:
+		\pdfcompresslevel=0
+	\fi
+	\def\pgfplots@loc@TMPa{%
 		% stream length will be computed automatically
 		/ShadingType \pgfplotslibrarysurf@type\space
 		/BitsPerCoordinate \pgfplotslibrarysurf@bitspercoordinate\space
@@ -88,10 +95,38 @@
 		\else
 			/Filter /\pgfplotslibrarysurf@filter@decode\space
 		\fi
-	} {%
-		\pgfplotslibrarysurf@binarystream
 	}%
-	\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	%
+	% \pgfplots@loc@TMPb := final boolean luaBinaryEncoding;
+	\pgfutil@ifundefined{directlua}{%
+		\def\pgfplots@loc@TMPb{0}%
+	}{%
+		\ifx\pgfplotslibrarysurf@filter@decode\pgfutil@empty
+			% ah - we have binary encoding (the standard).
+			\def\pgfplots@loc@TMPb{1}%
+		\else
+			% ah - base 16 ASCII encoding:
+			\def\pgfplots@loc@TMPb{0}%
+		\fi
+	}%
+	\if0\pgfplots@loc@TMPb
+		% no lua binary encoding. Use standard pdftex operations:
+		\immediate\pdfobj stream attr {%
+			\pgfplots@loc@TMPa
+		} {%
+			\pgfplotslibrarysurf@binarystream
+		}%
+		\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	\else
+		% special handling for luatex binary encoding (see docs for \pgfplotsbinarytoluabinary):
+		\pgfplotsbinarytoluabinary{\pgfplotslibrarysurf@binarystream}%
+		\edef\pgfplots@loc@TMPa{%
+			\directlua{%
+				tex.print(pdf.immediateobj("stream", pgfplotsretval, "\pgfplots@loc@TMPa"));
+				pgfplotsretval=nil;
+			}%
+		}%
+	\fi
 	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
 	\pgf@sys@bp@correct\pgf@x%
 	\pgf@sys@bp@correct\pgf@y%
