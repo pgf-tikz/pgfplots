@@ -1142,6 +1142,8 @@ The |plot graphics| tool of \PGFPlots\ allows to include three--dimensional exte
 
 You are probably guessing how this is possible. Well, it needs more user input than two--dimensional external graphics. The cost to include external three dimensional images into \PGFPlots\ is essentially control of a graphics program like |gimp|: you need to identify the 3D coordinates of a couple of points in your image. \PGFPlots\ will then squeeze the graphics correctly, and it reconfigures the axis to ensure a correct display of the result.
 
+\paragraph{Matlab versus other tools:} Although this section is based on Matlab images, the technique to import three--dimensional graphics is independent of Matlab. Thus, if you have a different tool, you need to read all that follows. However, users of Matlab \emph{can use a simplified export mechanism} which has been contributed by J\"urnjakob Dugge. Please skip to section~\ref{sec:plotgraphics3d:matlabscript} on page~\pageref{sec:plotgraphics3d:matlabscript} if you use Matlab to generate the graphics files (although you may want to take a brief look at the examples on the following pages to learn about flexibility or legends).
+
 \paragraph{Warning:} The feature is only 95\% stable yet and may need some more testing. Use at your own risk.
 
 Let's start with two examples. Suppose you generate a surface plot with Matlab and want to include it in \PGFPlots. We have the matlab script
@@ -1343,7 +1345,114 @@ We proceed as before and collect four points, each with 3d logical coordinates (
 \end{tikzpicture}
 \end{codeexample}
 
-\paragraph{Technical points:} the following issues might arise while working with \verbpdfref{\addplot3} |graphics|:
+
+\subsubsection*{External Three-Dimensional Graphics and Matlab}
+
+\textit{An extension by J\"urnjakob Dugge}
+\vskip\baselineskip
+
+\noindent
+\label{sec:plotgraphics3d:matlabscript}
+The procedure to map three--dimensional logical coordinates to two--dimensional canvas coordinates is tedious.
+
+J\"urnjakob Dugge contributed a script which does most of the logic and your work is reduced to a copy--paste job. With his permission, I post the contribution here. 
+
+The idea is to start a simple script which \emph{records} mappings for any coordinates which have been clicked by the user. It works as follows:
+
+\begin{enumerate}
+	\item Create the Matlab plot, say, using
+\begin{codeexample}[code only]
+hist3(randn(10000,2)) % some random data
+set(get(gca,'child'),'FaceColor','interp','CDataMode','auto'); % colors
+% make sure the "print" paper format is the same as the screen paper format:
+set(gcf,'PaperPositionMode','auto') 
+\end{codeexample}
+
+	\item Save the following code as |pgfplotscsconversion.m|:
+\begin{codeexample}[code only]
+function pgfplotscsconversion
+
+% Hook into the Data Cursor "click" event
+h = datacursormode(gcf);
+set(h,'UpdateFcn',@myupdatefcn,'SnapToDataVertex','off');
+datacursormode on
+
+% select four points in plot using mouse
+
+% The function that gets called on each Data Cursor click
+function [txt] = myupdatefcn(obj,event_obj)
+
+% Get the screen resolution, in dots per inch
+dpi = get(0,'ScreenPixelsPerInch');
+
+% Get the click position in pixels, relative to the lower left of the
+% screen
+screen_location=get(0,'PointerLocation');
+
+% Get the position of the plot window, relative to the lower left of
+% the screen
+figurePos = get(gcf,'Position');
+
+% Get the data coordinates of the cursor
+pos = get(event_obj,'Position');
+
+% Format the data and figure coordinates. The factor "72.27/dpi" is
+% necessary to convert from pixels to TeX points (72.27 poins per inch)
+display(['(',num2str(pos(1)),',',num2str(pos(2)),',',num2str(pos(3)),') => (', ...
+   num2str((screen_location(1)-figurePos(1))*72.27/dpi),',', ...
+   num2str((screen_location(2)-figurePos(2))*72.27/dpi),')'])
+
+% Format the tooltip display
+txt = {['X: ',num2str(pos(1))],['Y: ',num2str(pos(2))],['Z: ',num2str(pos(3))]};
+\end{codeexample}
+	
+	Run |pgfplotscsconversion|, click on four points in your plot. Preferably select non-colinear points near the edges of the plot. Copy and paste the four lines that were written to the Matlab command window.
+
+	Make sure that the first two points have different $X$ and $Y$ values on screen (i.e.\ image canvas coordinates).
+	\item Export the plot as an image
+\begin{codeexample}[code only]
+axis off
+print -dpng matlabout -r400 % PNG called "matlabout.png" with 400 dpi resolution
+\end{codeexample}
+
+Note that |pdf| output of Matlab is clumsy. It might be best to export to |eps| first, followed by a conversion from |eps| to |pdf|.
+
+\emph{If} you really want to use |pdf| output of Matlab, you may need to set the paper size to match the figure size by yourself, since the PDF driver does not automatically adjust the size:
+
+\begin{codeexample}[code only]
+% It might be better to use print -depsc  followed by epstopdf. 
+% Use this if you (really) want to use print -dpdf:
+currentScreenUnits=get(gcf,'Units')     % Get current screen units
+currentPaperUnits=get(gcf,'PaperUnits') % Get current paper units
+set(gcf,'Units',currentPaperUnits)      % Set screen units to paper units
+plotPosition=get(gcf,'Position')        % Get the figure position and size
+set(gcf,'PaperSize',plotPosition(3:4))  % Set the paper size to the figure size
+set(gcf,'Units',currentScreenUnits)     % Restore the screen units
+
+print -dpdf matlabout      % PDF called "matlabout.pdf"
+\end{codeexample}
+\item Include the image in your \PGFPlots\ axis. If you selected points on the plot corners, your |xmin|, |xmax|, |ymin| and |ymax| should be set automatically, otherwise you may want to provide those yourself. Also, adjustments of |width| and |height| might be of interest to get the right vertical placement of the plot. Consider changing |zmin| and/or |zmax| to fit your needs (preferrably only one of them; otherwise \PGFPlots\ may be unable to fix the |height|).
+\end{enumerate}
+
+This contribution is from
+
+\noindent
+\url{http://tex.stackexchange.com/questions/52987/3-dimensional-histogram-in-pgfplots} .
+
+
+
+\subsubsection*{Summary: External Three-Dimensional Graphics}
+As has been shown in the previous sections, \verbpdfref{\addplot3} |graphics| allows to include three-dimensional graphics and \PGFPlots\ overlays a flexible axis with all its power. The cost to do so is
+\begin{enumerate}
+	\item collect both logical three--dimensional coordinates \emph{and} image--internal two--dimensional coordinates for \emph{four points} of your graphics.
+
+	In Matlab, this can be simplified by the tool mentioned on page~\pageref{sec:plotgraphics3d:matlabscript}.
+
+	\item If your axes form a right--handed--coordinate system, that is all. If not, also add |x dir=reverse| for any reversed axes.
+\end{enumerate}
+
+\noindent
+Consider the following list of you encounter problems while working with \verbpdfref{\addplot3} |graphics|:
 \begin{itemize}
 	\item It must be possible to deduce the origin and the three (two--dimensional) unit vectors from the four provide |points|; otherwise the algorithm will fail. 
 	
