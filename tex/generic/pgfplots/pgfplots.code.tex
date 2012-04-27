@@ -6024,12 +6024,14 @@
 %   1/s (#1max - #1min) * e_xnew = (#1max- #1min) * e_x.
 %
 % In other words, the unit vector rescale is componensated by
-% modifying the axis limits.
+% modifying the axis limits: we want to add an absolute component 'd'
+% to the range:
+% 1/s (xmax - xmin ) = xmax - xmin +d 
+% =>
+% d = (1/s - 1) * (xmax - xmin)
 %
-% My idea is to add half of the new range to 'max' and
-% subtract the other half from 'min':
-% 1/s( xmax - xmin) = (xmax+0.5d) - (xmin-0.5d) = xmax - xmin +d
-% with d = 1/s (xmax-xmin) - (xmax-xmin) = (1/s - 1) (xmax-xmin)
+% The only remaining thing to do is to distribute 'd' to 'xmax' and
+% 'xmin'. Typically, 50% to each will be fine, I guess...
 % 
 % #1: either x, y or z. It denotes the direction which has been
 % modified.
@@ -6043,15 +6045,34 @@
 		\begingroup
 			\pgf@xa=\pgfmathresult pt
 			\pgfmathsubtract@{#2}{1.0}%
-			\pgf@xa=\pgfmathresult \pgf@xa
-			\divide\pgf@xa by2
-			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+			\pgf@xa=\pgfmathresult \pgf@xa% this is 'd'
+			%
+			% \pgfplots@glob@TMPb : will be subtracted from #1min
+			% \pgfplots@glob@TMPc : will be added to #1max
+			\pgfplots@if{pgfplots@autocompute@#1min}{%
+				\pgfplots@if{pgfplots@autocompute@#1max}{%
+					\pgf@xa=0.5 \pgf@xa
+					\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+					\xdef\pgfplots@glob@TMPc{\pgfplots@glob@TMPb}%
+				}{%
+					\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\pgf@xa}}%
+					\xdef\pgfplots@glob@TMPc{0.0}%
+				}%
+			}{%
+				\pgfplots@if{pgfplots@autocompute@#1max}{%
+					\xdef\pgfplots@glob@TMPb{0.0}%
+					\xdef\pgfplots@glob@TMPc{\pgf@sys@tonumber{\pgf@xa}}%
+				}{%
+					\xdef\pgfplots@glob@TMPb{0.0}%
+					\xdef\pgfplots@glob@TMPc{0.0}%
+				}%
+			}%
 		\endgroup
 		\pgfmathsubtract@{\csname pgfplots@#1min\endcsname}{\pgfplots@glob@TMPb}%
 		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
-		\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPb}%
+		\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPc}%
 		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [+- \pgfplots@glob@TMPb]}%
+%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [- \pgfplots@glob@TMPb; + \pgfplots@glob@TMPc]}%
 		%
 		% Update auxiliary data members:
 		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
