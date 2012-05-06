@@ -1380,6 +1380,7 @@
 
 \newif\ifpgfplotsplothandlerhistogram@intervals
 \newif\ifpgfplotsplothandlerhistogram@cumulative
+\newif\ifpgfplotsplothandlerhistogram@density
 \pgfplotsset{
 	hist/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerhistogram
@@ -1398,6 +1399,9 @@
 	hist/intervals=true,
 	hist/cumulative/.is if=pgfplotsplothandlerhistogram@cumulative,
 	hist/cumulative/.default=true,
+	hist/density/.is if=pgfplotsplothandlerhistogram@density,
+	hist/density/.default=true,
+	hist/density=false,
 	hist/handler/.style={/tikz/ybar interval},
 	hist/symbolic coords/.style={%
 		/pgfplots/symbolic coords={hist/data}{A,B,C,D,E,F,G,H,I,J},
@@ -1521,15 +1525,52 @@
 	\expandafter\pgfplotsplothandlersurveyend@hist@loop\pgfplots@hist@data\pgfplots@EOI
 	\let\pgfplots@hist@data=\relax
 	%
+	
+	% Calculate total count
+	\c@pgf@counta=0
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\advance\c@pgf@counta by\pgfplots@hist@count\relax	
+		\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+	}%
+	\pgfmathfloatparsenumber{\the\c@pgf@counta}%
+	\let\pgfp@hist@totalcount=\pgfmathresult
+	\pgfmathfloatreciprocal@{\pgfp@hist@totalcount}%
+	\let\pgfp@hist@totalcount@inv=\pgfmathresult
+	%
 	\ifpgfplotsplothandlerhistogram@cumulative
 		\c@pgf@counta=0
 		\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
 			\advance\c@pgf@counta by\pgfplots@hist@count\relax
 			\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
-			\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+			\ifpgfplotsplothandlerhistogram@density
+				\pgfmathfloatparsenumber{\the\c@pgf@counta}%
+				\pgfmathfloatmultiply@{\pgfmathresult}{\pgfp@hist@totalcount@inv}%
+				\pgfmathfloattosci@{\pgfmathresult}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\else
+				\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+			\fi
 		}%
+	\fi%
+	%
+	%% Density histogram
+	% Divide count in each bin by (totalcount*range/bins)
+	\ifpgfplotsplothandlerhistogram@density
+		\ifpgfplotsplothandlerhistogram@cumulative
+		\else
+			\pgfmathfloatmultiply@{\pgfp@hist@totalcount@inv}{\pgfplotsplothandlerhistogram@invh}%
+			\let\pgfp@hist@totalcount@times@h@inv=\pgfmathresult
+			\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+				\pgfmathfloatparsenumber{\pgfplots@hist@count}%
+				\pgfmathfloatmultiply@{\pgfmathresult}{\pgfp@hist@totalcount@times@h@inv}%
+				\pgfmathfloattosci@{\pgfmathresult}%
+				\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			}%
+		\fi
 	\fi
 	%
+	%% End density histogram
 	\pgfplots@curplot@threedimfalse
 	%
 	\pgfplotsset{/pgfplots/hist/handler}%
