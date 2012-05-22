@@ -25,6 +25,8 @@
 # If your example needs a specific reference revision, create a file <base>.checkoutreferencerev.sh which contains something
 # like "git checkout 1.3.1" . It will be invoked to checkout the reference revision.
 #
+# If your example needs a specific command to translate it, create a file <base>.compile.sh which runs it. Its first argument will be the base file name (without .tex).
+#
 # Then, type "make unittest_42.diff" to create reference, actual, and difference.
 #
 # Typing 'make' will make all unittests (all *.tex files in this directory).
@@ -66,7 +68,7 @@ PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git rev-parse HEAD)
 
-.PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh)  $(UNIT_PDF_REFERENCES)
+.PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES)
 
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 $(shell mkdir -p gnuplot references/gnuplot)
@@ -129,7 +131,7 @@ references: $(UNIT_PDF_REFERENCES)
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
 
-references/%.pdf: %.tex %.checkoutreferencerev.sh 
+references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	@echo "$<: generating $@"; \
 	REFERENCE_SCRIPT=$(<:.tex=.checkoutreferencerev.sh);\
 	#echo "  checking out reverence revision to $(TMP_REPOSITORY)..."; \
@@ -150,7 +152,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
-	pdflatex -shell-escape -interaction batchmode -halt-on-error `basename $(@:.pdf=.tex)` 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	sh ../$(<:.tex=.compile.sh) $(<:.tex=)` 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
 else
 #disable dynamic reference (re-)creation:
@@ -160,7 +162,9 @@ references/%.pdf: %.tex
 endif
 
 # make sure this rule is AFTER references/%.pdf !
-%.pdf: %.tex 
+%.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; pdflatex -halt-on-error -interaction batchmode -shell-escape $^ >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
 
+%.compile.sh:
+	echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@
