@@ -1911,7 +1911,7 @@
 	\pgfplots@initsizes@get@height@withoutlabels
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
 	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
-	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
+	\let\pgfplots@BB@for@plotbox@get@unit@scales@for@limits=\pgfplots@BB@for@plotbox@get@unit@scales@for@limits@relative
 	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
 }
 
@@ -1925,7 +1925,7 @@
 	\pgfplots@initsizes@get@height@withoutlabels
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
 	\let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@computelimits
-	\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@NOP
+	\let\pgfplots@BB@for@plotbox@get@unit@scales@for@limits=\pgfplots@BB@for@plotbox@get@unit@scales@for@limits@NOP
 	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
 }
 
@@ -2013,7 +2013,7 @@
 	\fi
 }%
 \let\pgfplots@BB@for@plotbox=\pgfplots@BB@for@plotbox@relative
-\def\pgfplots@BB@for@plotbox@compute@post@scales@relative#1#2#3{%
+\def\pgfplots@BB@for@plotbox@get@unit@scales@for@limits@relative#1#2#3{%
 	% Consequently, we have to multiply  with 1/(max-min):
 	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
 	% compute 1/(xmax - xmin) in float for more recent versions (see /pgfplots/compat/scaling).
@@ -2041,7 +2041,7 @@
 }%
 
 
-% \pgfplots@BB@for@plotbox@compute@post@scales{#1}{#2}{#3}:
+% \pgfplots@BB@for@plotbox@get@unit@scales@for@limits{#1}{#2}{#3}:
 % a helper tool which computes individual unit vector scales in order
 % to respect the limits.
 %
@@ -2055,7 +2055,7 @@
 % #2 [output] a macro name which will contain the scale for y
 % #3 [output] a macro name which will contain the scale for z
 % 
-\let\pgfplots@BB@for@plotbox@compute@post@scales=\pgfplots@BB@for@plotbox@compute@post@scales@relative
+\let\pgfplots@BB@for@plotbox@get@unit@scales@for@limits=\pgfplots@BB@for@plotbox@get@unit@scales@for@limits@relative
 \def\pgfplots@BB@for@plotbox@computelimits{%
 	\ifpgfplots@threedim
 		\pgfpathmoveto{\pgfqpointxyz\pgfplots@xmin\pgfplots@ymin\pgfplots@zmin}%
@@ -2073,13 +2073,21 @@
 		\pgfpathmoveto{\pgfqpointxy\pgfplots@xmax\pgfplots@ymax}%
 	\fi
 }%
-\def\pgfplots@BB@for@plotbox@compute@post@scales@NOP#1#2#3{%
+\def\pgfplots@BB@for@plotbox@get@unit@scales@for@limits@NOP#1#2#3{%
 	\let#1=\pgfutil@empty
 	\let#2=\pgfutil@empty
 	\let#3=\pgfutil@empty
 }%
-\def\pgfplots@scaleaxes@to@BB@#1#2{%
-	\begingroup
+
+% Returns width and height of the current plot box
+% (the path produced by \pgfplots@BB@for@plotbox).
+%
+% PRECONDITION: \pgfplots@BB@for@plotbox is defined to produce a path
+% for the plot box
+%
+% POSTCONDITION: \pgfplotsretval contains the with and
+% \pgfplotsretvalb contains the height
+\def\pgfplots@get@dimension@of@BB{%
 	\pgfinterruptboundingbox
 	% STEP 1: compute the bounding box for the plot box.
 	\pgfplots@BB@for@plotbox
@@ -2090,9 +2098,23 @@
 	% TMPb = height
 	\pgf@xb=\pgf@pathmaxy
 	\advance\pgf@xb by-\pgf@pathminy
+	\xdef\pgfplots@glob@TMPa{%
+		\def\noexpand\pgfplotsretval{\the\pgf@xa}%
+		\def\noexpand\pgfplotsretvalb{\the\pgf@xb}%
+	}%
+	\pgfusepath{discard}%
+	\endpgfinterruptboundingbox
+	\pgfplots@glob@TMPa
+}%
+
+\def\pgfplots@scaleaxes@to@BB@#1#2{%
+	\begingroup
+	\pgfplots@get@dimension@of@BB
+	\pgf@xa=\pgfplotsretval\relax
+	\pgf@xb=\pgfplotsretvalb\relax
 	\pgf@ya=#1\relax
 	\pgf@yb=#2\relax
-%\message{PGFPLOTS: the current unit vectors result in a UNIT BB of (\the\pgf@xa,\the\pgf@xb). Scaling it to (\the\pgf@ya,\the\pgf@yb)...}%
+\message{PGFPLOTS: the current unit vectors result in a UNIT BB of (\the\pgf@xa,\the\pgf@xb). Scaling it to (\the\pgf@ya,\the\pgf@yb)...^^J}%
 	\ifcase\pgfplots@scale@mode@choice
 		% scale mode=auto  does not happen here
 	\or
@@ -2139,42 +2161,144 @@
 			\fi
 		\fi
 	\fi
-	\pgfusepath{discard}%
-	\endpgfinterruptboundingbox
 	\endgroup
+\message{Got scale for all x components: \pgfplots@glob@TMPa; for all y components: \pgfplots@glob@TMPb^^J}%
 	% Ok, we know the W,H scalings now.
+	% Apply them:
+	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
+	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
+	%
+	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
+	\pgf@yy=\pgfplots@glob@TMPb\pgf@yy
+	%
+	\ifpgfplots@threedim
+		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
+		\pgf@zy=\pgfplots@glob@TMPb\pgf@zy
+	\fi
 	%
 	% But remember that we have worked with RELATIVE scales up to now.
 	% We have to convert them now, by interpreting "1 == upper limit"
 	% and "0 == lower limit" for every direction.
 	%
-	\pgfplots@BB@for@plotbox@compute@post@scales{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+	\pgfplots@BB@for@plotbox@get@unit@scales@for@limits{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.^^J}%
 	%
 	% ok. Now apply all scalings.
-	% Let's hope all these temporary macros are still valid!
-%\message{got scaleW = \pgfplots@glob@TMPa\space and scaleH = \pgfplots@glob@TMPb; scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.}%
-	\pgf@xx=\pgfplots@glob@TMPa\pgf@xx
-	\pgf@xy=\pgfplots@glob@TMPb\pgf@xy
+	\if3\pgfplots@scale@mode@choice
+		% scale mode=scale uniformly
+		\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}
+			{\pgfplotsretval}{\pgfplotsretvalb}{\pgfplotsretvalc}%
+	\else
+	\fi
+\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.^^J}%
 	\pgf@xx=\pgfplots@loc@TMPa\pgf@xx
 	\pgf@xy=\pgfplots@loc@TMPa\pgf@xy
 	%
-	\pgf@yx=\pgfplots@glob@TMPa\pgf@yx
-	\pgf@yy=\pgfplots@glob@TMPb\pgf@yy
 	\pgf@yx=\pgfplots@loc@TMPb\pgf@yx
 	\pgf@yy=\pgfplots@loc@TMPb\pgf@yy
 	%
 	\ifpgfplots@threedim
-		\pgf@zx=\pgfplots@glob@TMPa\pgf@zx
-		\pgf@zy=\pgfplots@glob@TMPb\pgf@zy
 		\pgf@zx=\pgfplots@loc@TMPc\pgf@zx
 		\pgf@zy=\pgfplots@loc@TMPc\pgf@zy
 	\fi
 	\pgfplots@glob@TMPc
+	\pgfplotsretval
+	\pgfplotsretvalb
+	\pgfplotsretvalc
 }%
 
 \def\pgfplots@error@scale@uniformly@failed{%
 	\pgfplots@error{Sorry, 'scale uniformly' failed because its actual implementation works only if y_x = 0 (for 2d axes) or if z_x = 0 (for 3d axes). The result will not fill the prescribed dimensions. For 2d axes, you may also want to consider the 'unit vector ratio' key}%
 }%
+
+% This is part of the implementation of 'scale mode=scale uniformly'.
+%
+% Its purpose it to set up the initial scaling such that 
+% 1. each unit vector gets the same scale
+% 2. the axis limits are resized (enlarged) to keep the plot box ratio
+% (as far as possible)
+%
+% The assumption is that on input #1, #2, and #3 are the factors which
+% would be used by stretch-to-fill in order to squeze the axis limits
+% into the plot box defined by e_x, e_y, and e_z (the unit vectors).
+%
+% On output, #1, #2, and #3 will be modified such that *each has the
+% same value*. The value will be chosen with care. More precisely, it
+% is the *minimum* of {#1,#2,#3}.
+%
+% Clearly, 'scale mode=scale uniformly' has less freedom than
+% strech-to-fill. In order to keep the plot box ratio intact (as far
+% as possible), the axis limits will be rescaled to componsate for the
+% ignored scaling factors. More precisely, if direction i is not the
+% extremal value (as discussed in the last paragraph), the axis limits
+% will be rescaled by #i/extremum .
+%
+%
+%
+% #1: on input, it contains the x unit scale which would be taken without the
+% compensation. On output, it contains the x unit scale which *will* be
+% used.
+% #2: same as #1, but for y
+% #3: same as #1, but for z
+% #4: [output] some executable code which will be used to rescale axis limits in x
+% #5: [output] some executable code which will be used to rescale axis limits in y
+% #6: [output] some executable code which will be used to rescale axis limits in z
+%
+% The output arguments need to be applied before they take effect.
+\def\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits#1#2#3#4#5#6{%
+	\begingroup
+	\edef\pgfplots@scale@unitx{#1}%
+	\edef\pgfplots@scale@unity{#2}%
+	\edef\pgfplots@scale@unitz{#3}%
+	%
+	% compute extreme + arg extreme of these scales:
+	\let\pgfplots@extreme@scale=\pgfplots@scale@unitx
+	\def\pgfplots@extreme@scale@arg{x}%
+	\ifdim\pgfplots@extreme@scale pt>\pgfplots@scale@unity pt
+		\let\pgfplots@extreme@scale=\pgfplots@scale@unity
+		\def\pgfplots@extreme@scale@arg{y}%
+	\fi
+	\ifpgfplots@threedim
+		\ifdim\pgfplots@extreme@scale pt>\pgfplots@scale@unitz pt
+			\let\pgfplots@extreme@scale=\pgfplots@scale@unitz
+			\def\pgfplots@extreme@scale@arg{z}%
+		\fi
+	\fi
+	%
+	% Now, adjust axis limits to compensate for the effect: we still
+	% want to have a plot box which is as close as possible to the
+	% target plot box.
+	\def\pgfplots@loc@TMPa##1##2{%
+		\if\pgfplots@extreme@scale@arg ##1%
+			% ok, nothing to do for this direction.
+			\let##2=\pgfutil@empty
+		\else
+			\pgfplotscoordmath{pgfbasic}{op}{divide}{{\csname pgfplots@scale@unit##1\endcsname}{\pgfplots@extreme@scale}}%
+			% do not call apply@unit@rescale immediately because the
+			% unit vectors may not be in their final state. Postpone until
+			% they are final.
+			\edef##2{\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{##1}{\pgfmathresult}}%
+		\fi
+	}%
+	\pgfplots@loc@TMPa{x}{#4}%
+	\pgfplots@loc@TMPa{y}{#5}%
+	\pgfplots@loc@TMPa{z}{#6}%
+	%
+	\toks0=\expandafter{#4}%
+	\toks1=\expandafter{#5}%
+	\toks2=\expandafter{#6}%
+	\xdef\pgfplots@glob@TMPa{%
+		% same scale in each dir:
+		\def\noexpand#1{\pgfplots@extreme@scale}%
+		\def\noexpand#2{\pgfplots@extreme@scale}%
+		\def\noexpand#3{\pgfplots@extreme@scale}%
+		\def\noexpand#4{\the\toks0}%
+		\def\noexpand#5{\the\toks1}%
+		\def\noexpand#6{\the\toks2}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}
 
 % Modifies the AXIS LIMITS to ensure that a suitable width/height is
 % achieved.
@@ -2189,6 +2313,8 @@
 % PRECONDITION: 
 % - \pgfplots@glob@TMPa contains the already computed
 % scaling factor for 'scale uniformly'
+% - \pgf@xb is the actual height and \pgf@yb is the desired height
+%   (set as in the scaling routine)
 %
 % POSTCONDITION:
 % #2 contains executable code to modify axis limits.
