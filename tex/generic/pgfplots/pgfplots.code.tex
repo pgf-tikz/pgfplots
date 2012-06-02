@@ -4623,20 +4623,18 @@
 	\advance#2 by1\relax
 }
 
-% Initialises the data scale transformation and applies it to any
-% user specified options.
+% Initialises the data scale transformation such that it is optimal
+% for direction #1 (using its axis limits and the target scaling size).
+%
+% Note that it will not be applied in any way; and it may still be
+% modified.
 %
 % PRECONDITION:
 %   - all axis limits are available in float representation
 %   - \pgfplots@set@default@size@options has been called before
 % POSTCONDITION:
 %   - the scaling transformation is set up,
-%   - all axis limits are transformed,
-%   - any user input (like ticks and tick labels)
-%     EXCEPT unit vectors will reflect the changes.
-%
-% Unit vectors will be scaled later.
-\def\pgfplots@check@and@apply@datatrafo@for#1{%
+\def\pgfplots@set@optimal@datatrafo@for@#1{%
 	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
 		\pgfplots@letcsname pgfplots@#1min@unscaled@as@float={pgfplots@#1min}%
 		\pgfplots@letcsname pgfplots@#1max@unscaled@as@float={pgfplots@#1max}%
@@ -4644,7 +4642,8 @@
 		%   T(x) = 10^{q-m} * x
 		%
 		\ifpgfplots@disabledatascaling
-			% this here is a waste of time, I know it. One could really
+			% this here is a waste of time, because the NO-OP trafo
+			% will be applied to all coordinates. One could really
 			% safe a lot of CPU time when disabledatascaling is enabled...
 			% but it requires so much extra cases; I really don't want
 			% that!
@@ -4790,19 +4789,54 @@
 			\endgroup
 		\fi
 		% COMPLETE INITIALISATION:
-%\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@glob@TMPa*#1 - \pgfplots@glob@TMPb...}%
+\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@glob@TMPa*#1 - \pgfplots@glob@TMPb...^^J}%
 		\pgfplotscoordmath{#1}{datascaletrafo set params}{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
+	}{%
+		% case apply trafo == false:
+		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
+	}%
+}
+
+\def\pgfplots@set@optimal@datatrafos@allaxes{%
+	\if3\pgfplots@scale@mode@choice
+		% scale mode=scale uniformly
+		% In this case, we need to choose one of the transformations
+		% and apply it to all axes -- such that each axis gets the
+		% same scale.
 		%
-		% ... and apply transformation to any user input
-		%
+		% Note that this needs to be done here; a later rescaling
+		% might cause dimension-too-large.
+\message{FIXME : FIXME choose the correct common datascaling factor (probably the smallest?)^^J}%
+		\pgfplotscoordmath{x}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
+		\pgfplotscoordmath{y}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
+		\pgfplotscoordmath{z}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
+	\fi
+}%
+
+% Initialises the data scale transformation and applies it to any
+% user specified options.
+%
+% PRECONDITION:
+%   - all axis limits are available in float representation
+%   - \pgfplots@set@default@size@options has been called before
+%   - the scaling transformation for direction x is set up
+%   (\pgfplots@set@optimal@datatrafo@for@),
+% POSTCONDITION:
+%   - all axis limits are transformed,
+%   - any user input (like ticks and tick labels)
+%     EXCEPT unit vectors will reflect the changes.
+%
+% Unit vectors will be scaled later.
+\def\pgfplots@check@and@apply@datatrafo@for#1{%
+	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
 		% Transform axis limits:
-%\message{#1- display limits BEFORE data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]}%
+%\message{#1- display limits BEFORE data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]^^J}%
 		\pgfplotscoordmath{#1}{datascaletrafo}{\csname pgfplots@#1min\endcsname}%
 		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
 		%
 		\pgfplotscoordmath{#1}{datascaletrafo}{\csname pgfplots@#1max\endcsname}%
 		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\message{#1- display limits after data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]}%
+%\message{#1- display limits after data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]^^J}%
 		% Transform tick limits (if they are set):
 %\message{#1- display tick limits BEFORE data transformation: [\csname pgfplots@#1tickmin\endcsname:\csname pgfplots@#1tickmax\endcsname]}%
 		\expandafter\ifx\csname pgfplots@#1tickmin\endcsname\pgfutil@empty
@@ -4870,7 +4904,6 @@
 		% WILL BE DONE LATER!
 	}{%
 		% case apply trafo == false:
-		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
 		\def\pgfplots@loc@TMPb{data}%
 		\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfplots@loc@TMPb
 			\edef\pgfplots@loc@TMPa{\csname pgfplots@firstplot@coords@#1\endcsname}%
@@ -5021,6 +5054,13 @@
 	\else
 		\pgfplotsthreedimfalse
 	\fi
+	%
+	\pgfplots@set@optimal@datatrafo@for@ x%
+	\pgfplots@set@optimal@datatrafo@for@ y%
+	\ifpgfplots@threedim
+		\pgfplots@set@optimal@datatrafo@for@ z%
+	\fi
+	\pgfplots@set@optimal@datatrafos@allaxes
 	%
 	\pgfplots@check@and@apply@datatrafo@for x%
 	\pgfplots@check@and@apply@datatrafo@for y%
@@ -6040,7 +6080,7 @@
 \def\pgfplots@apply@unit@vector@rescale@keep@size#1#2{%
 	\ifpgfplots@unit@vector@rescale@keep@size
 		%
-%\message{'unit rescale keep size': Resizing data range for #1: from \csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname\ to}%
+\message{'unit rescale keep size': Resizing data range for #1: from \csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname\ to}%
 		\pgfmathsubtract@{\csname pgfplots@#1max\endcsname}{\csname pgfplots@#1min\endcsname}%
 		\begingroup
 			\pgf@xa=\pgfmathresult pt
@@ -6072,7 +6112,7 @@
 		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
 		\pgfmathadd@{\csname pgfplots@#1max\endcsname}{\pgfplots@glob@TMPc}%
 		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [- \pgfplots@glob@TMPb; + \pgfplots@glob@TMPc]}%
+\message{\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname. [- \pgfplots@glob@TMPb; + \pgfplots@glob@TMPc]^^J}%
 		%
 		% Update auxiliary data members:
 		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
