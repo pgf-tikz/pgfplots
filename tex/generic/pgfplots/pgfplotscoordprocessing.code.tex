@@ -2147,14 +2147,17 @@
 		\global\let\pgfplots@glob@TMPa=\pgfmathresult
 		\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
 		\global\let\pgfplots@glob@TMPc=\relax
+		\global\let\pgfplots@glob@TMPd=\relax
 		\ifdim\pgf@zy=0pt
 			\ifdim\pgf@yx=0pt
+				\global\def\pgfplots@glob@TMPd{y}%
 				\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{y}\returninto\pgfplots@glob@TMPc
 			\else
 				\pgfplots@error@scale@uniformly@failed
 			\fi
 		\else
 			\ifdim\pgf@zx=0pt
+				\global\def\pgfplots@glob@TMPd{z}%
 				\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{z}\returninto\pgfplots@glob@TMPc
 			\else
 				\pgfplots@error@scale@uniformly@failed
@@ -2181,7 +2184,7 @@
 	% and "0 == lower limit" for every direction.
 	%
 	\pgfplots@BB@for@plotbox@get@unit@scales@for@limits{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
-\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.^^J}%
+\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc, vertical limit componensation in direction \pgfplots@glob@TMPd=\pgfplots@glob@TMPc.^^J}%
 	%
 	% ok. Now apply all scalings.
 	\if3\pgfplots@scale@mode@choice
@@ -2189,11 +2192,12 @@
 		\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}
 			{\pgfplotsretval}{\pgfplotsretvalb}{\pgfplotsretvalc}%
 	\else
-		\let\pgfplotsretval=\relax
-		\let\pgfplotsretvalb=\relax
-		\let\pgfplotsretvalc=\relax
+		\pgfplotscoordmath{pgfbasic}{one}%
+		\let\pgfplotsretval=\pgfmathresult
+		\let\pgfplotsretvalb=\pgfmathresult
+		\let\pgfplotsretvalc=\pgfmathresult
 	\fi
-\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc.^^J}%
+\message{got scalex=\pgfplots@loc@TMPa, scaley=\pgfplots@loc@TMPb, scalez=\pgfplots@loc@TMPc;  axis limit componsation scales x=\pgfplotsretval, y=\pgfplotsretvalb, z=\pgfplotsretvalc^^J}%
 	\pgf@xx=\pgfplots@loc@TMPa\pgf@xx
 	\pgf@xy=\pgfplots@loc@TMPa\pgf@xy
 	%
@@ -2204,10 +2208,32 @@
 		\pgf@zx=\pgfplots@loc@TMPc\pgf@zx
 		\pgf@zy=\pgfplots@loc@TMPc\pgf@zy
 	\fi
-	\pgfplots@glob@TMPc
-	\pgfplotsretval
-	\pgfplotsretvalb
-	\pgfplotsretvalc
+	%
+	%
+	% and finally, resize limits appropriately:
+	\ifx\pgfplots@glob@TMPc\relax
+	\else
+		% handle size compensation in vertical direction:
+		\if x\pgfplots@glob@TMPd
+			\pgfplotscoordmath{pgfbasic}{op}{add}{{\pgfplots@glob@TMPc}{\pgfplotsretval}}%
+			\let\pgfplotsretval=\pgfmathresult
+		\fi
+		\if y\pgfplots@glob@TMPd
+			\pgfplotscoordmath{pgfbasic}{op}{add}{{\pgfplots@glob@TMPc}{\pgfplotsretvalb}}%
+			\let\pgfplotsretvalb=\pgfmathresult
+		\fi
+		\if z\pgfplots@glob@TMPd
+			\pgfplotscoordmath{pgfbasic}{op}{add}{{\pgfplots@glob@TMPc}{\pgfplotsretvalc}}%
+			\let\pgfplotsretvalc=\pgfmathresult
+		\fi
+	\fi
+	% add all cumulative limit compensations:
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{x}{\pgfplotsretval}%
+		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{y}{\pgfplotsretvalb}%
+		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{z}{\pgfplotsretvalc}%
+	}%
+	\pgfplots@loc@TMPa
 }%
 
 \def\pgfplots@error@scale@uniformly@failed{%
@@ -2243,9 +2269,9 @@
 % used.
 % #2: same as #1, but for y
 % #3: same as #1, but for z
-% #4: [output] some executable code which will be used to rescale axis limits in x
-% #5: [output] some executable code which will be used to rescale axis limits in y
-% #6: [output] some executable code which will be used to rescale axis limits in z
+% #4: [output] a scale for use as argument of \pgfplots@apply@unit@vector@rescale@keep@size{x}{<arg>}
+% #5: [output] a scale for use as argument of \pgfplots@apply@unit@vector@rescale@keep@size{y}{<arg>}
+% #6: [output] a scale for use as argument of \pgfplots@apply@unit@vector@rescale@keep@size{z}{<arg>}
 %
 % The output arguments need to be applied before they take effect.
 \def\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits#1#2#3#4#5#6{%
@@ -2284,13 +2310,14 @@
 	\def\pgfplots@loc@TMPa##1##2{%
 		\if\pgfplots@extreme@scale@arg ##1%
 			% ok, nothing to do for this direction.
-			\let##2=\pgfutil@empty
+			\pgfplotscoordmath{pgfbasic}{one}%
+			\let##2=\pgfmathresult
 		\else
 			\pgfplotscoordmath{pgfbasic}{op}{divide}{{\csname pgfplots@scale@unit##1\endcsname}{\pgfplots@extreme@scale}}%
 			% do not call apply@unit@rescale immediately because the
 			% unit vectors may not be in their final state. Postpone until
 			% they are final.
-			\edef##2{\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{##1}{\pgfmathresult}}%
+			\edef##2{\pgfmathresult}%
 		\fi
 	}%
 	\pgfplots@loc@TMPa{x}{#4}%
@@ -2335,7 +2362,7 @@
 %   (set as in the scaling routine)
 %
 % POSTCONDITION:
-% #2 contains executable code to modify axis limits.
+% #2 will contain the argument <arg> for \pgfplots@apply@unit@vector@rescale@keep@size{#1}{<arg>}
 \def\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir#1\returninto#2{%
 	% The strategy is as follows:
 	% 1. I want to fit the axis into width #1 (\pgf@ya) and
@@ -2429,10 +2456,7 @@
 	% Since \pgfplots@apply@unit@vector@rescale@keep@size
 	% expects the inverse of the scale, we can provide
 	% \pgfmathresult:
-\message{FIXME: vertical size compensation might fail - deactivated^^J}%
-	\xdef#2{%
-%		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{#1}{\pgfmathresult}%
-	}%
+	\xdef#2{\pgfmathresult}%
 	\endgroup
 }
 
