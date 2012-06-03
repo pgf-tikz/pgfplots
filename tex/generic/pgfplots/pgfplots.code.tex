@@ -4636,8 +4636,6 @@
 %   - the scaling transformation is set up,
 \def\pgfplots@set@optimal@datatrafo@for@#1{%
 	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-		\pgfplots@letcsname pgfplots@#1min@unscaled@as@float={pgfplots@#1min}%
-		\pgfplots@letcsname pgfplots@#1max@unscaled@as@float={pgfplots@#1max}%
 		% initialise data scale transformation 
 		%   T(x) = 10^{q-m} * x
 		%
@@ -4798,19 +4796,142 @@
 }
 
 \def\pgfplots@set@optimal@datatrafos@allaxes{%
+	\pgfplots@letcsname pgfplots@xmin@unscaled@as@float={pgfplots@xmin}%
+	\pgfplots@letcsname pgfplots@xmax@unscaled@as@float={pgfplots@xmax}%
+	%
+	\pgfplots@letcsname pgfplots@ymin@unscaled@as@float={pgfplots@ymin}%
+	\pgfplots@letcsname pgfplots@ymax@unscaled@as@float={pgfplots@ymax}%
+	%
+	\pgfplots@letcsname pgfplots@zmin@unscaled@as@float={pgfplots@zmin}%
+	\pgfplots@letcsname pgfplots@zmax@unscaled@as@float={pgfplots@zmax}%
+	%
 	\if3\pgfplots@scale@mode@choice
 		% scale mode=scale uniformly
 		% In this case, we need to choose one of the transformations
 		% and apply it to all axes -- such that each axis gets the
 		% same scale.
 		%
-		% Note that this needs to be done here; a later rescaling
-		% might cause dimension-too-large.
-\message{FIXME : FIXME choose the correct common datascaling factor (probably the smallest?)^^J}%
-		\pgfplotscoordmath{x}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
-		\pgfplotscoordmath{y}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
-		\pgfplotscoordmath{z}{datascaletrafo set params}{\pgfplots@data@scale@trafo@EXPONENT@x}{0}%
+		% this mode is used for axis equal and its variants.
+		%
+		% The strategy to fix the transformation is as follows:
+		% 1. we assume that axis limits will be enlarged in order to
+		% satisfy 'scale uniformly'. 
+		% 2. we assume that the LARGEST axis limit dominates the
+		% others.
+		% 3. if one of the axes does not have datascaling (i.e. is
+		% log scale), we disable all other datascalings.
+		%
+		% Consequently, we search for the axis with the largest limit
+		% - and copy its data scaling to all other axes. If one of the
+		% axes is log, that one overrules it and all data scaling
+		% effects are disabled..
+		\begingroup
+		\let\pgfplots@data@scale@trafo@EXPONENT@common=\pgfutil@empty
+		\def\pgfplots@data@scale@trafo@EXPONENT@common@arg{-}% this should not match anything in this context.
+		\pgfplots@if{pgfplots@apply@datatrafo@x}{%
+		}{%
+			\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
+		}%
+		\pgfplots@if{pgfplots@apply@datatrafo@y}{%
+		}{%
+			\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
+		}%
+		\ifpgfplots@threedim
+			\pgfplots@if{pgfplots@apply@datatrafo@z}{%
+			}{%
+				\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
+			}%
+		\fi
+		\ifx\pgfplots@data@scale@trafo@EXPONENT@common\pgfutil@empty
+			% ah - we still need to compute one. ok, search for the
+			% largest limit.
+			%
+			\pgfplots@get@axis@with@largest@limits
+			\let\pgfplots@data@scale@trafo@EXPONENT@common@arg=\pgfplotsretval
+			%
+			% ok, compute data scaling transformation for the target axis:
+			\expandafter\pgfplots@set@optimal@datatrafo@for@\pgfplots@data@scale@trafo@EXPONENT@common@arg%
+			%
+			\pgfplotscoordmath{\pgfplots@data@scale@trafo@EXPONENT@common@arg}{datascaletrafo get params}%
+			\let\pgfplots@data@scale@trafo@EXPONENT@common=\pgfmathresult%
+		\else
+			% hm. early-out - we already have the scaling trafo.
+			% return it.
+		\fi
+		\global\let\pgfplots@glob@TMPa=\pgfplots@data@scale@trafo@EXPONENT@common
+		\global\let\pgfplots@glob@TMPb=\pgfplots@data@scale@trafo@EXPONENT@common@arg
+		\endgroup
+		%
+		% we need to set the scaling trafo for the target direction
+		% (was lost after \endgroup)
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplotscoordmath{\pgfplots@glob@TMPb}{datascaletrafo set params}
+				\pgfplots@glob@TMPa% <- this already contains braces
+		}%
+		\pgfplots@loc@TMPa
+		%
+		\xdef\pgfplots@glob@TMPa{\expandafter\pgfutil@firstoftwo\pgfplots@glob@TMPa}%
+\message{using datascaletrafo of axis '\pgfplots@glob@TMPb' for each axis.^^J}%
+		%
+		\def\pgfplots@loc@TMPd##1{%
+			\if ##1\pgfplots@glob@TMPb
+			\else
+\message{Initialising the data scale transformation in direction ##1 to 10^\pgfplots@glob@TMPa*##1 - 0...^^J}%
+				\pgfplotscoordmath{##1}{datascaletrafo set params}{\pgfplots@glob@TMPa}{0}%
+			\fi
+		}%
+		\pgfplots@loc@TMPd x%
+		\pgfplots@loc@TMPd y%
+		\ifpgfplots@threedim
+			\pgfplots@loc@TMPd z%
+		\fi
+	\else
+		% all other 'scale mode' choices -- optimize individually:
+		\pgfplots@set@optimal@datatrafo@for@ x%
+		\pgfplots@set@optimal@datatrafo@for@ y%
+		\ifpgfplots@threedim
+			\pgfplots@set@optimal@datatrafo@for@ z%
+		\fi
 	\fi
+	%
+}%
+
+% Defines \pgfplotsretval to be one of x, y, or z, such that the
+% return value indicates the axis with largest untransformed axis
+% limits.
+\def\pgfplots@get@axis@with@largest@limits{%
+	\begingroup
+	\let\pgfplotsretval@extreme=\pgfutil@empty
+	\let\pgfplotsretval@extreme@arg=\pgfutil@empty
+	\def\pgfplots@@##1{%
+		% compute axis range for axis ##1 ...
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1min\endcsname}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1max\endcsname}%
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+		% ... ok, it is in \pgfmathresult.
+		\let\candidate=\pgfmathresult
+		\ifx\pgfplotsretval@extreme@arg\pgfutil@empty
+			% ah: no extreme value so far. use ours.
+			\def\pgfplotsretval@extreme@arg{##1}%
+			\let\pgfplotsretval@extreme=\candidate
+		\else
+			\pgfplotscoordmath{default}{if less than}{\pgfplotsretval@extreme}{\candidate}{%
+				% update extreme value:
+				\def\pgfplotsretval@extreme@arg{##1}%
+				\let\pgfplotsretval@extreme=\candidate
+			}{%
+			}%
+		\fi
+	}%
+	\pgfplots@@ x%
+	\pgfplots@@ y%
+	\ifpgfplots@threedim
+		\pgfplots@@ z%
+	\fi
+	\let\pgfplotsretval=\pgfplotsretval@extreme@arg
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
 }%
 
 % Initialises the data scale transformation and applies it to any
@@ -5055,11 +5176,6 @@
 		\pgfplotsthreedimfalse
 	\fi
 	%
-	\pgfplots@set@optimal@datatrafo@for@ x%
-	\pgfplots@set@optimal@datatrafo@for@ y%
-	\ifpgfplots@threedim
-		\pgfplots@set@optimal@datatrafo@for@ z%
-	\fi
 	\pgfplots@set@optimal@datatrafos@allaxes
 	%
 	\pgfplots@check@and@apply@datatrafo@for x%
