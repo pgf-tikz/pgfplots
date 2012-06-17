@@ -25,6 +25,9 @@ fi
 
 ACTUAL=${DIFF_PNG%%.diff.png}.pdf
 EXPECTED=references/$ACTUAL
+echo "display $DIFF_PNG"
+display $DIFF_PNG &
+
 echo "cycling through diff($DIFF_PNG) $ACTUAL $EXPECTED (selected page $SELECTED_PAGE)..."
 
 PAGES=$((`pdfinfo $ACTUAL | grep 'Pages:' | cut -c 7-`));
@@ -50,4 +53,4 @@ if [ $GENERATED_PAIRED_VIEW -eq 1 ]; then
 else
 	PAIRED_IMAGES="$ACTUAL $EXPECTED"
 fi
-display -delay 1 $DIFF_PNG $PAIRED_IMAGES || break
+display -delay 1 $PAIRED_IMAGES || break
