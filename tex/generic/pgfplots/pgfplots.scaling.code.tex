@@ -559,6 +559,8 @@
 	\pgfplots@glob@TMPa
 }%
 
+\newif\ifexperiment
+
 \def\pgfplots@scaleaxes@to@BB@#1#2{%
 	\begingroup
 	\pgfplots@get@dimension@of@BB
@@ -588,6 +590,9 @@
 		% TMPb = scaley
 		\global\let\pgfplots@glob@TMPb=\pgfmathresult
 		\global\let\pgfplots@glob@TMPc=\relax
+\def\pgfplots@target@limitrescale@x{1}%
+\def\pgfplots@target@limitrescale@y{1}%
+\def\pgfplots@target@limitrescale@z{1}%
 	\or
 		% scale mode=scale uniformly
 		% compute ONE common scale for both, X and Y.
@@ -620,10 +625,45 @@
 		% in that case, we can compute s such that the equation for W
 		% is satisfied and compensate only the limit r_z, i.e. to
 		% choose
-		% s := W / w,  Rx = Ry = 1, 
-		% Rz = ( H - s (w - r_z e_zy) ) / (s r_z e_zy)
+		% s := W / w,    (scale to satisfy width constraint)
+		% Rx := Ry := 1  (keep limits in X and Y)
+		% Rz = ( H - s (w - r_z e_zy) ) / (s r_z e_zy)    (adjust z limit to satisfy height constraint)
+		%
+		% This approach works well if W < H . If W > H, it will look
+		% bad: Rz will be less than 1, causing the limit to become
+		% smaller. This, in turn, will clip away parts of the image.
+		%
 		% 
 		%
+		% Another solution is to make it the other way: to keep the
+		% limit r_z, but to reduce the size and enlarge the other
+		% limits to satisfy the size constraints. This solution is
+		% considerably more involved; it requires to solve a nonlinear
+		% set of equations.
+		%
+		% Formally, this second solution uses
+		% Rz := 1       (no limit componensation scale for z -- keep z limit)
+		% R:= Rx := Ry  (same limit componensation scale for both X and Y)
+		% R and s still need to be determined from the two equations for W
+		% and H.
+		%
+		% Substituting the given choices into the equations for W and H, we find
+		%
+		% R = W / (s w)
+		%
+		% s = H * (R * (h-r_z e_zy) + r_z e_zy)^-1
+		%
+		% Here, we employed the definition of 'h', see above. The
+		% equations are non-linear. A possible way to solve for R and
+		% s is to iterate: choose R arbitrarily (for example R=1),
+		% solve for s. Then, fix s and solve for R. Then, fix R and
+		% solve for s until convergence.
+		%
+		%
+\ifexperiment
+\def\pgfplots@target@limitrescale@x{1}%
+\def\pgfplots@target@limitrescale@y{1}%
+\def\pgfplots@target@limitrescale@z{1}%
 		\pgfplotsutil@edef@invoke\pgfmathdivide@{%
 			{\pgf@sys@tonumber\pgf@ya}%
 			{\pgf@sys@tonumber\pgf@xa}%
@@ -647,7 +687,16 @@
 				\pgfplots@error@scale@uniformly@failed
 			\fi
 		\fi
+\else
+\pgfplots@FOO{\pgfplots@target@unit@scale@x}{\pgfplots@target@limitrescale@x}{\pgfplots@target@limitrescale@y}{\pgfplots@target@limitrescale@z}%
+\global\let\pgfplots@glob@TMPa=\pgfplots@target@unit@scale@x
+\global\let\pgfplots@glob@TMPb=\pgfplots@glob@TMPa
+\global\let\pgfplots@glob@TMPc=\relax
+\fi
 	\fi
+\global\let\pgfplots@target@limitrescale@x=\pgfplots@target@limitrescale@x
+\global\let\pgfplots@target@limitrescale@y=\pgfplots@target@limitrescale@y
+\global\let\pgfplots@target@limitrescale@z=\pgfplots@target@limitrescale@z
 	\endgroup
 \message{Got W/H scale for all x components: \pgfplots@glob@TMPa; for all y components: \pgfplots@glob@TMPb^^J}%
 	% Ok, we know the W,H scalings now.
@@ -671,9 +720,9 @@
 	\def\pgfplots@target@unit@scale@z{0}%
 	%
 	% these values will be accumulated.
-	\def\pgfplots@target@limitrescale@x{1}%
-	\def\pgfplots@target@limitrescale@y{1}%
-	\def\pgfplots@target@limitrescale@z{1}%
+%	\def\pgfplots@target@limitrescale@x{1}%
+%	\def\pgfplots@target@limitrescale@y{1}%
+%	\def\pgfplots@target@limitrescale@z{1}%
 	%
 	\ifx\pgfplots@glob@TMPc\relax
 	\else
@@ -740,6 +789,79 @@
 		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{z}{\pgfplots@target@limitrescale@z}%
 	}%
 	\endgroup
+	\pgfplots@glob@TMPa
+}%
+
+\def\pgfplots@FOO#1#2#3#4{%
+	\begingroup
+	%
+	\pgfplots@BB@for@plotbox@getunitheight{\pgf@xc}{z}%
+	%
+	% compute the rest in floating point - intermediate results may
+	% become too huge for TeX.
+	\pgfplotscoordmath{default}{parsenumber}{\expandafter\pgf@sys@tonumber\csname pgf@xc\endcsname}%
+	\let\M=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{parsenumber}{\expandafter\pgf@sys@tonumber\csname pgf@xa\endcsname}%
+	\let\w=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\expandafter\pgf@sys@tonumber\csname pgf@ya\endcsname}%
+	\let\W=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\expandafter\pgf@sys@tonumber\csname pgf@xb\endcsname}%
+	\let\h=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{\expandafter\pgf@sys@tonumber\csname pgf@yb\endcsname}%
+	\let\H=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{divide}{{\W}{\w}}%
+	\let\Wwinv=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{subtract}{{\h}{\M}}%
+	\let\hminusM=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{one}%
+	\let\S=\pgfmathresult%
+	\let\R=\pgfmathresult%
+	\let\Rx=\pgfmathresult
+	\def\Rz{1}%
+	%
+	\def\pgfplots@hold@S@get@R{%
+		\pgfplotscoordmath{default}{op}{divide}{{\Wwinv}{\S}}%
+		\let\R=\pgfmathresult
+\message{updated R = \R\space ( S = \S ) ^^J}%
+	}%
+	\def\pgfplots@hold@R@get@S{%
+		\pgfplotscoordmath{default}{op}{multiply}{{\R}{\hminusM}}%
+		\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\M}}%
+		\pgfplotscoordmath{default}{op}{divide}{{\H}{\pgfmathresult}}%
+		\let\S=\pgfmathresult
+\message{updated S = \S\space ( R = \R ) ^^J}%
+	}%
+	%
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	\pgfplots@hold@R@get@S \pgfplots@hold@S@get@R
+	%
+	\pgfplotscoordmath{default}{tofixed}{\R}\let\R=\pgfmathresult
+	\pgfplotscoordmath{default}{tofixed}{\S}\let\S=\pgfmathresult
+	\xdef\pgfplots@glob@TMPa{%
+		\noexpand\def\noexpand#1{\S}%
+		\noexpand\def\noexpand#2{\R}%
+		\noexpand\def\noexpand#3{\R}%
+		\noexpand\def\noexpand#4{\Rz}%
+	}%
+	\endgroup
+\message{returning \meaning\pgfplots@glob@TMPa^^J}%
 	%
 	\pgfplots@glob@TMPa
 }%
