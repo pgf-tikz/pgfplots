@@ -845,6 +845,7 @@
 			\ifdim\pgf@zy=0pt
 				\ifdim\pgf@yx=0pt
 					\ifdim\pgf@xy=0pt
+						% special 2d routine with explicit solution
 						\pgfplots@scaleuniformly@change@horizontal@limits@twodim
 							{\scalex}
 							{\pgfplots@target@limitrescale@x}
@@ -983,6 +984,28 @@
 % #4 [output] a macro which will contain a x axis limit compensation scale
 \def\pgfplots@scaleuniformly@change@horizontal@limits@twodim#1#2#3#4{%
 	\begingroup
+	% Assuming that we have a standard 2d axis, i.e. 
+	% e_zx = e_zy = 0,  e_xy = 0, and e_yx =0,
+	% we can immediately compute a solution.
+	%
+	% In this case, we have the actual width
+	% w = r_x e_xx  + r_y e_yx + rz e_zx
+	%   = r_x e_xx
+	% and actual height
+	% h = r_x e_xy  + r_y e_yy + rz e_zy
+	%   = r_y e_yy
+	% and, consequently, desired width
+	% W = (Rx r_x) (s e_xx)  + (Ry r_y) (s e_yx)  + (Rz r_z) (s e_zx)
+	%   = (Rx r_x) (s e_xx)
+	% and desired height
+	% H = (Rx r_x) (s e_xy)  + (Ry r_y) (s e_yy)  + (Rz r_z) (s e_zy)
+	%   = (Ry r_y) (s e_yy).
+	% since this strategy change horizontal limits (only), we have
+	% Ry := 1.
+	% We find
+	% s : = H/h 
+	% and
+	% Rx : = W/w /s .
 	%
 	\pgfplotscoordmath{default}{parsenumber}{\w}%
 	\let\w=\pgfmathresult
@@ -1801,26 +1824,30 @@
 	\else
 		\edef\pgfplots@unit@vector@ratio{\pgfplots@unit@vector@ratio\space1 1 }%
 		%
-		% Step 1: compute the unit vector which STAYS CONSTANT.
-		%
-		\pgfkeysgetvalue{/pgfplots/unit vector ratio axis}\pgfplots@apply@unit@ratio@reference
-		\ifx\pgfplots@apply@unit@ratio@reference\pgfutil@empty
-			\pgfplots@apply@unit@ratio@find@reference%
-		\fi
-		%
-		% FIXME : I could spent some attention here to save work: 
-		% both, unit ratios and the resulting scales are computed at
-		% least twice (once in \pgfplots@apply@unit@ratio@find@reference and once in the
-		% following).
-		\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
-		%
+		\expandafter\pgfplots@unit@vector@ratio@check@nop\pgfplots@unit@vector@ratio\pgfplots@EOI
+		\ifpgfplots@loc@tmp
+			%
+			% Step 1: compute the unit vector which STAYS CONSTANT.
+			%
+			\pgfkeysgetvalue{/pgfplots/unit vector ratio axis}\pgfplots@apply@unit@ratio@reference
+			\ifx\pgfplots@apply@unit@ratio@reference\pgfutil@empty
+				\pgfplots@apply@unit@ratio@find@reference%
+			\fi
+			%
+			% FIXME : I could spent some attention here to save work: 
+			% both, unit ratios and the resulting scales are computed at
+			% least twice (once in \pgfplots@apply@unit@ratio@find@reference and once in the
+			% following).
+			\expandafter\pgfplots@apply@unit@ratio@prepareratios\pgfplots@unit@vector@ratio\pgfplots@EOI
+			%
 %\message{USING REFERENCE UNIT VECTOR FROM \pgfplots@apply@unit@ratio@reference; ratio \pgfplots@unit@ratio@x\space \pgfplots@unit@ratio@y\space \pgfplots@unit@ratio@z.^^J}%
-		%
-		% Step 2: apply the scaling:
-		\pgfplots@rescale@unit@vector@reltoreference{x}{\pgfplots@unit@ratio@x}%
-		\pgfplots@rescale@unit@vector@reltoreference{y}{\pgfplots@unit@ratio@y}%
-		\ifpgfplots@threedim
-			\pgfplots@rescale@unit@vector@reltoreference{z}{\pgfplots@unit@ratio@z}%
+			%
+			% Step 2: apply the scaling:
+			\pgfplots@rescale@unit@vector@reltoreference{x}{\pgfplots@unit@ratio@x}%
+			\pgfplots@rescale@unit@vector@reltoreference{y}{\pgfplots@unit@ratio@y}%
+			\ifpgfplots@threedim
+				\pgfplots@rescale@unit@vector@reltoreference{z}{\pgfplots@unit@ratio@z}%
+			\fi
 		\fi
 	\fi
 	\xdef\pgfplots@glob@TMPa{%
@@ -1833,6 +1860,29 @@
 	}%
 	\endgroup
 	\pgfplots@glob@TMPa
+}%
+
+% Defines \ifpgfplots@loc@tmp := need to modify scaling factors
+\def\pgfplots@unit@vector@ratio@check@nop#1 #2 #3 #4\pgfplots@EOI{%
+	\pgfplots@loc@tmptrue
+	\if3\pgfplots@scale@mode@choice
+		% scale mode=scale uniformly
+		\ifpgfplots@threedim
+			\ifdim#1pt=#2pt
+				\ifdim#1pt=#3pt
+					% 'axis equal' is implicitly done by 'scale mode=scale
+					% uniformly' anyway
+					\pgfplots@loc@tmpfalse
+				\fi
+			\fi
+		\else
+			\ifdim#1pt=#2pt
+				% 'axis equal' is implicitly done by 'scale mode=scale
+				% uniformly' anyway
+				\pgfplots@loc@tmpfalse
+			\fi
+		\fi
+	\fi
 }%
 
 % This macro determines the reference axis for unit vector rescaling.
