@@ -613,6 +613,34 @@
 
 \def\pgfplots@scaleaxes@to@BB@#1#2{%
 	\begingroup
+	% This here CAN cause anisotropic (different) scaling factors.
+	\pgfplots@BB@for@plotbox@get@unit@scales@for@limits
+		{\pgfplots@target@unit@scale@x}
+		{\pgfplots@target@unit@scale@y}
+		{\pgfplots@target@unit@scale@z}%
+	\def\pgfplots@target@limitrescale@x{1}%
+	\def\pgfplots@target@limitrescale@y{1}%
+	\def\pgfplots@target@limitrescale@z{1}%
+	%
+\message{got scales to fit limits into BB: scalex=\pgfplots@target@unit@scale@x, scaley=\pgfplots@target@unit@scale@y, scalez=\pgfplots@target@unit@scale@z^^J}%
+	%
+	\if3\pgfplots@scale@mode@choice
+		% scale mode=scale uniformly
+		% 
+		% We need to recompensate in case the previous method chose
+		% different unit scaling scalings:
+		\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits
+			{\pgfplots@target@unit@scale@x}
+			{\pgfplots@target@unit@scale@y}
+			{\pgfplots@target@unit@scale@z}
+			{\pgfplots@target@limitrescale@x}{\pgfplots@target@limitrescale@y}{\pgfplots@target@limitrescale@z}%
+		%
+		%\pgfplots@BB@update@cumulative@limit@compensations
+	\fi
+\message{adjusted scales for 'scale mode': x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
+	%
+	% ATTENTION: this MODIFIES \pgfplots@target@limitrescale@x and its
+	% variants directly - and it needs the input values.
 	\pgfplots@get@scale@horiz@and@vert
 		{#1}%
 		{#2}%
@@ -625,36 +653,6 @@
 	% Ok, we know the W,H scalings now.
 	%
 	%
-	\def\pgfplots@target@unit@scale@x{0}% the value is irrelevant - will be overwritten.
-	\def\pgfplots@target@unit@scale@y{0}%
-	\def\pgfplots@target@unit@scale@z{0}%
-	%
-	% But remember that we have worked with RELATIVE scales up to now.
-	% We have to convert them now, by interpreting "1 == upper limit"
-	% and "0 == lower limit" for every direction.
-	%
-	% This here CAN cause anisotropic (different) scaling factors.
-	\pgfplots@BB@for@plotbox@get@unit@scales@for@limits
-		{\pgfplots@target@unit@scale@x}
-		{\pgfplots@target@unit@scale@y}
-		{\pgfplots@target@unit@scale@z}%
-	%
-\message{got scales to fit limits into BB: scalex=\pgfplots@target@unit@scale@x, scaley=\pgfplots@target@unit@scale@y, scalez=\pgfplots@target@unit@scale@z, ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
-	%
-	\if3\pgfplots@scale@mode@choice
-		% scale mode=scale uniformly
-		% 
-		% We need to recompensate in case the previous method chose
-		% different unit scaling scalings:
-		\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits
-			{\pgfplots@target@unit@scale@x}
-			{\pgfplots@target@unit@scale@y}
-			{\pgfplots@target@unit@scale@z}
-			{\pgfplots@target@limitrescale@x@}{\pgfplots@target@limitrescale@y@}{\pgfplots@target@limitrescale@z@}%
-		%
-		\pgfplots@BB@update@cumulative@limit@compensations
-	\fi
-\message{adjusted scales for 'scale mode': x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 	%
 	\pgfplots@apply@unit@ratio
 		{\pgfplots@target@unit@scale@x}
@@ -706,11 +704,21 @@
 % #2 the desired height
 % #3 [output] a macro which will contain the horizontal (x) scale
 % #4 [output] a macro which will contain the vertical (y) scale
-% #5 [output] a macro which will contain a x axis limit compensation scale
-% #6 [output] a macro which will contain a y axis limit compensation scale
-% #7 [output] a macro which will contain a z axis limit compensation scale
+% #5 [input/output] a macro which, on input, contains the x axis limit compensation scale
+%    which is required to select a single unit vector scale without
+%    reducing the plots dimension (without actually respecting the
+%    final dimension). On output, the input has been multiplied by
+%    some additional x limit componensation scale (selected by scale
+%    uniformly strategy).
+% #6 [input/output] a macro which will contain a y axis limit
+% compensation scale; it works in the same way as #5
+% #7 [input/output] a macro which will contain a z axis limit
+% compensation scale; it works in the same way as #5
 \def\pgfplots@get@scale@horiz@and@vert#1#2#3#4#5#6#7{%
 	\begingroup
+	\edef\pgfplots@target@limitrescale@x{#5}%
+	\edef\pgfplots@target@limitrescale@y{#6}%
+	\edef\pgfplots@target@limitrescale@z{#7}%
 	\pgfplots@get@dimension@of@BB
 	\pgf@xa=\pgfplotsretval\relax
 	\pgf@xb=\pgfplotsretvalb\relax
@@ -739,9 +747,10 @@
 		\let\scaley=\pgfmathresult
 		% 
 		% no changes to the axis limits - we only rescale units.
-		\def\pgfplots@target@limitrescale@x{1}%
-		\def\pgfplots@target@limitrescale@y{1}%
-		\def\pgfplots@target@limitrescale@z{1}%
+		\def\pgfplots@target@limitrescale@x@{1}%
+		\def\pgfplots@target@limitrescale@y@{1}%
+		\def\pgfplots@target@limitrescale@z@{1}%
+		\pgfplots@BB@update@cumulative@limit@compensations
 	\or
 		% scale mode=scale uniformly
 		% compute ONE common scale for both, X and Y - and satisfy
@@ -806,79 +815,18 @@
 		% Here, we employed the definition of 'h', see above. The
 		% equations are non-linear.
 		%
-		\if0\pgfplots@scaleuniformly@choice
-			% scale uniformly strategy=auto
-			\ifdim\W pt>\H pt %
-				% -> change horizontal limits:
-				\def\pgfplots@scaleuniformly@choice{3}%
-			\else
-				\ifdim\W pt=\H pt %
-					% -> change horizontal limits:
-					\def\pgfplots@scaleuniformly@choice{3}%
-				\else
-					% -> change vertical limits:
-					\def\pgfplots@scaleuniformly@choice{2}%
-				\fi
-			\fi
-		\fi
-		%
-		% ATTENTIN: we assume that the datascaletrafo set params
+		% ATTENTION: we assume that the datascaletrafo set params
 		% method has been called with THE SAME SCALE IN EACH
 		% DIRECTION.
-		%
-		\ifcase\pgfplots@scaleuniformly@choice\relax
-		 	% scale uniformly strategy=auto does not happen here.
-		\or
-			% scale uniformly strategy=none
-			\pgfplots@scaleuniformly@onlyunits
-		\or
-			% scale uniformly strategy=change vertical limits
-			\pgfplots@scaleuniformly@onlyunits
-			% ... and change (only) vertical limits:
-			\ifdim\pgf@zy=0pt
-				\ifdim\pgf@yx=0pt
-					\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{y}\returninto\pgfplots@target@limitrescale@y
-				\else
-					\pgfplots@error@scale@uniformly@failed
-				\fi
-			\else
-				\ifdim\pgf@zx=0pt
-					\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{z}\returninto\pgfplots@target@limitrescale@z
-				\else
-					\pgfplots@error@scale@uniformly@failed
-				\fi
-			\fi
-		\or
-			% scale uniformly strategy=change horizontal limits
-			\ifdim\pgf@zy=0pt
-				\ifdim\pgf@yx=0pt
-					\ifdim\pgf@xy=0pt
-						% special 2d routine with explicit solution
-						\pgfplots@scaleuniformly@change@horizontal@limits@twodim
-							{\scalex}
-							{\pgfplots@target@limitrescale@x}
-							{\pgfplots@target@limitrescale@y}
-							{\pgfplots@target@limitrescale@z}%
-					\else
-						\pgfplots@error@scale@uniformly@failed
-					\fi
-				\else
-					\pgfplots@error@scale@uniformly@failed
-				\fi
-			\else
-				\ifdim\pgf@zx=0pt
-					\pgfplots@scaleuniformly@change@horizontal@limits
-						{\scalex}
-						{\pgfplots@target@limitrescale@x}
-						{\pgfplots@target@limitrescale@y}
-						{\pgfplots@target@limitrescale@z}%
-				\else
-					\pgfplots@error@scale@uniformly@failed
-				\fi
-			\fi
-			\let\scaley=\scalex
+		\if0\pgfplots@scaleuniformly@choice
+			% scale uniformly strategy=auto
+			\pgfplots@get@scale@horiz@and@vert@scaleuniformly@of@optimal@strategy
+		\else
+			\pgfplots@get@scale@horiz@and@vert@scaleuniformly
+			\pgfplots@BB@update@cumulative@limit@compensations
 		\fi
 	\fi
+	%
 	\xdef\pgfplots@glob@TMPa{%
 		\noexpand\def\noexpand#3{\scalex}%
 		\noexpand\def\noexpand#4{\scaley}%
@@ -890,10 +838,223 @@
 	\pgfplots@glob@TMPa
 }%
 
+% This is the implementation for 'scale uniformly strategy=auto'.
+%
+% It works by finding the strategy which involves the minimal scaling
+% overhead.
+%
+% To this end, it computes the result for each 'scale uniformly
+% strategy', and computes a cost function. The one with optimal cost
+% function wins, and its results are returned.
+%
+% The cost function is the overal scaling which is applied to AXIS
+% LIMITS. It works as follows:
+% 1. if a choice requires to REDUCE the axis limits in order to
+% fulfill all constraints, it is neglected (using maximal cost 16000).
+% Reducing axis limits may clip away information.
+% 
+% 2. if a choice requires to ENLARGE some axis limits, its cost is the
+% sum of the individual scaling factors (even if they are are one -
+% who cares).
+%
+% Note that this method *is* relevant and the optimization appears to
+% be necessary. 
+% Examples are
+%   unittest_scalemode_2d_standard_1.tex
+% and perhaps
+%   unittest_scalemode_2d_standard_0.tex 
+% and more involved 3d examples are also available.
+%
+% My first guess was that it is sufficient to decide the optimal
+% strategy in advance by comparing the target width and the target
+% height - but that proved to be insufficient: it leads to correct
+% results, but wastes too much space (i.e. enlarges limits too much).
+%
+% ATTENTION: the cost function INCLUDES RESULTS OF 
+%	\pgfplots@BB@for@plotbox@get@unit@scales@for@limits and its
+%	corrector
+%	\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits.
+%
+% More precisely, it relies on already computes limit compensation
+% factors which do not depend on the target width/target height: both
+% \pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits and
+% this implementation of  'scale uniformly strategy' can be used to compute 
+% the cost of a strategy.
+% 
+\def\pgfplots@get@scale@horiz@and@vert@scaleuniformly@of@optimal@strategy{%
+	\begingroup
+		\pgfplotscoordmath{pgfbasic}{parsenumber}{16000}%
+		\let\pgfplots@cost@for@choice@superhigh=\pgfmathresult%
+		%
+		% private helpers to compute the cost. 
+		\def\pgfplots@scalestrategy@compute@cost{%
+			\begingroup
+			% ATTENTION: this call changes
+			% '\pgfplots@target@limitrescale@x' and its variants.
+			% Restore its value after the iteration:
+			\pgfplots@BB@update@cumulative@limit@compensations
+			\pgfplotscoordmath{pgfbasic}{one}%
+			\let\ONE=\pgfmathresult
+			\pgfplotscoordmath{pgfbasic}{parsenumber}{\pgfplots@target@limitrescale@x}%
+			\let\X=\pgfmathresult
+			\pgfplotscoordmath{pgfbasic}{parsenumber}{\pgfplots@target@limitrescale@y}%
+			\let\Y=\pgfmathresult
+			\ifpgfplots@threedim
+				\pgfplotscoordmath{pgfbasic}{parsenumber}{\pgfplots@target@limitrescale@z}%
+				\let\Z=\pgfmathresult
+			\else
+				\let\Z=\pgfplots@target@limitrescale@z
+			\fi
+			%
+			% If one of the resulting limit compensation scales its
+			% less than 1, we can immediately skip it - we do not want
+			% to risk to clip away image content.
+			\pgfplotscoordmath{pgfbasic}{if less than}{\X}{\ONE}{%
+				\let\pgfplots@cost@for@choice=\pgfplots@cost@for@choice@superhigh
+			}{%
+				\pgfplotscoordmath{pgfbasic}{if less than}{\Y}{\ONE}{%
+					\let\pgfplots@cost@for@choice=\pgfplots@cost@for@choice@superhigh
+				}{%
+					\ifpgfplots@threedim
+						\pgfplotscoordmath{pgfbasic}{if less than}{\Z}{\ONE}{%
+							\let\pgfplots@cost@for@choice=\pgfplots@cost@for@choice@superhigh
+						}{%
+							% ah - 3 limit scales >= 1. Good, assign cost:
+							\pgfplots@scalestrategy@compute@cost@
+						}%
+					\else
+						% ah - all limit scales >=1. Good, assign cost:
+						\pgfplots@scalestrategy@compute@cost@
+					\fi
+				}%
+			}%
+\message{scale uniformly strategy=auto: '\pgfplots@tostring@scaleuniformlystrategy{\pgfplots@scaleuniformly@choice}' has cost \pgfplots@cost@for@choice\space(limit rescaling factors x=\X, y=\Y, z=\Z)^^J}%
+			\xdef\pgfplots@glob@TMPa{%
+				\noexpand\def\noexpand\pgfplots@scaleuniformly@choice{\pgfplots@scaleuniformly@choice}%
+				\noexpand\def\noexpand\scalex{\scalex}%
+				\noexpand\def\noexpand\scaley{\scaley}%
+				\noexpand\def\noexpand\pgfplots@target@limitrescale@x{\pgfplots@target@limitrescale@x}%
+				\noexpand\def\noexpand\pgfplots@target@limitrescale@y{\pgfplots@target@limitrescale@y}%
+				\noexpand\def\noexpand\pgfplots@target@limitrescale@z{\pgfplots@target@limitrescale@z}%
+			}%
+			\pgfmath@smuggleone\pgfplots@cost@for@choice
+			% keep in mind that this scope IS NECESSARY: we have
+			% changed the target quantities
+			% \pgfplots@target@limitrescale@x and its variants!
+			\endgroup
+			\let\pgfplots@scalestrategy@values=\pgfplots@glob@TMPa
+		}%
+		\def\pgfplots@scalestrategy@compute@cost@{%
+			\pgfplotscoordmath{pgfbasic}{op}{add}{{\X}{\Y}}%
+			\ifpgfplots@threedim
+				\pgfplotscoordmath{pgfbasic}{op}{add}{{\pgfmathresult}{\Z}}%
+			\fi
+			\let\pgfplots@cost@for@choice=\pgfmathresult
+		}%
+		%
+		% compute initial cost:
+		\def\pgfplots@scaleuniformly@choice{3}% change horizontal limits
+		\pgfplots@get@scale@horiz@and@vert@scaleuniformly
+		\pgfplots@scalestrategy@compute@cost
+		%
+		% init minimum:
+		\let\pgfplots@cost@for@choice@arg=\pgfplots@scalestrategy@values
+		\let\pgfplots@cost@for@choice@sofar=\pgfplots@cost@for@choice%
+		%
+		% compute cost of next strategy:
+		\def\pgfplots@scaleuniformly@choice{2}% change vertical limits
+		\pgfplots@get@scale@horiz@and@vert@scaleuniformly
+		\pgfplots@scalestrategy@compute@cost
+		%
+		% update minimum:
+		\pgfplotscoordmath{pgfbasic}{if less than}{\pgfplots@cost@for@choice}{\pgfplots@cost@for@choice@sofar}{%
+			\let\pgfplots@cost@for@choice@arg=\pgfplots@scalestrategy@values
+			\let\pgfplots@cost@for@choice@sofar=\pgfplots@cost@for@choice%
+		}{%
+		}%
+		%
+		%
+	\global\let\pgfplots@glob@TMPa=\pgfplots@cost@for@choice@arg
+	\endgroup
+	\pgfplots@glob@TMPa
+\message{scale uniformly strategy=auto: choosing '\pgfplots@tostring@scaleuniformlystrategy{\pgfplots@scaleuniformly@choice}'^^J}%
+}
+
+\def\pgfplots@tostring@scaleuniformlystrategy#1{%
+	\ifcase#1\relax 
+		auto
+	\or
+		none
+	\or
+		change vertical limits
+	\or
+		change horizontal limits
+	\fi
+}
+% Does the work for 'scale mode=scale uniformly' inside of
+% \pgfplots@get@scale@horiz@and@vert.
+%
+% It returns its result into \pgfplots@target@limitrescale@x@ (i.e.
+% with an extra '@')
+\def\pgfplots@get@scale@horiz@and@vert@scaleuniformly{%
+	\ifcase\pgfplots@scaleuniformly@choice\relax
+		% scale uniformly strategy=auto does not happen here.
+	\or
+		% scale uniformly strategy=none
+		\pgfplots@scaleuniformly@onlyunits
+	\or
+		% scale uniformly strategy=change vertical limits
+		\pgfplots@scaleuniformly@onlyunits
+		% ... and change (only) vertical limits:
+		\ifdim\pgf@zy=0pt
+			\ifdim\pgf@yx=0pt
+				\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{y}\returninto\pgfplots@target@limitrescale@y@
+			\else
+				\pgfplots@error@scale@uniformly@failed
+			\fi
+		\else
+			\ifdim\pgf@zx=0pt
+				\pgfplots@prepare@vertical@rescaling@for@scale@uniformly@in@dir{z}\returninto\pgfplots@target@limitrescale@z@
+			\else
+				\pgfplots@error@scale@uniformly@failed
+			\fi
+		\fi
+	\or
+		% scale uniformly strategy=change horizontal limits
+		\ifdim\pgf@zy=0pt
+			\ifdim\pgf@yx=0pt
+				\ifdim\pgf@xy=0pt
+					% special 2d routine with explicit solution
+					\pgfplots@scaleuniformly@change@horizontal@limits@twodim
+						{\scalex}
+						{\pgfplots@target@limitrescale@x@}
+						{\pgfplots@target@limitrescale@y@}
+						{\pgfplots@target@limitrescale@z@}%
+				\else
+					\pgfplots@error@scale@uniformly@failed
+				\fi
+			\else
+				\pgfplots@error@scale@uniformly@failed
+			\fi
+		\else
+			\ifdim\pgf@zx=0pt
+				\pgfplots@scaleuniformly@change@horizontal@limits
+					{\scalex}
+					{\pgfplots@target@limitrescale@x@}
+					{\pgfplots@target@limitrescale@y@}
+					{\pgfplots@target@limitrescale@z@}%
+			\else
+				\pgfplots@error@scale@uniformly@failed
+			\fi
+		\fi
+		\let\scaley=\scalex
+	\fi
+}
+
 \def\pgfplots@scaleuniformly@onlyunits{%
-	\def\pgfplots@target@limitrescale@x{1}%
-	\def\pgfplots@target@limitrescale@y{1}%
-	\def\pgfplots@target@limitrescale@z{1}%
+	\def\pgfplots@target@limitrescale@x@{1}%
+	\def\pgfplots@target@limitrescale@y@{1}%
+	\def\pgfplots@target@limitrescale@z@{1}%
 	\pgfmathdivide@{\W}{\w}%
 	\let\scalex=\pgfmathresult
 	\let\scaley=\scalex % we *need* the same unit scale.
