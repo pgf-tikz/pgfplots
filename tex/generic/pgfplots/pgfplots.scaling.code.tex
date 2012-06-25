@@ -73,14 +73,6 @@
 		\pgfplotsmathvectorfromstring{0,0,1}{default}%
 		\let\pgfplots@view@dir@threedim=\pgfplotsretval
 		%
-		\pgfpointdiff
-			{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
-			{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
-		% only used temporarily in this macro to compute the correct
-		% length for unit vectors:
-		\edef\pgfplots@initsizes@axisdiag@x{\the\pgf@x}%
-		\edef\pgfplots@initsizes@axisdiag@y{\the\pgf@y}%
-		%
 		\ifx\pgfplots@x\pgfutil@empty
 			\ifx\pgfplots@width\pgfutil@empty
 				\pgfplots@error{INTERNAL LOGIC ERROR! WIDTH NOT SET}%
@@ -447,11 +439,41 @@
 % width and height of the axis (as they have been provided by the
 % user).
 %
+% @see \pgfplots@scale@axisbox@to@widthheight
 % @see\pgfplots@scaleaxes@to@BB
 \def\pgfplots@scale@plotbox@to@widthheight{%
 	\pgfplots@initsizes@get@width@withoutlabels
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplots@initsizes@get@height@withoutlabels
+	%
+	\ifx\pgfplots@x\pgfutil@empty
+		\def\pgfplots@plotbox@xmin{0}%
+		\def\pgfplots@plotbox@xmax{1}%
+		\def\b@pgfplots@plotbox@xisunit{1}%
+	\else
+		\let\pgfplots@plotbox@xmin\pgfplots@xmin%
+		\let\pgfplots@plotbox@xmax\pgfplots@xmax%
+		\def\b@pgfplots@plotbox@xisunit{0}%
+	\fi
+	\ifx\pgfplots@y\pgfutil@empty
+		\def\pgfplots@plotbox@ymin{0}%
+		\def\pgfplots@plotbox@ymax{1}%
+		\def\b@pgfplots@plotbox@yisunit{1}%
+	\else
+		\let\pgfplots@plotbox@ymin\pgfplots@ymin%
+		\let\pgfplots@plotbox@ymax\pgfplots@ymax%
+		\def\b@pgfplots@plotbox@yisunit{0}%
+	\fi
+	\ifx\pgfplots@z\pgfutil@empty
+		\def\pgfplots@plotbox@zmin{0}%
+		\def\pgfplots@plotbox@zmax{1}%
+		\def\b@pgfplots@plotbox@zisunit{1}%
+	\else
+		\let\pgfplots@plotbox@zmin\pgfplots@zmin%
+		\let\pgfplots@plotbox@zmax\pgfplots@zmax%
+		\def\b@pgfplots@plotbox@zisunit{0}%
+	\fi
+	%
 	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfmathresult}}%
 	\expandafter\pgfplots@scaleaxes@to@BB\pgfplots@loc@TMPa
 }
@@ -517,29 +539,6 @@
 	\fi
 }%
 
-\def\pgfplots@BB@for@plotbox{%
-	% We just need the
-	% relative sizes, i.e.
-	%  "0" == lower axis limit
-	%  "1" == upper axis limit
-	%
-	\ifpgfplots@threedim
-		\pgfpathmoveto{\pgfqpointxyz000}%
-		\pgfpathmoveto{\pgfqpointxyz001}%
-		\pgfpathmoveto{\pgfqpointxyz010}%
-		\pgfpathmoveto{\pgfqpointxyz011}%
-		\pgfpathmoveto{\pgfqpointxyz100}%
-		\pgfpathmoveto{\pgfqpointxyz101}%
-		\pgfpathmoveto{\pgfqpointxyz110}%
-		\pgfpathmoveto{\pgfqpointxyz111}%
-	\else
-		\pgfpathmoveto{\pgfqpointxy00}%
-		\pgfpathmoveto{\pgfqpointxy01}%
-		\pgfpathmoveto{\pgfqpointxy10}%
-		\pgfpathmoveto{\pgfqpointxy11}%
-	\fi
-}%
-
 % \pgfplots@BB@for@plotbox@get@unit@scales@for@limits{#1}{#2}{#3}:
 % a helper tool which computes individual unit vector scales in order
 % to respect the limits.
@@ -555,30 +554,59 @@
 % #3 [output] a macro name which will contain the scale for z
 % 
 \def\pgfplots@BB@for@plotbox@get@unit@scales@for@limits#1#2#3{%
-	% Consequently, we have to multiply  with 1/(max-min):
-	\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
-	% compute 1/(xmax - xmin) in float for more recent versions (see /pgfplots/compat/scaling).
-	% I observed that it is much more accurate 
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
-	\let#1=\pgfmathresult
-	%
-	\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
-	\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
-	\let#2=\pgfmathresult
-	%
-	\ifpgfplots@threedim
-		\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
+	\if1\b@pgfplots@plotbox@xisunit
+		% Consequently, we have to multiply  with 1/(max-min):
+		% compute 1/(xmax - xmin) in float for more recent versions (see /pgfplots/compat/scaling).
+		% I observed that it is much more accurate 
+		\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
 		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
 		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
 		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
 	\else
 		\def\pgfmathresult{1}%
 	\fi
+	\let#1=\pgfmathresult
+	%
+	\if1\b@pgfplots@plotbox@yisunit
+		\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+	\else
+		\def\pgfmathresult{1}%
+	\fi
+	\let#2=\pgfmathresult
+	%
+	\ifpgfplots@threedim
+		\if1\b@pgfplots@plotbox@zisunit
+			\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+		\else
+			\def\pgfmathresult{1}%
+		\fi
+	\else
+		\def\pgfmathresult{1}%
+	\fi
 	\let#3=\pgfmathresult
+}%
+\def\pgfplots@BB@for@plotbox{%
+	\ifpgfplots@threedim
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmin\pgfplots@plotbox@ymin\pgfplots@plotbox@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmin\pgfplots@plotbox@ymin\pgfplots@plotbox@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmin\pgfplots@plotbox@ymax\pgfplots@plotbox@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmin\pgfplots@plotbox@ymax\pgfplots@plotbox@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmax\pgfplots@plotbox@ymin\pgfplots@plotbox@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmax\pgfplots@plotbox@ymin\pgfplots@plotbox@zmax}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmax\pgfplots@plotbox@ymax\pgfplots@plotbox@zmin}%
+		\pgfpathmoveto{\pgfqpointxyz\pgfplots@plotbox@xmax\pgfplots@plotbox@ymax\pgfplots@plotbox@zmax}%
+	\else
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@plotbox@xmin\pgfplots@plotbox@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@plotbox@xmin\pgfplots@plotbox@ymax}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@plotbox@xmax\pgfplots@plotbox@ymin}%
+		\pgfpathmoveto{\pgfqpointxy\pgfplots@plotbox@xmax\pgfplots@plotbox@ymax}%
+	\fi
 }%
 
 
@@ -1331,8 +1359,10 @@
 % #1 : a dimen register
 % #2 : x, y, or z
 \def\pgfplots@BB@for@plotbox@getunitheight#1#2{%
-	#1=\csname pgf@#2y\endcsname
+	#1=\csname pgfplots@plotbox@#2max\endcsname\csname pgf@#2y\endcsname
+	\advance#1 by -\csname pgfplots@plotbox@#2min\endcsname\csname pgf@#2y\endcsname
 }%
+
 
 % Modifies the AXIS LIMITS to ensure that a suitable width/height is
 % achieved.
