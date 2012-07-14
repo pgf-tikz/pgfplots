@@ -691,6 +691,8 @@
 	%
 \message{adjusted scales for 'unit vector ratio': x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 	%
+	\pgfplots@scaling@adjust@datascaling%
+\message{adjusted scales for data scale trafo: x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z;^^J  data scale trafo exponents x=\pgfplots@target@datascaletrafo@x@exponent@old -> \pgfplots@target@datascaletrafo@x@exponent, y=\pgfplots@target@datascaletrafo@y@exponent@old -> \pgfplots@target@datascaletrafo@y@exponent, z=\pgfplots@target@datascaletrafo@z@exponent@old -> \pgfplots@target@datascaletrafo@z@exponent^^J}%
 	%
 	% and finally, resize limits appropriately and add all cumulative limit compensations:
 	\xdef\pgfplots@glob@TMPa{%
@@ -717,12 +719,132 @@
 			\pgf@zy=\pgfplots@target@unit@scale@z\pgf@zy
 		\fi
 		%
+		\noexpand\pgfplots@apply@datascaletrafo@change@{x}{\pgfplots@target@datascaletrafo@x@exponent}%
+		\noexpand\pgfplots@apply@datascaletrafo@change@{y}{\pgfplots@target@datascaletrafo@y@exponent}%
+		\noexpand\pgfplots@apply@datascaletrafo@change@{z}{\pgfplots@target@datascaletrafo@z@exponent}%
+		%
 		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{x}{\pgfplots@target@limitrescale@x}%
 		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{y}{\pgfplots@target@limitrescale@y}%
 		\noexpand\pgfplots@apply@unit@vector@rescale@keep@size{z}{\pgfplots@target@limitrescale@z}%
+		%
 	}%
 	\endgroup
 	\pgfplots@glob@TMPa
+}%
+
+% #1: either x,y, or z
+% #2: the new exponent
+\def\pgfplots@apply@datascaletrafo@change@#1#2{%
+	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+		\pgfplotscoordmath{#1}{datascaletrafo get params}%
+		\edef\pgfplots@loc@TMPa{\expandafter\pgfutil@firstoftwo\pgfmathresult}%
+		\edef\pgfplots@loc@TMPb{#2}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			% ok; the data scale trafo did not change at all - we
+			% still have the same exponent.
+		\else
+			% Ah - we have a new data scale trafo!
+			\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1min\endcsname}%
+			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfplotscoordmath{#1}{datascaletrafo inverse}{\csname pgfplots@#1max\endcsname}%
+			\let\pgfplots@loc@TMPb=\pgfmathresult
+			%
+			% first: determine the optimal shift (which is the
+			% transformed lower limit):
+			\pgfplotscoordmath{#1}{datascaletrafo set params}{#2}{0}%
+			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@loc@TMPa}%
+			%
+			% ok, finalize the data trafo:
+			\pgfplotscoordmath{#1}{datascaletrafo set params}{#2}{\pgfmathresult}%
+			%
+			% ... and recompute axis limits:
+			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@loc@TMPa}%
+			\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+			\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@loc@TMPb}%
+			\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
+		\fi
+	}{}%
+}%
+
+% Inspects the limit enlargement factors and reinitializes the data
+% scale transformations.
+%
+% The purpose of this method is to avoid "dimension too large" if the
+% factors exceed certain limits.
+%
+% INPUT:
+%  \pgfplots@target@limitrescale@x and its variants for y and z
+%  \pgfplots@target@unit@scale@x and its variants for y and z
+%
+% OUTPUT:
+%  \pgfplots@target@datascaletrafo@x@exponent and its variants for y and z
+%     -> contains NEW datascaletrafo exponents 
+%  \pgfplots@target@datascaletrafo@x@exponent@old and its variants for y and z
+%     -> contains OLD datascaletrafo exponents
+%  \pgfplots@target@unit@scale@x and its variants for y and z
+%     -> contains (modified) unit vector scales
+\def\pgfplots@scaling@adjust@datascaling{%
+	\pgfplots@scaling@adjust@datascaling@for x%
+	\pgfplots@scaling@adjust@datascaling@for y%
+	\pgfplots@scaling@adjust@datascaling@for z%
+}
+\def\pgfplots@scaling@adjust@datascaling@for#1{%
+	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
+		\pgfplotscoordmath{#1}{datascaletrafo get params}%
+		\def\pgfplots@loc@TMPa##1##2{%
+			\expandafter\def\csname pgfplots@target@datascaletrafo@#1@exponent\endcsname{##1}%
+			\expandafter\def\csname pgfplots@target@datascaletrafo@#1@exponent@old\endcsname{##1}%
+		}%
+		\expandafter\pgfplots@loc@TMPa\pgfmathresult
+		\pgf@xa=\csname pgfplots@target@limitrescale@#1\endcsname pt
+		\ifdim\pgf@xa>5pt %
+			% We want to enlarge axis limits considerably! 
+			%
+			\pgfplots@scaling@adjust@datascaling@for@get@compensation{\pgf@xa}%
+			%
+			% Ok, make sure that we do not get "dimension too large"
+			% by adjusting the data scale trafo.
+			%
+			% Note that the data scale trafo has (only) been applied
+			% to axis limits, so we have to reapply it before these
+			% changes can take effect:
+			\pgf@xa=\csname pgfplots@target@unit@scale@#1\endcsname pt
+			\multiply\pgf@xa by\pgfplotsretval\relax %
+			\expandafter\edef\csname pgfplots@target@unit@scale@#1\endcsname{\pgf@sys@tonumber\pgf@xa}%
+			%
+			\c@pgf@countd=\csname pgfplots@target@datascaletrafo@#1@exponent\endcsname\relax
+			\advance\c@pgf@countd by-\pgfplotsretvalb\relax %
+			\expandafter\edef\csname pgfplots@target@datascaletrafo@#1@exponent\endcsname{\the\c@pgf@countd}%
+		\fi
+	}{%
+		\expandafter\def\csname pgfplots@target@datascaletrafo@#1@exponent\endcsname{0}%
+		\expandafter\def\csname pgfplots@target@datascaletrafo@#1@exponent@old\endcsname{0}%
+	}%
+}
+
+% Returns 
+%  \pgfplotsretval -> the absolute scaling 
+%  \pgfplotsretvalb -> the log10 of the scaling
+\def\pgfplots@scaling@adjust@datascaling@for@get@compensation#1{
+	\ifdim#1<100pt %
+		\def\pgfplotsretval{10}%
+		\def\pgfplotsretvalb{1}%
+	\else
+		\ifdim#1<1000pt %
+			\def\pgfplotsretval{100}%
+			\def\pgfplotsretvalb{2}%
+		\else
+			\ifdim#1<10000pt %
+				\def\pgfplotsretval{1000}%
+				\def\pgfplotsretvalb{3}%
+			\else
+				% too much for this approach anyway... and probably no
+				% use-case at all.
+				\def\pgfplotsretval{1000}%
+				\def\pgfplotsretvalb{3}%
+			\fi
+		\fi
+	\fi
 }%
 
 % Computes the initial scale from a plot box of unit size to the
