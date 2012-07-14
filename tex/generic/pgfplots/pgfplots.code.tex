@@ -4645,355 +4645,24 @@
 }
 
 
-% helper for \pgfplots@check@and@apply@datatrafo@for.
-\def\pgfplots@compute@number@order@for@trafo@isdimen#1\tocount#2{%
-	\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber{#1}}%
-	\pgfmathfloatparsenumber{\pgfplots@loc@TMPa}%
-	\expandafter\pgfmathfloat@decompose@E\pgfmathresult\relax#2
-	\advance#2 by1\relax
-}
-
-% helper for \pgfplots@check@and@apply@datatrafo@for.
-% 
-\def\pgfplots@compute@number@order@for@trafo@isfloat#1\tocount#2{%
-	\pgfmathfloatparsenumber{#1}%
-	\expandafter\pgfmathfloat@decompose@E\pgfmathresult\relax#2\relax
-	\advance#2 by1\relax
-}
-
-% Initialises the data scale transformation such that it is optimal
-% for direction #1 (using its axis limits and the target scaling size).
-%
-% Note that it will not be applied in any way; and it may still be
-% modified.
-%
-% PRECONDITION:
-%   - all axis limits are available in float representation
-%   - \pgfplots@set@default@size@options has been called before
-% POSTCONDITION:
-%   - the scaling transformation is set up,
-\def\pgfplots@set@optimal@datatrafo@for@#1{%
-	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-		% initialise data scale transformation 
-		%   T(x) = 10^{q-m} * x
-		%
-		\ifpgfplots@disabledatascaling
-			% this here is a waste of time, because the NO-OP trafo
-			% will be applied to all coordinates. One could really
-			% safe a lot of CPU time when disabledatascaling is enabled...
-			% but it requires so much extra cases; I really don't want
-			% that!
-			\gdef\pgfplots@glob@TMPa{0}%
-			\gdef\pgfplots@glob@TMPb{0}%
-		\else
-			\begingroup
-				\let\data@max@order=\c@pgf@counta
-				\let\data@cur@order=\c@pgf@countb
-				\let\data@dimen=\pgf@xa
-				\let\data@tmp=\pgf@xb
-				\let\data@dimen@order=\c@pgf@countc
-				\let\data@EXPONENT=\c@pgf@countd
-				\expandafter\let\expandafter\pgfplots@display@min@float\csname pgfplots@#1min\endcsname
-				\expandafter\let\expandafter\pgfplots@display@max@float\csname pgfplots@#1max\endcsname
-				\expandafter\let\expandafter\pgfplots@data@min@float\csname pgfplots@data@#1min\endcsname
-				\expandafter\let\expandafter\pgfplots@data@max@float\csname pgfplots@data@#1max\endcsname
-				\ifpgfplots@autocompute@all@limits
-				\else
-					\pgfplotscoordmath{#1}{max}{\pgfplots@display@max@float}{\pgfplots@data@max@float}%
-					\let\pgfplots@data@max@float=\pgfmathresult
-					\pgfplotscoordmath{#1}{min}{\pgfplots@display@min@float}{\pgfplots@data@min@float}%
-					\let\pgfplots@data@min@float=\pgfmathresult
-				\fi
-				%
-%\message{minmax = [\pgfplots@data@min@float,\pgfplots@data@max@float]}%
-				% Step 1: compute 'm', the data order
-				\pgfplots@compute@number@order@for@trafo@isfloat
-					\pgfplots@data@min@float
-					\tocount\data@cur@order
-				%
-				\data@max@order=\data@cur@order
-				%
-				\pgfplots@compute@number@order@for@trafo@isfloat
-					\pgfplots@data@max@float
-					\tocount\data@cur@order
-				%
-				\ifnum\data@cur@order>\data@max@order
-					\data@max@order=\data@cur@order
-				\fi
-				%
-				% Step 2: compute 'q', the #1-size of the axis.
-				%\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
-					% We have 'width' or 'height' (I always have them).
-					%
-					% Use the order of these parameters.
-					\def\pgfplots@loc@TMPa{#1}%
-					\def\pgfplots@loc@TMPb{x}%
-					\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-						\data@dimen=\pgfplots@width\relax
-					\else
-						\if1\pgfplots@compat@scaling@zunitfix@enable
-							\data@dimen=\pgfplots@height\relax
-						\else
-							% this code here belongs to versions up to
-							% 1.3.1.
-							% It is now deprecated and produces small
-							% pixel differences.
-							\def\pgfplots@loc@TMPb{y}%
-							\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-								\data@dimen=\pgfplots@height\relax
-							\else
-								\data@dimen=42pt % this is actually different from 1.3.1: there, it was UNDEFINED.
-							\fi
-						\fi
-					\fi
-					\pgfplots@compute@number@order@for@trafo@isdimen
-						\data@dimen
-						\tocount\data@dimen@order
-					% This here is to avoid inaccuracies in the final
-					% axis rectangle size, see \pgfplots@initsizes:
-					%\advance\data@dimen@order by-1
-				%\else
-					% FIXME:
-					% we have either the 'x=1cm' or 'y=1cm' option!
-					% How should I initialise the trafo!?
-				%	\data@dimen@order=3
-				%\fi
-				%
-%\message{Direction #1: data max order=\the\data@max@order;  data dimen order=\the\data@dimen@order. }%
-				\data@EXPONENT=\data@dimen@order
-				\advance\data@EXPONENT by-\data@max@order
-				% Now, I introduce a loop which shall avoid cancellation of
-				% significant digits.
-				%
-				% Harmless Example: 
-				%  if we have data shift = -3 and 
-				%  max = 2e6, min = 1e6, then max-min = 1e6; T(max)-T(min) = 1e3 which is ok.
-				%  In this case, the loop won't change anything.
-				%
-				% Critical Example:
-				%  if we have data shift = -3 and
-				%  max = 1980, min = 1930 then 
-				%    T(max) = 1.98 and T(min) = 1.93
-				%  and thus T(max)-T(min) = 0.05 . 
-				%  Considering that this is the axis range
-				%  in which tick labels and plot points need to be computed, we
-				%  only have two or three digits left! That happens because the
-				%  prefix '19' is common and is cancelled in the subtraction.
-				%  Idea: while T(max)-T(min) < O(10^2) -> increase shift by +1
-				%  (and make sure that T(max) < MAX_VALID_TEX_NUMBER).
-				%
-				\def\pgfplotscoordmathnotifydatascalesetfor##1{}% disable temporarily. We are just testing it.
-				\pgfplots@loop@CONTINUEtrue
-				\pgfutil@loop
-				\pgfplotscoordmath{#1}{datascaletrafo set params}{\the\data@EXPONENT}{0}%
-				\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@min@float}%
-				\let\pgfplots@min@fixed=\pgfmathresult
-				\ifpgfplots@loop@CONTINUE
-					\pgfplotscoordmath{#1}{datascaletrafo}{\pgfplots@data@max@float}%
-					\let\pgfplots@max@fixed=\pgfmathresult
-					\data@tmp=\pgfplots@max@fixed pt
-%\message{Current trafo EXPONENT for #1 direction: \the\data@EXPONENT; original #1 data limits: [\pgfplots@data@min@float:\pgfplots@data@max@float]; current transformed #1 limits: [\pgfplots@min@fixed:\pgfplots@max@fixed]; cancellation check max-min running...}%
-					\ifdim\data@tmp<0pt
-						% I need absolute values here:
-						\multiply\data@tmp by-1\relax
-					\fi
-					\pgfmathsubtract@{\pgfplots@max@fixed}{\pgfplots@min@fixed}%
-					\data@dimen=\pgfmathresult pt
-					\pgfplots@loop@CONTINUEfalse
-					\ifdim\data@tmp<1500pt % a multiplication with '10' results in max = 15000 which is the upper limit.
-						\ifdim\data@dimen<100pt % I guess if max-min = O(100), we have quite good accuracy
-							\ifdim\data@dimen<0.0001pt
-							\else
-								\advance\data@EXPONENT by1
-								\pgfplots@loop@CONTINUEtrue
-							\fi
-						\fi
-					\fi
-					%--------------------------------------------------
-					% \ifdim\data@dimen>1200pt% FIXME : is this here ok!? CHECK IT!
-					% 	\ifdim\data@dimen>7999pt
-					% 		\advance\data@EXPONENT by-2
-					% 	\else
-					% 		\advance\data@EXPONENT by-1
-					% 	\fi
-					% 	\pgfplots@loop@CONTINUEfalse
-					% \fi
-					%-------------------------------------------------- 
-				\pgfutil@repeat
-				\xdef\pgfplots@glob@TMPa{\the\data@EXPONENT}%
-				\xdef\pgfplots@glob@TMPb{\pgfplots@min@fixed}%
-			\endgroup
-		\fi
-		% COMPLETE INITIALISATION:
-\message{Initialising the data scale transformation in direction #1 to 10^\pgfplots@glob@TMPa*#1 - \pgfplots@glob@TMPb...^^J}%
-		\pgfplotscoordmath{#1}{datascaletrafo set params}{\pgfplots@glob@TMPa}{\pgfplots@glob@TMPb}%
-	}{%
-		% case apply trafo == false:
-		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
-	}%
-}
-
-\def\pgfplots@set@optimal@datatrafos@allaxes{%
-	\pgfplots@letcsname pgfplots@xmin@unscaled@as@float={pgfplots@xmin}%
-	\pgfplots@letcsname pgfplots@xmax@unscaled@as@float={pgfplots@xmax}%
-	%
-	\pgfplots@letcsname pgfplots@ymin@unscaled@as@float={pgfplots@ymin}%
-	\pgfplots@letcsname pgfplots@ymax@unscaled@as@float={pgfplots@ymax}%
-	%
-	\pgfplots@letcsname pgfplots@zmin@unscaled@as@float={pgfplots@zmin}%
-	\pgfplots@letcsname pgfplots@zmax@unscaled@as@float={pgfplots@zmax}%
-	%
-	\pgfplots@ifneeds@one@uniform@datascale{%
-		% Ah - we have to ensure that there is ONE common scale for
-		% each unit (x, y, and z have the same).
-		%
-		% In this case, we need to choose one of the transformations
-		% and apply it to all axes -- such that each axis gets the
-		% same scale.
-		%
-		% this mode is used for axis equal and its variants.
-		%
-		% The strategy to fix the transformation is as follows:
-		% 1. we assume that axis limits will be enlarged in order to
-		% satisfy 'scale uniformly'. 
-		% 2. we assume that the LARGEST axis limit dominates the
-		% others.
-		% 3. if one of the axes does not have datascaling (i.e. is
-		% log scale), we disable all other datascalings.
-		%
-		% Consequently, we search for the axis with the largest limit
-		% - and copy its data scaling to all other axes. If one of the
-		% axes is log, that one overrules it and all data scaling
-		% effects are disabled..
-		\begingroup
-		\let\pgfplots@data@scale@trafo@EXPONENT@common=\pgfutil@empty
-		\def\pgfplots@data@scale@trafo@EXPONENT@common@arg{-}% this should not match anything in this context.
-		\pgfplots@if{pgfplots@apply@datatrafo@x}{%
-		}{%
-			\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
-		}%
-		\pgfplots@if{pgfplots@apply@datatrafo@y}{%
-		}{%
-			\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
-		}%
-		\ifpgfplots@threedim
-			\pgfplots@if{pgfplots@apply@datatrafo@z}{%
-			}{%
-				\def\pgfplots@data@scale@trafo@EXPONENT@common{{0}{0}}% disable scaling!
-			}%
-		\fi
-		\ifx\pgfplots@data@scale@trafo@EXPONENT@common\pgfutil@empty
-			% ah - we still need to compute one. ok, search for the
-			% largest limit.
-			%
-			\pgfplots@get@axis@with@largest@limits
-			\let\pgfplots@data@scale@trafo@EXPONENT@common@arg=\pgfplotsretval
-			%
-			% ok, compute data scaling transformation for the target axis:
-			\expandafter\pgfplots@set@optimal@datatrafo@for@\pgfplots@data@scale@trafo@EXPONENT@common@arg%
-			%
-			\pgfplotscoordmath{\pgfplots@data@scale@trafo@EXPONENT@common@arg}{datascaletrafo get params}%
-			\let\pgfplots@data@scale@trafo@EXPONENT@common=\pgfmathresult%
-		\else
-			% hm. early-out - we already have the scaling trafo.
-			% return it.
-		\fi
-		\global\let\pgfplots@glob@TMPa=\pgfplots@data@scale@trafo@EXPONENT@common
-		\global\let\pgfplots@glob@TMPb=\pgfplots@data@scale@trafo@EXPONENT@common@arg
-		\endgroup
-		%
-		\xdef\pgfplots@glob@TMPc{\expandafter\pgfutil@firstoftwo\pgfplots@glob@TMPa}%
-%\message{using datascaletrafo of axis '\pgfplots@glob@TMPb' for each axis.^^J}%
-		%
-		\def\pgfplots@loc@TMPd##1{%
-			\if ##1\pgfplots@glob@TMPb
-				% we need to set the scaling trafo for the target direction
-				% (was lost after \endgroup)
-				\def\pgfplots@loc@TMPa{\pgfplotscoordmath{##1}{datascaletrafo set params}}%
-				\expandafter\pgfplots@loc@TMPa\pgfplots@glob@TMPa%
-			\else
-%\message{Initialising the data scale transformation in direction ##1 to 10^\pgfplots@glob@TMPc*##1 - 0...^^J}%
-				\pgfplotscoordmath{##1}{datascaletrafo set params}{\pgfplots@glob@TMPc}{0}%
-			\fi
-		}%
-		\pgfplots@loc@TMPd x%
-		\pgfplots@loc@TMPd y%
-		\ifpgfplots@threedim
-			\pgfplots@loc@TMPd z%
-		\fi
-	}{%
-		% optimize individually:
-		\pgfplots@set@optimal@datatrafo@for@ x%
-		\pgfplots@set@optimal@datatrafo@for@ y%
-		\ifpgfplots@threedim
-			\pgfplots@set@optimal@datatrafo@for@ z%
-		\fi
-	}%
-	%
-}%
-
-% Defines \pgfplotsretval to be one of x, y, or z, such that the
-% return value indicates the axis with largest untransformed axis
-% limits.
-\def\pgfplots@get@axis@with@largest@limits{%
-	\begingroup
-	\let\pgfplotsretval@extreme=\pgfutil@empty
-	\let\pgfplotsretval@extreme@arg=\pgfutil@empty
-	\def\pgfplots@@##1{%
-		% compute axis range for axis ##1 ...
-		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1min\endcsname}%
-		\let\pgfplots@loc@TMPa=\pgfmathresult
-		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1max\endcsname}%
-		\pgfplotscoordmath{default}{op}{subtract}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
-		% ... ok, it is in \pgfmathresult.
-		\let\candidate=\pgfmathresult
-		\ifx\pgfplotsretval@extreme@arg\pgfutil@empty
-			% ah: no extreme value so far. use ours.
-			\def\pgfplotsretval@extreme@arg{##1}%
-			\let\pgfplotsretval@extreme=\candidate
-		\else
-			\pgfplotscoordmath{default}{if less than}{\pgfplotsretval@extreme}{\candidate}{%
-				% update extreme value:
-				\def\pgfplotsretval@extreme@arg{##1}%
-				\let\pgfplotsretval@extreme=\candidate
-			}{%
-			}%
-		\fi
-	}%
-	\pgfplots@@ x%
-	\pgfplots@@ y%
-	\ifpgfplots@threedim
-		\pgfplots@@ z%
-	\fi
-	\let\pgfplotsretval=\pgfplotsretval@extreme@arg
-	\pgfmath@smuggleone\pgfplotsretval
-	\endgroup
-}%
-
 % Initialises the data scale transformation and applies it to any
 % user specified options.
 %
 % PRECONDITION:
-%   - all axis limits are available in float representation
+%   - all axis limits are already transformed
 %   - \pgfplots@set@default@size@options has been called before
 %   - the scaling transformation for direction x is set up
 %   (\pgfplots@set@optimal@datatrafo@for@),
 % POSTCONDITION:
-%   - all axis limits are transformed,
 %   - any user input (like ticks and tick labels)
 %     EXCEPT unit vectors will reflect the changes.
 %
 % Unit vectors will be scaled later.
+% @see \pgfplots@apply@datatrafo@to@axis@limits
 \def\pgfplots@check@and@apply@datatrafo@for#1{%
 	\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
-		% Transform axis limits:
-%\message{#1- display limits BEFORE data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]^^J}%
-		\pgfplotscoordmath{#1}{datascaletrafo}{\csname pgfplots@#1min\endcsname}%
-		\expandafter\global\expandafter\let\csname pgfplots@#1min\endcsname=\pgfmathresult
+		% Transform axis limits: ALREADY DONE.
 		%
-		\pgfplotscoordmath{#1}{datascaletrafo}{\csname pgfplots@#1max\endcsname}%
-		\expandafter\global\expandafter\let\csname pgfplots@#1max\endcsname=\pgfmathresult
-%\message{#1- display limits after data transformation: [\csname pgfplots@#1min\endcsname:\csname pgfplots@#1max\endcsname]^^J}%
 		% Transform tick limits (if they are set):
 %\message{#1- display tick limits BEFORE data transformation: [\csname pgfplots@#1tickmin\endcsname:\csname pgfplots@#1tickmax\endcsname]}%
 		\expandafter\ifx\csname pgfplots@#1tickmin\endcsname\pgfutil@empty
@@ -5057,8 +4726,7 @@
 			\pgfkeyslet{/pgfplots/minor #1tick}\pgfplots@loc@TMPc
 		\fi
 		%
-		% Transform any explicit axis unit scalings:
-		% WILL BE DONE LATER!
+		% Transform any explicit axis unit scalings: ALREADY DONE
 	}{%
 		% case apply trafo == false:
 		\def\pgfplots@loc@TMPb{data}%
@@ -5077,8 +4745,6 @@
 				\pgfkeyslet{/pgfplots/minor #1tick}\pgfplotsretval
 			\fi
 		\fi
-		\expandafter\let\csname pgfplots@#1min@unscaled@as@float\endcsname=\pgfutil@empty
-		\expandafter\let\csname pgfplots@#1max@unscaled@as@float\endcsname=\pgfutil@empty
 	}%
 }
 
@@ -5214,15 +4880,16 @@
 	%
 	\pgfplots@set@optimal@datatrafos@allaxes
 	%
-	\pgfplots@check@and@apply@datatrafo@for x%
-	\pgfplots@check@and@apply@datatrafo@for y%
+	% Now, the data scaling has been set up.
+	% However, it may need to be changed if axis equal and/or unit
+	% vector ratio changes the axis limits considerably. If so, it
+	% will be done in \pgfplots@initsizes
+	\pgfplots@apply@datatrafo@to@axis@limits x%
+	\pgfplots@apply@datatrafo@to@axis@limits y%
 	\ifpgfplots@threedim
-		\pgfplots@check@and@apply@datatrafo@for z%
+		\pgfplots@apply@datatrafo@to@axis@limits z%
 	\fi
-	% clear structure:
-	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
-	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
-	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
+	%
 	\pgfplots@datascaletrafo@initialisedtrue
 %\message{transformed: x = [\pgfplots@xmin:\pgfplots@xmax]  y = [\pgfplots@ymin:\pgfplots@ymax].}%
 	%
@@ -5240,6 +4907,16 @@
 	\fi
 	%
 	\pgfplots@initsizes
+	%
+	\pgfplots@check@and@apply@datatrafo@for x%
+	\pgfplots@check@and@apply@datatrafo@for y%
+	\ifpgfplots@threedim
+		\pgfplots@check@and@apply@datatrafo@for z%
+	\fi
+	% clear structure:
+	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
 	%
 	\pgfplots@limits@ready
 	\pgfplotspoint@initialisation
