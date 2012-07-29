@@ -162,14 +162,16 @@
 }%
 
 % #1: axis
-% #2: [input/output] the macro containing the current scale
-\def\pgfplots@axis@apply@post@scale#1#2{%
+\def\pgfplots@axis@apply@post@scale#1{%
 	%
 	\pgfkeysgetvalue{/pgfplots/#1 post scale}\pgfmathresult
 	\ifx\pgfmathresult\pgfutil@empty
 	\else
-		\pgfmathparse{#2*\pgfmathresult}%
-		\let#2=\pgfmathresult
+		\pgfmathparse{\csname pgfplots@target@unit@scale@#1x\endcsname*\pgfmathresult}%
+		\expandafter\let\csname pgfplots@target@unit@scale@#1x\endcsname=\pgfmathresult
+		%
+		\pgfmathparse{\csname pgfplots@target@unit@scale@#1y\endcsname*\pgfmathresult}%
+		\expandafter\let\csname pgfplots@target@unit@scale@#1y\endcsname=\pgfmathresult
 	\fi
 }
 
@@ -228,9 +230,6 @@
 % - #3 : a macro which will be set to '1' if and only if 
 %      the viewport is the standard XY axis (i.e. azimuth=0, elevation=90).
 % - [xyz] vectors,
-%   \pgfplots@[xyz]@veclength,
-%   \pgfplots@[xyz]@inverseveclength
-%   are set properly
 %   \pgfplots@view@dir@threedim will contain the three components
 %   of 'n' (without the suffix 'pt', but in units of 'pt') (see
 %   \pgfplotsmathvectorfromstring).
@@ -375,8 +374,7 @@
 % POSTCONDITION
 % 	- the unit vectors have been re-scaled such that the final plot
 % 	has the desired dimensions.
-% 	- the @veclength and @inverseveclength have been re-scaled as
-% 	well.
+% 	- the @veclength and @inverseveclength have been initialized
 \def\pgfplots@scaleaxes@to@BB#1#2{%
 	\if0\pgfplots@scale@mode@choice
 		% scale mode=auto
@@ -420,9 +418,9 @@
 % In this context, each unit vector is supposed to be scaled such that
 % width/height fit if xmin=0 and xmax=1.
 %
-% #1 [output] a macro name which will contain the scale for x
-% #2 [output] a macro name which will contain the scale for y
-% #3 [output] a macro name which will contain the scale for z
+% #1 [output] a macro name which will contain the INVERSE scale for x
+% #2 [output] a macro name which will contain the INVERSE scale for y
+% #3 [output] a macro name which will contain the INVERSE scale for z
 % 
 \def\pgfplots@BB@for@plotbox@get@unit@scales@for@limits#1#2#3{%
 	\if1\b@pgfplots@plotbox@xisunit
@@ -430,9 +428,6 @@
 		% compute 1/(xmax - xmin) in float for more recent versions (see /pgfplots/compat/scaling).
 		% I observed that it is much more accurate 
 		\pgfmathsubtract@{\pgfplots@xmax}{\pgfplots@xmin}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
 	\else
 		\def\pgfmathresult{1}%
 	\fi
@@ -440,9 +435,6 @@
 	%
 	\if1\b@pgfplots@plotbox@yisunit
 		\pgfmathsubtract@{\pgfplots@ymax}{\pgfplots@ymin}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
 	\else
 		\def\pgfmathresult{1}%
 	\fi
@@ -451,9 +443,6 @@
 	\ifpgfplots@threedim
 		\if1\b@pgfplots@plotbox@zisunit
 			\pgfmathsubtract@{\pgfplots@zmax}{\pgfplots@zmin}%
-			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{\pgfmathresult}%
-			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\pgfmathresult}}%
-			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
 		\else
 			\def\pgfmathresult{1}%
 		\fi
@@ -555,21 +544,6 @@
 		\fi
 	\fi
 	%
-\iffalse
-% the following lines restore what was previously done in
-% \pgfplotsset{compat=1.3}.
-% However, it restores it only partially: the axis equal feature would
-% still be broken.
-\let\pgfplots@plotbox@xmin\pgfplots@xmin%
-\let\pgfplots@plotbox@xmax\pgfplots@xmax%
-\def\b@pgfplots@plotbox@xisunit{0}%
-\let\pgfplots@plotbox@ymin\pgfplots@ymin%
-\let\pgfplots@plotbox@ymax\pgfplots@ymax%
-\def\b@pgfplots@plotbox@yisunit{0}%
-\let\pgfplots@plotbox@zmin\pgfplots@zmin%
-\let\pgfplots@plotbox@zmax\pgfplots@zmax%
-\def\b@pgfplots@plotbox@zisunit{0}%
-\fi
 }%
 
 \def\pgfplots@scaleaxes@to@BB@#1#2{%
@@ -583,18 +557,18 @@
 		% scale mode=none
 		\def\xscale{1}%
 		\def\yscale{1}%
-		\def\pgfplots@target@unit@scale@x{1}%
-		\def\pgfplots@target@unit@scale@y{1}%
-		\def\pgfplots@target@unit@scale@z{1}%
+		\def\pgfplots@target@unit@scale@inv@x{1}%
+		\def\pgfplots@target@unit@scale@inv@y{1}%
+		\def\pgfplots@target@unit@scale@inv@z{1}%
 	\else
 		%
 		% This here CAN cause anisotropic (different) scaling factors.
 		\pgfplots@BB@for@plotbox@get@unit@scales@for@limits
-			{\pgfplots@target@unit@scale@x}
-			{\pgfplots@target@unit@scale@y}
-			{\pgfplots@target@unit@scale@z}%
+			{\pgfplots@target@unit@scale@inv@x}
+			{\pgfplots@target@unit@scale@inv@y}
+			{\pgfplots@target@unit@scale@inv@z}%
 		%
-\message{got scales to fit limits into BB: x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z^^J}%
+\message{got scales to fit limits into BB: x=\pgfplots@target@unit@scale@inv@x, y=\pgfplots@target@unit@scale@inv@y, z=\pgfplots@target@unit@scale@inv@z^^J}%
 		%
 		\if3\pgfplots@scale@mode@choice
 			% scale mode=scale uniformly
@@ -602,14 +576,14 @@
 			% We need to recompensate in case the previous method chose
 			% different unit scaling scalings:
 			\pgfplots@BB@for@plotbox@get@unit@scales@compensated@axis@limits
-				{\pgfplots@target@unit@scale@x}
-				{\pgfplots@target@unit@scale@y}
-				{\pgfplots@target@unit@scale@z}
+				{\pgfplots@target@unit@scale@inv@x}
+				{\pgfplots@target@unit@scale@inv@y}
+				{\pgfplots@target@unit@scale@inv@z}
 				{\pgfplots@target@limitrescale@x}{\pgfplots@target@limitrescale@y}{\pgfplots@target@limitrescale@z}%
 			%
 			%\pgfplots@BB@update@cumulative@limit@compensations
 		\fi
-\message{adjusted scales for 'scale mode': x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
+\message{adjusted scales for 'scale mode': x=\pgfplots@target@unit@scale@inv@x, y=\pgfplots@target@unit@scale@inv@y, z=\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 		%
 		% ATTENTION: this MODIFIES \pgfplots@target@limitrescale@x and its
 		% variants directly - and it needs the input values.
@@ -627,31 +601,35 @@
 		%
 		%
 		\pgfplots@apply@unit@ratio
-			{\pgfplots@target@unit@scale@x}
-			{\pgfplots@target@unit@scale@y}
-			{\pgfplots@target@unit@scale@z}
+			{\pgfplots@target@unit@scale@inv@x}
+			{\pgfplots@target@unit@scale@inv@y}
+			{\pgfplots@target@unit@scale@inv@z}
 			{\pgfplots@target@limitrescale@x@}{\pgfplots@target@limitrescale@y@}{\pgfplots@target@limitrescale@z@}%
 		\pgfplots@BB@update@cumulative@limit@compensations
 		%
-\message{adjusted scales for 'unit vector ratio': x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
+\message{adjusted scales for 'unit vector ratio': x=\pgfplots@target@unit@scale@inv@x, y=\pgfplots@target@unit@scale@inv@y, z=\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 	\fi
 	%
 	\pgfplots@scaling@adjust@datascaling%
-\message{adjusted scales for data scale trafo: x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z;^^J  data scale trafo exponents x=\pgfplots@target@datascaletrafo@x@exponent@old -> \pgfplots@target@datascaletrafo@x@exponent, y=\pgfplots@target@datascaletrafo@y@exponent@old -> \pgfplots@target@datascaletrafo@y@exponent, z=\pgfplots@target@datascaletrafo@z@exponent@old -> \pgfplots@target@datascaletrafo@z@exponent^^J}%
+\message{adjusted scales for data scale trafo: x=\pgfplots@target@unit@scale@inv@x, y=\pgfplots@target@unit@scale@inv@y, z=\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z;^^J  data scale trafo exponents x=\pgfplots@target@datascaletrafo@x@exponent@old -> \pgfplots@target@datascaletrafo@x@exponent, y=\pgfplots@target@datascaletrafo@y@exponent@old -> \pgfplots@target@datascaletrafo@y@exponent, z=\pgfplots@target@datascaletrafo@z@exponent@old -> \pgfplots@target@datascaletrafo@z@exponent^^J}%
 	%
-	\pgfplots@axis@apply@post@scale{x}{\pgfplots@target@unit@scale@x}%
-	\pgfplots@axis@apply@post@scale{y}{\pgfplots@target@unit@scale@y}%
+	\pgfplots@axis@apply@post@scale{x}{\pgfplots@target@unit@scale@inv@x}%
+	\pgfplots@axis@apply@post@scale{y}{\pgfplots@target@unit@scale@inv@y}%
 	\ifpgfplots@threedim
-		\pgfplots@axis@apply@post@scale{z}{\pgfplots@target@unit@scale@z}%
+		\pgfplots@axis@apply@post@scale{z}{\pgfplots@target@unit@scale@inv@z}%
 	\fi
-%\message{adjusted scales for post scales: x=\pgfplots@target@unit@scale@x, y=\pgfplots@target@unit@scale@y, z=\pgfplots@target@unit@scale@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 	%
 	\pgfplots@scaling@compute@final@scales%
 			{\xscale}{\yscale}%
-			{\pgfplots@target@unit@scale@x}%
-			{\pgfplots@target@unit@scale@y}%
-			{\pgfplots@target@unit@scale@z}%
+			{\pgfplots@target@unit@scale@inv@x}%
+			{\pgfplots@target@unit@scale@inv@y}%
+			{\pgfplots@target@unit@scale@inv@z}%
 	%
+	\pgfplots@axis@apply@post@scale{x}%
+	\pgfplots@axis@apply@post@scale{y}%
+	\ifpgfplots@threedim
+		\pgfplots@axis@apply@post@scale{z}%
+	\fi
 	% and finally, resize limits appropriately and add all cumulative limit compensations:
 	\xdef\pgfplots@glob@TMPa{%
 		%
@@ -697,7 +675,10 @@
 % \pgfplots@target@unit@scale@yy
 % \pgfplots@target@unit@scale@zx
 % \pgfplots@target@unit@scale@zy
-%
+% %
+% \pgfplots@target@unit@scale@x
+% \pgfplots@target@unit@scale@y
+% \pgfplots@target@unit@scale@z
 % by combining the input args.
 %
 % #1: the scale to be applied to ALL x components
@@ -706,43 +687,70 @@
 % #4: the scale to be applied to y unit
 % #5: the scale to be applied to z unit
 \def\pgfplots@scaling@compute@final@scales#1#2#3#4#5{%
-	\def\pgfplots@loc@TMPa##1##2{%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{##1}%
-		\let\pgfplots@loc@TMPd=\pgfmathresult
+	\def\pgfplots@loc@TMPa##1##2##3##4{%
 		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{##2}%
-		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{multiply}{{\pgfplots@loc@TMPd}{\pgfmathresult}}%
+		\let\xscale@@=\pgfmathresult
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{##3}%
+		\let\yscale@@=\pgfmathresult
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{parsenumber}{##4}%
+		\let\unitscale@inv@@=\pgfmathresult
+		%
+		% NOTE : it *would* be more efficient to use
+		% 1/\unitscale@inv@@ in the routines above. BUT THAT IS NOT BACKWARDS COMPATIBLE.
+		% Leave it this way!
+		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{reciprocal}{{\unitscale@inv@@}}%
+		\let\unitscale@@=\pgfmathresult
 		\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@target@unit@scale@##1\endcsname=\pgfmathresult
+		%
+		\ifpgfplots@threedim
+			% backw. compatibility: this is how it used to be in 3d
+			% axes:
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{multiply}{{\xscale@@}{\unitscale@@}}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+			\expandafter\let\csname pgfplots@target@unit@scale@##1x\endcsname=\pgfmathresult
+			%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{multiply}{{\yscale@@}{\unitscale@@}}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+			\expandafter\let\csname pgfplots@target@unit@scale@##1y\endcsname=\pgfmathresult
+		\else
+			% backw. compatibility: 2d axes used divide, not
+			% reciprocal. Believe it or not; for
+			% \pgfplots@compat@scaling@coordmath=pgfbasic, it makes a
+			% difference.
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{divide}{{\xscale@@}{\unitscale@inv@@}}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+			\expandafter\let\csname pgfplots@target@unit@scale@##1x\endcsname=\pgfmathresult
+			%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{op}{divide}{{\yscale@@}{\unitscale@inv@@}}%
+			\pgfplotscoordmath{\pgfplots@compat@scaling@coordmath}{tofixed}{\pgfmathresult}%
+			\expandafter\let\csname pgfplots@target@unit@scale@##1y\endcsname=\pgfmathresult
+		\fi
+		%
 	}%
 	\if1\b@pgfplots@rescale@x
-		\pgfplots@loc@TMPa{\xscale}{\pgfplots@target@unit@scale@x}%
-		\let\pgfplots@target@unit@scale@xx=\pgfmathresult
-		\pgfplots@loc@TMPa{\yscale}{\pgfplots@target@unit@scale@x}%
-		\let\pgfplots@target@unit@scale@xy=\pgfmathresult
+		\pgfplots@loc@TMPa{x}{\xscale}{\yscale}{#3}%
 	\else
-		\let\pgfplots@target@unit@scale@xx=\pgfplots@target@unit@scale@x
-		\let\pgfplots@target@unit@scale@xy=\pgfplots@target@unit@scale@x
+		\pgfplots@loc@TMPa{x}{1}{1}{#3}%
 	\fi
 	%
 	\if1\b@pgfplots@rescale@y
-		\pgfplots@loc@TMPa{\xscale}{\pgfplots@target@unit@scale@y}%
-		\let\pgfplots@target@unit@scale@yx=\pgfmathresult
-		\pgfplots@loc@TMPa{\yscale}{\pgfplots@target@unit@scale@y}%
-		\let\pgfplots@target@unit@scale@yy=\pgfmathresult
+		\pgfplots@loc@TMPa{y}{\xscale}{\yscale}{#4}%
 	\else
-		\let\pgfplots@target@unit@scale@yx=\pgfplots@target@unit@scale@y
-		\let\pgfplots@target@unit@scale@yy=\pgfplots@target@unit@scale@y
+		\pgfplots@loc@TMPa{y}{1}{1}{#4}%
 	\fi
 	%
 	\ifpgfplots@threedim
 		\if1\b@pgfplots@rescale@z
-			\pgfplots@loc@TMPa{\xscale}{\pgfplots@target@unit@scale@z}%
-			\let\pgfplots@target@unit@scale@zx=\pgfmathresult
-			\pgfplots@loc@TMPa{\yscale}{\pgfplots@target@unit@scale@z}%
-			\let\pgfplots@target@unit@scale@zy=\pgfmathresult
+			\pgfplots@loc@TMPa{z}{\xscale}{\yscale}{#5}%
 		\else
-			\let\pgfplots@target@unit@scale@zx=\pgfplots@target@unit@scale@z
-			\let\pgfplots@target@unit@scale@zy=\pgfplots@target@unit@scale@z
+			\pgfplots@loc@TMPa{z}{1}{1}{#5}%
 		\fi
+	\else
+		\def\pgfplots@target@unit@scale@z{0}%
+		\def\pgfplots@target@unit@scale@zx{0}%
+		\def\pgfplots@target@unit@scale@zy{0}%
+		\def\pgfplots@target@unit@scale@inv@z{inf}%
 	\fi
 	%
 }%
@@ -799,14 +807,14 @@
 %
 % INPUT:
 %  \pgfplots@target@limitrescale@x and its variants for y and z
-%  \pgfplots@target@unit@scale@x and its variants for y and z
+%  \pgfplots@target@unit@scale@inv@x and its variants for y and z
 %
 % OUTPUT:
 %  \pgfplots@target@datascaletrafo@x@exponent and its variants for y and z
 %     -> contains NEW datascaletrafo exponents 
 %  \pgfplots@target@datascaletrafo@x@exponent@old and its variants for y and z
 %     -> contains OLD datascaletrafo exponents
-%  \pgfplots@target@unit@scale@x and its variants for y and z
+%  \pgfplots@target@unit@scale@inv@x and its variants for y and z
 %     -> contains (modified) unit vector scales
 \def\pgfplots@scaling@adjust@datascaling{%
 	\pgfplots@scaling@adjust@datascaling@for x%
@@ -833,9 +841,9 @@
 			% Note that the data scale trafo has (only) been applied
 			% to axis limits, so we have to reapply it before these
 			% changes can take effect:
-			\pgf@xa=\csname pgfplots@target@unit@scale@#1\endcsname pt
-			\multiply\pgf@xa by\pgfplotsretval\relax %
-			\expandafter\edef\csname pgfplots@target@unit@scale@#1\endcsname{\pgf@sys@tonumber\pgf@xa}%
+			\pgf@xa=\csname pgfplots@target@unit@scale@inv@#1\endcsname pt
+			\divide\pgf@xa by\pgfplotsretval\relax %
+			\expandafter\edef\csname pgfplots@target@unit@scale@inv@#1\endcsname{\pgf@sys@tonumber\pgf@xa}%
 			%
 			\c@pgf@countd=\csname pgfplots@target@datascaletrafo@#1@exponent\endcsname\relax
 			\advance\c@pgf@countd by-\pgfplotsretvalb\relax %
@@ -1460,12 +1468,12 @@
 	% compute extreme + arg extreme of these scales:
 	\let\pgfplots@extreme@scale=\pgfplots@scale@unitx
 	\def\pgfplots@extreme@scale@arg{x}%
-	\ifdim\pgfplots@extreme@scale pt>\pgfplots@scale@unity pt
+	\ifdim\pgfplots@extreme@scale pt<\pgfplots@scale@unity pt
 		\let\pgfplots@extreme@scale=\pgfplots@scale@unity
 		\def\pgfplots@extreme@scale@arg{y}%
 	\fi
 	\ifpgfplots@threedim
-		\ifdim\pgfplots@extreme@scale pt>\pgfplots@scale@unitz pt
+		\ifdim\pgfplots@extreme@scale pt<\pgfplots@scale@unitz pt
 			\let\pgfplots@extreme@scale=\pgfplots@scale@unitz
 			\def\pgfplots@extreme@scale@arg{z}%
 		\fi
@@ -1485,7 +1493,7 @@
 				\pgfplotscoordmath{pgfbasic}{one}%
 				\let##2=\pgfmathresult
 			\else
-				\pgfplotscoordmath{pgfbasic}{op}{divide}{{\csname pgfplots@scale@unit##1\endcsname}{\pgfplots@extreme@scale}}%
+				\pgfplotscoordmath{pgfbasic}{op}{divide}{{\pgfplots@extreme@scale}{\csname pgfplots@scale@unit##1\endcsname}}%
 				% do not call apply@unit@rescale immediately because the
 				% unit vectors may not be in their final state. Postpone until
 				% they are final.
@@ -2065,8 +2073,6 @@
 		\if r\pgfplots@loc@dirvalue
 			\edef\pgfplots@loc@TMPa{-#3}%
 		\fi
-% FIXME : '\pgfplots@loc@TMPa' contains 'pt' leading to missing
-% character warning!
 		\ifcase#2\relax
 			\pgfsetxvec{\pgfqpoint{\pgfplots@loc@TMPa pt}{0pt}}%
 		\or
@@ -2138,17 +2144,14 @@
 % Applies the 'axis equal' feature.
 %
 % PRECONDITION:
-% 	- \pgfplots@target@unit@scale@[xyz] contains the current scaling
-% 	factors which are to be applied to unit vectors
-% 	- \pgfplots@target
+% 	- #1, #2, #3 contains the current scaling
+% 	factors in x,y, z, resp. which are to be applied to unit vectors
 % 	- neither unit vectors nor limits are in their final shape
 % 	-  \pgfplots@set@default@size@options has been invoked before
 %
 % POSTCONDITION:
-%   - \pgfplots@target@unit@scale@[xyz] 
-% 	- unit vectors have been set to equal length,
-% 	- axis limits have been rescaled such that the axis dimensions
-% 	remain fixed
+%   - #1, #2, #3 have been changed to accomodate unit vector ratio
+%   - #4, #5, #6 [output] contain axis limit compensation scales
 %
 % There is just one algorithmic difficulty: the data scaling
 % transformation. All unit vector length above are only meaningful in
@@ -2156,9 +2159,9 @@
 % transformation.
 \def\pgfplots@apply@unit@ratio#1#2#3#4#5#6{%
 	\begingroup
-	\edef\pgfplots@x@veclength{#1}%
-	\edef\pgfplots@y@veclength{#2}%
-	\edef\pgfplots@z@veclength{#3}%
+	\edef\pgfplots@target@unit@scale@inv@x{#1}%
+	\edef\pgfplots@target@unit@scale@inv@y{#2}%
+	\edef\pgfplots@target@unit@scale@inv@z{#3}%
 	\def\pgfplots@target@limitrescale@x@{1}%
 	\def\pgfplots@target@limitrescale@y@{1}%
 	\def\pgfplots@target@limitrescale@z@{1}%
@@ -2170,6 +2173,12 @@
 		%
 		\expandafter\pgfplots@unit@vector@ratio@check@nop\pgfplots@unit@vector@ratio\pgfplots@EOI
 		\ifpgfplots@loc@tmp
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@inv@x}%
+			\let\pgfplots@target@unit@scale@x=\pgfmathresult
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@inv@y}%
+			\let\pgfplots@target@unit@scale@y=\pgfmathresult
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@inv@z}%
+			\let\pgfplots@target@unit@scale@z=\pgfmathresult
 			%
 			% Step 1: compute the unit vector which STAYS CONSTANT.
 			%
@@ -2192,20 +2201,34 @@
 			\ifpgfplots@threedim
 				\pgfplots@rescale@unit@vector@reltoreference{z}{\pgfplots@unit@ratio@z}%
 			\fi
+			%
+			%
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@x}%
+			\let\pgfplots@target@unit@scale@inv@x=\pgfmathresult
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@y}%
+			\let\pgfplots@target@unit@scale@inv@y=\pgfmathresult
+			\pgfplots@appy@unit@ratio@reciprocal{\pgfplots@target@unit@scale@z}%
+			\let\pgfplots@target@unit@scale@inv@z=\pgfmathresult
 		\else
 %\message{Skipped application of 'unit vector ratio=\pgfkeysvalueof{/pgfplots/unit vector ratio}': it is already done by 'scale uniformly'.^^J}%
 		\fi
 	\fi
 	\xdef\pgfplots@glob@TMPa{%
-		\noexpand\def\noexpand#1{\pgfplots@x@veclength}%
-		\noexpand\def\noexpand#2{\pgfplots@y@veclength}%
-		\noexpand\def\noexpand#3{\pgfplots@z@veclength}%
+		\noexpand\def\noexpand#1{\pgfplots@target@unit@scale@inv@x}%
+		\noexpand\def\noexpand#2{\pgfplots@target@unit@scale@inv@y}%
+		\noexpand\def\noexpand#3{\pgfplots@target@unit@scale@inv@z}%
 		\noexpand\def\noexpand#4{\pgfplots@target@limitrescale@x@}%
 		\noexpand\def\noexpand#5{\pgfplots@target@limitrescale@y@}%
 		\noexpand\def\noexpand#6{\pgfplots@target@limitrescale@z@}%
 	}%
 	\endgroup
 	\pgfplots@glob@TMPa
+}%
+
+\def\pgfplots@appy@unit@ratio@reciprocal#1{%
+	\pgfplotscoordmath{default}{parsenumber}{#1}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 }%
 
 % Defines \ifpgfplots@loc@tmp := need to modify scaling factors
@@ -2277,7 +2300,7 @@
 		\def\pgfplots@loc@TMPa{0}%
 		\ifpgfplots@threedim
 			% ah, it IS 3d!
-			\ifdim\pgfplots@z@veclength pt=0pt
+			\ifdim\pgfplots@target@unit@scale@z pt=0pt
 				% hm. It has view = {0}{90} (i.e. it is 2d)
 				\def\pgfplots@loc@TMPa{0}%
 			\else
@@ -2381,7 +2404,7 @@
 	%
 	\ifx\pgfplots@optimum@sofar@axis\pgfutil@empty
 		\ifpgfplots@threedim
-			\ifdim\pgfplots@z@veclength pt=0pt
+			\ifdim\pgfplots@target@unit@scale@z pt=0pt
 				\def\pgfplots@optimum@sofar@axis{y}%
 			\else
 				\def\pgfplots@optimum@sofar@axis{z}%
@@ -2485,7 +2508,7 @@
 	\else
 		\def\pgfplots@loc@TMPa{1}%
 	\fi
-	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+	\ifdim\csname pgfplots@target@unit@scale@#1\endcsname pt=0pt
 		\def\pgfplots@loc@TMPa{0}%
 	\fi
 	\if1\pgfplots@loc@TMPa
@@ -2495,8 +2518,8 @@
 		%
 %\message{Rescaling '#1' by \pgfplots@glob@TMPa.^^J}%
 		%
-		\pgfmathmultiply@{\csname pgfplots@#1@veclength\endcsname}{\pgfplots@glob@TMPa}%
-		\expandafter\let\csname pgfplots@#1@veclength\endcsname=\pgfmathresult
+		\pgfmathmultiply@{\csname pgfplots@target@unit@scale@#1\endcsname}{\pgfplots@glob@TMPa}%
+		\expandafter\let\csname pgfplots@target@unit@scale@#1\endcsname=\pgfmathresult
 		%
 		\pgfmathreciprocal@\pgfplots@glob@TMPa
 		\expandafter\let\csname pgfplots@target@limitrescale@#1@\endcsname=\pgfmathresult
@@ -2611,10 +2634,10 @@
 	% #2 * ||e_ref|| / ||e_#1||.
 	%
 	\def\pgfplots@loc@TMPa{1}%
-	\ifdim\csname pgfplots@#1@veclength\endcsname pt=0pt
+	\ifdim\csname pgfplots@target@unit@scale@#1\endcsname pt=0pt
 		\def\pgfplots@loc@TMPa{0}%
 	\else
-		\ifdim\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname pt=0pt
+		\ifdim\csname pgfplots@target@unit@scale@\pgfplots@apply@unit@ratio@reference\endcsname pt=0pt
 			\def\pgfplots@loc@TMPa{0}%
 		\fi
 	\fi
@@ -2622,8 +2645,8 @@
 		\def\pgfmathresult{16001}%
 	\else
 		\pgfmathdivide@
-			{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @veclength\endcsname}
-			{\csname pgfplots@#1@veclength\endcsname}%
+			{\csname pgfplots@target@unit@scale@\pgfplots@apply@unit@ratio@reference\endcsname}
+			{\csname pgfplots@target@unit@scale@#1\endcsname}%
 		\pgfmathmultiply@
 			{\pgfmathresult}%
 			{#2}%
@@ -2632,7 +2655,7 @@
 		% also compute 1/s, required as temporary value:
 		%\pgfmathmultiply@
 		%	{\csname pgfplots@\pgfplots@apply@unit@ratio@reference @inverseveclength\endcsname}
-		%	{\csname pgfplots@#1@veclength\endcsname}%
+		%	{\csname pgfplots@target@unit@scale@#1\endcsname}%
 		%\ifdim#2pt=1pt
 		%\else
 		%	\pgfmathdivide@{\pgfmathresult}{#2}%
