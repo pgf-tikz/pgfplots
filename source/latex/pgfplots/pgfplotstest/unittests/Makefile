@@ -57,6 +57,8 @@ UNIT_SOURCES=$(wildcard unittest_*.tex)
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
+# REQUIRES apcalc package ('calc' executable)
+ACCEPTED_NORMALIZED_ERROR=5e-4
 
 # -------------------------------------------------
 # stuff for references:
@@ -94,8 +96,16 @@ clean:
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
-		if [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
-			echo "  PASSED: only approved differences `cat $@` detected (removing superfluos diff-pngs)"; \
+		#echo "$<: found nonzero pixel differences `cat $@`."; \
+		sed -e 's/.*(\(.*\)).*/\1/' < $@  > $@.normalized || exit 1; \
+		NORMALIZED=`cat $@.normalized`; \
+		rm -f $@.normalized; \
+		calc -p "$$NORMALIZED < $(ACCEPTED_NORMALIZED_ERROR)" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
+		if [ "`cat $@.isaccepted`" = "1" ]; then \
+			echo "  PASSED: only approved differences `cat $@` detected (less than $(ACCEPTED_NORMALIZED_ERROR); removing superfluos diff-pngs)"; \
+			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
+		elif [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
+			echo "  PASSED: only manually approved differences `cat $@` detected (removing superfluos diff-pngs)"; \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		else \
 			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
