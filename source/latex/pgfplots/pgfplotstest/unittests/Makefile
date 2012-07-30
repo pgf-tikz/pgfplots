@@ -59,6 +59,7 @@ DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
 # REQUIRES apcalc package ('calc' executable)
 ACCEPTED_NORMALIZED_ERROR=5e-4
+DIRECTORY_FOR_ACCEPTED_ERRORS=/tmp/pgfplotsUTaccepted
 
 # -------------------------------------------------
 # stuff for references:
@@ -102,10 +103,16 @@ clean:
 		rm -f $@.normalized; \
 		calc -p "$$NORMALIZED < $(ACCEPTED_NORMALIZED_ERROR)" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
 		if [ "`cat $@.isaccepted`" = "1" ]; then \
-			echo "  PASSED: only approved differences `cat $@` detected (less than $(ACCEPTED_NORMALIZED_ERROR); removing superfluos diff-pngs)"; \
+			echo "  PASSED: only approved differences `cat $@` detected (less than $(ACCEPTED_NORMALIZED_ERROR); moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		elif [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
-			echo "  PASSED: only manually approved differences `cat $@` detected (removing superfluos diff-pngs)"; \
+			echo "  PASSED: only manually approved differences `cat $@` detected (moving superfluos diff-pngs to $(ACCEPTED_NORMALIZED_ERROR))"; \
+			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		else \
 			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
