@@ -88,7 +88,7 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS) 
 
 clean:
-	rm -f $(DIFF_MEASURES) $(UNIT_PDFS)
+	rm -f $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png
 
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
