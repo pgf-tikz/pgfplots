@@ -121,6 +121,9 @@ clean:
 			rm $@; # make sure it will be recomputed! \
 			false; \
 		fi; \
+		CODE=$$?; \
+		rm -f $@.isaccepted; \
+		exit $$CODE; \
 	fi
 		
 
