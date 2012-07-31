@@ -59,7 +59,7 @@ DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
 # REQUIRES apcalc package ('calc' executable)
 ACCEPTED_NORMALIZED_ERROR=5e-4
-DIRECTORY_FOR_ACCEPTED_ERRORS=/tmp/pgfplotsUTaccepted
+DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
 # -------------------------------------------------
 # stuff for references:
@@ -88,7 +88,7 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS) 
 
 clean:
-	rm -f $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png
+	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
 
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
