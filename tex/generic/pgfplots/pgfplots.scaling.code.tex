@@ -595,6 +595,10 @@
 \message{adjusted scales for 'unit vector ratio': x=1/\pgfplots@target@unit@scale@inv@x, y=1/\pgfplots@target@unit@scale@inv@y, z=1/\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z^^J}%
 	\fi
 	%
+	%
+	\pgfplots@scaling@minimize@limitrescale%
+	%
+	%
 	\pgfplots@scaling@adjust@datascaling%
 \message{adjusted scales for data scale trafo: x=1/\pgfplots@target@unit@scale@inv@x, y=1/\pgfplots@target@unit@scale@inv@y, z=1/\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z;^^J  data scale trafo exponents x=\pgfplots@target@datascaletrafo@x@exponent@old -> \pgfplots@target@datascaletrafo@x@exponent, y=\pgfplots@target@datascaletrafo@y@exponent@old -> \pgfplots@target@datascaletrafo@y@exponent, z=\pgfplots@target@datascaletrafo@z@exponent@old -> \pgfplots@target@datascaletrafo@z@exponent^^J}%
 	%
@@ -651,6 +655,126 @@
 	}%
 	\endgroup
 	\pgfplots@glob@TMPa
+}%
+
+% Checks for the case the ALL (visible) limit compensation scales are
+% bigger than one (for example x = 1.22, y = 2). In such a case, we
+% want to MINIMIZE the rescaling. This can happen if unit vector ratio
+% is active.
+%
+% In our example, we want to use limit rescaling factors x = 1, y = 2/1.22
+% and, consequently, unit rescaling factors x *= 1.22, y *= 1.22 .
+%
+% This method checks for the case and applies the rescaling if
+% necessary.
+%
+\def\pgfplots@scaling@minimize@limitrescale{%
+	% boolean allLimitScalesAreBiggerThanOne;
+	\pgfplots@loc@tmptrue
+	\if0\b@pgfplots@unitvec@is@zero@x
+		\ifdim\pgfplots@target@limitrescale@x pt<1.002pt %
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	\if0\b@pgfplots@unitvec@is@zero@y
+		\ifdim\pgfplots@target@limitrescale@y pt<1.002pt %
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	\if0\b@pgfplots@unitvec@is@zero@z
+		\ifdim\pgfplots@target@limitrescale@z pt<1.002pt %
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	%
+	\ifpgfplots@loc@tmp
+		\begingroup
+		% Ah -- all non-vanishing limit rescaling factors are BIGGER
+		% THAN ONE.
+		% In this case, we can save some rescalings!
+		%
+		% Search for the smallest rescaling factor.
+		\let\pgfplots@smallest=\pgf@x
+		\pgfplots@smallest=16000pt %
+		\def\pgfplots@smallest@arg{}%
+		\if0\b@pgfplots@unitvec@is@zero@x
+			\pgf@xa=\pgfplots@target@limitrescale@x pt %
+			\ifdim\pgf@xa<\pgfplots@smallest%
+				\pgfplots@smallest=\pgf@xa
+				\def\pgfplots@smallest@arg{x}%
+			\fi
+		\fi
+		\if0\b@pgfplots@unitvec@is@zero@y
+			\pgf@xa=\pgfplots@target@limitrescale@y pt %
+			\ifdim\pgf@xa<\pgfplots@smallest%
+				\pgfplots@smallest=\pgf@xa
+				\def\pgfplots@smallest@arg{y}%
+			\fi
+		\fi
+		\if0\b@pgfplots@unitvec@is@zero@z
+			\pgf@xa=\pgfplots@target@limitrescale@z pt %
+			\ifdim\pgf@xa<\pgfplots@smallest%
+				\pgfplots@smallest=\pgf@xa
+				\def\pgfplots@smallest@arg{z}%
+			\fi
+		\fi
+		%
+		% OK. We have the smallest scaling factor. It is > 1.
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@limitrescale@x}%
+		\let\pgfplots@target@limitrescale@x=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@limitrescale@y}%
+		\let\pgfplots@target@limitrescale@y=\pgfmathresult
+		%
+		%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@unit@scale@inv@x}%
+		\let\pgfplots@target@unit@scale@inv@x=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@unit@scale@inv@y}%
+		\let\pgfplots@target@unit@scale@inv@y=\pgfmathresult
+		%
+		\if0\b@pgfplots@unitvec@is@zero@z
+			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@limitrescale@z}%
+			\let\pgfplots@target@limitrescale@z=\pgfmathresult
+			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@target@unit@scale@inv@z}%
+			\let\pgfplots@target@unit@scale@inv@z=\pgfmathresult
+		\fi
+		%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\csname pgfplots@target@limitrescale@\pgfplots@smallest@arg\endcsname}}%
+		\let\scale=\pgfmathresult
+		%
+		\pgfplotsforeachentryinCSV\value{%
+			\pgfplots@target@unit@scale@inv@x,%
+			\pgfplots@target@unit@scale@inv@y,%
+			\pgfplots@target@limitrescale@x,%
+			\pgfplots@target@limitrescale@y%
+		}{%
+			\pgfplotscoordmath{default}{op}{multiply}{{\scale}{\value}}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\expandafter\let\value=\pgfmathresult
+		}%
+		\if0\b@pgfplots@unitvec@is@zero@z
+			\pgfplotsforeachentryinCSV\value{%
+				\pgfplots@target@unit@scale@inv@z,%
+				\pgfplots@target@limitrescale@z%
+			}{%
+				\pgfplotscoordmath{default}{op}{multiply}{{\scale}{\value}}%
+				\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+				\expandafter\let\value=\pgfmathresult
+			}%
+		\fi
+		%
+		\xdef\pgfplots@glob@TMPa{%
+			\noexpand\def\noexpand\pgfplots@target@unit@scale@inv@x{\pgfplots@target@unit@scale@inv@x}%
+			\noexpand\def\noexpand\pgfplots@target@unit@scale@inv@y{\pgfplots@target@unit@scale@inv@y}%
+			\noexpand\def\noexpand\pgfplots@target@unit@scale@inv@z{\pgfplots@target@unit@scale@inv@z}%
+			\noexpand\def\noexpand\pgfplots@target@limitrescale@x{\pgfplots@target@limitrescale@x}%
+			\noexpand\def\noexpand\pgfplots@target@limitrescale@y{\pgfplots@target@limitrescale@y}%
+			\noexpand\def\noexpand\pgfplots@target@limitrescale@z{\pgfplots@target@limitrescale@z}%
+		}%
+		\endgroup
+		\pgfplots@glob@TMPa
+%
+\message{adjusted scales by minimizing common scaling factors: x=1/\pgfplots@target@unit@scale@inv@x, y=1/\pgfplots@target@unit@scale@inv@y, z=1/\pgfplots@target@unit@scale@inv@z;  ^^J   axis limit componsation scales x=\pgfplots@target@limitrescale@x, y=\pgfplots@target@limitrescale@y, z=\pgfplots@target@limitrescale@z;^^J}%
+	\fi
 }%
 
 % Defines 
@@ -2036,19 +2160,7 @@
 					% ... for 3d: there is no backwards compatibility
 					% mode here; it was plain wrong for 3d axes:
 					% neither lengths nor angles have been correct.
-				\else
-					% ... for 2d: 
-					\edef\pgfplots@loc@TMPb{\pgfplots@loc@TMPb\space1 1 }%
-					%
-					\expandafter\pgfplots@unit@vector@ratio@check@nop\pgfplots@loc@TMPb\pgfplots@EOI
-					\ifpgfplots@loc@tmp
-						% we have a non-trivial unit vector ratio:
-						\def\pgfplots@scale@mode@choice{2}% set to 'stretch to fill'
-						\pgfplots@compat@scale@mode@compatible@mode@warning
-					\else
-						% ok; unit vector ratio=1 1 1  is still the
-						% same.
-					\fi
+					\pgfplots@compat@scale@mode@compatible@mode@warning
 				\fi
 			\fi
 		\or
@@ -2063,9 +2175,9 @@
 }
 
 \def\pgfplots@compat@scale@mode@compatible@mode@warning{%
-	\ifpgfplots@compat@scale@mode@compatible@mode@warning
-		\pgfplots@warning{You have an axis with 'axis equal' and/or 'unit vector ratio'. In backwards compatibility mode, this suffers from skewed angles. Please consider writing \string\pgfplotsset{compat=1.6} (or newer) in your preamble to enable the upgrade. Use \string\pgfplotsset{compat/scale mode warning=false} to disable this warning.}%
-	\fi
+	\pgfplots@warning{The content of your 3d axis has CHANGED compared to previous versions of pgfplots. Please review it. ^^J   %
+		[continued]   Explanation: you have a 3d axis with 'axis equal' and/or 'unit vector ratio' which has (probably) been optimized for an older version of pgfplots. Any version older than 1.6 produced wrong output.^^J   %
+	[continued]	  To remove this warning, write \string\pgfplotsset{compat=1.6} (or newer) in your preamble (may change all figures in your document) or by adding that to the affected axis.}%
 }%
 
 \def\pgfplots@set@default@size@options@threedim{%
