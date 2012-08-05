@@ -57,6 +57,9 @@ UNIT_SOURCES=$(wildcard unittest_*.tex)
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 
+# REQUIRES apcalc package ('calc' executable)
+ACCEPTED_NORMALIZED_ERROR=5e-4
+DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
 # -------------------------------------------------
 # stuff for references:
@@ -66,7 +69,7 @@ UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
-DEFAULT_REFERENCE_BRANCH:=$(shell git rev-parse HEAD)
+DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES)
 
@@ -85,17 +88,34 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS) 
 
 clean:
-	rm -f $(DIFF_MEASURES) $(UNIT_PDFS) $(DIFF_MEASURES:%=%.png)
+	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
+
+%.diff.png: %.diff
+	@
 
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
-	@./pdfdiff.sh $< $@
+	@./pdfdiff.sh $< references/$< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
-		if [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
-			echo "  PASSED: only approved differences `cat $@` detected (removing superfluos diff-pngs)"; \
+		#echo "$<: found nonzero pixel differences `cat $@`."; \
+		sed -e 's/.*(\(.*\)).*/\1/' < $@  > $@.normalized || exit 1; \
+		NORMALIZED=`cat $@.normalized`; \
+		rm -f $@.normalized; \
+		calc -p "$$NORMALIZED < $(ACCEPTED_NORMALIZED_ERROR)" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
+		if [ "`cat $@.isaccepted`" = "1" ]; then \
+			echo "  PASSED: only approved differences `cat $@` detected (less than $(ACCEPTED_NORMALIZED_ERROR); moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
+		elif [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
+			echo "  PASSED: only manually approved differences `cat $@` detected (moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
+			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		else \
 			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
@@ -104,6 +124,9 @@ clean:
 			rm $@; # make sure it will be recomputed! \
 			false; \
 		fi; \
+		CODE=$$?; \
+		rm -f $@.isaccepted; \
+		exit $$CODE; \
 	fi
 		
 
@@ -152,7 +175,8 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
-	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	# create *.diff.png -> this makes it much more visible that it failed: \
+	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(<:.tex=.diff.png); exit 1)
 
 else
 #disable dynamic reference (re-)creation:
@@ -164,7 +188,7 @@ endif
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; exit 1)
+	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(@:.png=.diff.png); exit 1)
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
