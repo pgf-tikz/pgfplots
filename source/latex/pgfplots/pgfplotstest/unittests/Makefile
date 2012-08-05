@@ -90,6 +90,9 @@ pdf: $(UNIT_PDFS)
 clean:
 	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
 
+%.diff.png: %.diff
+	@
+
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
 	@./pdfdiff.sh $< references/$< $@
@@ -109,7 +112,7 @@ clean:
 			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		elif [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
-			echo "  PASSED: only manually approved differences `cat $@` detected (moving superfluos diff-pngs to $(ACCEPTED_NORMALIZED_ERROR))"; \
+			echo "  PASSED: only manually approved differences `cat $@` detected (moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
 			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
