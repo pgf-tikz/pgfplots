@@ -69,7 +69,7 @@ UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
-DEFAULT_REFERENCE_BRANCH:=$(shell git rev-parse HEAD)
+DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES)
 
