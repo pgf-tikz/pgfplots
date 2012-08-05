@@ -92,7 +92,7 @@ clean:
 
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
-	@./pdfdiff.sh $< $@
+	@./pdfdiff.sh $< references/$< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
