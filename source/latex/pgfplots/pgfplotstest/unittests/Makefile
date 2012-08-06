@@ -88,7 +88,7 @@ diff: $(DIFF_MEASURES)
 pdf: $(UNIT_PDFS) 
 
 clean:
-	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
+	rm -fr $(DIFF_MEASURES) references $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
 
 %.diff.png: %.diff
 	@
@@ -143,9 +143,6 @@ clean:
 #	fi
 	
 		
-
-cleanreferences:
-	$(MAKE) -f Makefile.references REALLY_INVOKE=1 clean
 
 references: $(UNIT_PDF_REFERENCES)
 
