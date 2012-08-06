@@ -924,12 +924,12 @@
 		%
 		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
 		\E\else
-			\ifpgfplots@xislinear
-				\E\pgfplotscoordmath{x}{parsenumber}{\E\pgfplots@current@point@x}%
-				\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
-			\else
-				% logs are already parsed (in prepare routine)
-			\fi
+			% parse for numbers. Note that this might cause
+			% unnecessary overhead of logs (which are already
+			% normalized unless someone provided filters). But do it
+			% anyway to ensure that filters produce valid output.
+			\E\pgfplotscoordmath{x}{parsenumber}{\E\pgfplots@current@point@x}%
+			\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
 			\E\pgfplotscoordmath{x}{if is bounded}{\E\pgfplots@current@point@x}%
 				{}%
 				{% this clears nan, inf and -inf points.
@@ -940,12 +940,8 @@
 		%
 		\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
 		\E\else
-			\ifpgfplots@yislinear
-				\E\pgfplotscoordmath{y}{parsenumber}{\E\pgfplots@current@point@y}%
-				\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
-			\else
-				% logs are already parsed (in prepare routine)
-			\fi
+			\E\pgfplotscoordmath{y}{parsenumber}{\E\pgfplots@current@point@y}%
+			\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
 			\E\pgfplotscoordmath{y}{if is bounded}{\E\pgfplots@current@point@y}%
 				{}%
 				{% this clears nan, inf and -inf points.
@@ -958,12 +954,8 @@
 			%
 			\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
 			\E\else
-				\ifpgfplots@zislinear
-					\E\pgfplotscoordmath{z}{parsenumber}{\E\pgfplots@current@point@z}%
-					\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
-				\else
-					% logs are already parsed (in prepare routine)
-				\fi
+				\E\pgfplotscoordmath{z}{parsenumber}{\E\pgfplots@current@point@z}%
+				\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
 				\E\pgfplotscoordmath{z}{if is bounded}{\E\pgfplots@current@point@z}%
 					{}%
 					{% this clears nan, inf and -inf points.
@@ -1014,7 +1006,7 @@
 	% for 'v' and 'w' instead of 'u'.
 	quiver/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerquiver
-		\pgfqkeys{/pgfplots/quiver}{#1}%
+		\pgfqkeys{/pgfplots/quiver}{quiver legend,#1}%
 	},%
 	quiver/u value*/.initial=0,
 	quiver/v value*/.initial=0,
@@ -1022,6 +1014,25 @@
 	quiver/u value is expr/.initial=0,
 	quiver/v value is expr/.initial=0,
 	quiver/w value is expr/.initial=0,
+	quiver/quiver legend/.style={
+		/pgfplots/legend image code/.code={%
+			\draw[x=0.6cm,y=0cm,z=0pt,##1,
+				/pgfplots/quiver/before arrow/.add code={}{
+					% quiver is a pgfplots-specific plot-handler. We need to
+					% fix the additional input data somehow.
+					%
+					% this is an *absolute* coordinate, interpreted
+					% relative to 'x', 'y', 'z'
+					\def\pgfplots@quiver@u{1}%
+					\def\pgfplots@quiver@v{1}%
+					\def\pgfplots@quiver@w{1}%
+				},%
+			] 
+				plot coordinates {
+					(0cm,0cm) 
+				};%
+		}%
+	},
 	quiver/u filter/.code=,
 	quiver/v filter/.code=,
 	quiver/w filter/.code=,
@@ -1380,6 +1391,7 @@
 
 \newif\ifpgfplotsplothandlerhistogram@intervals
 \newif\ifpgfplotsplothandlerhistogram@cumulative
+\newif\ifpgfplotsplothandlerhistogram@density
 \pgfplotsset{
 	hist/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlerhistogram
@@ -1398,6 +1410,9 @@
 	hist/intervals=true,
 	hist/cumulative/.is if=pgfplotsplothandlerhistogram@cumulative,
 	hist/cumulative/.default=true,
+	hist/density/.is if=pgfplotsplothandlerhistogram@density,
+	hist/density/.default=true,
+	hist/density=false,
 	hist/handler/.style={/tikz/ybar interval},
 	hist/symbolic coords/.style={%
 		/pgfplots/symbolic coords={hist/data}{A,B,C,D,E,F,G,H,I,J},
@@ -1521,15 +1536,52 @@
 	\expandafter\pgfplotsplothandlersurveyend@hist@loop\pgfplots@hist@data\pgfplots@EOI
 	\let\pgfplots@hist@data=\relax
 	%
+	
+	% Calculate total count
+	\c@pgf@counta=0
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\advance\c@pgf@counta by\pgfplots@hist@count\relax	
+		\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+	}%
+	\pgfmathfloatparsenumber{\the\c@pgf@counta}%
+	\let\pgfp@hist@totalcount=\pgfmathresult
+	\pgfmathfloatreciprocal@{\pgfp@hist@totalcount}%
+	\let\pgfp@hist@totalcount@inv=\pgfmathresult
+	%
 	\ifpgfplotsplothandlerhistogram@cumulative
 		\c@pgf@counta=0
 		\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
 			\advance\c@pgf@counta by\pgfplots@hist@count\relax
 			\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
-			\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+			\ifpgfplotsplothandlerhistogram@density
+				\pgfmathfloatparsenumber{\the\c@pgf@counta}%
+				\pgfmathfloatmultiply@{\pgfmathresult}{\pgfp@hist@totalcount@inv}%
+				\pgfmathfloattosci@{\pgfmathresult}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\else
+				\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+			\fi
 		}%
+	\fi%
+	%
+	%% Density histogram
+	% Divide count in each bin by (totalcount*range/bins)
+	\ifpgfplotsplothandlerhistogram@density
+		\ifpgfplotsplothandlerhistogram@cumulative
+		\else
+			\pgfmathfloatmultiply@{\pgfp@hist@totalcount@inv}{\pgfplotsplothandlerhistogram@invh}%
+			\let\pgfp@hist@totalcount@times@h@inv=\pgfmathresult
+			\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+				\pgfmathfloatparsenumber{\pgfplots@hist@count}%
+				\pgfmathfloatmultiply@{\pgfmathresult}{\pgfp@hist@totalcount@times@h@inv}%
+				\pgfmathfloattosci@{\pgfmathresult}%
+				\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			}%
+		\fi
 	\fi
 	%
+	%% End density histogram
 	\pgfplots@curplot@threedimfalse
 	%
 	\pgfplotsset{/pgfplots/hist/handler}%
