@@ -9,11 +9,16 @@ todo: pgfplotstodo.pdf
 pgfplots: pgfplots.pdf
 pgfplotstable: pgfplotstable.pdf
 
+# was: 
+# export TEXMFCNF=.:
+# but it seems as if that is ignored for some reason
+TEXMFCNF_FOR_MEMLIMITS=export TEXMFCNF=~/texmf/mytexcnf:
+
 include pgfplots.makefile
 
 %.pdf: FORCE
 	mkdir -p gnuplot
-	@export TEXMFCNF=.: && $(PDFLATEX) $(@:.pdf=.tex)
+	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
 	@echo ""
@@ -22,7 +27,7 @@ include pgfplots.makefile
 pgfplots.pdf: $(ALL_FIGURES)
 
 pgfplots.makefile:
-	@export TEXMFCNF=.: && $(PDFLATEX) pgfplots
+	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) pgfplots
 	
 clean:
 	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.makefile pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
