@@ -3944,14 +3944,23 @@
 	\axispath\path#1;%
 }
 \def\pgfplots@replacement@for@scope{\pgfutil@ifnextchar[{\pgfplots@replacement@for@scope@}{\pgfplots@replacement@for@scope@[]}}%
-\def\pgfplots@replacement@for@scope@[#1]{%
+\long\def\pgfplots@replacement@for@scope@[#1]{%
 	\pgfplotsextra{\scope[#1]}%
 	\begingroup
 	% I need to apply anything which might be relevant for \addplot
 	% here.
 	% But I do NOT want \scope since this might already affect the low
-	% level output. Try this:
+	% level output. 
+	%
+	% This here works:
+	% 1. set them to activate plot handlers and parameters like
+	% samples and domain:
 	\tikzset{#1}%
+	%
+	% 2. we need to remember all these options inside of 
+	% 'current plot style' -- otherwise, they would not appear
+	% inside of legend images and markers.
+	\pgfplotsplothandlersurveyaddoptions{#1}%
 }%
 \def\pgfplots@replacement@for@endscope{%
 	\endgroup
@@ -9600,11 +9609,19 @@
 			% finalize a plot.
 			% @see the stream preparation routines.
 			\pgfplots@stored@current@precmd
-			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}{a plot or graphical element (or inherited from the axis)}%
 			\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+				% Ah: some \pgfplotsextra command like \draw,\path,
+				% \node or even \scope or \endscope.
+				%
+				% do NOT call \pgfplotsonlayer here! We MUST NOT
+				% destroy grouping levels here.
 				\pgfplots@stored@current@data%
 			\else
+				%
+				% this code here means we REALLY have a plotting
+				% command!
 				\begingroup
+				\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/on layer}}{a plot or graphical element (or inherited from the axis)}%
 				\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
 				\ifpgfplots@threedim
 				\else
@@ -9612,9 +9629,6 @@
 					\pgfplots@curplot@threedimfalse
 				\fi
 				\pgfplots@execute@at@begin@plot@visualization@internal
-				%
-				% this code here means we REALLY have a plotting
-				% command!
 				\scope[current plot style] % this does set BOTH pgfplots and tikz options.
 				% FIXME : what, precisely, was the motivation to use a
 				% scope here? It causes a lot of problems and
@@ -9643,9 +9657,9 @@
 				\endscope
 				\pgfplots@execute@at@end@plot@visualization@internal
 				\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
+				\endpgfplotsonlayer
 				\endgroup
 			\fi
-			\endpgfplotsonlayer
 			\pgfplots@stored@current@postcmd
 		}%
 		\global\pgfplotslistnewempty\pgfplots@stored@plotlist% delete contents.
