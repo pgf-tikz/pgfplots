@@ -185,7 +185,7 @@ endif
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(@:.png=.diff.png); exit 1)
+	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(<:.tex=.diff.png); exit 1)
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
