@@ -71,7 +71,7 @@ PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
-.PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES)
+.PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
 $(shell mkdir -p gnuplot references/gnuplot)
