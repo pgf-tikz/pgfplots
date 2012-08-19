@@ -222,12 +222,56 @@ Thus, you can combine |cycle list| and \meta{options}.
 The distinction is as follows: |\addplot  ...| (without options) lets \PGFPlots\ select colors, markers and linestyles automatically (using |cycle list|). The variant |\addplot+|\oarg{option}| ...| will use the same automatically determined styles, but in addition it uses \meta{options}. Finally, |\addplot|\oarg{options} (without the |+|) uses only the manually provided \meta{options}.
 \end{addplot+}
 
+\begin{pgfplotskey}{empty line=\mchoice{auto,none,scanline,jump} (initially auto)}
+	Controls how empty lines in the input coordinate stream are to be interpreted. You should ensure that you have |\pgfplotsset{compat=1.4}| or newer in your preamble and leave this key at its default |empty line=auto|.
+
+	Empty lines can occur between the coordinates of |\addplot coordinates| or successive rows of the data file input routines |\addplot table| (and |\addplot file|).
+
+	The choice \declaretext{auto} checks if the current plot type is |mesh| or |surf|. If so, it uses |scanline|. If the current plot type is some other plot type (like a standard line plot), it uses |jump|. Note that the value \texttt{auto} for non-mesh plots results in \texttt{none} if |compat=1.3| or older is used. In other words: you have to write |\pgfplotsset{compat=1.4}| or newer to let \PGFPlots\ interpret empty lines as |jump| in standard line plots:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[tiny,
+		title={Ignored: compat=1.3},
+		compat=1.3]
+	\addplot table {
+	A B
+	0 0
+	1 1
+
+	1 2
+	2 2
+	};
+	\end{axis}
+\end{tikzpicture}
+\begin{tikzpicture}
+	\begin{axis}[tiny,
+		title={Jump: compat=1.4},
+		compat=1.4]
+	\addplot table {
+	A B
+	0 0
+	1 1
+
+	1 2
+	2 2
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The choice \declaretext{scanline} is only useful for |mesh| and |surf|: it is used to decode a matrix from a coordinate stream. If an empty line occurs once every $N$ data points, the ``scanline'' length is~$N$. This information, together with |mesh/ordering| and the total number of points, allows to deduce the matrix size. However, the distance between empty lines has to be consistent: if the first two empty lines have a distance of~$2$ and the next comes after~$5$, \PGFPlots\ will ignore the information and will expect explicit matrix sizes using |mesh/rows| and/or |mesh/cols|. The choice |scanline| is ignored if |mesh input=patches|. It has no effect for other plot types.
+
+	The choice \declaretext{none} will silently discard any empty line in the input stream.
+
+	The choice \declaretext{jump} tells \PGFPlots\ to generate a jump.
+\end{pgfplotskey}
+
 \subsubsection{Coordinate Lists}
 \label{pgfplots:providing:input}
 
 \begin{addplotoperation}[]{coordinates}{\marg{coordinate list}}
 \label{pgfplots:addplot:coordinates}
-The `|plot coordinates|' command is like that provided by \Tikz\ and reads its input data from a sequence of point coordinates, encapsulated in round braces.
+The `|\addplot coordinates|' command is like that provided by \Tikz\ and reads its input data from a sequence of point coordinates, encapsulated in round braces.
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}
@@ -239,7 +283,10 @@ The `|plot coordinates|' command is like that provided by \Tikz\ and reads its i
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-\noindent The coordinates can be numbers, but they can also contain mathematical expressions like |sin(0.5)| or |\h*8| (assuming you defined |\h| somewhere). However, expressions which involve round braces need to be encapsulated in a further set of curly braces, for example |({sin(0.5)},{cos(0.1)})|.
+
+	You should \empty{only} use this input format if you have short diagrams and you want to provide mathematical expressions for each of the involved coordinates. Any data plots are typically easier to handle using a table format and |\addplot table|.
+
+The coordinates can be numbers, but they can also contain mathematical expressions like |sin(0.5)| or |\h*8| (assuming you defined |\h| somewhere). However, expressions which involve round braces need to be encapsulated in a further set of curly braces, for example |({sin(0.5)},{cos(0.1)})|.
 
 You can also supply error coordinates (reliability bounds) if you are interested in error bars. Simply append the error coordinates with `\declareandlabel{+-} \parg{ex,ey}' (or |+- |\parg{ex,ey,ez}) to the associated coordinate:
 \begin{codeexample}[]
@@ -280,6 +327,8 @@ Furthermore, |coordinates| allows to define ``meta data'' for each coordinate. T
 \end{tikzpicture}
 \end{codeexample}
 Please refer to the documentation of |point meta| on page~\pageref{pgfplots:point:meta} for more information about per point meta data.
+
+	The coordinate stream can contain |empty line|s to tell \PGFPlots\ that the function has jumps. To use it, simply insert an empty line (and ensure that you have |\pgfplotsset{compat=1.4}| or newer in your preamble). See the documentation of |empty line| for details.
 \end{addplotoperation}
 
 \begin{pgfplotskey}{plot coordinates/math parser=\mchoice{true,false} (initially true)}
@@ -288,61 +337,14 @@ Please refer to the documentation of |point meta| on page~\pageref{pgfplots:poin
 	It is necessary to disable |plot coordinates/math parser| if you use some sort of symbolic transformations (i.e. text coordinates).
 \end{pgfplotskey}
 
-\subsubsection{Reading Coordinates From Files}
-
-\begin{addplotoperation}[]{file}{\marg{name}}
-\label{pgfplots:addplot:file}
-\PGFPlots\ supports two ways to read plot coordinates of external files, and one of them is similar to the \Tikz-command `|plot file|'. It is to be used like
-\begin{codeexample}[code only]
-\addplot file {datafile.dat};
-\end{codeexample}
-where \meta{name} is a text file with at least two columns which will be used as $x$ and $y$ coordinates. Lines starting with `|%|' or `|#|' are ignored. Such files are often generated by \textsc{gnuplot}:
-\begin{codeexample}[code only]
-#Curve 0, 20 points
-#x y type
-0.00000 0.00000 i
-0.52632 0.50235 i
-1.05263 0.86873 i
-1.57895 0.99997 i
-...
-9.47368 -0.04889 i
-10.00000 -0.54402 i
-\end{codeexample}
-This listing has been copied from~\cite[section~16.4]{tikz}.
-
-Plot file accepts one optional argument,
-
-\begin{codeexample}[code only]
-\addplot file[skip first] {datafile.dat};
-\end{codeexample}
-
-\noindent
-which allows to skip over a non-comment header line. This allows to read the same input files as |plot table| by skipping over column names. Please note that comment lines do not count as lines here.
-
-The input method |plot file| can also read meta data for every coordinate. As already explained for |plot coordinates| (see above), meta data can be used to change colors or other style parameters for every marker separately. Now, if |point meta| is set to |explicit| or to |explicit symbolic| and the input method is |plot file|, one further element will be read from disk -- for every line. Meta data is always the last element which is read. See page~\pageref{pgfplots:scatter:src} for information and examples about per point meta data and page~\pageref{pgfplots:scatterclasses} for an application example using |scatter/classes|.
-
-
-Plot file is very similar to |plot table|: you can achieve the same effect with
-\begin{codeexample}[code only]
-\addplot table[x index=0,y index=1,header=false] {datafile.dat};
-\end{codeexample}
-\noindent Due to its simplicity, |plot file| is slightly faster while |plot table| allows higher flexibility.
-
-Technical note: every opened file will be protocolled into your log file.
-\end{addplotoperation}
-
-\begin{pgfplotskeylist}{%
-	plot file/skip first=\mchoice{true,false} (initially false),%
-	plot file/ignore first=\mchoice{true,false} (initially false)}
-	The two keys can be provided as arguments to |\addplot file[|\meta{options}|] |\marg{filename}|;| to skip the first non-comment entry in the file. They are equivalent.
-	If you provide them in this context, the prefix |/pgfplots/plot file| can be omitted.
-\end{pgfplotskeylist}
 
 \subsubsection{Reading Coordinates From Tables}
 
-\begin{addplotoperation}[]{table}{\oarg{column selection}\marg{file}}
+\begin{addplotoperation}[]{table}{\oarg{column selection}\marg{file or inline table}}
 \label{pgfplots:addplot:table}
-The use of `|plot table|' is similar in spirit to `|plot file|', but its flexibility is higher. Given a data file like
+This input method is the main input format for any data--based function. It accepts either a file containing data or an inline table provided in curly braces.
+
+Given a data file like
 \begin{codeexample}[code only]
 dof     L2              Lmax            maxlevel
 5       8.31160034e-02  1.80007647e-01  2
@@ -470,8 +472,12 @@ Summary and remarks:
 
 	One application (with several examples how to use this syntax) is line fitting with |create col/linear regression|, see Section~\ref{sec:linefitting} for details.
 
+	\item
+	The table can contain |empty line|s to tell \PGFPlots\ that the function has jumps. To use it, simply insert an empty line (and ensure that you have |\pgfplotsset{compat=1.4}| or newer in your preamble). See the documentation of |empty line| for details.
 	\item Technical note: every opened file will be protocolled into your log file.
+
 \end{itemize}
+
 \end{addplotoperation}
 
 \subsubsection*{Keys To Configure Table Input}
@@ -1475,4 +1481,58 @@ Consider the following list of you encounter problems while working with \verbpd
 \end{itemize}
 }
 
+\subsubsection{Reading Coordinates From Files}
+
+\begin{addplotoperation}[]{file}{\marg{name}}
+\label{pgfplots:addplot:file}
+\paragraph{Deprecation note:} If you have data files, you should generally use |\addplot table|. The input type |\addplot file| is almost the same, but considerably less powerful. It is only kept for backwards compatibility.
+
+
+The |\addplot file| input mechanism is similar to the \Tikz-command `|plot file|'. It is to be used like
+\begin{codeexample}[code only]
+\addplot file {datafile.dat};
+\end{codeexample}
+where \meta{name} is a text file with at least two columns which will be used as $x$ and $y$ coordinates. Lines starting with `|%|' or `|#|' are ignored. Such files are often generated by \textsc{gnuplot}:
+\begin{codeexample}[code only]
+#Curve 0, 20 points
+#x y type
+0.00000 0.00000 i
+0.52632 0.50235 i
+1.05263 0.86873 i
+1.57895 0.99997 i
+...
+9.47368 -0.04889 i
+10.00000 -0.54402 i
+\end{codeexample}
+This listing has been copied from~\cite[section~16.4]{tikz}.
+
+Plot file accepts one optional argument,
+
+\begin{codeexample}[code only]
+\addplot file[skip first] {datafile.dat};
+\end{codeexample}
+
+\noindent
+which allows to skip over a non-comment header line. This allows to read the same input files as |plot table| by skipping over column names. Please note that comment lines do not count as lines here.
+
+The input method |plot file| can also read meta data for every coordinate. As already explained for |plot coordinates| (see above), meta data can be used to change colors or other style parameters for every marker separately. Now, if |point meta| is set to |explicit| or to |explicit symbolic| and the input method is |plot file|, one further element will be read from disk -- for every line. Meta data is always the last element which is read. See page~\pageref{pgfplots:scatter:src} for information and examples about per point meta data and page~\pageref{pgfplots:scatterclasses} for an application example using |scatter/classes|.
+
+
+Plot file is very similar to |plot table|: you can achieve the same effect with
+\begin{codeexample}[code only]
+\addplot table[x index=0,y index=1,header=false] {datafile.dat};
+\end{codeexample}
+\noindent Due to its simplicity, |plot file| is slightly faster while |plot table| allows higher flexibility.
+
+Technical note: every opened file will be protocolled into your log file.
+
+	The file can contain |empty line|s to tell \PGFPlots\ that the function has jumps. To use it, simply insert an empty line (and ensure that you have |\pgfplotsset{compat=1.4}| or newer in your preamble). See the documentation of |empty line| for details.
+\end{addplotoperation}
+
+\begin{pgfplotskeylist}{%
+	plot file/skip first=\mchoice{true,false} (initially false),%
+	plot file/ignore first=\mchoice{true,false} (initially false)}
+	The two keys can be provided as arguments to |\addplot file[|\meta{options}|] |\marg{filename}|;| to skip the first non-comment entry in the file. They are equivalent.
+	If you provide them in this context, the prefix |/pgfplots/plot file| can be omitted.
+\end{pgfplotskeylist}
 }%
