@@ -4782,19 +4782,43 @@
 		}{}%
 	\fi
 }%
+
+\def\pgfplots@enlargelimits@rel@unitserror#1{%
+	\pgfplots@error{enlarge limits only supports values with units for 'abs=#1' and/or 'abs value=#1'. Ignoring unit}%
+}%
 \pgfkeysdef{/pgfplots/@enlargelimits/value}{%
 	\pgfmathparse{#1}%
+	\ifpgfmathunitsdeclared
+		\pgfplots@enlargelimits@rel@unitserror{#1}%
+	\fi
 	\let\pgfplots@enlargelimits@relthresh=\pgfmathresult
 	\let\pgfplots@enlargelimits@absthresh=\pgfutil@empty
 }%
 \pgfkeysdef{/pgfplots/@enlargelimits/rel}{\pgfkeysalso{true,value={#1}}}%
 \pgfkeysdef{/pgfplots/@enlargelimits/abs value}{%
 	\begingroup
-	\pgfplotscoordmath{\pgfplots@enlargelimits@curaxis}{datascaletrafo set shift}{0}%
-	\expandafter\csname pgfplotstransformcoordinate\pgfplots@enlargelimits@curaxis\endcsname{#1}%
-	\pgfmath@smuggleone\pgfmathresult
+		\ifpgfplots@usefpu
+			\pgfkeys{/pgf/fpu,/pgf/fpu/output format=fixed}%
+		\fi
+		\pgfmathparse{#1}%
+		\xdef\pgfplots@glob@TMPa{%
+			\ifpgfmathunitsdeclared
+				\noexpand\pgfmathunitsdeclaredtrue
+			\else
+				\noexpand\pgfmathunitsdeclaredfalse
+			\fi
+			\noexpand\def\noexpand\pgfmathresult{\pgfmathresult}%
+		}%
 	\endgroup
-	\let\pgfplots@enlargelimits@absthresh=\pgfmathresult
+	\pgfplots@glob@TMPa
+	\ifpgfmathunitsdeclared
+		\edef\pgfplots@enlargelimits@absdimension{\pgfmathresult pt}%
+		\let\pgfplots@enlargelimits@absthresh=\pgfutil@empty
+	\else
+		\let\pgfplots@enlargelimits@absdimension=\pgfutil@empty
+		\csname pgfplotstransformdirection\pgfplots@enlargelimits@curaxis\endcsname{\pgfmathresult}%
+		\let\pgfplots@enlargelimits@absthresh=\pgfmathresult
+	\fi
 	\let\pgfplots@enlargelimits@relthresh=\pgfutil@empty
 }%
 \pgfkeysdef{/pgfplots/@enlargelimits/abs}{\pgfkeysalso{true,abs value={#1}}}%
@@ -4802,10 +4826,31 @@
 
 \def\pgfplots@enlarge@limit@ifconfigured#1{%
 	\begingroup
+	% ATTENTION: this uses similar access patterns as
+	% \pgfplots@enlarge@limit@by@dimension
 	\def\bool@pgfplots@loc@enlargelimits@min{0}%
 	\def\bool@pgfplots@loc@enlargelimits@max{0}%
+	%
+	% we can either enlarge 
+	% ... using a relative limit (like 0.1 -> 10%)
 	\def\pgfplots@enlargelimits@relthresh{0.1}% the default
+	% ...or an absolute limit ( like 4 units)
 	\let\pgfplots@enlargelimits@absthresh=\pgfutil@empty
+	% or an absolute dimension (like 1cm).
+	%
+	% Relative and absolute values are relatively simple: we only need to compute and
+	% add the changes to the already existing limits. The value with
+	% an absolute dimension is surprisingly complicated. 
+	% 
+	% The problem is: enlargelimits has to be computed before the
+	% image has been scaled into its final size. This is not merely a
+	% technical problem; this is how one wants it to be!
+	%
+	% The solution taken here is to communicate such an absolute
+	% dimension to the scaling routines. The scaling routines will
+	% handle the case; we don't change limits here.
+	%
+	\let\pgfplots@enlargelimits@absdimension=\pgfutil@empty
 	\def\pgfplots@enlargelimits@curaxis{#1}%
 	%
 	\pgfkeysgetvalue{/pgfplots/enlarge #1 limits}{\pgfplots@loc@TMPa}%
@@ -4824,12 +4869,106 @@
 		\pgfplots@enlarge@limit@for{#1}%
 	\fi
 	\global\let\pgfplots@glob@TMPa=\bool@pgfplots@loc@enlargeany
-	% assignments are made globally.
+	% limits assignments are made globally.
+	\xdef\pgfplots@glob@TMPb{%
+		\noexpand\pgfplots@enlargelimits@remember@abs@dimension{#1}%
+			{\bool@pgfplots@loc@enlargelimits@min}%
+			{\bool@pgfplots@loc@enlargelimits@max}%
+			{\pgfplots@enlargelimits@absdimension}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPb
+	\if1\pgfplots@glob@TMPa
+		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
+	\fi
+}
+
+% Reconfigures the scaling routines such that following calls to
+% \pgfplots@scaleaxes@to@BB@ will enlarge the limit for a specific
+% axis by an absolute dimension.
+%
+% This enlargement is different from standard limit enlargement:
+% Standart limit enlargement is typically applied (and finished) long
+% before the scaling routines start. In fact, the result of
+% enlargelimits is typically the input argument for the scaling
+% (compare the pgfplots manual (pdf)).
+%
+% This here needs a different treatment because "enlarge x limits={abs=1cm}"
+% has to be applied AFTER the scaling is complete. To this end, it is
+% applied as the very last scaling step. It is applied after any post
+% scales, and it only modifies axis limits. 
+%
+% #1: x,y, or z
+% #2: 1 if the lower limit shall be enlarged, 0 if not
+% #3: 1 if the upper limit shall be enlarged, 0 if not
+% #4: some absolute dimension (like 1cm) by which we want to enlarge
+% axis limits.
+\def\pgfplots@enlargelimits@remember@abs@dimension#1#2#3#4{%
+	\expandafter\edef\csname pgfplots@enlargelimits@absdimension@#1\endcsname{#4}%
+	\expandafter\edef\csname pgfplots@enlargelimits@absdimension@#1@minmax\endcsname{{#2}{#3}}%
+}%
+\let\pgfplots@enlargelimits@absdimension@x=\pgfutil@empty
+\let\pgfplots@enlargelimits@absdimension@y=\pgfutil@empty
+\let\pgfplots@enlargelimits@absdimension@z=\pgfutil@empty
+
+% Called as soon as the scaling is completely set up and any 
+% "enlarge #1 limits={abs=1cm}"
+% enlargements shall be done, i.e. enlargement by unit.
+% 
+% #1: x,y, or z
+\def\pgfplots@scaling@apply@enlargelimits@by@dimension#1{%
+	\expandafter\ifx\csname pgfplots@enlargelimits@absdimension@#1\endcsname\pgfutil@empty
+	\else
+		\pgfplotsconvertunittocoordinate{#1}{\csname pgfplots@enlargelimits@absdimension@#1\endcsname}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplots@enlarge@limit@by@dimension{#1}
+				\csname pgfplots@enlargelimits@absdimension@#1@minmax\endcsname
+				{\pgfmathresult}%
+		}%
+		\pgfplots@loc@TMPa
+	\fi
+}%
+
+% this here applies changes required for 'enlarge #1 limits={abs=1cm}', i.e. 
+% for the case of numbers with units.
+%
+% The main difference is that it is applied AFTER the scaling of the
+% axis is complete.
+%
+% #1: x,y,or z
+% #2: 1 if lower limit shall be changed
+% #3: 1 if upper limit shall be changed
+% #4: the absolute value
+\def\pgfplots@enlarge@limit@by@dimension#1#2#3#4{%
+	\begingroup
+	% ATTENTION: this uses similar access patterns as
+	% \pgfplots@enlarge@limit@ifconfigured
+	\def\bool@pgfplots@loc@enlargelimits@min{#2}%
+	\def\bool@pgfplots@loc@enlargelimits@max{#3}%
+	%
+	\let\pgfplots@enlargelimits@relthresh=\pgfutil@empty
+	\def\pgfplots@enlargelimits@absthresh{#4}
+	\def\pgfplots@enlargelimits@curaxis{#1}%
+	%
+	\def\bool@pgfplots@loc@enlargeany{0}%
+	\if1\bool@pgfplots@loc@enlargelimits@min
+		\def\bool@pgfplots@loc@enlargeany{1}%
+	\else
+		\if1\bool@pgfplots@loc@enlargelimits@max
+			\def\bool@pgfplots@loc@enlargeany{1}%
+		\fi
+	\fi
+	\if1\bool@pgfplots@loc@enlargeany
+		\pgfplots@enlarge@limit@for{#1}%
+	\fi
+	\global\let\pgfplots@glob@TMPa=\bool@pgfplots@loc@enlargeany
+	% limits assignments are made globally.
 	\endgroup
 	\if1\pgfplots@glob@TMPa
 		\pgfplots@visphase@notify@changeofcanvaslimits{#1}%
 	\fi
 }
+
 
 % Helper method inside of \pgfplots@enlarge@limit@ifconfigured.
 %
@@ -4840,9 +4979,16 @@
 	\expandafter\let\expandafter\pgfplots@@min\csname pgfplots@#1min\endcsname
 	\expandafter\let\expandafter\pgfplots@@max\csname pgfplots@#1max\endcsname
 	\ifx\pgfplots@enlargelimits@relthresh\pgfutil@empty
-		% we have an absolute enlarge value:
-		\let\enlargeabsolute=\pgfplots@enlargelimits@absthresh
-		\pgf@xb=\pgfplots@enlargelimits@absthresh pt
+		\ifx\pgfplots@enlargelimits@absthresh\pgfutil@empty
+			% ups. No enlargement!? OK, can happen for 'abs=1cm' ...
+			% numbers with unit are processed later (after the scaling
+			% is set up)
+			\pgf@xb=0pt %
+		\else
+			% we have an absolute enlarge value:
+			\let\enlargeabsolute=\pgfplots@enlargelimits@absthresh
+			\pgf@xb=\pgfplots@enlargelimits@absthresh pt
+		\fi
 	\else
 		% we have a relative enlarge value:
 		\pgfmathsubtract@\pgfplots@@max\pgfplots@@min%
