@@ -24,6 +24,14 @@ include pgfplots.makefile
 	@echo ""
 	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
 
+html: FORCE
+	mkdir -p html/figures/generated
+	mkdir -p gnuplot
+	@cd html && \
+		$(TEXMFCNF_FOR_MEMLIMITS) && \
+		export TEXINPUTS=../$$TEXINPUTS; \
+		$(PDFLATEX) '\def\pgfplotsmanualhtlatexmode{1} \input $(@:.pdf=.tex)'
+
 pgfplots.pdf: $(ALL_FIGURES)
 
 pgfplots.makefile:

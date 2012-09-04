@@ -92,14 +92,19 @@
 \def\pgfmanualbar{\char`\|}
 \makeatletter
 
-\newif\ifpgfplotsmanualexternalexpensive
-\let\pgfplotsmanualexternalexpensivetrue@orig=\pgfplotsmanualexternalexpensivetrue
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% use \pgfplotsmanualexternalexpensivetrue to externalize expensive
-% examples.
-\def\pgfplotsmanualexternalexpensivetrue{%
-	\usepgfplotslibrary{external}
-	\pgfplotsmanualexternalexpensivetrue@orig
+\usepgfplotslibrary{external}
+
+% use \pgfplotsmanualenableexternalizationofexpensive in the preamble
+% to enable externalization of expensive examples.
+% This will ONLY externalize expensive examples, i.e. those for which
+% \pgfplotsexpensiveexample is written:
+%
+% \pgfplotsexpensiveexample
+% \begin{codeexample}
+\def\pgfplotsmanualenableexternalizationofexpensive{%
+	\pgfplotsmanual@enable@externalization@for@expensivetrue
 	\tikzexternalize[
 		prefix=figures/expensiveexample,
 		figure name={},
@@ -115,6 +120,7 @@
 }%
 %\pgfkeys{/pgf/images/include external/.code={\href{file:#1}{\pgfimage{#1}}}} % FIXME : NOT FOR THE FINAL VERSION
 
+\newif\ifpgfplotsmanual@enable@externalization@for@expensive
 \newif\ifpgfplots@example@is@expensive
 
 \pgfkeys{
@@ -128,12 +134,62 @@
 
 % Write this macro directly in front of \begin{codeexample} (without arguments):
 \def\pgfplotsexpensiveexample{%
-	\ifpgfplotsmanualexternalexpensive
+	\ifpgfplotsmanual@enable@externalization@for@expensive
 		\pgfplots@example@is@expensivetrue
 	\else
 		\message{[NOTE: I am now about to typeset an expensive example. You will need to ENLARGE YOUR TeX MEMORY CAPACITIES if this fails.]}%
 	\fi
 }%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% MACROS FOR HTML OUTPUT:
+
+\def\pgfplotsmanual@configure@for@htlatexmode{%
+	% disable this; we will externalize everything now:
+	\let\pgfplotsmanualenableexternalizationofexpensive=\relax
+	%
+	\tikzexternalize[
+		prefix=figures/generated/,
+		figure name={manual},
+		mode=list and make,
+		verbose=false,
+		external/system call={%
+			pdflatex \tikzexternalcheckshellescape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource" && pdftoppm "\image.pdf" | pnmtopng > "\image.png"%
+		},
+		/pgf/images/external info,
+		/pgf/images/include external/.code={%
+			\includegraphics
+			   [width=\pgfexternalwidth,height=\pgfexternalheight]
+			   {##1.png}%
+		}
+	]
+	%
+	\gdef\pgfsys@imagesuffixlist{.png}
+	%
+	\tikzifexternalizing{%
+		%\nofiles
+		\pgfkeys{/pdflinks/codeexample links=false}%
+	}{}%
+}
+
+\@ifpackageloaded{tex4ht}{
+	% always active here:
+	\def\pgfplotsmanualhtlatexmode{1}%
+}{
+}
+
+% the macro \pgfplotsmanualhtlatexmode should be set from command line
+% (to any value). If it is known, the manual will be translated to
+% HTML.
+\pgfutil@ifundefined{pgfplotsmanualhtlatexmode}{%
+}{%
+	\pgfplotsmanual@configure@for@htlatexmode
+}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 
 \newenvironment{addplotoperation}[3][]{
