@@ -26,11 +26,19 @@ include pgfplots.makefile
 
 html: FORCE
 	mkdir -p html/figures/generated
-	mkdir -p gnuplot
+	mkdir -p html/gnuplot
+	# FIXME: this inclusion pattern might include aux files of the pdf version!
+	@cd html && \
+		export TEXINPUTS=../:$$TEXINPUTS; \
+		$(PDFLATEX) '\def\pgfplotsmanualhtlatexmode{1} \input pgfplots.tex'
 	@cd html && \
 		$(TEXMFCNF_FOR_MEMLIMITS) && \
-		export TEXINPUTS=../$$TEXINPUTS; \
-		$(PDFLATEX) '\def\pgfplotsmanualhtlatexmode{1} \input $(@:.pdf=.tex)'
+		export TEXINPUTS=../:$$TEXINPUTS; \
+		make -k -f pgfplots.makefile
+	@cd html && \
+		export TEXINPUTS=../:$$TEXINPUTS; \
+		htlatex pgfplots.tex
+		
 
 pgfplots.pdf: $(ALL_FIGURES)
 
