@@ -74,7 +74,7 @@ DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
-$(shell mkdir -p gnuplot references/gnuplot)
+$(shell mkdir -p gnuplot references/gnuplot references/plotdata)
 # -------------------------------------------------
 
 .NOTPARALLEL:
