@@ -70,6 +70,8 @@
 \newif\ifpgfplots@plot@coords@mathparser
 \pgfplots@plot@coords@mathparsertrue
 \newif\ifpgfplots@enlargelimits
+\newif\ifpgfplots@enlargelimits@respect@figure@size
+\pgfplots@enlargelimits@respect@figure@sizetrue
 \newif\ifpgfplots@enlargelimits@rel@thresh
 \newif\ifpgfplots@enlargelimits@auto
 \newif\ifpgfplots@tickshow
@@ -1907,6 +1909,7 @@
 		/pgfplots/enlarge z limits=#1,%
 	},%
 	/pgfplots/enlargelimits/.default=true,
+	/pgfplots/enlargelimits respects figure size/.is if=pgfplots@enlargelimits@respect@figure@size,
 	/pgfplots/update limits/.is if=pgfplots@bb@isactive,
 	/pgfplots/x/.initial=,% is implicitly set by 'width' and/or '\axisdefaultwidth'
 	/pgfplots/x/.belongs to family=/pgfplots,
@@ -4929,6 +4932,129 @@
 		\pgfplots@loc@TMPa
 	\fi
 }%
+
+
+% PRECONDITION: 
+%   1. width/height are set
+%   2. the unit vectors point indicate whether the axis is a standard
+%   box or some skewed plot (their precise direction and magnitude is
+%   irrelevant)
+%   3. the enlargelimits code has already evaluated the case 
+%   "enlargelimits={abs=1cm}"
+%
+% POSTCONDITION:
+% 	width and/or height might be modified
+\def\pgfplots@scaling@prepare@enlargelimits@by@dimension{%
+	\ifpgfplots@enlargelimits@respect@figure@size
+		% 
+		% decide if we need to do anything at all, i.e. if there IS
+		% some option 'enlarge * limits={abs=1cm}' :
+		\pgfplots@loc@tmpfalse
+		\ifx\pgfplots@enlargelimits@absdimension@x\pgfutil@empty
+		\else
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifx\pgfplots@enlargelimits@absdimension@y\pgfutil@empty
+		\else
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifx\pgfplots@enlargelimits@absdimension@z\pgfutil@empty
+		\else
+			\pgfplots@loc@tmptrue
+		\fi
+		%
+		\ifpgfplots@loc@tmp
+			\def\pgfplotsretval{}%
+			% ok. We encountered an option 'enlarge * limits={abs=1cm}' for at least one axis.
+			% and we WANT to keep 'width', 'height'.
+			%
+			% This is not quite trivial because in order to compute
+			% enlarge-by-dimension, we NEED the unit vectors. But the
+			% unit vectors need the limits - a nonlinear problem.
+			%
+			% Since this here is not really a common use-case, I
+			% decided to implement a heuristics which works in most
+			% common cases: for standard 2d axes. It might fail for
+			% skewed axes and it will probably fail for 3d axes.
+			%
+			% My idea is to change width and/or height BEFORE the unit
+			% vectors have been computed.
+			%
+			% First: check if we HAVE a standard 2d axis.
+			\pgfplots@loc@tmpfalse
+			\ifpgfplots@threedim
+			\else
+				\ifdim\pgf@xx=0sp %
+				\else
+					\ifdim\pgf@xy=0sp %
+						\ifdim\pgf@yx=0sp %
+							\ifdim\pgf@yy=0sp %
+							\else
+								\pgfplots@loc@tmptrue
+							\fi
+						\fi
+					\fi
+				\fi
+			\fi
+			%
+			\ifpgfplots@loc@tmp
+				\def\pgfplots@loc@TMPc{{1}{1}}%
+				%
+				% ah - we really *have* a standard boxed axis.
+				% Compute 
+				% newwidth  = width - enlargevalue
+				% newheight = height - enlargevalue 
+				%
+				% newwidth will be stored in \pgfplots@loc@TMPa
+				% and newheight in \pgfplots@loc@TMPb
+				\ifx\pgfplots@enlargelimits@absdimension@x\pgfutil@empty
+					\let\pgfplots@loc@TMPa=\pgfplots@width
+				\else
+					\ifx\pgfplots@enlargelimits@absdimension@x@minmax\pgfplots@loc@TMPc
+						\def\pgfmathresult{2}%
+					\else
+						\def\pgfmathresult{1}%
+					\fi
+					\pgfmathparse{\pgfplots@width - \pgfmathresult * \pgfplots@enlargelimits@absdimension@x}%
+					\edef\pgfplots@loc@TMPa{\pgfmathresult pt}%
+				\fi
+				%
+				\ifx\pgfplots@enlargelimits@absdimension@y\pgfutil@empty
+					\let\pgfplots@loc@TMPb=\pgfplots@height
+				\else
+					\ifx\pgfplots@enlargelimits@absdimension@y@minmax\pgfplots@loc@TMPc
+						\def\pgfmathresult{2}%
+					\else
+						\def\pgfmathresult{1}%
+					\fi
+					\pgfmathparse{\pgfplots@height - \pgfmathresult * \pgfplots@enlargelimits@absdimension@y}%
+					\edef\pgfplots@loc@TMPb{\pgfmathresult pt}%
+				\fi
+				%
+				% OK. if( newwidth>0 && newheight>0 ), we can proceed.
+				\pgfplots@loc@tmpfalse
+				\ifdim\pgfplots@loc@TMPa>10pt %
+					\ifdim\pgfplots@loc@TMPb>10pt %
+						\pgfplots@loc@tmptrue
+					\fi
+				\fi
+				\ifpgfplots@loc@tmp
+					% Ah: newheight>0 && newheight>0 . Good.
+					\let\pgfplots@width=\pgfplots@loc@TMPa
+					\let\pgfplots@height=\pgfplots@loc@TMPb
+				\else
+					\def\pgfplotsretval{enlarge value are bigger than old picture size}%
+				\fi
+			\else
+				\def\pgfplotsretval{size adjust is unavailable for non-standard axes}%
+			\fi
+			\ifx\pgfplotsretval\pgfutil@empty
+			\else
+				\pgfplots@warning{enlargelimits respects figure size=true: could not respect the prescribed width/height (\pgfplotsretval). The size and/or aspect ratio of your image will be different than expected. You can try to modify BOTH width and height.}%
+			\fi
+		\fi
+	\fi
+}
 
 % this here applies changes required for 'enlarge #1 limits={abs=1cm}', i.e. 
 % for the case of numbers with units.
