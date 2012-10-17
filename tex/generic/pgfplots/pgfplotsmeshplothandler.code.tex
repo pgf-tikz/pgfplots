@@ -780,13 +780,45 @@
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@B\endvertex #1%
 	},
 	fill path={%
-		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@A\endvertex}%
+		\pgfplotsplothandlermesh@pathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@A\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@B\endvertex}%
+		\pgfplotsplothandlermesh@setlastpoint{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@B\endvertex}%
 	},
 	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
 	deserialize except vertices=,
 	get num vertices=2,
 	get pdf shading type=0,
+}%
+
+\def\pgfplotsplothandlermesh@last@x{-16000pt}
+\def\pgfplotsplothandlermesh@last@y{-16000pt}
+
+\def\pgfplotsplothandlermesh@pathmoveto#1{%
+	\pgf@process{#1}%
+	\pgfpathmoveto{}%
+}
+\def\pgfplotsplothandlermesh@setlastpoint#1{%
+}
+
+% Applies a moveto to #1 - but only if #1 is NOT the last used path
+% segment.
+\def\pgfplotsplothandlermesh@pathmoveto@continuouspath#1{%
+	\pgf@process{#1}%
+	\pgfplots@loc@tmptrue
+	\ifdim\pgf@x=\pgfplotsplothandlermesh@last@x\relax
+		\ifdim\pgf@y=\pgfplotsplothandlermesh@last@y\relax
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	\ifpgfplots@loc@tmp
+		\pgfpathmoveto{}%
+	\fi
+}%
+
+\def\pgfplotsplothandlermesh@setlastpoint@continuouspath#1{%
+	\pgf@process{#1}%
+	\xdef\pgfplotsplothandlermesh@last@x{\the\pgf@x}%
+	\xdef\pgfplotsplothandlermesh@last@y{\the\pgf@y}%
 }%
 
 \pgfplotsdeclarepatchclass{triangle}{%
@@ -1405,14 +1437,9 @@
 		%
 		% Prepare color data source:
 		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
-			% oh. There is no color data!? Well... then use a constant
-			% color.
-			% 
-			% This activates tikz colors:
-			%\tikz@options
-			\def\pgfplotsplothandlermesh@definecolor{%
-				\pgfplots@drawoptions
-			}%
+			% oh. There is no color data!? 
+			\pgfplotsplothandlermesh@init@path@without@point@meta
+			%
 		\else
 			\pgfplotsplothandlermesh@init@cdata
 			\pgfplotsplothandlermesh@init@shader
@@ -1437,6 +1464,39 @@
 	}%
 }%
 \def\pgfplotsplothandlermesh@patchclass@defaulttext{default}%
+
+% This is a VERY special case. The idea is to switch to
+% "normal" path mode:
+% \pgfpathmoveto \pgfpathlineto \pgfpathlineto
+% \pgfpathlineto \pgfusepath.
+%
+% Note that the mesh handler's default is to issue
+% \pgfusepath after *each* elementary patch.
+%
+% This special use-case might not cover all aspects of the
+% mesh/surf/patch plot handler.
+\def\pgfplotsplothandlermesh@init@path@without@point@meta{%
+	%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get dimension}%
+	\ifnum\pgfplotsretval=1 %
+		\def\pgfplotsplothandlermesh@definecolor{%
+			% no-op
+		}%
+		% FIXME : this does not handle separate edges, i.e.
+		% \pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke
+		\def\pgfplotsplothandlermesh@VISUALIZE{\pgfplotsplothandlermesh@VISUALIZE@continuouspath@fill@andor@stroke}%
+		\let\pgfplotsplothandlermesh@pathmoveto=\pgfplotsplothandlermesh@pathmoveto@continuouspath
+		\let\pgfplotsplothandlermesh@setlastpoint=\pgfplotsplothandlermesh@setlastpoint@continuouspath
+		% 
+		% This activates tikz colors:
+		%\tikz@options
+		\pgfplots@drawoptions
+		% Acquire the values for \tikz@mode@* [used for faceted]
+		\pgfplots@drawmodes
+	\else
+		\pgfplots@error{Please provide 'point meta' for your plot. Omitting point meta is only supported for 1d patch types.}%
+	\fi
+}
 
 % implements 'show normals'. Keep in mind that this is more-or-less a
 % debugging helper, not productive code.
@@ -1594,9 +1654,17 @@
 	\pgfplotsplothandlermesh@usepath
 	\pgfplotsplothandlermesh@show@normals@if@configured
 }%
-\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
 
-\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@std
+% a special VISUALIZE implementation which allows to draw a CONTINUOS
+% global path, i.e. one which is not "\pgfusepath"ed after each patch
+% segment. This is only used if 'point meta=none'
+\def\pgfplotsplothandlermesh@VISUALIZE@continuouspath@fill@andor@stroke{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
+}%
+
+\def\pgfplotsplothandlermesh@VISUALIZE@std{\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke}
+
+\def\pgfplotsplothandlermesh@VISUALIZE{\pgfplotsplothandlermesh@VISUALIZE@std}
 
 \let\pgfplotsplothandlermesh@show@normals@if@configured\relax
 
