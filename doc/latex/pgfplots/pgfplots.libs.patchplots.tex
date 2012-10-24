@@ -64,7 +64,86 @@ coordinates {
 
 \subsubsection{Providing Patches by means of Mathematical Expressions}
 \begin{pgfplotskey}{patch type sampling=\mchoice{true,false} (initially false)}
-	FIXME 
+	Most |patch type|s expect a specific number of vertices in a specific sequence. This is part of what the |patchplots| library is. But is is still tedious to provide this sort of data.
+
+	The |patch type sampling| method allows to simplify the procedure: it works together with |\addplot expression| and evaluates the mathematical expression at each of the required vertices (in the correct sequence):
+\begin{codeexample}[]
+\begin{tikzpicture}
+  \begin{axis}
+  \addplot[
+	samples=5,domain=-3:3,
+  	mesh,patch type=cubic spline,
+  	patch type sampling,
+	% avoid individual colors per segment:
+  	blue,point meta=none,
+  ]
+  	{exp(-x^2)};
+
+  % a second plot which shows the 
+  % generated x positions:
+  \addplot[
+    mark=*,only marks,scatter,
+	samples=5,domain=-3:3,
+  	patch type=cubic spline,
+  	patch type sampling,
+  	point meta={exp(-x^2)},
+  ]
+  	{-0.1};
+
+  % a third plot which shows the marks
+  % without patch type sampling:
+  \addplot[
+    mark=*,only marks,scatter,
+	samples=5,domain=-3:3,
+  	point meta={exp(-x^2)},
+  ]
+  	{-0.15};
+
+  \end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	\noindent The first plot above is almost a normal plot by expression. The |samples| and |domain| key controls the sampling procedure, and |blue,point meta=none| defines the global color to use. Note that the special choice |point meta=none| simply disables individual colors per mesh segment (which is the default for |mesh| plots). However, the |patch type sampling| key here makes a huge difference: it tells \PGFPlots\ to check the current value of |patch type| and to sample a coordinate sequence which is suitable as input for that |patch type|. We see that the outcome is a partially smooth function (more about that below).
+
+	The method |patch type sampling| samples |x| just as usual. The result is a sequence $[x_0,x_1,\dotsc,x_k]$. For each interval $[x_i,x_{i+1}]$, a |patch type| is sampled inside of the interval. To this end, the current |patch type| is used to generate a standardized vertex pattern in the unit cube. For |patch type=cubic spline|, this generates four points $0, \nicefrac13, \nicefrac23, 1$. These standardized numbers are mapped into $[x_i, x_{i+1}]$. Then, any mathematical expressions (in our case |exp(-x^2)|) are evaluated at the resulting positions.
+
+	The second plot in our example above shows the |mark|ers resulting from |patch type sampling|. Note that we see $13$ markers even though we have said |samples=5|. These $5$ samples are shown in the third plot. This is because |patch type=cubic spline| needs $4$ points for each patch (i.e.\ $4$ points in each sampled interval).
+
+	Note that even though the result in our example above is \emph{partially} smooth, it is \emph{not} globally smooth. In other words: each resulting mesh segment is a polynomial of third order. But: the five cubic polynomials are determined independently; and they are simple glued together without any intelligence. In particular, they are \emph{unsmooth} at the five initial sampling points! This key cannot apply global smoothing. It is really just a convenient method which simplifies sampling of such patch types.
+
+	The method |patch type sampling| can also be used for |surf| plots, i.e.\ for matrix sampling. It works in the same way:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot3[surf,shader=interp,
+		patch type=bicubic,
+		patch type sampling,
+		samples=5,domain=-3:3]
+	{exp(-x^2-y^2)};
+
+  % show the generated grid on top:
+  \addplot3[
+    mark=*,mark size=1pt,only marks,scatter,
+	samples=5,domain=-3:3,
+  	patch type=bicubic,
+  	patch type sampling,
+  	point meta={exp(-x^2-y^2)},
+  ]
+  {1.1};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The example is similar to our one--dimensional example above: it uses the same 1d function as product. We see that it has $13^2$ samples instead of just $5^2$, and we see that the geometry is partially smooth (see above for ``partially''). Note, however, that the color interpolation is only applied once per patch. The following example shows a |bilinear| patch with unsmooth geometry, but higher resolution for the color data, on a $13\times13$ mesh:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot3[surf,shader=interp,
+		patch type=bilinear,
+		samples=13,domain=-3:3]
+	{exp(-x^2-y^2)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Note that you may want to view the preceding examples in Acrobat Reader. Many free pdf viewers cannot display these shadings properly.
 \end{pgfplotskey}
 
 \subsubsection{Global One--Dimensional Curves with Smooth Splines}
@@ -224,7 +303,7 @@ coordinates {
 \end{codeexample}
 	\noindent We see that the shape's boundary is reconstructed exactly using the |biquadratic| patch. In addition, |patch refines| improves the (first order) color interpolation. Details for |patch refines| are discussed in Section~\ref{sec:lib:patchplots:refinement} and details and limitations regarding superimposed grid lines are discussed in Section~\ref{sec:lib:patchplots:grids}.
 
-	The choice \declareandlabel{bicubic} is similar to |biquadratic|: it allows to defines two--dimensional patches whose boundary is defined by four cubic polynomials. Consequently, it allows very smooth boundaries -- especially since the viewer constructs these boundaries at every zoom level. A |bicubic| patch is constructed from $16$ points which are arranged in a $4\times4$ matrix. Each consequtive $16$ points make up a single |bicubic| patch. The $17$th point starts the next |bicubic| patch (just as for any other |patch type|).
+	The choice \declareandlabel{bicubic} is similar to |biquadratic|: it allows to defines two--dimensional patches whose boundary is defined by four cubic polynomials. Consequently, it allows very smooth boundaries -- especially since the viewer constructs these boundaries at every zoom level. A |bicubic| patch is constructed from $16$ points which are arranged in a $4\times4$ matrix. Each consecutive $16$ points make up a single |bicubic| patch. The $17$th point starts the next |bicubic| patch (just as for any other |patch type|).
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[nodes near coords={(\coordindex)},
@@ -239,8 +318,28 @@ coordinates {
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-	Just as for |biquadratic|, the color interpolation of |bicubic| is (just) bilinear, even though the geometry is of higher order.
-%	FIXME : write more
+	Just as for |biquadratic|, the color interpolation of |bicubic| is (just) bilinear, even though the geometry is of higher order. The color interpolation uses the |point meta| values determined at the four corners of each patch; all other values of |point meta| are ignored by the shader (although their values are used to compute |point meta min| and |point meta max|).
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	title=Two Bicubic Patches]
+\addplot3[patch,patch type=bicubic,shader=interp,point meta=rand]
+coordinates {
+	(0,0,1) (1,0,0) (2,0,0) (3,0,0)
+	(0,1,0) (1,1,0) (2,1,0) (3,1,0)
+	(0,2,0) (1,2,0) (2,2,0) (3,2,0)
+	(0,3,0) (1,3,0) (2,3,0) (3,3,0)
+
+	(3,0,0) (4,0,0) (5,0,0) (6,0,0)
+	(3,1,0) (4,1,.5)(5,1,0) (6,1,0)
+	(3,2,0) (4,2,0) (5,2,0) (6,2,0)
+	(3,3,0) (4,3,0) (5,3,0) (6,3,0)
+
+};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The previous example uses two patches of type |bicubic|. Note that the color data (|point meta|) uses a random generator. This is intentional here: if you leave the default (which is |point meta=f(x)| unless you provide something else), the second patch will be blue. This is because the four corner vertices of the second patch define the color shading -- and their $z$ value is~$0$.
 
 	The choice \declareandlabel{coons} expects a sequence of one or more Coons patches, made up of $n=12$ points each. A Coons patch is delimited by four cubic B\'ezier curves, with the end points attached to each other -- and the $n$ points provide the required control points for these curves in a specific ordering which is illustrated in the following example:
 \begin{codeexample}[]
