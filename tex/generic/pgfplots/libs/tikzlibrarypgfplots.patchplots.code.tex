@@ -2147,13 +2147,35 @@
 		% AB BB CB DB
 		% AA BA CA DA
 		%
+		% STEP 1: ensure that the patch's coordinates are streamed in
+		% a sequence which is compatible with the DEPTH of the
+		% corners.
+		%
+		% we use
+		% \pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+		% which works for bilinear, biquadratic, and bicubic 
+		%
+		% define helper macros which are input for
+		% \pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth:
 		\let\pgfplotspatchclass@rect@A=\pgfplotspatchclass@bicubic@AA
 		\let\pgfplotspatchclass@rect@B=\pgfplotspatchclass@bicubic@DA
 		\let\pgfplotspatchclass@rect@C=\pgfplotspatchclass@bicubic@DD
 		\let\pgfplotspatchclass@rect@D=\pgfplotspatchclass@bicubic@AD
 		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
 			{pgfplotspatchclass@rect@}{\Pcur}{\Pnextseq}%
+		%
+		% now, translate the result into our matrix form.
+		% This means to (a) identify the FIRST point which needs to be
+		% streamed (it is stored in \Pcur as 'A', 'B', 'C', or 'D')
+		% and (b) keep in mind that we have to take care of the
+		% sequence in which points are streamed ("forward" means to
+		% rotate the matrix elements and "backward" means to transpose
+		% the "forward" result).
+		%
 		\if A\Pcur
+			% Ah - the point "AA" needs to be streamed as first.
+			%
+			% Well, this is simple: take the matrix as-is!
 			% simply copy 1:1
 			\let\P@AA=\pgfplotspatchclass@bicubic@AA
 			\let\P@BA=\pgfplotspatchclass@bicubic@BA
@@ -2267,10 +2289,27 @@
 		\fi
 		\ifx\Pnextseq\pgfutil@empty
 		\else
+			% reverse the ordering. This means to transpose the
+			% matrix:
 			\pgfplotspatchclass@bicubic@transpose
 		\fi
 		%
 		% Step: convert to tensor bezier representation.
+		%
+		% Converting a 2d tensor product lagrangian interpoland to a
+		% 2d tensor product bezier interpoland can be achieved by
+		% means of 1d algorithms along LINES in the matrix.
+		%
+		% The underlying proof for this is related to the tensor
+		% product form: the U and V coordinates are orthogonal to each
+		% other, so we can redistribute all intermediate results. (I
+		% do not have the real proof, so this hand-waving argument has
+		% to be enough). I verified its results experimentally.
+		%
+		% Note that the underlying 1d operation is the same as for
+		% 'patch type=cubic spline' . We only need to apply it to all
+		% lines in U direction and afterwards to all lines in V
+		% direction.
 		% 
 		\def\pgfplotspatchvertexaddXY@expanded##1\times{%
 			\edef\pgfplots@loc@TMPa{##1}%
@@ -2322,6 +2361,16 @@
 		\def\pgfplots@line##1{\csname P@D##1\endcsname}%
 		\pgfplots@apply@to@line
 		%
+		% OK. The tensor product representation is READY.
+		%
+		% Stream it to the shader. Note that the shader has a
+		% DIFFERENT ordering; it expects points in the cyclic ordering
+		%
+		% AA BA CA DA   DB DC DD  CD BD AD   AC AB    BB CB CC BC
+		%
+		% note furthermore that only the corners have "point meta" in
+		% this shading :-(
+		%
 		\expandafter\pgfplotspatchvertex\P@AA\endvertex
 			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 			\pgfplotsaxisvisphasetransformpointmeta
@@ -2363,6 +2412,8 @@
 	get num cdata vertices=4,
 }%
 
+% Transpose a bicubic matrix (4x4).
+%
 % Reorder 
 % AD BD CD DD
 % AC BC CC DC
