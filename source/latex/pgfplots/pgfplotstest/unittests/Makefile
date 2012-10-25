@@ -71,6 +71,8 @@ PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
+PGF_CVS_PATH=~/code/tex/pgf
+
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
@@ -169,8 +171,8 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 		exit 1; \
 	fi
 	@cd references || exit 1;\
-	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(TEXINPUTS); \
-	echo "export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
+	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_CVS_PATH)/generic//:$(PGF_CVS_PATH)/latex//:$(TEXINPUTS); \
+	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
 	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(<:.tex=.diff.png); exit 1)
