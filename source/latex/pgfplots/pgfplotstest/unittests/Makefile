@@ -100,7 +100,7 @@ clean:
 	@./pdfdiff.sh $< references/$< $@
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
-		rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
+		rm -f $@.png $<.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@ $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
 		#echo "$<: found nonzero pixel differences `cat $@`."; \
 		sed -e 's/.*(\(.*\)).*/\1/' < $@  > $@.normalized || exit 1; \
