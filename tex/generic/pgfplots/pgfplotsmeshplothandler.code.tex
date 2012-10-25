@@ -24,6 +24,274 @@
 %
 %--------------------------------------------
 
+% The low-level tikz plot handler for 3D mesh and surface plots.
+%
+% It expects 
+% a) a coordinate stream which is a linearized matrix, iterated either
+% rowwise or column wise,
+% b) the current set of options in /pgfplots/mesh/.
+%
+%
+% ATTENTION:
+% 	this handler is NOT as general as the others. In particular, it
+% 	can't be interrupted by TeX groups: every single statement,
+% 	starting with streamstart and ending with stream end, must be in
+% 	the same scope!
+%
+% 	As a consequence, you can't use this handler inside of (all) TikZ
+% 	input streams. Try it out. It will work in pgfplots, however.
+%
+% Furthermore, it relies on a couple of pgfplots macros. This may
+% change in future versions.
+% It relies on:
+% 	- \ifpgfplots@curplot@threedim
+% 	- \pgfplots@current@point@meta
+% 		-> it also invokes \pgfplots@perpointmeta@preparetrafo and its
+% 		@APPLY counterpart which checks for
+% 	- \pgfplots@metamax
+% 		If you use it outside of pgfplots, use
+% 		\global\let\pgfplots@metamax=\pgfutil@empty
+% 		This is can be used without an initialised
+% 		pgfplots axes - as long as \pgfplots@current@point@meta is in
+% 		the range [0,1000].
+% 	- for the case 'shader=interp', a bounding box must be established
+% 	before the plot is finished. This must be done using 
+%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
+%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
+%	or something like that.
+%
+% Besides these internals, it also relies on all public /pgfplots
+% configuration keys related to mesh/surface plots.
+%
+% Please note that the 'z buffer' feature will not work without
+% pgfplots (especially the z buffer=sort feature).
+%
+% Here is an example which compiles without a pgfplots axes:
+% ----------------------------------------------------------
+% \begin{tikzpicture}
+% 	\scope[
+% 		/pgfplots/.cd,
+% 		surf,
+% 		shader=faceted,
+% 		mesh/rows=4,
+% 		mesh/cols=4,
+% 		mesh/num points=,
+% 		/tikz/x={(0.44237cm,-0.07439cm)}, 
+% 		/tikz/y={(0.30942cm,0.23932cm)},
+% 		/tikz/z={(0.0cm,1.5cm)},
+% 	]
+% \makeatletter
+% 
+% 	\global\let\pgfplots@metamax=\pgfutil@empty
+% 	\pgfplots@curplot@threedimtrue
+% 
+% 	\pgfplotsplothandlermesh
+% 	\pgfplotstreamstart
+% 
+% 	\def\rangea{0.21}%
+% 	\def\rangeb{0.9}%
+% 
+% 	\pgfmathparse{1000/(\rangeb-\rangea)}
+% 	\let\factor=\pgfmathresult
+% 
+% 	\def\simplecoordinate(#1,#2,#3){%
+% 		\pgfmathparse{\factor*(#3 - \rangea)}%
+% 		\let\pgfplots@current@point@meta=\pgfmathresult
+% 		\pgfplotstreampoint{\pgfqpointxyz{#1}{#2}{#3}}%
+% 	}%
+% 	% for the case 'shaer=interp':
+%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
+%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
+% 
+% \simplecoordinate(0,3,0.7)
+% \simplecoordinate(1,3,0.5)
+% \simplecoordinate(2,3,0.58)
+% \simplecoordinate(3,3,0.9)
+% 
+% \simplecoordinate(0,2,0.68)
+% \simplecoordinate(1,2,0.22)
+% \simplecoordinate(2,2,0.25)
+% \simplecoordinate(3,2,0.4)
+% 
+% \simplecoordinate(0,1,0.6)
+% \simplecoordinate(1,1,0.3)
+% \simplecoordinate(2,1,0.21)
+% \simplecoordinate(3,1,0.3)
+% 
+% \simplecoordinate(0,0,0.8)
+% \simplecoordinate(1,0,0.56)
+% \simplecoordinate(2,0,0.5)
+% \simplecoordinate(3,0,0.75)
+% 
+% 
+% 	\pgfplotstreamend
+% 	\pgfusepath{stroke}
+% 
+% 	\endscope
+% \end{tikzpicture}
+% ----------------------------------------------------------
+%  END OF EXAMPLE
+%  -> see also the legend image for mesh plots.
+%
+\def\pgfplotsplothandlermesh{%
+	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	\ifx\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@defaulttext
+		\let\pgfplotsplothandlermesh@patchclass=\pgfutil@empty
+	\fi
+	% FIXME : detect 1d mode here!
+	\ifx\pgfplotsplothandlermesh@patchclass\pgfutil@empty
+		% assign default patch class.
+		\if1\pgfplotsplothandlermesh@matrixinput
+			\def\pgfplotsplothandlermesh@patchclass{rectangle}%
+		\else
+			\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\fi
+		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	\fi
+	%
+	\if0\pgfplotsplothandlermesh@matrixinput
+		% mesh input=patches: simply skip empty input lines:
+		\pgfkeyssetvalue{/pgfplots/empty line}{none}%
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
+	\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
+	\else
+		\def\pgfplotsplothandlermesh@matrixinput{0}% implies 'patch input=patches'
+		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@mesh@patchtable
+		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh@patchtable
+		\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@mesh@patchtable
+	\fi
+	\def\pgf@plotstreamstart{%
+%		\scope
+		%
+		% this shouldn't be necessary, but it doesn't hurt either.
+		\pgfplots@perpointmeta@preparetrafo
+		%
+		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
+		\pgfplotsplothandlermesh@init@meshkeys
+		%
+		%
+		\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
+		\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsplothandlermesh@patchclass@input
+		\if0\pgfplotsplothandlermesh@triangulate
+		\else
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{triangulate class}%
+			\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsretval
+		\fi
+		%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{init}%
+		\ifx\pgfplotsplothandlermesh@patchclass@input\pgfplotsplothandlermesh@patchclass@output
+		\else
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{init}%
+		\fi
+		%
+		% assign boolean:
+		\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{allow matrix}%
+		\if0\pgfplotsretval
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\ifnum\pgfkeysvalueof{/pgfplots/patch refines}>0
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if1\pgfplotsaxisplothasjumps
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		%
+		\if2\pgfplotsplothandlermesh@shader
+			% shader=interp
+			%
+			\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPc
+			\ifx\pgfplots@loc@TMPc\pgfutil@empty
+			\else
+				\pgfplots@warning{the combination 'shader=interp,interior colormap name' is inefficient (it uses 'shader=faceted interp,faceted color=none') and may slow down the *display* of your document}%
+				\pgfplotsset{shader=faceted interp,faceted color=none}%
+			\fi
+		\fi
+		\if2\pgfplotsplothandlermesh@shader
+		\else
+			% 'shader!=interp'
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get pdf shading type}%
+		\if4\pgfplotsretval
+		\else
+			\if5\pgfplotsretval
+			\else
+				\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+			\fi
+		\fi
+		%
+		% special handling: check if Type=5 shadings need to be
+		% converted to Type=4
+		\if0\b@pgfplotsplothandlermesh@matrixoutput
+			% no matrix output possible
+			\if5\pgfplotsretval
+				% pdf shading type=5 (matrix output)
+				\if2\pgfplotsplothandlermesh@shader
+					% shader=interp
+					%
+					% oh. shading type=5 is *essentially* the same as
+					% matrix output, but matrix output is forbidden. 
+					% In that case, triangulate the matrix and shade the
+					% triangles:
+					\def\pgfplotsplothandlermesh@triangulate{1}%
+					\def\pgfplotsplothandlermesh@patchclass@output{triangle}%
+					% Note shader=faceted interp  can be written as
+					% matrix -- it shades individual elements anyway;
+					% and one single patch can be written as matrix.
+				\fi
+			\fi
+		\fi
+		%
+		\pgfplotsplothandlermesh@init@DECODE
+		\pgfplotsplothandlermesh@init@REFINE
+		%
+		\pgfutil@IfUndefined{pgfplots@drawmodes}{%
+			\let\pgfplots@drawmodes=\tikz@mode
+			\let\pgfplots@drawoptions=\tikz@options
+		}{}%
+		%
+		%
+		% Prepare color data source:
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
+			% oh. There is no color data!? 
+			\pgfplotsplothandlermesh@init@path@without@point@meta
+			%
+		\else
+			\pgfplotsplothandlermesh@init@cdata
+			\pgfplotsplothandlermesh@init@shader
+			\pgfplotsplothandlermesh@init@flat@color
+		\fi
+		% PREPARE THE STREAM PROCESSING:
+		% handling of jumps.
+		\pgfplotsplothandlermesh@init@jumphandling
+		%
+		\ifpgfplotsplothandlermesh@shownormals
+			\let\pgfplotsplothandlermesh@show@normals@if@configured=\pgfplotsplothandlermesh@show@normals
+			% actually store 3d coordinates:
+			\let\pgfplotsplothandlermesh@serialize@logical@coords=\pgfplotsplothandlermesh@serialize@logical@coords@doit
+		\fi
+		%
+		% z buffering:
+		\pgfplotsplothandlermesh@init@zbuffer
+		%
+		\pgfplotsplothandlermesh@init@mesh@stream
+		%
+		\c@pgfplots@scanlineindex=0
+	}%
+	%
+	\let\pgfplotsplothandlerifcurrentpointcanbefirstlast=\pgfplotsplothandlerifcurrentpointcanbefirstlast@mesh
+}%
+
+\def\pgfplotsplothandlerifcurrentpointcanbefirstlast@mesh#1#2{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{if current point can be first last}{#1}{#2}%
+}%
+
 % Assigns default values to 'rows' and 'cols' in case
 % their values are empty.
 %
@@ -332,6 +600,7 @@
 	}%
 }%
 
+% #1: will be expanded with \edef
 \def\pgfplotsplothandlermesh@setnextvertex#1{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set next vertex}{#1}%
 }%
@@ -383,8 +652,11 @@
 				\pgfpathclose
 			},
 			get num cdata vertices=\pgfplotspatchclass{\pgfplotspatchclassname}{get vertices},
+			get dimension=2,
+			supports global path=0,
 			set edge visible=\expandafter\edef\csname pgfppatchedge@##1\endcsname{##2},
 			uses view depth=0,
+			if current point can be first last=##1,
 			serialize except vertices=\let\pgfplotsretval\pgfutil@empty,
 			deserialize except vertices=##1,
 			serialize={%
@@ -424,6 +696,9 @@
 			compute normal={%
 				\pgfplotsplothandlermesh@compute@normal@default
 			},%
+			sample in unit cube={%
+				\pgfplots@error{sample in unit cube: not implemented for \pgfplotspatchclassname}%
+			},
 		}%
 	}{}%
 	%
@@ -453,6 +728,9 @@
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ allow matrix\endcsname{\def\pgfplotsretval{#1}}},%
 	uses view depth/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ uses view depth\endcsname{\def\pgfplotsretval{#1}}},%
+	%
+	% creates a new patch. The vertices need to be added by 'set next
+	% vertex'
 	new/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ new\endcsname{#1}},%
 	%
@@ -467,6 +745,37 @@
 	% is accepted.
 	set next vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ set next vertex\endcsname##1{#1}},%
+	%
+	%
+	% Creates a new patch by means of sampling. The sampling is
+	% applied in the unit cube [0,1]x[0,1] (unit interval if this is an 1d patch
+	% type).
+	%
+	% 'sample in unit cube={<code to invoke for each sampled point>}'
+	% 
+	% It will invoke <code to invoke for each sampled point> once for
+	% every sampled vertex. The complete unit cube will be covered.
+	% Depending on the patch type, either one or more patches are
+	% required to fill the unit cube. As soon as one patch is ready,
+	% \pgfplotspatchready will be invoked.
+	%
+	%
+	% PRECONDITION: 
+	%  -\pgfplotspatchready is defined. 
+	%
+	% Arguments:
+	%  #1: code which will be invoked whenever a new coordinate is
+	%  ready. Inside of #1, the macros \pgfplotspatchclassx and
+	%  \pgfplotspatchclassy result in the x and y coordinate (inside
+	%  of the unit cube), in fixed point representation.
+	%
+	% Example:
+	%   \def\pgfplotspatchready{}
+	%   \pgfplotspatchclass{biquadratic}{sample in unit cube}{%
+	%       point ready at (\pgfplotspatchclassx, \pgfplotspatchclassy)
+	%   }
+	sample in unit cube/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ sample in unit cube\endcsname##1{#1}},%
 	%
 	% declares whether a single edge is visible or not.
 	% #1: an integer denoting the edge, either 0,1,2,...,N-1 where N = num verts
@@ -537,15 +846,31 @@
 	stream to shader/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ stream to shader\endcsname{#1}},%
 	%
-	% expands to the number of vertices.
+	% defines \pgfplotsretval to contain the number of vertices.
 	get num vertices/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{\def\pgfplotsretval{#1}}},%
 	%
-	% expands to the number of vertices which have color data
+	% defines \pgfplotsretval to contain the number of vertices which have color data
 	% attached. This is usually the same as 'get num vertices' (but
 	% see coons patches).
 	get num cdata vertices/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num cdata vertices\endcsname{\def\pgfplotsretval{#1}}},%
+	%
+	% defines \pgfplotsretval to contain the dimension of this patch
+	% (either 1 for lines or 2 for patches).
+	get dimension/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get dimension\endcsname{\def\pgfplotsretval{#1}}},%
+	%
+	% defines \pgfplotsretval to be 1 if and only if the patch class
+	% supports global paths.
+	% A global path is one which is drawn as one huge, uninterrupted
+	% PGF path (except for jumps perhaps). Its area can be filled,
+	% i.e. it behaves exactly like the 'sharp' plot handler. This is
+	% used implicitly if 'point meta=none' (if there is point meta
+	% data, we always want individual path segments and \pgfusepath
+	% them after each segment).
+	supports global path/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ supports global path\endcsname{\def\pgfplotsretval{#1}}},%
 	%
 	% Approximates the given patch by at least one triangle.
 	% For every finished triangle, \pgfplotspatchready will be invoked
@@ -597,6 +922,11 @@
 	% This method REQUIRES that 3d coordinates are stored (see \pgfplotsplothandlermesh@serialize@logical@coords).
 	compute normal/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ compute normal\endcsname{#1}},%
+	%
+	% executes '##1' if the current point can be the first or last
+	% point of the patch. Executes ##2 if that is not the case.
+	if current point can be first last/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ if current point can be first last\endcsname##1##2{#1}},%
 }
 
 % This implements 'compute normal' :
@@ -721,19 +1051,62 @@
 			\pgfplotspatchready%
 		\fi
 	},
+	sample in unit cube={%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\pgfplotspatchready
+	},%
+	get dimension=1,
+	supports global path=1,
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex #1%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@B\endvertex #1%
 	},
 	fill path={%
-		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@A\endvertex}%
+		\pgfplotsplothandlermesh@pathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@A\endvertex}%
 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@B\endvertex}%
+		\pgfplotsplothandlermesh@setlastpoint{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@line@B\endvertex}%
 	},
 	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
 	deserialize except vertices=,
 	get num vertices=2,
 	get pdf shading type=0,
+}%
+
+\def\pgfplotsplothandlermesh@last@x{-16000pt}
+\def\pgfplotsplothandlermesh@last@y{-16000pt}
+
+\def\pgfplotsplothandlermesh@pathmoveto#1{%
+	\pgf@process{#1}%
+	\pgfpathmoveto{}%
+}
+\def\pgfplotsplothandlermesh@setlastpoint#1{%
+}
+
+% Applies a moveto to #1 - but only if #1 is NOT the last used path
+% segment.
+\def\pgfplotsplothandlermesh@pathmoveto@globalpath#1{%
+	\pgf@process{#1}%
+	\pgfplots@loc@tmptrue
+	\ifdim\pgf@x=\pgfplotsplothandlermesh@last@x\relax
+		\ifdim\pgf@y=\pgfplotsplothandlermesh@last@y\relax
+			\pgfplots@loc@tmpfalse
+		\fi
+	\fi
+	\ifpgfplots@loc@tmp
+		\pgfpathmoveto{}%
+	\fi
+}%
+
+\def\pgfplotsplothandlermesh@setlastpoint@globalpath#1{%
+	\pgf@process{#1}%
+	\xdef\pgfplotsplothandlermesh@last@x{\the\pgf@x}%
+	\xdef\pgfplotsplothandlermesh@last@y{\the\pgf@y}%
 }%
 
 \pgfplotsdeclarepatchclass{triangle}{%
@@ -752,6 +1125,30 @@
 			\pgfplotspatchready%
 		\fi
 	},
+	sample in unit cube={%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{1}%
+		#1%
+		\pgfplotspatchready
+		%
+		%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{1}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{1}%
+		#1%
+		\pgfplotspatchready
+	},%
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tri@A\endvertex,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tri@A\endvertex #1%
@@ -917,6 +1314,21 @@
 			\pgfplotspatchready%
 		\fi
 	},
+	sample in unit cube={%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{0}%
+		#1%
+		\def\pgfplotspatchclassx{1}%
+		\def\pgfplotspatchclassy{1}%
+		#1%
+		\def\pgfplotspatchclassx{0}%
+		\def\pgfplotspatchclassy{1}%
+		#1%
+		\pgfplotspatchready
+	},%
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex #1%
@@ -1027,8 +1439,10 @@
 % Thus, \csname #1A\endcsname is the first vertex, \csname #1B\endcsname the second
 % and #1C, #1D the third and fourth.
 %
-% #2: A macro name. It will be defined to be either A,B,C or D.
-% #3: A macro name. It will be defined to be either empty or 'r'. If
+% [output] #2: A macro name which will be filled with the FIRST point
+% to stream to the shader. It will be defined to be either A,B,C or D.
+% [output] #3: A macro name which indicates whether the stream shall
+% be forward or backward. It will be defined to be either empty or 'r'. If
 % it is empty, the coons patch shall be in the sequence
 % #2,next(#2),next(next(#2),....
 % If it is 'r', the coons patch shall be in the sequence
@@ -1078,273 +1492,40 @@
 	\def#3{}%
 }
 
-% The low-level tikz plot handler for 3D mesh and surface plots.
-%
-% It expects 
-% a) a coordinate stream which is a linearized matrix, iterated either
-% rowwise or column wise,
-% b) the current set of options in /pgfplots/mesh/.
-%
-%
-% ATTENTION:
-% 	this handler is NOT as general as the others. In particular, it
-% 	can't be interrupted by TeX groups: every single statement,
-% 	starting with streamstart and ending with stream end, must be in
-% 	the same scope!
-%
-% 	As a consequence, you can't use this handler inside of (all) TikZ
-% 	input streams. Try it out. It will work in pgfplots, however.
-%
-% Furthermore, it relies on a couple of pgfplots macros. This may
-% change in future versions.
-% It relies on:
-% 	- \ifpgfplots@curplot@threedim
-% 	- \pgfplots@current@point@meta
-% 		-> it also invokes \pgfplots@perpointmeta@preparetrafo and its
-% 		@APPLY counterpart which checks for
-% 	- \pgfplots@metamax
-% 		If you use it outside of pgfplots, use
-% 		\global\let\pgfplots@metamax=\pgfutil@empty
-% 		This is can be used without an initialised
-% 		pgfplots axes - as long as \pgfplots@current@point@meta is in
-% 		the range [0,1000].
-% 	- for the case 'shader=interp', a bounding box must be established
-% 	before the plot is finished. This must be done using 
-%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
-%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
-%	or something like that.
-%
-% Besides these internals, it also relies on all public /pgfplots
-% configuration keys related to mesh/surface plots.
-%
-% Please note that the 'z buffer' feature will not work without
-% pgfplots (especially the z buffer=sort feature).
-%
-% Here is an example which compiles without a pgfplots axes:
-% ----------------------------------------------------------
-% \begin{tikzpicture}
-% 	\scope[
-% 		/pgfplots/.cd,
-% 		surf,
-% 		shader=faceted,
-% 		mesh/rows=4,
-% 		mesh/cols=4,
-% 		mesh/num points=,
-% 		/tikz/x={(0.44237cm,-0.07439cm)}, 
-% 		/tikz/y={(0.30942cm,0.23932cm)},
-% 		/tikz/z={(0.0cm,1.5cm)},
-% 	]
-% \makeatletter
-% 
-% 	\global\let\pgfplots@metamax=\pgfutil@empty
-% 	\pgfplots@curplot@threedimtrue
-% 
-% 	\pgfplotsplothandlermesh
-% 	\pgfplotstreamstart
-% 
-% 	\def\rangea{0.21}%
-% 	\def\rangeb{0.9}%
-% 
-% 	\pgfmathparse{1000/(\rangeb-\rangea)}
-% 	\let\factor=\pgfmathresult
-% 
-% 	\def\simplecoordinate(#1,#2,#3){%
-% 		\pgfmathparse{\factor*(#3 - \rangea)}%
-% 		\let\pgfplots@current@point@meta=\pgfmathresult
-% 		\pgfplotstreampoint{\pgfqpointxyz{#1}{#2}{#3}}%
-% 	}%
-% 	% for the case 'shaer=interp':
-%	\def\pgfplotspointbbupperright{\pgfqpointxyz{2}{2}{0.9}}
-%	\def\pgfplotspointbblowerleft {\pgfqpointxyz{0}{0}{0.1}}
-% 
-% \simplecoordinate(0,3,0.7)
-% \simplecoordinate(1,3,0.5)
-% \simplecoordinate(2,3,0.58)
-% \simplecoordinate(3,3,0.9)
-% 
-% \simplecoordinate(0,2,0.68)
-% \simplecoordinate(1,2,0.22)
-% \simplecoordinate(2,2,0.25)
-% \simplecoordinate(3,2,0.4)
-% 
-% \simplecoordinate(0,1,0.6)
-% \simplecoordinate(1,1,0.3)
-% \simplecoordinate(2,1,0.21)
-% \simplecoordinate(3,1,0.3)
-% 
-% \simplecoordinate(0,0,0.8)
-% \simplecoordinate(1,0,0.56)
-% \simplecoordinate(2,0,0.5)
-% \simplecoordinate(3,0,0.75)
-% 
-% 
-% 	\pgfplotstreamend
-% 	\pgfusepath{stroke}
-% 
-% 	\endscope
-% \end{tikzpicture}
-% ----------------------------------------------------------
-%  END OF EXAMPLE
-%  -> see also the legend image for mesh plots.
-%
-\def\pgfplotsplothandlermesh{%
-	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
-	\ifx\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@defaulttext
-		\let\pgfplotsplothandlermesh@patchclass=\pgfutil@empty
-	\fi
-	% FIXME : detect 1d mode here!
-	\ifx\pgfplotsplothandlermesh@patchclass\pgfutil@empty
-		% assign default patch class.
-		\if1\pgfplotsplothandlermesh@matrixinput
-			\def\pgfplotsplothandlermesh@patchclass{rectangle}%
-		\else
-			\def\pgfplotsplothandlermesh@patchclass{triangle}%
-		\fi
-		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
-	\fi
-	%
-	\if0\pgfplotsplothandlermesh@matrixinput
-		% mesh input=patches: simply skip empty input lines:
-		\pgfkeyssetvalue{/pgfplots/empty line}{none}%
-	\fi
-	%
-	\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
-	\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
-	\else
-		\def\pgfplotsplothandlermesh@matrixinput{0}% implies 'patch input=patches'
-		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@mesh@patchtable
-		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh@patchtable
-		\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@mesh@patchtable
-	\fi
-	\def\pgf@plotstreamstart{%
-%		\scope
-		%
-		% this shouldn't be necessary, but it doesn't hurt either.
-		\pgfplots@perpointmeta@preparetrafo
-		%
-		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
-		\pgfplotsplothandlermesh@init@meshkeys
-		%
-		%
-		\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
-		\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsplothandlermesh@patchclass@input
-		\if0\pgfplotsplothandlermesh@triangulate
-		\else
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{triangulate class}%
-			\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsretval
-		\fi
-		%
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{init}%
-		\ifx\pgfplotsplothandlermesh@patchclass@input\pgfplotsplothandlermesh@patchclass@output
-		\else
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{init}%
-		\fi
-		%
-		% assign boolean:
-		\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{allow matrix}%
-		\if0\pgfplotsretval
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\ifnum\pgfkeysvalueof{/pgfplots/patch refines}>0
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\if1\pgfplotsaxisplothasjumps
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		%
-		\if2\pgfplotsplothandlermesh@shader
-			% shader=interp
-			%
-			\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPc
-			\ifx\pgfplots@loc@TMPc\pgfutil@empty
-			\else
-				\pgfplots@warning{the combination 'shader=interp,interior colormap name' is inefficient (it uses 'shader=faceted interp,faceted color=none') and may slow down the *display* of your document}%
-				\pgfplotsset{shader=faceted interp,faceted color=none}%
-			\fi
-		\fi
-		\if2\pgfplotsplothandlermesh@shader
-		\else
-			% 'shader!=interp'
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get pdf shading type}%
-		\if4\pgfplotsretval
-		\else
-			\if5\pgfplotsretval
-			\else
-				\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-			\fi
-		\fi
-		%
-		% special handling: check if Type=5 shadings need to be
-		% converted to Type=4
-		\if0\b@pgfplotsplothandlermesh@matrixoutput
-			% no matrix output possible
-			\if5\pgfplotsretval
-				% pdf shading type=5 (matrix output)
-				\if2\pgfplotsplothandlermesh@shader
-					% shader=interp
-					%
-					% oh. shading type=5 is *essentially* the same as
-					% matrix output, but matrix output is forbidden. 
-					% In that case, triangulate the matrix and shade the
-					% triangles:
-					\def\pgfplotsplothandlermesh@triangulate{1}%
-					\def\pgfplotsplothandlermesh@patchclass@output{triangle}%
-					% Note shader=faceted interp  can be written as
-					% matrix -- it shades individual elements anyway;
-					% and one single patch can be written as matrix.
-				\fi
-			\fi
-		\fi
-		%
-		\pgfplotsplothandlermesh@init@DECODE
-		\pgfplotsplothandlermesh@init@REFINE
-		%
-		\pgfutil@IfUndefined{pgfplots@drawmodes}{%
-			\let\pgfplots@drawmodes=\tikz@mode
-			\let\pgfplots@drawoptions=\tikz@options
-		}{}%
-		%
-		%
-		% Prepare color data source:
-		\ifx\pgfplotspointmetainputhandler\pgfutil@empty%
-			% oh. There is no color data!? Well... then use a constant
-			% color.
-			% 
-			% This activates tikz colors:
-			%\tikz@options
-			\def\pgfplotsplothandlermesh@definecolor{%
-				\pgfplots@drawoptions
-			}%
-		\else
-			\pgfplotsplothandlermesh@init@cdata
-			\pgfplotsplothandlermesh@init@shader
-			\pgfplotsplothandlermesh@init@flat@color
-		\fi
-		% PREPARE THE STREAM PROCESSING:
-		% handling of jumps.
-		\pgfplotsplothandlermesh@init@jumphandling
-		%
-		\ifpgfplotsplothandlermesh@shownormals
-			\let\pgfplotsplothandlermesh@show@normals@if@configured=\pgfplotsplothandlermesh@show@normals
-			% actually store 3d coordinates:
-			\let\pgfplotsplothandlermesh@serialize@logical@coords=\pgfplotsplothandlermesh@serialize@logical@coords@doit
-		\fi
-		%
-		% z buffering:
-		\pgfplotsplothandlermesh@init@zbuffer
-		%
-		\pgfplotsplothandlermesh@init@mesh@stream
-		%
-		\c@pgfplots@scanlineindex=0
-	}%
-}%
 \def\pgfplotsplothandlermesh@patchclass@defaulttext{default}%
+
+% This is a VERY special case. The idea is to switch to
+% "normal" path mode:
+% \pgfpathmoveto \pgfpathlineto \pgfpathlineto
+% \pgfpathlineto \pgfusepath.
+%
+% Note that the mesh handler's default is to issue
+% \pgfusepath after *each* elementary patch.
+%
+% This special use-case might not cover all aspects of the
+% mesh/surf/patch plot handler.
+\def\pgfplotsplothandlermesh@init@path@without@point@meta{%
+	%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{supports global path}%
+	\ifnum\pgfplotsretval=1 %
+		\def\pgfplotsplothandlermesh@definecolor{%
+			% no-op
+		}%
+		% FIXME : this does not handle separate edges, i.e.
+		% \pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke
+		\def\pgfplotsplothandlermesh@VISUALIZE{\pgfplotsplothandlermesh@VISUALIZE@globalpath@fill@andor@stroke}%
+		\let\pgfplotsplothandlermesh@pathmoveto=\pgfplotsplothandlermesh@pathmoveto@globalpath
+		\let\pgfplotsplothandlermesh@setlastpoint=\pgfplotsplothandlermesh@setlastpoint@globalpath
+		% 
+		% This activates tikz colors:
+		%\tikz@options
+		\pgfplots@drawoptions
+		% Acquire the values for \tikz@mode@* [used for faceted]
+		\pgfplots@drawmodes
+	\else
+		\pgfplots@error{Please provide 'point meta' for your plot. Omitting point meta is only supported for 1d patch types.}%
+	\fi
+}
 
 % implements 'show normals'. Keep in mind that this is more-or-less a
 % debugging helper, not productive code.
@@ -1502,9 +1683,17 @@
 	\pgfplotsplothandlermesh@usepath
 	\pgfplotsplothandlermesh@show@normals@if@configured
 }%
-\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
 
-\let\pgfplotsplothandlermesh@VISUALIZE=\pgfplotsplothandlermesh@VISUALIZE@std
+% a special VISUALIZE implementation which allows to draw a CONTINUOS
+% global path, i.e. one which is not "\pgfusepath"ed after each patch
+% segment. This is only used if 'point meta=none'
+\def\pgfplotsplothandlermesh@VISUALIZE@globalpath@fill@andor@stroke{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{fill path}%
+}%
+
+\def\pgfplotsplothandlermesh@VISUALIZE@std{\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke}
+
+\def\pgfplotsplothandlermesh@VISUALIZE{\pgfplotsplothandlermesh@VISUALIZE@std}
 
 \let\pgfplotsplothandlermesh@show@normals@if@configured\relax
 
@@ -1765,6 +1954,12 @@
 		% mesh input=patches
 		\pgfkeys{/pgfplots/mesh/ordering/x varies}% disable any special handling.
 	\fi
+	%
+	\pgfplotspatchclass{\pgfkeysvalueof{/pgfplots/patch type}}{get dimension}%
+	\ifnum\pgfplotsretval=1 %
+		\def\pgfplots@meshmode{m}% mesh.
+	\fi
+	%
 }%
 
 \let\pgfplotsplothandlermesh@interior@exterior@hook=\relax
@@ -1904,9 +2099,6 @@
 \def\pgfplotsplothandlermesh@init@shader{%
 	% 
 	% Now, process the 'shader'  key here:
-	\if\pgfplotsplothandlermesh@ONEDIMMODE1
-		\def\pgfplots@meshmode{m}% 'mesh'
-	\fi
 	\if\pgfplots@meshmode m% mesh
 		% this is processed by the 'shader=flat' code below.
 		\def\pgfplotsplothandlermesh@shader{0}% 'flat'

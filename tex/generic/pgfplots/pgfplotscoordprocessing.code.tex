@@ -2609,7 +2609,7 @@
 }%
 \def\pgfplotscoordstream@firstlast@update{%
 	\ifx\pgfplots@current@point@x\pgfutil@empty
-		% only one \if is enough as ONE empty coordinate results all
+		% only one \if is enough as ONE empty coordinate causes all
 		% others to be reset as well.
 	\else
 		\ifx\pgfplots@currentplot@firstcoord@x\pgfutil@empty
@@ -4509,11 +4509,12 @@
 		\def\pgfplots@coord@stream@foreach@NORMALIZED@curencoded@braced{{#1}}%
 		\pgfplotsaxisdeserializedatapointfrom{#1}%
 		\pgfplots@coord@stream@coord
-		\pgfplotscoordstream@firstlast@update
+		\pgfplotsplothandlerifcurrentpointcanbefirstlast{%
+			\pgfplotscoordstream@firstlast@update
+		}{}%
 		\expandafter\pgfplots@foreach@plot@coord@NORMALIZED@ITERATE
 	\fi
 }
-
 
 % A common routine which resets internal data structures for the
 % survey phase, i.e. it is the shared implementation for all \addplot
@@ -4946,6 +4947,8 @@
 	% \foreach because \foreach does NOT allow extended
 	% precision. Besides, \pgfplotsforeachungrouped avoids
 	% scoping problems.
+	\let\pgfplots@plot@data@notify@next@x=\relax
+	\let\pgfplots@plot@data@notify@next@y=\relax
 	%
 	\ifpgfplots@curplot@threedim
 		\def\pgfplots@addplotimpl@expression@split@yz##1,##2\pgfplots@EOI{%
@@ -4971,7 +4974,11 @@
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain} 
 					{%
-						\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}%
+						\pgfplots@plot@data@notify@next@y
+						\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
+							\pgfplots@plot@data@notify@next@x
+							##1%
+						}%
 						\noexpand\pgfplotsplothandlernotifyscanlinecomplete
 					}%
 				}%
@@ -4979,7 +4986,11 @@
 			% sample a line:
 			\def\pgfplots@plot@ydomain{0:0}%
 			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {##1}}%
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
+					\pgfplots@plot@data@notify@next@x
+					##1%
+				}%
+			}%
 			%
 			% If we have (\x,\y,f(x)), use (\x,0,f(x)) instead and
 			% suppress the error message which would occur for \y.
@@ -5015,7 +5026,12 @@
 			\edef\pgfplots@plot@data##1{%
 				\noexpand\pgfplotsforeachlogarithmicungrouped[\pgfplots@plot@samples]
 				\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log 
-					in {\pgfplots@plot@domain} {##1}}%
+					in {\pgfplots@plot@domain}%
+				{%
+					\pgfplots@plot@data@notify@next@x
+					##1%
+				}%
+			}%
 			%  we have a logarithmic sampling sequence,
 			% \pgfplots@current@point@x@log is already available
 			% logarithmic! We can safe time and accuracy for the x
@@ -5045,8 +5061,13 @@
 				% use 'samples at':
 				\let\pgfplots@loc@TMPa=\pgfplots@plot@samples@at
 			\fi
-			\edef\pgfplots@plot@data##1{
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa} {##1}}%
+			\edef\pgfplots@plot@data##1{%
+				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@loc@TMPa}%
+				{%
+					\pgfplots@plot@data@notify@next@x
+					##1%
+				}%
+			}%
 		\fi
 		\expandafter\def\pgfplots@plot@var@y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#4}%
@@ -5080,6 +5101,13 @@
 	\let\pgfplots@addplotimpl@expression@pseudoconst@x=\pgfmathx@
 	\let\pgfplots@addplotimpl@expression@pseudoconst@y=\pgfmathy@
 	%
+%	\if n\pgfplots@meshmode
+		% mesh=false : ignore patch type sampling.
+%	\else
+		\ifpgfplotsplothandlermesh@patch@type@sampling
+			\pgfplots@plot@expression@prepare@patch@type@sampling
+		\fi
+%	\fi
 	%
 	% Warning for use fpu=false: evaluation '\x^3' might be different from 'x^3' for
 	% negative arguments:
@@ -5140,6 +5168,87 @@
 	\pgfplots@addplotimpl@expression@curly{#1}{#2,#3}%
 }%
 
+
+% This prepares the implementation for 'patch type sampling':
+\def\pgfplots@plot@expression@prepare@patch@type@sampling{%
+	\pgfplotsplothandlersurveyaddoptions{
+		mesh input=patches,%
+	}%
+	%
+	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	%
+	\let\pgfplots@plot@data@@=\pgfplots@plot@data
+	\let\pgfplots@plot@data@curx=\pgfutil@empty
+	\let\pgfplots@plot@data@cury=\pgfutil@empty
+	\let\pgfplots@plot@data@lastx=\pgfutil@empty
+	\let\pgfplots@plot@data@lasty=\pgfutil@empty
+	\let\pgfplots@plot@data@first@x=\pgfutil@empty
+	\let\pgfplots@plot@data@first@y=\pgfutil@empty
+	%
+	\def\pgfplots@plot@data@notify@next@x{%
+		\ifx\pgfplots@plot@data@first@x\pgfutil@empty
+			\edef\pgfplots@plot@data@first@x{\tikz@plot@var}%
+		\fi
+		\let\pgfplots@plot@data@lastx=\pgfplots@plot@data@curx
+		\edef\pgfplots@plot@data@curx{\tikz@plot@var}%
+	}%
+	\def\pgfplots@plot@data@notify@next@y{%
+		\ifx\pgfplots@plot@data@first@y\pgfutil@empty
+			\edef\pgfplots@plot@data@first@y{\pgfplots@plot@var@y}%
+		\fi
+		\let\pgfplots@plot@data@lasty=\pgfplots@plot@data@cury
+		\edef\pgfplots@plot@data@cury{\pgfplots@plot@var@y}%
+	}%
+	\def\pgfplots@plot@data##1{%
+		%
+		\pgfplots@plot@data@@{%
+			\let\tikz@plot@var@old=\tikz@plot@var
+			\let\pgfplots@plot@var@y@old=\pgfplots@plot@var@y
+			%
+			%
+			%
+			% boolean 'if is first row || is first cell':
+			\pgfplots@loc@tmpfalse
+			\ifx\pgfplots@plot@data@curx\pgfplots@plot@data@first@x
+				% ah - we have the first row.
+				\pgfplots@loc@tmptrue
+			\fi
+			\if0\b@pgfplots@should@sample@LINE
+				\ifx\pgfplots@plot@data@cury\pgfplots@plot@data@first@y
+					% ah - we have the first cell.
+					\pgfplots@loc@tmptrue
+				\fi
+			\fi
+			%
+			\ifpgfplots@loc@tmp
+			\else
+				\pgfmathparse{\pgfplots@plot@data@curx-\pgfplots@plot@data@lastx}%
+				\let\pgfplots@plot@data@hx=\pgfmathresult
+				%
+				\if0\b@pgfplots@should@sample@LINE
+					\pgfmathparse{\pgfplots@plot@data@cury-\pgfplots@plot@data@lasty}%
+					\let\pgfplots@plot@data@hy=\pgfmathresult
+				\fi
+				%
+				\def\pgfplotspatchready{\pgfplotsscanlinecomplete}%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{sample in unit cube}{%
+					\pgfmathparse{\pgfplots@plot@data@lastx + \pgfplotspatchclassx*\pgfplots@plot@data@hx}%
+					\let\tikz@plot@var=\pgfmathresult
+					%
+					\if0\b@pgfplots@should@sample@LINE
+						\pgfmathparse{\pgfplots@plot@data@lasty + \pgfplotspatchclassy*\pgfplots@plot@data@hy}%
+						\let\pgfplots@plot@var@y=\pgfmathresult
+					\fi
+					%
+					##1%
+					%
+					\let\tikz@plot@var=\tikz@plot@var@old
+					\let\pgfplots@plot@var@y=\pgfplots@plot@var@y@old
+				}%
+			\fi
+		}%
+	}%
+}%
 
 \let\pgfplots@backupof@pgfplotxyfile=\pgfplotxyfile
 
