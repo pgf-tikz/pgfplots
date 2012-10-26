@@ -21,6 +21,9 @@
 # HOW TO WRITE TESTS
 # Simply write a minimal, self-contained .tex file (say, unittest_42.tex) in this directory. It can have multiple
 # pages.
+# 
+# If a test contains \FIXIT, it is marked as "this test is known to be broken - test issue"
+#
 #
 # If your example needs a specific reference revision, create a file <base>.checkoutreferencerev.sh which contains something
 # like "git checkout 1.3.1" . It will be invoked to checkout the reference revision.
@@ -179,7 +182,8 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
-	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || ( echo "COMPILATION FAILED: $(@:.pdf=.log)\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(<:.tex=.diff.png); exit 1)
+	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || \
+		( sh ../compile_failed.sh "../$<" "$@" "\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); exit 1 )
 
 else
 #disable dynamic reference (re-)creation:
@@ -191,7 +195,8 @@ endif
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
-	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || ( echo "COMPILATION FAILED: $(@:.pdf=.log)" $(AUTO_INDENT_PIPE); rm -f $@; touch $(<:.tex=.diff.png); exit 1)
+	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || \
+		( sh ./compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
