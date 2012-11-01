@@ -16,7 +16,7 @@ TEXMFCNF_FOR_MEMLIMITS=export TEXMFCNF=~/texmf/mytexcnf:
 
 include pgfplots.makefile
 
-%.pdf: FORCE
+%.pdf: revisionfile FORCE
 	mkdir -p gnuplot
 	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
@@ -48,5 +48,8 @@ pgfplots.makefile:
 clean:
 	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.makefile pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
 
+
+revisionfile:
+	../../../scripts/pgfplots/pgfplotsrevisionfile.sh
 
 FORCE:
