@@ -114,8 +114,8 @@ cleanX:
 		NORMALIZED=`cat $@.normalized`; \
 		rm -f $@.normalized; \
 		calc -p "$$NORMALIZED < $(ACCEPTED_NORMALIZED_ERROR)" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
-		if [ "`cat $@.isaccepted`" = "1" ]; then \
-			echo "  PASSED: only approved differences `cat $@` detected (less than $(ACCEPTED_NORMALIZED_ERROR); moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+		if [ ! -f $@.accepted -a "`cat $@.isaccepted`" = "1" ]; then \
+			echo "  PASSED: only approved differences `cat $@` detected and no *.accepted (less than $(ACCEPTED_NORMALIZED_ERROR); moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
 			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
