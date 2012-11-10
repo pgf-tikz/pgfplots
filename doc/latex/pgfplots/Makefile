@@ -50,6 +50,6 @@ clean:
 
 
 revisionfile:
-	../../../scripts/pgfplots/pgfplotsrevisionfile.sh
+	cd ../../.. && ./scripts/pgfplots/pgfplotsrevisionfile.sh
 
 FORCE:
