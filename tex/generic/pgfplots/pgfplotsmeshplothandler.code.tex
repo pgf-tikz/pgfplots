@@ -208,7 +208,7 @@
 			\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPc
 			\ifx\pgfplots@loc@TMPc\pgfutil@empty
 			\else
-				\pgfplots@warning{the combination 'shader=interp,interior colormap name' is inefficient (it uses 'shader=faceted interp,faceted color=none') and may slow down the *display* of your document}%
+				\pgfplotswarning{interior colormap inefficient}\pgfeov%
 				\pgfplotsset{shader=faceted interp,faceted color=none}%
 			\fi
 		\fi
@@ -426,10 +426,7 @@
 								\fi
 							\fi
 							\if\pgfplotsretval1
-								\pgfplots@warning{%
-									mesh processing did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
-									Assuming [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@rows] 
-									as sqrt(num points) = sqrt(\pgfplotsplothandlermesh@numpoints) [ = \pgfmathresult].}%
+								\pgfplotswarning{matrix delinearize uses sqrt}{\pgfplotsplothandlermesh@rows}{\pgfplotsplothandlermesh@cols}{\pgfplotsplothandlermesh@numpoints}{\pgfmathresult}\pgfeov%
 							\else
 								\pgfplots@error{Sorry, 'plot mesh' needs either '[mesh/rows=<N>]' or '[mesh/cols=<N>]' set,
 									but it did not find any of them. 
@@ -491,12 +488,12 @@
 					\def\pgfplots@loc@TMPa##1{}%
 				\or
 					% mesh/check=warning
-					\def\pgfplots@loc@TMPa##1{\pgfplots@warning{##1}}%
+					\def\pgfplots@loc@TMPa##1{\pgfplotsthrow@warning{##1}}%
 				\or
 					% mesh/check=error
 					\def\pgfplots@loc@TMPa##1{\pgfplots@error{##1}}%
 				\fi
-				\pgfplots@loc@TMPa{the arguments of [mesh/rows=\pgfplotsplothandlermesh@rows,mesh/cols=\pgfplotsplothandlermesh@cols] assume  \the\c@pgfplots@scanlineindex\space points, but I got actually N = \pgfplotsplothandlermesh@numpoints\space points! The data matrix appears to be incomplete or overcomplete!? [Use mesh/check=false to disable this message]}%
+				\pgfplotswarning{matrix check}{\pgfplots@loc@TMPa}{\pgfplotsplothandlermesh@rows}{\pgfplotsplothandlermesh@cols}{\pgfplotsplothandlermesh@numpoints}{\the\c@pgfplots@scanlineindex}\pgfeov%
 			\fi
 		\fi
 	\else
@@ -623,7 +620,7 @@
 		\expandafter\def\csname pgfpptch@#1@\endcsname{#1}%
 		\pgfqkeys{/pgfplots/@declare patch}{%
 			init=,
-			allow matrix=0,
+			allow matrix=\def\pgfplotsretval{0},
 			init pdf shading=,
 			stream to shader={%
 %\message{\pgfplotspatchclassname: stream to shader: Starting  ^^J}%
@@ -651,11 +648,11 @@
 				}%
 				\pgfpathclose
 			},
-			get num cdata vertices=\pgfplotspatchclass{\pgfplotspatchclassname}{get vertices},
-			get dimension=2,
-			supports global path=0,
+			get num cdata vertices=\pgfplotspatchclass{\pgfplotspatchclassname}{get num vertices},
+			get dimension=\def\pgfplotsretval{2},
+			supports global path=\def\pgfplotsretval{0},
 			set edge visible=\expandafter\edef\csname pgfppatchedge@##1\endcsname{##2},
-			uses view depth=0,
+			uses view depth=\def\pgfplotsretval{0},
 			if current point can be first last=##1,
 			serialize except vertices=\let\pgfplotsretval\pgfutil@empty,
 			deserialize except vertices=##1,
@@ -682,7 +679,7 @@
 				}%
 			},
 			deserialize=##1,
-			triangulate class=triangle,
+			triangulate class=\def\pgfplotsretval{triangle},
 			triangulate={%
 				\pgfplots@error{triangulate: not yet implemented for \pgfplotspatchclassname}%
 			},%
@@ -725,9 +722,15 @@
 	init/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ init\endcsname{#1}},%
 	allow matrix/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ allow matrix\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ allow matrix\endcsname{#1}},%
+	%
+	% FIXME : this is NOT properly used in higher order patches!?
+	% Uses view depth defines \pgfplotsretval to '1' if and only if it
+	% does ALWAYS needs the view depth. Note that 'z buffer=sort' will
+	% automatically provide the view depth. Use this key if view depth
+	% is necessary even for 'z buffer!=sort'.
 	uses view depth/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ uses view depth\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ uses view depth\endcsname{#1}},%
 	%
 	% creates a new patch. The vertices need to be added by 'set next
 	% vertex'
@@ -824,7 +827,7 @@
 	% invokes 
 	% 	\pgfplotspatchvertex...\endvertex
 	% 	#1
-	% for the every colored vertex.
+	% for every colored vertex.
 	% See 'get num cdata vertices'
 	foreach cdata vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ foreach cdata vertex\endcsname##1{#1}},%
@@ -848,18 +851,18 @@
 	%
 	% defines \pgfplotsretval to contain the number of vertices.
 	get num vertices/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num vertices\endcsname{#1}},%
 	%
 	% defines \pgfplotsretval to contain the number of vertices which have color data
 	% attached. This is usually the same as 'get num vertices' (but
 	% see coons patches).
 	get num cdata vertices/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num cdata vertices\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get num cdata vertices\endcsname{#1}},%
 	%
 	% defines \pgfplotsretval to contain the dimension of this patch
 	% (either 1 for lines or 2 for patches).
 	get dimension/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get dimension\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ get dimension\endcsname{#1}},%
 	%
 	% defines \pgfplotsretval to be 1 if and only if the patch class
 	% supports global paths.
@@ -870,7 +873,7 @@
 	% data, we always want individual path segments and \pgfusepath
 	% them after each segment).
 	supports global path/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ supports global path\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ supports global path\endcsname{#1}},%
 	%
 	% Approximates the given patch by at least one triangle.
 	% For every finished triangle, \pgfplotspatchready will be invoked
@@ -882,7 +885,7 @@
 	% Defines \pgfplotsretval to be the classname returned by
 	% 'triangulate'. This is usually 'triangle'
 	triangulate class/.code=
-		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ triangulate class\endcsname{\def\pgfplotsretval{#1}}},%
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ triangulate class\endcsname{#1}},%
 	%
 	% Refines the given patch #1 times.
 	% For every finished patch, \pgfplotspatchready will be invoked.
@@ -1039,7 +1042,7 @@
 \def\pgfpptchindexnext@Q{R}% 16->17
 
 \pgfplotsdeclarepatchclass{line}{%
-	allow matrix=0,
+	allow matrix=\def\pgfplotsretval{0},
 	new=\def\pgfplotspatchclass@line@no{0},
 	set next vertex={%
 		\if0\pgfplotspatchclass@line@no\relax
@@ -1060,8 +1063,8 @@
 		#1%
 		\pgfplotspatchready
 	},%
-	get dimension=1,
-	supports global path=1,
+	get dimension=\def\pgfplotsretval{1},
+	supports global path=\def\pgfplotsretval{1},
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex #1%
@@ -1074,7 +1077,7 @@
 	},
 	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
 	deserialize except vertices=,
-	get num vertices=2,
+	get num vertices=\def\pgfplotsretval{2},
 	get pdf shading type=0,
 }%
 
@@ -1110,7 +1113,7 @@
 }%
 
 \pgfplotsdeclarepatchclass{triangle}{%
-	allow matrix=0,
+	allow matrix=\def\pgfplotsretval{0},
 	new=\def\pgfplotspatchclass@tri@no{0}\let\pgfplotspatchclass@trie@AB\relax,
 	set next vertex={%
 		\ifcase\pgfplotspatchclass@tri@no\relax
@@ -1270,7 +1273,7 @@
 		\let\pgfplotspatchclass@trie@AB\relax
 		#1,
 	get pdf shading type=4,
-	get num vertices=3,
+	get num vertices=\def\pgfplotsretval{3},
 }%
 \def\pgfplotspatchclass@tri@recursiverefine@@#1#2M,#3#4M;#5\relax#6{%
 	\expandafter\let\expandafter\pgfplotspatchclass@tri@A@\csname pgfplotspatchclass@tri@#1\endcsname
@@ -1296,7 +1299,7 @@
 % A --> B 
 %       
 \pgfplotsdeclarepatchclass{rectangle}{%
-	allow matrix=1,
+	allow matrix=\def\pgfplotsretval{1},
 	new=\def\pgfplotspatchclass@rect@no{0},
 	set next vertex={%
 		\ifcase\pgfplotspatchclass@rect@no\relax
@@ -1392,7 +1395,7 @@
 	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
 	deserialize except vertices=,
 	get pdf shading type=5,
-	get num vertices=4,
+	get num vertices=\def\pgfplotsretval{4},
 }%
 
 \def\pgfplots@rect@next@A{B}
@@ -1577,10 +1580,14 @@
 % contain the view depth.
 %
 \def\pgfplotsplothandlermesh@compute@vertex@depth@doit{%
-	\pgfplotsmathvectorfromstring{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}{default}%
-	\pgfplotsmathvectorviewdepth{\pgfplotsretval}%
-	\pgfplotscoordmath{default}{tofixed}{\pgfplotsretval}%
-	\edef\pgfplotsretval{\pgfmathresult}%
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+		\let\pgfplotsretval\pgfutil@empty
+	\else
+		\pgfplotsmathvectorfromstring{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}{default}%
+		\pgfplotsmathvectorviewdepth{\pgfplotsretval}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfplotsretval}%
+		\edef\pgfplotsretval{\pgfmathresult}%
+	\fi
 }%
 
 % A command which defines \pgfplotsretval to be either empty or to
@@ -2246,7 +2253,7 @@
 					\pgfplotsaxisvisphasetransformpointmeta
 					\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
 				}%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num vertices}%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
 				\global\divide\pgfplots@tmpa by\pgfplotsretval\relax
 				\edef\pgfplotsretval{\pgf@sys@tonumber\pgfplots@tmpa}%
 				\global\pgfplots@tmpa=0pt

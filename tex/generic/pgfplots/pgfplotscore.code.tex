@@ -30,7 +30,9 @@
 \def\pgfplots@log#1#2{\immediate\write-1{Package pgfplots info: #2}}%
 \def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
 \def\pgfplotstable@error@pkg#1{\PackageError{pgfplotstable}{#1}{}}%
+% DO NOT USE THIS METHOD DIRECTLY: use \pgfplotswarning{<warning name>}<args>\pgfeov
 \def\pgfplots@warning#1{\pgfplots@message{! Package pgfplots Warning: #1}}%
+
 \def\pgfplots@message#1{%
 	\immediate\write16{#1}%
 }%
@@ -62,9 +64,23 @@
 % exchange the error message text: define \pgfplotsexceptionmsg
 % set a replacement.
 \def\pgfplotsthrow#1#2\pgfeov{%
+	\def\pgfkeyscurrentkey{/pgfplots/exception/#1}%
 	\pgfkeysvalueof{/pgfplots/exception/#1/.@cmd}#2\pgfeov
 }%
 \let\pgfplotsthrow@orig=\pgfplotsthrow
+
+% Generates warning `#1' with argument(s) `#2'.
+%
+% It works in exactly the same way as \pgfplotsthrow.
+\def\pgfplotswarning#1#2\pgfeov{%
+	\def\pgfkeyscurrentkey{/pgfplots/warning/#1}%
+	\pgfkeysvalueof{/pgfplots/warning/#1/.@cmd}#2\pgfeov
+}%
+
+\def\pgfplotsthrow@warning#1{%
+	\pgfplots@warning{#1}%
+	\immediate\write-1{ [warning \pgfkeyscurrentkey]}%
+}%
 
 % A primitive try #1 catch #2 end  block.
 %
@@ -139,6 +155,100 @@
 			\pgfplots@error{\pgfplotsexceptionmsg}%
 		\fi
 		\let#1=\relax
+	},
+	%
+	%
+	%
+	%
+	% Generated if you say 'ymin=0' in a log axis.
+	% #1: the user argument ('ymin')
+	% #2: the offending value.
+	/pgfplots/warning/illegal user argument in log axis/.code args={#1#2}{%
+		\pgfplotsthrow@warning{Ignoring illegal input argument #1=#2: cannot apply log.}%
+	},
+	/pgfplots/warning/plot without coordinates/.code={%
+		\pgfplotsthrow@warning{the current plot has no coordinates (or all have been filtered away)}%
+	},
+	/pgfplots/warning/log basis required/.code 2 args={%
+		\pgfplotsthrow@warning{Some input argument (#2) explicitly relies on the log basis of #1 (which is e). Please verify that this is intended and set 'log basis #1=10' otherwise. This warning will be shown only once per document.}%
+	},
+	/pgfplots/warning/no such legend to name/.code={%
+		\pgfplotsthrow@warning{There is no `legend to name=#1', sorry. I am skipping it}%
+	},
+	/pgfplots/warning/no such colorbar to name/.code={%
+		\pgfplotsthrow@warning{There is no `colorbar to name=#1', sorry. I am skipping it}%
+	},
+	/pgfplots/warning/no such addplot label/.code={%
+		\pgfplotsthrow@warning{There is no \string\addplot\space label `#1', sorry. I am skipping it}%
+	},
+	/pgfplots/warning/enlargelimits respects figure size failed/.code={%
+		\pgfplotsthrow@warning{enlargelimits respects figure size=true: could not respect the prescribed width/height (\pgfplotsretval). The size and/or aspect ratio of your image will be different than expected. You can try to modify BOTH width and height.}%
+	},
+	/pgfplots/warning/empty range cleared axis/.code={%
+		\pgfplotsthrow@warning{You have an axis with empty range. Replacing it with a default range and clearing all plots.}%
+	},
+	/pgfplots/warning/approx empty range enlarged/.code args={#1#2#3}{%
+		\pgfplotsthrow@warning{Axis range for axis #1 is approximately empty; enlarging it (it is [#2:#3])}%
+	},
+	/pgfplots/warning/lossy colormap rgb conversion/.code 2 args={%
+		\pgfplotsthrow@warning{I am about to convert colormap '#1' from #2\space to rgb (which might be lossy). Perhaps the choice 'colorbar sampled={surf,shader=interp}' yields better results since it supports #2.}%
+	},
+	/pgfplots/warning/colorbar uninitialised/.code={%
+		\pgfplotsthrow@warning{Sorry, the colorbar is uninitialised - your axis has no color data. Consider using 'point meta=f(x)' or something like that. I am using a color range of [0,1] for the colorbar.}%
+	},
+	/pgfplots/warning/colorbar CMYK unsupported/.code={%
+		\pgfplotsthrow@warning{colorbar: The colormap '#1' has a CMYK colorspace which is not (yet) supported by PGF. I switched colorbar styles automatically to 'colorbar sampled={surf,shader=interp}' to generate a proper CMYK colorbar. Use \string\pgfplotscolorbarCMYKworkaroundfalse\space to disable this improvement. [This message won't be replicated for '#1']}%
+	},
+	/pgfplots/warning/ticklabel anchor undetermined/.code args={#1#2#3#4}{%
+		\pgfplotsthrow@warning{the ticklabel anchor cannot be determined, the normal vector -(#2) and the unit #1 vector (#3) are almost parallel (abs(cos(angle)) = #4)!}%
+	},
+	/pgfplots/warning/point meta unbounded/.code 2 args={%
+		\pgfplotsthrow@warning{The per point meta data `#1' (#2) (and probably others as well) is unbounded - using the minimum value instead.}%
+	},
+	/pgfplots/warning/gnuplot -V impossible/.code={%
+		\pgfplotsthrow@warning{Sorry, I could not determine 'gnuplot -V' to check whether gnuplot and logscale writes results in log() or not. Please set `/pgfplots/gnuplot writes logscale=true|false' manually.}%
+	},
+	/pgfplots/warning/gnuplot -V format unknown/.code={%
+		\pgfplotsthrow@warning{Sorry, I can't reliably check which version of gnuplot is available. I guess it is gnuplot < 4.4. Please set `/pgfplots/gnuplot writes logscale=true|false' manually if anything fails.}%
+	},
+	/pgfplots/warning/plot3 graphics compatibility mode/.code={%
+		\pgfplotsthrow@warning{plot3 graphics is running in backwards compatibility mode. %
+					Use \string\pgfplotsset{compat=1.6} or higher to benefit from upgraded scaling capabilites.}%
+	},
+	/pgfplots/warning/plot3 graphics too few inner anchors/.code={%
+		\pgfplotsthrow@warning{plot graphics in 3D axis has just two inner anchors (those with '(x,y,z)=>(imgx,imgy)'). You should provide a third one such that I can check for correct scaling.}%
+	},
+	/pgfplots/warning/scatter classes no such class/.code={%
+		\pgfplotsthrow@warning{scatter/classes: can't find class for '#1'!? Please make sure you have specified 'scatter src=explicit symbolic'. Ignoring class '#1' (this message will not come again).}%
+	},
+	/pgfplots/warning/interior colormap inefficient/.code={%
+		\pgfplotsthrow@warning{the combination 'shader=interp,interior colormap name' is inefficient (it uses 'shader=faceted interp,faceted color=none') and may slow down the *display* of your document}%
+	},
+	/pgfplots/warning/matrix delinearize uses sqrt/.code args={#1#2#3#4}{%
+		\pgfplotsthrow@warning{%
+									mesh processing did not find '[mesh/rows=<N>]' or '[mesh/cols=<N>]'. 
+									Assuming [mesh/rows=#1,mesh/cols=#2] 
+									as sqrt(num points) = sqrt(#3) [ = #4].}%
+	},
+	/pgfplots/warning/matrix check/.code args={#1#2#3#4#5}{%
+		#1{the arguments of [mesh/rows=#2,mesh/cols=#3] assume  #5\space points, but I got actually N = #4\space points! The data matrix appears to be incomplete or overcomplete!? [Use mesh/check=false to disable this message]}%
+	},
+	/pgfplots/warning/tick computation failed/.code 2 args={%
+		\pgfplotsthrow@warning{Tick computation for direction #1 failed; there are always too few tick labels (try min ticks has already been advanced to #2)}%
+	},
+	/pgfplots/warning/scale uniformly unsupported/.code={%
+		\pgfplotsthrow@warning{Sorry, 'scale uniformly' failed because its actual implementation works only if y_x = 0 and x_y = 0 (for 2d axes) or if z_x = 0 (for 3d axes). The result will not fill the prescribed dimensions. Falling back to 'scale uniformly strategy=units only. (use scale uniformly warning=false to disable this warning)}%
+	},
+	/pgfplots/warning/axis equal incompatible change/.code={%
+		\pgfplotsthrow@warning{the content of your 3d axis has changed compared to previous versions of pgfplots. please review it. ^^j   %
+		[continued]   explanation: you have a 3d axis with 'axis equal' and/or 'unit vector ratio' which has (probably) been optimized for an older version of pgfplots. any version older than 1.6 produced wrong output.^^j   %
+	[continued]	  to remove this warning, write \string\pgfplotsset{compat=1.6} (or newer) in your preamble (may change all figures in your document) or by adding that to the affected axis.}%
+	},
+	/pgfplots/warning/unit vector ratio axis undetermined/.code={%
+		\pgfplotsthrow@warning{The algorithm to implement 'unit vector ratio' failed! It could not determine the axis which shall be scaled and decided to use 'unit vector ratio axis=#1'.}%
+	},
+	/pgfplots/warning/linear system singular/.code={%
+		\pgfplotsthrow@warning{Linear system is singular up to machine precision! Continuing with small threshold.}%
 	},
 }
 \let\pgfplotsexceptionmsg=\relax
