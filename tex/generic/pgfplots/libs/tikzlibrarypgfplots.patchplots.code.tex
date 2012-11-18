@@ -1413,36 +1413,235 @@
 	%-------------------------------------------------- 
 	stream to shader={%
 		\begingroup
+		%
+		% An early version of this shader used Coons patch shadings
+		% (which provides coordinates only for the 9 boundary
+		% vertices, not for the inner vertices). That is a little bit
+		% simpler than what you see in the following lines of code: a
+		% transformation to a tensor bezier shading.
+		%
+		% What we need is to map the 3x3 data from lagrangrian
+		% (interpolation) representation to 4x4 cubic bezier - and
+		% handle the four INNER nodes correctly.
+		%
+		% The algorithm to convert from 1d curves with 3 point langrange to 4 point
+		% bezier is well-known and relatively simple. Fortunately, the
+		% extension to 3x3 -> 4x4 can be boiled down to a successive
+		% application of the 1d algorithm - applied to horizontal and
+		% vertical lines in the data matrizes.
+		%
+		% NOTE: the algorithm in the following lines results in
+		% EXACTLY THE SAME four cubic boundary curves as the approach
+		% in 'fill path'. The only difference is that it also does the
+		% right thing for the inner node.
+		%
+		% STEP 1: ensure that the patch's coordinates are streamed in
+		% a sequence which is compatible with the DEPTH of the
+		% corners.
+		%
+		% we use
+		% \pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+		% which works for bilinear, biquadratic, and bicubic 
 		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
 			{pgfplotspatchclass@biquad@}{\Pcur}{\Pnextseq}%
 		%
-		\let\Pstartidx\Pcur%
-		\pgfutil@namelet{Pstart}{pgfplotspatchclass@biquad@\Pcur}%
+		% STEP 2:
+		% now, translate the result into our matrix form.
+		% This means to (a) identify the FIRST point which needs to be
+		% streamed (it is stored in \Pcur as 'A', 'B', 'C', or 'D')
+		% and (b) keep in mind that we have to take care of the
+		% sequence in which points are streamed ("forward" means to
+		% rotate the matrix elements and "backward" means to transpose
+		% the "forward" result).
 		%
-		% create a tensor cubic bezier patch.
+		% This can be seen as conversion from the "linearized"
+		% numbering to matrix indexing - while respecting the "start
+		% point".
 		%
-		% Again, the outer boundary involves a map from 3 point lagrange
-		% representation to 4 point cubic bezier.
+		% INPUT:
 		%
-		% The main complication arises to support the INNER node (\pgfplotspatchclass@biquad@I) .
-		% We need the four inner bezier control points to get it
-		% correctly.
+		% D G C
+		% H I F
+		% A E B
 		%
-		% this here handles only the OUTER shaper. It is the same as
-		% for 'fill path'.
-		% See 'fill path' for docs.
+		\if A\Pcur
+			% Ah - the point "A" needs to be streamed as first.
+			%
+			% Well, this is simple: take the matrix as-is!
+			% simply copy 1:1
+			%
+			% i.e. convert 
+			% D G C
+			% H I F
+			% A E B
+			%
+			% to
+			%
+			% AC BC CC 
+			% AB BB CB 
+			% AA BA CA 
+			\let\P@AA=\pgfplotspatchclass@biquad@A
+			\let\P@BA=\pgfplotspatchclass@biquad@E
+			\let\P@CA=\pgfplotspatchclass@biquad@B
+			\let\P@AB=\pgfplotspatchclass@biquad@H
+			\let\P@BB=\pgfplotspatchclass@biquad@I
+			\let\P@CB=\pgfplotspatchclass@biquad@F
+			\let\P@AC=\pgfplotspatchclass@biquad@D
+			\let\P@BC=\pgfplotspatchclass@biquad@G
+			\let\P@CC=\pgfplotspatchclass@biquad@C
+		\fi
+		\if B\Pcur
+			% the "B" point needs to be streamed as first.
+			%
+			% i.e. reorder 
+			% D G C
+			% H I F
+			% A E B
+			%
+			% to 
+			% A H D     AC BC CC 
+			% E I G =:  AB BB CB 
+			% B F C     AA BA CA 
+			%
+			\let\P@AA=\pgfplotspatchclass@biquad@B
+			\let\P@BA=\pgfplotspatchclass@biquad@F
+			\let\P@CA=\pgfplotspatchclass@biquad@C
+			\let\P@AB=\pgfplotspatchclass@biquad@E
+			\let\P@BB=\pgfplotspatchclass@biquad@I
+			\let\P@CB=\pgfplotspatchclass@biquad@G
+			\let\P@AC=\pgfplotspatchclass@biquad@A
+			\let\P@BC=\pgfplotspatchclass@biquad@H
+			\let\P@CC=\pgfplotspatchclass@biquad@D
+		\fi
+		\if C\Pcur
+			% the "C" point needs to be streamed as first.
+			%
+			% i.e. reorder 
+			% D G C
+			% H I F
+			% A E B
+			%
+			% to 
+			% B E A     AC BC CC 
+			% F I H =:  AB BB CB 
+			% C G D     AA BA CA 
+			%
+			\let\P@AA=\pgfplotspatchclass@biquad@C
+			\let\P@BA=\pgfplotspatchclass@biquad@G
+			\let\P@CA=\pgfplotspatchclass@biquad@D
+			\let\P@AB=\pgfplotspatchclass@biquad@F
+			\let\P@BB=\pgfplotspatchclass@biquad@I
+			\let\P@CB=\pgfplotspatchclass@biquad@H
+			\let\P@AC=\pgfplotspatchclass@biquad@B
+			\let\P@BC=\pgfplotspatchclass@biquad@E
+			\let\P@CC=\pgfplotspatchclass@biquad@A
+		\fi
+		\if D\Pcur
+			% the "D" point needs to be streamed as first.
+			%
+			% i.e. reorder 
+			% D G C
+			% H I F
+			% A E B
+			%
+			% to 
+			% C F B     AC BC CC 
+			% G I E =:  AB BB CB 
+			% D H A     AA BA CA 
+			%
+			\let\P@AA=\pgfplotspatchclass@biquad@D
+			\let\P@BA=\pgfplotspatchclass@biquad@H
+			\let\P@CA=\pgfplotspatchclass@biquad@A
+			\let\P@AB=\pgfplotspatchclass@biquad@G
+			\let\P@BB=\pgfplotspatchclass@biquad@I
+			\let\P@CB=\pgfplotspatchclass@biquad@E
+			\let\P@AC=\pgfplotspatchclass@biquad@C
+			\let\P@BC=\pgfplotspatchclass@biquad@F
+			\let\P@CC=\pgfplotspatchclass@biquad@B
+		\fi
+		\ifx\Pnextseq\pgfutil@empty
+		\else
+			% reverse the ordering. This means to transpose the
+			% matrix:
+			\pgfplotspatchclass@biquad@transpose
+		\fi
+		%
+		%
+		% Step: convert to tensor bezier representation.
+		%
+		% Converting a 2d tensor product lagrangian interpoland to a
+		% 2d tensor product bezier interpoland can be achieved by
+		% means of 1d algorithms along LINES in the matrix.
+		%
+		% The underlying proof for this is related to the tensor
+		% product form: the U and V coordinates are orthogonal to each
+		% other, so we can redistribute all intermediate results. (I
+		% do not have the real proof, so this hand-waving argument has
+		% to be enough). I verified its results experimentally.
+		%
+		% Note that the underlying 1d operation is the same as for
+		% 'patch type=quadratic spline' . We only need to apply it to all
+		% lines in U direction and afterwards to all lines in V
+		% direction.
 		% 
-		\pgfplotspatchclass@biquad@coonsedge
+		\def\pgfplotspatchvertexaddXY@expanded##1\times{%
+			\edef\pgfplots@loc@TMPa{##1}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplots@loc@TMPa\times
+		}%
 		%
-		\pgfplotspatchclass@biquad@coonsedge
+		% this macro operates on \pgfplots@line{[ABC]} and defines
+		% \pgfplots@line{[ABCD]} (i.e. one dimension more!)
+		\def\pgfplots@apply@to@line{%
+			\pgfplotspatchvertexaccumstart
+			\pgfplotspatchvertexaddXY@expanded\pgfplots@line{B}\times{1.333333}%
+			\pgfplotspatchvertexaddXY@expanded\pgfplots@line{C}\times{-0.333333}%
+			\pgfplotspatchvertexfinish\pgfplots@controlpoint@A
+			%
+			\pgfplotspatchvertexaccumstart
+			\pgfplotspatchvertexaddXY@expanded\pgfplots@line{A}\times{-0.333333}%
+			\pgfplotspatchvertexaddXY@expanded\pgfplots@line{B}\times{1.333333}%
+			\pgfplotspatchvertexfinish\pgfplots@controlpoint@B
+			%
+			% ... we output 4 points (cubic!).
+			% A= left endpoint (untouched)
+			% B= first control
+			% C= second control
+			% D= right endpoint (untouched, is formerly called 'C')
+			\edef\pgfplots@loc@TMPa{\pgfplots@line{C}}%
+			\expandafter\expandafter\expandafter\let\pgfplots@line{B}=\pgfplots@controlpoint@A
+			\expandafter\expandafter\expandafter\let\pgfplots@line{C}=\pgfplots@controlpoint@B
+			\expandafter\expandafter\expandafter\let\pgfplots@line{D}=\pgfplots@loc@TMPa
+		}%
 		%
-		\pgfplotspatchclass@biquad@coonsedge
+		\def\pgfplots@line##1{\csname P@##1A\endcsname}%
+		\pgfplots@apply@to@line
 		%
-		\pgfplotspatchclass@biquad@coonsedge
+		\def\pgfplots@line##1{\csname P@##1B\endcsname}%
+		\pgfplots@apply@to@line
 		%
-		% FIXME:
-		% \pgfplotspatchclass@biquad@innercontrolpoints
+		\def\pgfplots@line##1{\csname P@##1C\endcsname}%
+		\pgfplots@apply@to@line
 		%
+		% Now, we have a 3x4 matrix.
+		%
+		%
+		\def\pgfplots@line##1{\csname P@A##1\endcsname}%
+		\pgfplots@apply@to@line
+		%
+		\def\pgfplots@line##1{\csname P@B##1\endcsname}%
+		\pgfplots@apply@to@line
+		%
+		\def\pgfplots@line##1{\csname P@C##1\endcsname}%
+		\pgfplots@apply@to@line
+		%
+		\def\pgfplots@line##1{\csname P@D##1\endcsname}%
+		\pgfplots@apply@to@line
+		%
+		% OK. The tensor product representation is READY.
+		%
+		% in particular, we have a 4x4 matrix right now:
+		%
+		\pgfplotsplothandlermesh@stream@tensor@bezier
 		\endgroup
 	},%
 	triangulate={%
@@ -1755,8 +1954,8 @@
 		#1%
 		%
 	},%
-	get pdf shading type=6,
-	get num vertices=\def\pgfplotsretval{9},
+	get pdf shading type=7,
+	get num vertices=\def\pgfplotsretval{16},
 	get num cdata vertices=\def\pgfplotsretval{4},
 }%
 
@@ -2372,46 +2571,7 @@
 		%
 		% OK. The tensor product representation is READY.
 		%
-		% Stream it to the shader. Note that the shader has a
-		% DIFFERENT ordering; it expects points in the cyclic ordering
-		%
-		% AA BA CA DA   DB DC DD  CD BD AD   AC AB    BB CB CC BC
-		%
-		% note furthermore that only the corners have "point meta" in
-		% this shading :-(
-		%
-		\expandafter\pgfplotspatchvertex\P@AA\endvertex
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BA\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CA\endvertex}{\pgfplotspointmetatransformed}%
-		\expandafter\pgfplotspatchvertex\P@DA\endvertex
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@DB\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@DC\endvertex}{\pgfplotspointmetatransformed}%
-		\expandafter\pgfplotspatchvertex\P@DD\endvertex
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CD\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BD\endvertex}{\pgfplotspointmetatransformed}%
-		\expandafter\pgfplotspatchvertex\P@AD\endvertex
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
-		%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@AC\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@AB\endvertex}{\pgfplotspointmetatransformed}%
-		%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BB\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CB\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CC\endvertex}{\pgfplotspointmetatransformed}%
-		\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BC\endvertex}{\pgfplotspointmetatransformed}%
+		\pgfplotsplothandlermesh@stream@tensor@bezier
 		\endgroup
 	},
 	triangulate={%
@@ -2489,5 +2649,73 @@
 	\pgfplotsutil@swap\P@CB\P@BC
 	\pgfplotsutil@swap\P@BD\P@DB
 	\pgfplotsutil@swap\P@DC\P@CD
+}
+
+% Transpose a bicubic matrix (4x4).
+%
+% Reorder 
+% AC BC CC 
+% AB BB CB 
+% AA BA CA 
+% to 
+% CA CB CC 
+% BA BB BC 
+% AA AB AC 
+\def\pgfplotspatchclass@biquad@transpose{%
+	\pgfplotsutil@swap\P@AB\P@BA
+	\pgfplotsutil@swap\P@CA\P@AC
+	\pgfplotsutil@swap\P@CB\P@BC
+}
+
+% Expects that a 4x4 matrix in tensor bezier representation where 
+% A = left end point
+% B = first control point
+% C = second control point
+% D = right end point
+%
+% and the coordinates are stored in \csname P@[ABCD][ABCD]\endcsname
+% 
+% Streaming starts with \P@AA and is applied rowwise.
+\def\pgfplotsplothandlermesh@stream@tensor@bezier{%
+	% Stream it to the shader. Note that the shader has a
+	% DIFFERENT ordering; it expects points in the cyclic ordering
+	%
+	% AA BA CA DA   DB DC DD  CD BD AD   AC AB    BB CB CC BC
+	%
+	% note furthermore that only the corners have "point meta" in
+	% this shading :-(
+	%
+	\expandafter\pgfplotspatchvertex\P@AA\endvertex
+		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+		\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BA\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CA\endvertex}{\pgfplotspointmetatransformed}%
+	\expandafter\pgfplotspatchvertex\P@DA\endvertex
+		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+		\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@DB\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@DC\endvertex}{\pgfplotspointmetatransformed}%
+	\expandafter\pgfplotspatchvertex\P@DD\endvertex
+		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+		\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CD\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BD\endvertex}{\pgfplotspointmetatransformed}%
+	\expandafter\pgfplotspatchvertex\P@AD\endvertex
+		\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+		\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@AC\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@AB\endvertex}{\pgfplotspointmetatransformed}%
+	%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BB\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CB\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@CC\endvertex}{\pgfplotspointmetatransformed}%
+	\pgfplotslibrarysurfstreamcoord{\expandafter\pgfplotspointpatchvertex\P@BC\endvertex}{\pgfplotspointmetatransformed}%
 }
 \endinput
