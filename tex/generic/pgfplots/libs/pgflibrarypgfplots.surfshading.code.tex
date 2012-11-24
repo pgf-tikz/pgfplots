@@ -1,5 +1,4 @@
 %--------------------------------------------
-% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.18 2009/06/26 17:56:58 ludewich Exp $
 %
 % Package pgfplots
 %
@@ -8,7 +7,7 @@
 % 
 % It is based on Till Tantau's PGF package.
 %
-% Copyright 2007/2008 by Christian Feuersänger.
+% Copyright 2007-2012 by Christian Feuersänger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -157,6 +156,10 @@
 		\def\pgfplotslibrarysurf@filter@encode{binary encoding}%
 	\fi
 	\pgfkeysalso{/pgfplots/bin/\pgfplotslibrarysurf@filter@encode}%
+	%
+	\pgfplotsbinarysetbytes1%
+	\pgfplotsbinaryencodeunsigned{0}% use this method - it respects any special encodings.
+	\let\pgfplots@loc@TMPa=\pgfplotsbinaryresult
 	\ifcase\pgfplotslibrarysurf@type\relax
 		% 0
 		\pgfplotslibrarysurf@initstream@wrongtype
@@ -167,7 +170,7 @@
 	\or% 3
 	\or% 4
 		% ok, triangle meshes.
-		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+		\let\pgfplotslibrarysurf@edgeflag=\pgfplots@loc@TMPa
 	\or% 5 triangles in lattice form. disable edge flag:
 		\let\pgfplotslibrarysurf@edgeflag=\pgfutil@empty
 	\or% 6 coons patches:
@@ -175,13 +178,13 @@
 		\global\c@pgfplotslibrarysurf@no=0
 		\def\pgfplotslibrarysurf@cubicpatch@numverts{12}%
 		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
-		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+		\let\pgfplotslibrarysurf@edgeflag=\pgfplots@loc@TMPa
 	\or% 7 full tensor product cubic bezier patches:
 		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
 		\global\c@pgfplotslibrarysurf@no=0
 		\def\pgfplotslibrarysurf@cubicpatch@numverts{16}%
 		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
-		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+		\let\pgfplotslibrarysurf@edgeflag=\pgfplots@loc@TMPa
 	\else
 		\pgfplotslibrarysurf@initstream@wrongtype
 	\fi
@@ -198,6 +201,8 @@
 % #2: a color coordinate in the range [0,1000]
 \def\pgfplotslibrarysurfstreamcoord#1#2{%
 	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercoordinate}%
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercoordinate}%
 	%\pgf@process{#1}% this here causes `{retaining \pgf@x}' messages and pollutes the save stack! Avoid it. See \tracingrestores=2
 	#1%
 	% The idea is to map 
@@ -244,12 +249,18 @@
 %\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
 	}%
 	\pgfplotsbinarysetbytes2%
+	\pgfplotslibrarysurf@advancestreamlen{2}%
 	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
 %\message{\pgfplotsbinaryresult.}%
 	\t@pgfplots@tokc=\expandafter{\pgfplotsbinaryresult}%
+	\ifx\pgfplotslibrarysurf@edgeflag\pgfutil@empty
+	\else
+		% for shading type 4, the edge flag is given for EVERY
+		% coordinate (unlike all other shading types).
+		\pgfplotslibrarysurf@advancestreamlen{1}%
+	\fi
 	\edef\pgfplots@loc@TMPa{\pgfplotslibrarysurf@edgeflag\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
 	\expandafter\pgfplotsapplistXglobalpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
-	\pgfplotslibrarysurf@advancestreamlen{10}%
 }
 
 \def\pgfplotslibrarysurf@translate@colorspace{%
@@ -283,6 +294,8 @@
 % #2: a color coordinate in the range [0,1000]
 \def\pgfplotslibrarysurfstreamcoord@cubicpatch#1#2{%
 	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercoordinate}%
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercoordinate}%
 	%\pgf@process{#1}% this here causes `{retaining \pgf@x}' messages and pollutes the save stack! Avoid it. See \tracingrestores=2
 	#1%
 	% The idea is to map 
@@ -313,6 +326,7 @@
 		\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
 		% prepend edge flag. it is a new patch.
 		\t@pgfplots@toka=\expandafter{\expandafter\pgfplotslibrarysurf@edgeflag\the\t@pgfplots@toka}%
+		\pgfplotslibrarysurf@advancestreamlen{1}%
 	\else
 		\ifnum\c@pgfplotslibrarysurf@no=3
 			\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
@@ -348,6 +362,7 @@
 	%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
 		}%
 		\pgfplotsbinarysetbytes2%
+		\pgfplotslibrarysurf@advancestreamlen{2}%
 		\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
 	%\message{\pgfplotsbinaryresult.}%
 		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@cubicpatch@cdata}%
@@ -369,7 +384,6 @@
 	% vertex)
 	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
 	\expandafter\pgfplotsapplistXglobalpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
-	%\pgfplotslibrarysurf@advancestreamlen{10}%
 }
 
 \def\pgfplotslibrarysurfactivateshadefill{%
