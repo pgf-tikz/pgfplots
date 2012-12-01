@@ -28,6 +28,11 @@
 			#1%
 		}%
 	},
+	boxplot/data value/.code	=\pgfplots@set@source@for{boxplot/data}{#1}{0},%
+	boxplot/data/.code			=\pgfplots@set@source@for{boxplot/data}{#1}{1},%
+	boxplot/data filter/.code=,
+	boxplot/data value=\pgfkeysvalueof{/data point/y},
+	%
 	every boxplot/.style={%
 	},
 	boxplot/median/.initial=,
@@ -127,6 +132,8 @@
 \def\pgfplotsplothandlerboxplotprepared{%
 	\pgfplotsresetplothandler
 	\let\pgf@plotstreamstart=\pgfplotsplothandlervisstart@boxplot@prepared
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@boxplot@prepared
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@boxplot@prepared
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@boxplot@prepared
 	%
 	\pgfkeysgetvalue{/pgfplots/boxplot/draw position}\pgfplotsplothandlerboxplotprepared@drawposition
@@ -156,7 +163,11 @@
 		\endgroup
 	}%
 	\def\pgfplotsboxplotpointab@survey##1##2{%
-		\pgfmathparse{##1}%
+		\edef\pgfmathresult{##1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfmathparse{\pgfmathresult}%
+		\fi
 		\let\pgfplotsplothandlerboxplot@@=\pgfmathresult
 		\pgfmathparse{\pgfkeysvalueof{/pgfplots/boxplot/draw position} + ##2}%
 		\xdef\pgfplots@glob@TMPa{{\pgfplotsplothandlerboxplot@@}{\pgfmathresult}}%
@@ -181,19 +192,34 @@
 	}%
 }%
 
-\def\pgfplotsplothandlersurveypoint@boxplotprepared{%
+\def\pgfplotsplothandlersurveypoint@boxplot@collect@limits{%
 	\pgfplotsaxisparsecoordinate
 	\pgfplotsaxispreparecoordinate
 	\ifpgfplotsaxisparsecoordinateok
 		\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z
 	\fi
-	% FIXME : that should not be done ... conflicts with markers.
-	%\pgfplotsaxisdatapointsurveyed
+}
+
+\def\pgfplotsplothandlersurveystart@boxplot@prepared{%
+	\pgfplots@prepare@source@parser@for{boxplot/}{data}{\pgfplotsplothandlerboxplot@parse}%
+	%
+	\pgfplotsplothandlersurveystart@default
+}
+
+\def\pgfplotsplothandlersurveypoint@boxplot@prepared{%
+	% seems the "parse" routine is stupid ... the /data point/ stuff
+	% is redefined although it should not. Strange...
+	\pgfkeyslet{/data point/x}\pgfplots@current@point@x
+	\pgfkeyslet{/data point/y}\pgfplots@current@point@y
+	\pgfkeyslet{/data point/z}\pgfplots@current@point@z
+	\pgfplotsplothandlerboxplot@parse
+	%
+	\pgfplotsboxplotpointab@survey{\pgfmathresult}{0}%
+	%
+	\pgfplotsplothandlersurveypoint@default
 }
 
 \def\pgfplotsplothandlersurveyend@boxplot@prepared{%
-	% FIXME : make sure we get that outliers receive their correct y value
-	% FIXME : remember the correct y value for the visualization
 	\let\pgfplots@invoke@filter@xyz@old=\pgfplots@invoke@filter@xyz
 	\let\pgfplots@invoke@filter@xyz=\relax
 	\let\pgfplots@invoke@filter@old=\pgfplots@invoke@filter
@@ -204,44 +230,48 @@
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/lower whisker}}
 		{\pgfplots@boxplot@anchor@value@whisker{0}}%
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/lower whisker}}
 		{\pgfplots@boxplot@anchor@value@whisker{1}}%
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/lower quartile}}%
 		{\pgfplots@boxplot@anchor@value{0}}%
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/lower quartile}}%
 		{\pgfplots@boxplot@anchor@value{1}}%
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/median}}
 		{0}% does not matter - we have lower and upper bound anyway.
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/upper quartile}}%
 		{0}% does not matter - we have lower and upper bound anyway.
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
 	\pgfplotsboxplotpointab@survey
 		{\pgfkeysvalueof{/pgfplots/boxplot/upper whisker}}%
-		{0}% does not matter - we have lower and upper bound anyway.
-	\pgfplotsplothandlersurveypoint@boxplotprepared
+		{0}% does not matter - we have lower and upper bound anyway. AND: we want to store that value...
+	\pgfplotsplothandlersurveypoint@boxplot@collect@limits
 	%
+	% .. store the latest modified 'draw position' (has been set
+	% during \pgfplotsboxplotpointab@survey{...}{0} )
 	\edef\pgfplots@loc@TMPa{/pgfplots/boxplot/draw position=\pgfplotsplothandlerboxplot@modified@draw@position}%
 	\expandafter\pgfplotsplothandlersurveyaddoptions\expandafter{\pgfplots@loc@TMPa}%
 	%
 	\let\pgfplots@invoke@prefilter=\pgfplots@invoke@prefilter@old
 	\let\pgfplots@invoke@filter=\pgfplots@invoke@filter@old
 	\let\pgfplots@invoke@filter@xyz=\pgfplots@invoke@filter@xyz@old
+	%
+	\pgfplotsplothandlersurveyend@default
 }%
 
 \def\pgfplotsplothandlervisstart@boxplot@prepared{%
