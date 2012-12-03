@@ -19,7 +19,6 @@
 %
 %--------------------------------------------
 
-\newif\ifpgfplotsplothandlerboxplot@variable@width
 
 \pgfplotsset{
 	boxplot prepared/.code={%
@@ -60,10 +59,12 @@
 	% draw direction=x|y
 	boxplot/draw direction/.initial=x,	
 	%
-	boxplot/variable width/.is if=pgfplotsplothandlerboxplot@variable@width,
-	% only used if 'variable width=true'
-	boxplot/variable width key/.initial=,
-	% will be computed automatically if needed:
+	% Activates "dynamic size" feature if not empty:
+	boxplot/variable width key/.initial=auto,
+	%
+	% will be computed automatically if needed. If it is present, it
+	% will not contribute to the axis-wide limit unless it has been
+	% given axis-wide.
 	boxplot/variable width key min/.initial=,
 	boxplot/variable width key max/.initial=,
 	%
@@ -231,7 +232,15 @@
 
 \def\pgfplotsplothandlerboxplotprepared@normalize@values{%
 	\def\pgfplots@loc@TMPa{auto}%
-	\pgfplotsforeachentryinCSV{\value}{lower whisker,lower quartile,median,average,upper quartile,upper whisker}{%
+	\pgfplotsforeachentryinCSV{\value}{%
+		lower whisker,%
+		lower quartile,%
+		median,%
+		average,%
+		upper quartile,%
+		upper whisker,%
+		variable width key%
+	}{%
 		\pgfkeysgetvalue{/pgfplots/boxplot/\value}\pgfplots@loc@TMPb
 		\edef\pgfplots@loc@TMPb{\pgfplots@loc@TMPb}%
 		\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
@@ -368,39 +377,104 @@
 	\let\pgfplots@invoke@filter=\pgfplots@invoke@filter@old
 	\let\pgfplots@invoke@filter@xyz=\pgfplots@invoke@filter@xyz@old
 	%
+	\pgfplotsplothandlerboxplotsurvey@variable@width%
+	%
 	\pgfplotsplothandlersurveyend@default
 }%
 
-%--------------------------------------------------
-% \def\pgfplotsplothandlerboxplot@variable@width{%
-% 	\pgfkeysgetvalue{/pgfplots/boxplot/variable width key min}\pgfmathresult
-% 	\edef\pgfplotsplothandlerboxplot@widthkey@min{\pgfmathresult}%
-% 	%
-% 	\pgfkeysgetvalue{/pgfplots/boxplot/variable width key max}\pgfmathresult
-% 	\edef\pgfplotsplothandlerboxplot@widthkey@max{\pgfmathresult}%
-% 	%
-% 	\ifx\pgfplotsplothandlerboxplot@widthkey@min\pgfutil@empty
-% 		\pgfplotscoordmath{default}{max}%
-% 		\let\pgfplotsplothandlerboxplot@widthkey@min=\pgfmathresult
-% 		\def\pgfplotsplothandlerboxplot@widthkey@min@autocompute{1}%
-% 	\else
-% 		\pgfmathfloatparsenumber{\pgfplotsplothandlerboxplot@widthkey@min}%
-% 		\let\pgfplotsplothandlerboxplot@widthkey@min=\pgfmathresult
-% 		\def\pgfplotsplothandlerboxplot@widthkey@min@autocompute{0}%
-% 	\fi
-% 	\ifx\pgfplotsplothandlerboxplot@widthkey@max\pgfutil@empty
-% 		\pgfplotscoordmath{default}{min}%
-% 		\let\pgfplotsplothandlerboxplot@widthkey@max=\pgfmathresult
-% 		\def\pgfplotsplothandlerboxplot@widthkey@max@autocompute{1}%
-% 	\else
-% 		\pgfmathfloatparsenumber{\pgfplotsplothandlerboxplot@widthkey@max}%
-% 		\let\pgfplotsplothandlerboxplot@widthkey@max=\pgfmathresult
-% 		\def\pgfplotsplothandlerboxplot@widthkey@max@autocompute{0}%
-% 	\fi
-% }%
-%-------------------------------------------------- 
+\def\pgfplotsplothandlerboxplotsurvey@variable@width{%
+	\ifnum\plotnumofactualtype=0 %
+		% Ah - the first boxplot in this axis. Init the global
+		% counter:
+		\pgfplotscoordmath{default}{max limit}%
+		\global\let\g@pgfplotsplothandlerboxplot@widthkey@min=\pgfmathresult
+		\pgfplotscoordmath{default}{min limit}%
+		\global\let\g@pgfplotsplothandlerboxplot@widthkey@max=\pgfmathresult
+	\fi
+	%
+	%
+	\pgfkeysgetvalue{/pgfplots/boxplot/variable width key}\pgfmathresult
+	\edef\pgfmathresult{\pgfmathresult}%
+	\ifx\pgfmathresult\pgfutil@empty
+	\else
+		\pgfmathparse{\pgfmathresult}%
+		\let\pgfplots@widthkey@=\pgfmathresult
+		%
+		\pgfkeysgetvalue{/pgfplots/boxplot/variable width key min}\pgfmathresult
+		\edef\pgfplotsplothandlerboxplot@widthkey@min{\pgfmathresult}%
+		%
+		\pgfkeysgetvalue{/pgfplots/boxplot/variable width key max}\pgfmathresult
+		\edef\pgfplotsplothandlerboxplot@widthkey@max{\pgfmathresult}%
+		%
+		%
+		\ifx\pgfplotsplothandlerboxplot@widthkey@min\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@widthkey@min=\g@pgfplotsplothandlerboxplot@widthkey@min
+			\def\pgfplotsplothandlerboxplot@widthkey@min@autocompute{1}%
+		\else
+			\def\pgfplotsplothandlerboxplot@widthkey@min@autocompute{0}%
+		\fi
+		\ifx\pgfplotsplothandlerboxplot@widthkey@max\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@widthkey@max=\g@pgfplotsplothandlerboxplot@widthkey@max
+			\def\pgfplotsplothandlerboxplot@widthkey@max@autocompute{1}%
+		\else
+			\def\pgfplotsplothandlerboxplot@widthkey@max@autocompute{0}%
+		\fi
+		%
+		\if1\pgfplotsplothandlerboxplot@widthkey@max@autocompute
+			\pgfmathparse{max(\pgfplotsplothandlerboxplot@widthkey@max,\pgfplots@widthkey@)}%
+			\global\let\g@pgfplotsplothandlerboxplot@widthkey@max=\pgfmathresult
+			\let\pgfplotsplothandlerboxplot@widthkey@max=\pgfmathresult
+			%
+			\pgfmathparse{min(\pgfplotsplothandlerboxplot@widthkey@min,\pgfplots@widthkey@)}%
+			\global\let\g@pgfplotsplothandlerboxplot@widthkey@min=\pgfmathresult
+			\let\pgfplotsplothandlerboxplot@widthkey@min=\pgfmathresult
+		\fi
+	\fi
+	%
+%\message{variable width key=\pgfplots@widthkey@. interval = \pgfplotsplothandlerboxplot@widthkey@min:\pgfplotsplothandlerboxplot@widthkey@max^^J}%
+}%
+
+\def\pgfplotsplothandlerboxplotvisualization@variable@width{%
+	\pgfkeysgetvalue{/pgfplots/boxplot/variable width key}\pgfmathresult
+	\edef\pgfmathresult{\pgfmathresult}%
+	\ifx\pgfmathresult\pgfutil@empty
+	\else
+		\let\pgfplots@widthkey@=\pgfmathresult
+		%
+		\pgfkeysgetvalue{/pgfplots/boxplot/variable width key min}\pgfmathresult
+		\edef\pgfplotsplothandlerboxplot@widthkey@min{\pgfmathresult}%
+		%
+		\pgfkeysgetvalue{/pgfplots/boxplot/variable width key max}\pgfmathresult
+		\edef\pgfplotsplothandlerboxplot@widthkey@max{\pgfmathresult}%
+		%
+		%
+		\ifx\pgfplotsplothandlerboxplot@widthkey@min\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@widthkey@min=\g@pgfplotsplothandlerboxplot@widthkey@min
+		\fi
+		\ifx\pgfplotsplothandlerboxplot@widthkey@max\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@widthkey@max=\g@pgfplotsplothandlerboxplot@widthkey@max
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/boxplot/variable width min target}\pgfplots@widthkey@mintrg
+		\pgfkeysgetvalue{/pgfplots/boxplot/box length}\pgfplots@loc@TMPa
+%\message{variable width key=\pgfplots@widthkey@. interval = \pgfplotsplothandlerboxplot@widthkey@min:\pgfplotsplothandlerboxplot@widthkey@max. Target = [\pgfplots@widthkey@mintrg:1]^^J}%
+		\begingroup
+		\pgfkeys{/pgf/fpu}%
+		\pgfmathparse{
+			(\pgfplots@widthkey@mintrg + 
+			max(0,min(1,(\pgfplots@widthkey@ - \pgfplotsplothandlerboxplot@widthkey@min) / 
+		   	(\pgfplotsplothandlerboxplot@widthkey@max - \pgfplotsplothandlerboxplot@widthkey@min))) 
+			  * (1-\pgfplots@widthkey@mintrg)) * \pgfplots@loc@TMPa}%
+		\pgfmathfloattofixed\pgfmathresult
+		\pgfmath@smuggleone\pgfmathresult
+	 	\endgroup
+		\pgfkeyslet{/pgfplots/boxplot/box length}\pgfmathresult
+	\fi
+}%
 
 \def\pgfplotsplothandlervisstart@boxplot@prepared{%
+	%
+	\pgfplotsplothandlerboxplotvisualization@variable@width
 	%
 	\global\let\pgf@plotstreampoint=\pgfutil@gobble
 	\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
