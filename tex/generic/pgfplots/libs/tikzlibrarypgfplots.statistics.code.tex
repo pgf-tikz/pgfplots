@@ -220,6 +220,17 @@
 	%
 	\def\b@pgfplotsplothandlerboxplot@issorted{1}%
 	%
+	% FIXME : the decision to store the input points into a SINGLY
+	% LINKED LIST is based on the observation that huge TeX arrays
+	% (with one macro per index) run into out-of-memory easily.
+	% The list does not: it does not need that many macros and uses a
+	% different memory limit...
+	%
+	% However, the linked-list is bought off for a high price... the
+	% statistics computation takes linear time instead of constant.
+	% But we have linear time anyway, so it does not destroy the
+	% asymptotics... and it appears to be better to get it into main
+	% memory (?)
 	\pgfplotsapplistXnewempty\pgfp@boxplot@@
 	\def\c@pgfplotsplothandlerboxplot@num{0}%
 	\c@pgfplots@coordindex=0
@@ -228,12 +239,13 @@
 \def\pgfplotsplothandlersurveyend@boxplot{%
 	\pgfplots@curplot@threedimfalse
 	%
-	\if0\b@pgfplotsplothandlerboxplot@issorted
-		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, boxplot currently expects the input to be sorted in ascending order}\pgfeov%
-	\fi
-	%
 	\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
 	\pgfplotsapplistXnewempty\pgfp@boxplot@@
+	%
+	\if0\b@pgfplotsplothandlerboxplot@issorted
+		\pgfplotsplothandlersurveyend@boxplot@sort
+	\fi
+	%
 	%
 	\edef\numcoords{\pgfplots@current@point@coordindex}%
 	%
@@ -262,6 +274,48 @@
 	%
 	\pgfplotsplothandlersurveyend
 }%
+
+\def\pgfplotsplothandlersurveyend@boxplot@sort{%
+	% how bad. we have to convert to array, sort, convert back to
+	% list... it would have been better if we had worked with arrays
+	% right away! But see the docs in front of the line
+	% '\pgfplotsapplistXnewempty\pgfp@boxplot@@' somewhere in this
+	% file...
+	%
+	\begingroup
+	\pgfplotsarraynewempty{P}%
+	\pgfplotsarrayresize{P}{\c@pgfplots@coordindex}%
+	%
+	\c@pgfplots@coordindex=0
+	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplots@boxplot@fillarray
+	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
+	%
+	\pgfkeysdef{/pgfplots/array/unscope pre}{%
+		\pgfplotsapplistXnewempty\pgfp@boxplot@@
+		\pgfplotsarrayforeachungrouped{##1}\as\elem{%
+			\edef\elem{{\elem}}%
+			\expandafter\pgfplotsapplistXpushback\expandafter{\elem}\to\pgfp@boxplot@@
+		}%
+		\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
+		\global\let\pgfplots@glob@boxplot@TMPd=\pgfplots@boxplot@data
+	}%
+	\pgfkeysdef{/pgfplots/array/unscope post}{%
+	}%
+	%
+	%\message{[}\pgfplotsarrayforeach{P}\as\elem{\message{\elem,}}\message{]^^J}%
+	%
+	\pgfkeys{/pgfplots/float <}%
+	\pgfplotsarraysort{P}%
+	%
+	\endgroup
+	\let\pgfplots@boxplot@data=\pgfplots@glob@boxplot@TMPd
+	%\message{-> \meaning\pgfplots@boxplot@data^^J}%
+}%
+
+\def\pgfplots@boxplot@fillarray{%
+	\def\pgfplots@loc@TMPa{\pgfplotsarrayset\c@pgfplots@coordindex\of{P}\to}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@current@point@data}%
+}
 
 %%%%
 
@@ -345,6 +399,8 @@
 	%
 	%
 	% compute whiskers and stream outliers:
+	% FIXME : does not respect user-provided arguments (like upper
+	% quartile etc)
 	\pgfplotscoordmath{float}{parsenumber}{1.5}%
 	\let\pgfplots@loc@TMPa=\pgfmathresult
 	\pgfplotscoordmath{float}{op}{subtract}{{\pgfplotsplothandlerboxplot@upperquartile}{\pgfplotsplothandlerboxplot@lowerquartile}}%
