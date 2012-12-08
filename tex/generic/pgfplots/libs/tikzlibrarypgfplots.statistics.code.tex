@@ -227,29 +227,30 @@
 	\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
 	\pgfplotsapplistXnewempty\pgfp@boxplot@@
 	%
+	\edef\numcoords{\pgfplots@current@point@coordindex}%
+	%
 	%%
-	\pgfplotsplothandlersurveyend@boxplot@computestats
-	\let\pgfplots@boxplot@data=\relax
-	%
-	%
 	\pgfplotsset{%
 		/pgfplots/boxplot prepared={%
 			data value=\pgfplots@current@point@data,
 		},%
 	}%
 	\pgfplotsresetplothandler
+	%
+	\let\pgfplotsplothandlerboxplotprepared@normalize@values@@=\pgfplotsplothandlerboxplotprepared@normalize@values
+	\def\pgfplotsplothandlerboxplotprepared@normalize@values{\relax}%
+	%
 	\tikz@plot@handler
 	%
 	\pgfplotsplothandlersurveystart
 	%
-	\let\pgfplots@current@point@z=\pgfutil@empty
-	% REPORT OUTLIERS:
-	\pgfplotslistforeachungrouped{pgfp@boxplot@@}\as\pgfplots@current@point@data{%
-		\def\pgfplots@current@point@x{0}%
-		\let\pgfplots@current@point@y{0}%
-%\message{Survey point (\pgfplots@current@point@x,\pgfplots@current@point@y)^^J}%
-		\pgfplotsplothandlersurveypoint
-	}%
+	% this will report outliers as point stream:
+	\pgfplotsplothandlersurveyend@boxplot@computestats
+	\let\pgfplots@boxplot@data=\relax
+	%
+	\let\pgfplotsplothandlerboxplotprepared@normalize@values=\pgfplotsplothandlerboxplotprepared@normalize@values@@
+	\pgfplotsplothandlerboxplotprepared@normalize@values
+	%
 	%
 	\pgfplotsplothandlersurveyend
 }%
@@ -278,9 +279,6 @@
 }%
 
 \def\pgfplotsplothandlersurveyend@boxplot@computestats{ 
-	%
-	%
-	\edef\numcoords{\pgfplots@current@point@coordindex}%
 	%
 	% compute TMPa := float(\numcoords - 1)
 	\pgfplotscoordmath{float}{one}%
@@ -340,13 +338,13 @@
 	\pgfplotscoordmath{float}{op}{subtract}{{\pgfplotsplothandlerboxplot@lowerquartile}{\pgfplots@boxplot@whisker@width}}%
 	\let\pgfplotsplothandlerboxplot@lowerwhisker@value=\pgfmathresult
 	%
+	\c@pgfplots@coordindex=0 %
 	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased
 	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
 	%
 	\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{\pgfplotsplothandlerboxplot@lowerwhisker}%
 	\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{\pgfplotsplothandlerboxplot@upperwhisker}%
 	%
-	\c@pgfplots@coordindex=\numcoords
 }%
 
 \def\pgfplotsplothandlersurveyend@boxplot@set#1#2{%
@@ -380,20 +378,28 @@
 }%
 
 % Really computes stats.
+% 
+% This method computes ALL quantiles (one after the other). These are 0.25,
+% 0.5, and 0.75. Perhaps I add quantile-based whiskers eventually.
+%
+% XXX : this method is quite inefficient because it iterates through a
+% loop for what would be 3 arrays lookups otherwise. If I would have enough
+% courage to store the points into an array, both this and the
+% whisker-loop would be more efficient. But in TeX, arrays are not
+% necessarily that efficient ... they run out of memory easily!
+%
 % The data is in \pgfplots@current@point@data.
 \def\pgfplotsplothandlersurveyend@boxplot@computestats@quantile{%
 	%
 	\c@pgf@countd=\csname c@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname\relax
 	\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
 	%
-	\message{search for \pgfplots@boxplot@@next@target=\the\c@pgf@countd: \# \pgfplots@current@point@coordindex: \pgfplots@current@point@data^^J}%
 	\ifnum\c@pgf@countd=\c@pgfplots@coordindex\relax
 		% Ah - we found the occurence of the current search target! 
 		\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname=\pgfplots@current@point@data
 		%
 		\expandafter\let\expandafter\pgfplots@loc@TMPb\csname b@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target @isint\endcsname
 		\if 1\pgfplots@loc@TMPb
-\message{Found it (and is int). Advancing.^^J}%
 			% ... and search for the next search target.
 			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
 		\else
@@ -413,7 +419,6 @@
 			%
 			\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
 				=\pgfmathresult
-\message{Found it; computing mean = \pgfmathresult ^^J}%
 			%
 			% ... and search for the next search target.
 			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
@@ -428,19 +433,20 @@
 }
 
 \def\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased{%
-\message{searching for whiskers (lower = \pgfplotsplothandlerboxplot@lowerwhisker@value, upper =\pgfplotsplothandlerboxplot@upperwhisker@value)...^^J}%
-	\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@data}{\pgfplotsplothandlerboxplot@lowerwhisker@value}{%
-	}{%
-		\ifx\pgfplotsplothandlerboxplot@lowerwhisker\pgfutil@empty
+	\ifx\pgfplotsplothandlerboxplot@lowerwhisker\pgfutil@empty
+		\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@data}{\pgfplotsplothandlerboxplot@lowerwhisker@value}{%
+			% Ah. an outlier.
+			\pgfplotsplothandlerboxplot@outlier
+		}{%
 			\let\pgfplotsplothandlerboxplot@lowerwhisker=\pgfplots@current@point@data
-		\else
-			\pgfplotscoordmath{float}{min}{\pgfplotsplothandlerboxplot@lowerwhisker}{\pgfplots@current@point@data}%
-			\let\pgfplotsplothandlerboxplot@lowerwhisker=\pgfmathresult
-		\fi
-\message{updating lower: \pgfplotsplothandlerboxplot@lowerwhisker^^J}%
-	}%
+		}%
+	\fi
 	%
+	% it would be so cool if we could simply check the list in reverse
+	% order. but not if it really is a singly-linked list...
 	\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlerboxplot@upperwhisker@value}{\pgfplots@current@point@data}{%
+		% Ah. an outlier.
+		\pgfplotsplothandlerboxplot@outlier
 	}{%
 		\ifx\pgfplotsplothandlerboxplot@upperwhisker\pgfutil@empty
 			\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfplots@current@point@data
@@ -448,10 +454,15 @@
 			\pgfplotscoordmath{float}{max}{\pgfplotsplothandlerboxplot@upperwhisker}{\pgfplots@current@point@data}%
 			\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfmathresult
 		\fi
-\message{updating upper: \pgfplotsplothandlerboxplot@upperwhisker^^J}%
 	}%
 }
 
+\def\pgfplotsplothandlerboxplot@outlier{%
+	\def\pgfplots@current@point@x{0}%
+	\def\pgfplots@current@point@y{0}%
+	\def\pgfplots@current@point@z{0}%
+	\pgfplotsplothandlersurveypoint
+}%
 
 %%%
 
