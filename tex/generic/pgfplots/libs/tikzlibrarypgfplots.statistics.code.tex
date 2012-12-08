@@ -21,6 +21,14 @@
 
 
 \pgfplotsset{
+	boxplot/.code={%
+		\def\tikz@plot@handler{\pgfplotsplothandlerboxplot}%
+		\pgfkeysalso{%
+			/pgfplots/every boxplot,
+			/pgfplots/boxplot/.cd,
+			#1%
+		}%
+	},
 	boxplot prepared/.code={%
 		\def\tikz@plot@handler{\pgfplotsplothandlerboxplotprepared}%
 		\pgfkeysalso{%
@@ -47,6 +55,9 @@
 	boxplot/lower whisker/.initial=auto,
 	boxplot/upper whisker/.initial=auto,
 	boxplot/average/.initial=,
+	%
+	boxplot/lower quartile off/.initial=0.25,
+	boxplot/upper quartile off/.initial=0.75,
 	%
 	%
 	% the size of whisker lines in axis units.
@@ -174,6 +185,313 @@
 \def\pgfplots@boxplot@anchor@value@whisker#1{%
 	(#1-\pgfkeysvalueof{/pgfplots/boxplot/draw relative anchor})*\pgfkeysvalueof{/pgfplots/boxplot/whisker length}%
 }
+
+\def\pgfplotsplothandlerboxplot{%
+	\pgfplotsresetplothandler
+	\def\pgf@plotstreamstart{%
+		\pgfplotsset{/pgfplots/boxplot prepared}%
+		\pgfplotsresetplothandler
+		\tikz@plot@handler
+		\pgf@plotstreamstart
+	}%
+	\def\pgfplotsplothandlername{boxplot}%
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@boxplot
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@boxplot
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@boxplot
+}
+
+
+\def\pgfplotsplothandlersurveystart@boxplot{%
+	\pgfplots@prepare@source@parser@for{boxplot/}{data}{\pgfplotsplothandlerboxplot@parse}%
+	%
+	\pgfplotscoordmath{float}{zero}%
+	\let\pgfplotsplothandlerboxplot@sum=\pgfmathresult
+	%
+	\pgfplotscoordmath{float}{min limit}%
+	\let\pgfplotsplothandlerboxplot@last=\pgfmathresult
+	%
+	\def\b@pgfplotsplothandlerboxplot@issorted{1}%
+	%
+	\pgfplotsapplistXnewempty\pgfp@boxplot@@
+	\def\c@pgfplotsplothandlerboxplot@num{0}%
+	\c@pgfplots@coordindex=0
+}%
+
+\def\pgfplotsplothandlersurveyend@boxplot{%
+	\pgfplots@curplot@threedimfalse
+	%
+	\if0\b@pgfplotsplothandlerboxplot@issorted
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, boxplot currently expects the input to be sorted in ascending order}\pgfeov%
+	\fi
+	%
+	\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
+	\pgfplotsapplistXnewempty\pgfp@boxplot@@
+	%
+	%%
+	\pgfplotsplothandlersurveyend@boxplot@computestats
+	\let\pgfplots@boxplot@data=\relax
+	%
+	%
+	\pgfplotsset{%
+		/pgfplots/boxplot prepared={%
+			data value=\pgfplots@current@point@data,
+		},%
+	}%
+	\pgfplotsresetplothandler
+	\tikz@plot@handler
+	%
+	\pgfplotsplothandlersurveystart
+	%
+	\let\pgfplots@current@point@z=\pgfutil@empty
+	% REPORT OUTLIERS:
+	\pgfplotslistforeachungrouped{pgfp@boxplot@@}\as\pgfplots@current@point@data{%
+		\def\pgfplots@current@point@x{0}%
+		\let\pgfplots@current@point@y{0}%
+%\message{Survey point (\pgfplots@current@point@x,\pgfplots@current@point@y)^^J}%
+		\pgfplotsplothandlersurveypoint
+	}%
+	%
+	\pgfplotsplothandlersurveyend
+}%
+
+%%%%
+
+% 
+% OUTPUT:
+% \pgfplotsretval: the result of #1 * #2 as integer
+% \pgfplotsretvalb = 1 iff #1 * #2 is an integer (without loss)
+\def\pgfplots@boxplot@get@quantile@offset#1#2{%
+	\pgfplotscoordmath{float}{parsenumber}{#2}%
+	\pgfplotscoordmath{float}{op}{multiply}{{\pgfmathresult}{#1}}%
+	\pgfplotscoordmath{float}{tofixed}{\pgfmathresult}%
+	\afterassignment\pgfplots@boxplot@get@quantile@remainder
+	\c@pgf@countd=\pgfmathresult\relax
+	\edef\pgfplotsretval{\the\c@pgf@countd}%
+}%
+
+\def\pgfplots@boxplot@get@quantile@remainder#1\relax{%
+	\ifdim #1pt>0.001pt
+		\def\pgfplotsretvalb{0}%
+	\else
+		\def\pgfplotsretvalb{1}%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveyend@boxplot@computestats{ 
+	%
+	%
+	\edef\numcoords{\pgfplots@current@point@coordindex}%
+	%
+	% compute TMPa := float(\numcoords - 1)
+	\pgfplotscoordmath{float}{one}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplotscoordmath{float}{parsenumber}{\numcoords}%
+	\let\pgfplots@boxplot@numcoords=\pgfmathresult
+	\pgfplotscoordmath{float}{op}{subtract}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+	\let\pgfplots@boxplot@numcoords@minus@one=\pgfmathresult
+	%
+	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{\pgfkeysvalueof{/pgfplots/boxplot/lower quartile off}}%
+	\let\c@pgfplotsplothandlerboxplot@lowerquartile=\pgfplotsretval
+	\let\b@pgfplotsplothandlerboxplot@lowerquartile@isint=\pgfplotsretvalb
+	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{0.5}%
+	\let\c@pgfplotsplothandlerboxplot@median=\pgfplotsretval
+	\let\b@pgfplotsplothandlerboxplot@median@isint=\pgfplotsretvalb
+	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{\pgfkeysvalueof{/pgfplots/boxplot/upper quartile off}}%
+	\let\c@pgfplotsplothandlerboxplot@upperquartile=\pgfplotsretval
+	\let\b@pgfplotsplothandlerboxplot@upperquartile@isint=\pgfplotsretvalb
+	%
+	\let\c@pgfplotsplothandlerboxplot@lowerwhisker=\pgfutil@empty
+	\let\c@pgfplotsplothandlerboxplot@upperwhisker=\pgfutil@empty
+	%
+	\let\pgfplotsplothandlerboxplot@lowerwhisker=\pgfutil@empty
+	\let\pgfplotsplothandlerboxplot@lowerquartile=\pgfutil@empty
+	\let\pgfplotsplothandlerboxplot@median=\pgfutil@empty
+	\let\pgfplotsplothandlerboxplot@upperquartile=\pgfutil@empty
+	\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfutil@empty
+	%
+	\c@pgfplots@coordindex=0 %
+	\def\pgfplots@boxplot@@next@target{lowerquartile}%
+	\def\pgfplots@boxplot@next@@lowerquartile{median}%
+	\def\pgfplots@boxplot@next@@median{upperquartile}%
+	\def\pgfplots@boxplot@next@@upperquartile{}%
+	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplotsplothandlersurveyend@boxplot@computestats@quantile
+	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
+	%
+	%
+	\pgfplotscoordmath{float}{op}{divide}{{\pgfplotsplothandlerboxplot@sum}{\pgfplots@boxplot@numcoords}}%
+	\let\pgfplotsplothandlerboxplot@average=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{\pgfplotsplothandlerboxplot@lowerwhisker}%
+	\pgfplotsplothandlersurveyend@boxplot@set{lower quartile}{\pgfplotsplothandlerboxplot@lowerquartile}%
+	\pgfplotsplothandlersurveyend@boxplot@set{median}{\pgfplotsplothandlerboxplot@median}%
+	\pgfplotsplothandlersurveyend@boxplot@set{average}{\pgfplotsplothandlerboxplot@average}%
+	\pgfplotsplothandlersurveyend@boxplot@set{upper quartile}{\pgfplotsplothandlerboxplot@upperquartile}%
+	\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{\pgfplotsplothandlerboxplot@upperwhisker}%
+	%
+	%
+	%
+	\pgfplotscoordmath{float}{parsenumber}{1.5}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplotscoordmath{float}{op}{subtract}{{\pgfplotsplothandlerboxplot@upperquartile}{\pgfplotsplothandlerboxplot@lowerquartile}}%
+	\pgfplotscoordmath{float}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+	\let\pgfplots@boxplot@whisker@width=\pgfmathresult
+	\pgfplotscoordmath{float}{op}{add}{{\pgfplotsplothandlerboxplot@upperquartile}{\pgfplots@boxplot@whisker@width}}%
+	\let\pgfplotsplothandlerboxplot@upperwhisker@value=\pgfmathresult
+	\pgfplotscoordmath{float}{op}{subtract}{{\pgfplotsplothandlerboxplot@lowerquartile}{\pgfplots@boxplot@whisker@width}}%
+	\let\pgfplotsplothandlerboxplot@lowerwhisker@value=\pgfmathresult
+	%
+	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased
+	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
+	%
+	\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{\pgfplotsplothandlerboxplot@lowerwhisker}%
+	\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{\pgfplotsplothandlerboxplot@upperwhisker}%
+	%
+	\c@pgfplots@coordindex=\numcoords
+}%
+
+\def\pgfplotsplothandlersurveyend@boxplot@set#1#2{%
+	\pgfkeysgetvalue{/pgfplots/boxplot/#1}\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+	\def\pgfplots@loc@TMPc{auto}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPc
+		\edef\pgfmathresult{#2}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfplotscoordmath{float}{tostring}{#2}%
+			\edef\pgfplots@loc@TMPb{\noexpand\pgfplotsplothandlersurveyaddoptions{/pgfplots/boxplot/#1={\pgfmathresult}}}%
+			\pgfplots@loc@TMPb
+		\fi
+	\fi
+	
+}%
+
+
+\def\pgfplotsplothandlersurveyend@boxplot@computestats@loop#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		%
+		\let\pgfplots@current@point@data=\pgfplots@loc@TMPa
+		\pgfplotsplothandlersurveyend@boxplot@computestats@
+		%
+		\advance\c@pgfplots@coordindex by1 %
+		\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop
+	\fi
+}%
+
+% Really computes stats.
+% The data is in \pgfplots@current@point@data.
+\def\pgfplotsplothandlersurveyend@boxplot@computestats@quantile{%
+	%
+	\c@pgf@countd=\csname c@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname\relax
+	\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
+	%
+	\message{search for \pgfplots@boxplot@@next@target=\the\c@pgf@countd: \# \pgfplots@current@point@coordindex: \pgfplots@current@point@data^^J}%
+	\ifnum\c@pgf@countd=\c@pgfplots@coordindex\relax
+		% Ah - we found the occurence of the current search target! 
+		\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname=\pgfplots@current@point@data
+		%
+		\expandafter\let\expandafter\pgfplots@loc@TMPb\csname b@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target @isint\endcsname
+		\if 1\pgfplots@loc@TMPb
+\message{Found it (and is int). Advancing.^^J}%
+			% ... and search for the next search target.
+			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
+		\else
+			% ... continue searching for the same target in order to deduplicate.
+		\fi
+	\else
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			% Ah! this can *only* happen if we have to compute a
+			% mean between the previous and this data point.
+			%
+			% The current search target is 0.5 * (value + next):
+			\pgfplotscoordmath{float}{op}{add}{{\pgfplots@current@point@data}{\pgfplots@loc@TMPa}}%
+			\let\pgfplots@loc@TMPb=\pgfmathresult
+			\pgfplotscoordmath{float}{parsenumber}{0.5}%
+			\pgfplotscoordmath{float}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@TMPb}}%
+			%
+			\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
+				=\pgfmathresult
+\message{Found it; computing mean = \pgfmathresult ^^J}%
+			%
+			% ... and search for the next search target.
+			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
+			%
+		\fi
+	\fi
+	%
+	\ifx\pgfplots@boxplot@@next@target\pgfutil@empty
+		% stop searching.
+		\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\relax
+	\fi
+}
+
+\def\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased{%
+\message{searching for whiskers (lower = \pgfplotsplothandlerboxplot@lowerwhisker@value, upper =\pgfplotsplothandlerboxplot@upperwhisker@value)...^^J}%
+	\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@data}{\pgfplotsplothandlerboxplot@lowerwhisker@value}{%
+	}{%
+		\ifx\pgfplotsplothandlerboxplot@lowerwhisker\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@lowerwhisker=\pgfplots@current@point@data
+		\else
+			\pgfplotscoordmath{float}{min}{\pgfplotsplothandlerboxplot@lowerwhisker}{\pgfplots@current@point@data}%
+			\let\pgfplotsplothandlerboxplot@lowerwhisker=\pgfmathresult
+		\fi
+\message{updating lower: \pgfplotsplothandlerboxplot@lowerwhisker^^J}%
+	}%
+	%
+	\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlerboxplot@upperwhisker@value}{\pgfplots@current@point@data}{%
+	}{%
+		\ifx\pgfplotsplothandlerboxplot@upperwhisker\pgfutil@empty
+			\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfplots@current@point@data
+		\else
+			\pgfplotscoordmath{float}{max}{\pgfplotsplothandlerboxplot@upperwhisker}{\pgfplots@current@point@data}%
+			\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfmathresult
+		\fi
+\message{updating upper: \pgfplotsplothandlerboxplot@upperwhisker^^J}%
+	}%
+}
+
+
+%%%
+
+\def\pgfplotsplothandlersurveypoint@boxplot{%
+	\pgfplotsplothandlerboxplot@parse
+	\let\pgfplots@current@point@data=\pgfmathresult
+	%
+	\ifx\pgfplots@current@point@data\pgfutil@empty
+	\else
+		\pgfplotscoordmath{float}{if is bounded}{\pgfplots@current@point@data}{%
+			%
+			\pgfplotsplothandlersurveypoint@boxplot@
+		}{%
+		}%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@boxplot@{%
+	\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlerboxplot@num
+	%
+	\if1\b@pgfplotsplothandlerboxplot@issorted
+		\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@data}{\pgfplotsplothandlerboxplot@last}{%
+			\def\b@pgfplotsplothandlerboxplot@issorted{0}%
+		}{%
+		}%
+	\fi
+	%
+	%
+	\pgfplotscoordmath{float}{op}{add}{{\pgfplots@current@point@data}{\pgfplotsplothandlerboxplot@sum}}%
+	\let\pgfplotsplothandlerboxplot@sum=\pgfmathresult
+	%
+	% store parsed result.
+	\edef\pgfmathresult{{\pgfplots@current@point@data}}%
+	\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfp@boxplot@@
+	%
+	\let\pgfplotsplothandlerboxplot@last=\pgfplots@current@point@data
+	%
+	\advance\c@pgfplots@coordindex by1
+}
+% =============================================================
 
 \def\pgfplotsplothandlerboxplotprepared{%
 	\ifpgfplots@stackedmode
