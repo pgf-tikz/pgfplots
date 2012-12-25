@@ -22,7 +22,7 @@ Box plots are visualizations for one--dimensional distributions. They provide a 
 The |boxplot prepared| handler is discussed first; all its customizations apply to |boxplot| as well.
 
 \begin{plottype}[/pgfplots]{boxplot prepared=\textcolor{black}{\normalfont\marg{options with {\normalfont\texttt{boxplot/}} prefix}}}
-	A |boxplot prepared| takes a couple of key--value pairs which describe the required statistics and additional information and a coordinate stream of outliers on input and draws a box plot.
+	A |boxplot prepared| takes a couple of key--value pairs which describe the required statistics and a coordinate stream of outliers on input and draws a box plot.
 
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -252,11 +252,66 @@ The |boxplot prepared| handler is discussed first; all its customizations apply 
 \begin{pgfplotskey}{boxplot/variable width=\mchoice{true,false} (initially false)}
 	If enabled, the |box extend| will be scaled according to the |sample size| relative to all other |boxplot| or |boxplot prepared| within the same axis.
 
-	FIXME: docs
+	The key |variable width| only has an effect if |sample size| is available. For |boxplot prepared|, one needs to provide |sample size| explicitly.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	ytick={1,2,3},
+	yticklabels={Group A, Group B, Group C},
+	boxplot/variable width,
+]
+	\addplot+[% Group A:
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			sample size=1000,
+		},
+	]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+
+	\addplot+[% Group B:
+		boxplot prepared={
+			lower whisker=36, lower quartile=39,
+			median=40,
+			upper quartile=41, upper whisker=43,
+			sample size=100000,
+		},
+	]
+		coordinates {};
+
+	\addplot+[% Group C:
+		boxplot prepared={
+			lower whisker=41, lower quartile=44,
+			median=45,
+			upper quartile=46, upper whisker=47,
+			sample size=50000,
+		},
+	]
+		coordinates {(0,35) (0,55)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The |variable width| computation computes the largest and smallest value of |sample size|, chosen among all box plots in the same axis. If a single plot has no |sample size|, it will be omitted from the computation (and it will not be scaled). If a single box plot has |variable width=false|, its |sample size| will not contribute either. The box plot with largest value of |sample size| will be drawn with $100\%$ of |box extend|. The box plot with smallest value will be drawn with |variable width min target| times |box extend| as size (i.e.\ it will receive the smallest configured size). All box plots in-between are scaled linearly.
+
+	Note that the previous paragraph is not entirely true: |sample size| is only indirectly related to the scaling factor. Instead, the |variable width expr| is evaluated with the |sample size| as argument (see below for details).
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{boxplot/sample size=\marg{number} (initially auto)}
 	The number of samples used to derive the statistics. This number is used if |variable width=true|.
+
+	The value \declaretext{auto} means to ``use it whenever it can be acquired somewhere''. For a |boxplot|, it means that the size of the input sample is taken as-is. For a |boxplot prepared|, it means that the data is unavailable.
+
+	The empty string means that the value is unavailable.
+
+	Otherwise, a number is expected.
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{boxplot/variable width expr=\marg{math expression} (initially {sqrt(\#1)})}
+	A math expression which is used to evaluate the scaling factors of |variable width|. The argument is the current value of |sample size|. This key is used to implement common (nonlinear) transformations which are to be applied to the |sample size| before the result is used to scale down box sizes.
+
+	Typically, the argument should be a monotonically increasing function.
 \end{pgfplotskey}
 
 \begin{pgfplotskeylist}{%
@@ -264,25 +319,102 @@ The |boxplot prepared| handler is discussed first; all its customizations apply 
 	boxplot/sample size max=\marg{max sample size of group} (initially empty)%
 }
 	This is part of the |variable width| scaling: it is used to determine the |box extend| relative to all other box plots of the same group. It fixes the range.
-
-	FIXME: docs
 \end{pgfplotskeylist}
 
-\begin{pgfplotskey}{boxplot/variable width min=\marg{factor for the box width minimal size} (initially 0.2)}
-	FIXME : docs
+\begin{pgfplotskey}{boxplot/variable width min target=\marg{factor for the box width minimal size} (initially 0.2)}
+	Used for the |variable width| feature to determine the size for the box plot with smallest value of |sample size|. The argument is interpreted to be a scaling factor in the range $[0,1]$. 
+
+	It is to be understood as percentage of |box extend|: a value of $1$ means $100\%$ of |box extend|. The initial configuration is |0.2|, meaning $20\%$ of |box extend|.
+
+	The box plot with largest value of |sample size| has $100\%$ of |box extend|.
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{boxplot/box extend=\marg{axis unit for box extension} (initially 0.8)}
-	FIXME: docs
+	A parameter which controls the size of the boxes with respect to the axis orthogonal to the data axis. 
+
+	It is supposed to be the low--level size of a box plot, although it can be interpreted and used as a ``low--level--variant'' of |variable width|.
+	
+	It is interpreted as coordinate in the axis, and it affects the |ymin| and |ymax| values for a |boxplot|.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[minor y tick num=1]
+	\addplot+[
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			box extend=1, }, ]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+
+	\addplot+[
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			box extend=0.5, }, ]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The |box extend| controls the size of the box and the length of the median line. It also controls the size of whiskers, although they have a separate parameter |whisker extend|.
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{boxplot/whisker extend=\marg{axis unit for whisker extension} (initially \textbackslash pgfkeysvalueof\{/pgfplots/boxplot/box extend\}*0.8)}
-	FIXME: docs
+	A parameter which configures how large whisker lines are with respect to the non--data axis.
+	
+	It is used in the same way as |box extend|, and it also affects axis limits. 
+
+	The initial configuration couples its value to |box extend| (it is $80\%$ of |box extend|, to be more precise).
 \end{pgfplotskey}
 
 
 \begin{pgfplotskey}{boxplot/draw relative anchor=\marg{number between $0$ and $1$} (initially 0.5)}
-	FIXME : docs
+	A key which customizes the anchor inside of the box where the whiskers are attached.
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y=1cm]
+	\addplot+[
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			draw relative anchor=0, }, ]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y=1cm]
+	\addplot+[
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			draw relative anchor=0.5, }, ]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y=1cm]
+	\addplot+[
+		boxplot prepared={
+			lower whisker=42, lower quartile=45,
+			median=47,
+			upper quartile=47.5, upper whisker=48,
+			draw relative anchor=1, }, ]
+		table[row sep=\\,y index=0] { 40\\ 34\\ 56\\ };
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The value $0$ means that whisker lines are attached to the bottom of the box ($0\%$ of |box extend|). The value $1$ means that whisker lines are attached to the top edge of the box. Any value in-between is scaled linearly. The initial configuration is $0.5$ which means that whiskers are attached to the middle of the box.
 \end{pgfplotskey}
 
 \subsubsection{Analyzing Samples Automatically}
@@ -295,7 +427,7 @@ The |boxplot prepared| handler is discussed first; all its customizations apply 
 
 \begin{codeexample}[]
 \begin{tikzpicture}
-\begin{axis}
+\begin{axis}[y=1cm]
 	\addplot+[boxplot]
 		table[row sep=\\,y index=0] {
 		data\\
@@ -307,28 +439,60 @@ The |boxplot prepared| handler is discussed first; all its customizations apply 
 \end{codeexample}
 	
 	The values do not need to be sorted. However, \emph{if} they are sorted in ascending order, \PGFPlots\ might need less time to analyze them.
+
+	Data points can be given by means of any supported input stream, although the most useful ones are probably |\addplot table| and |\addplot coordinates|. In any case, |boxplot| acquires only one--dimensional data. To this end, it uses the current value of the |boxplot/data| key to see which input coordinate is to be used. In the default configuration, this is the $y$ coordinate of the input stream. All other input items are ignored (except for |point meta|, which is handed down to the outlier stream).
 \end{plottype}
+
+\begin{pgfplotskey}{boxplot/whisker range=\marg{number} (initially 1.5)}
+	Defines how to determine |lower whisker| and |upper whisker|. In the default configuration, the lower whisker is placed at the smallest data point which is larger than |lower quartile| $- 1.5 \cdot \text{IQR}$. The upper whisker is placed at the largest data point which is smaller than |upper quartile| $+ 1.5 \cdot \text{IQR}$. Here, $\text{IQR}$ is the inter--quartile--range, defined as
+
+	$\text{IQR} := $ |upper quartile| $-$ |lower quartile|.
+
+	Everything outside of the whisker range is supposed to be an outlier.
+\end{pgfplotskey}
 \endgroup
 
 \subsubsection{Styles}
 \begin{stylekey}{/pgfplots/boxplot/every boxplot}
-	FIXME: docs
+	A style which is immediately installed whenever |boxplot| or |boxplot prepared| are set.
+
+	The initial value is empty.
 \end{stylekey}
+
 \begin{stylekey}{/pgfplots/boxplot/every whisker}
-	FIXME: docs
+	A style which is installed whenever a whisker is drawn. It is empty initially.
 \end{stylekey}
 \begin{stylekey}{/pgfplots/boxplot/every box}
-	FIXME: docs
+	A style which is installed whenever a box is drawn. It is empty initially. Note that this does not apply to the path for the |median|.
 \end{stylekey}
 \begin{stylekey}{/pgfplots/boxplot/every median}
-	FIXME: docs
+	A style which is installed whenever a median is drawn. It is empty initially.
 \end{stylekey}
 \begin{stylekey}{/pgfplots/boxplot/every average}
-	FIXME: docs
+	A style which is installed whenever an average is drawn. The initial configuration is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	boxplot/every average/.style={%
+		/tikz/mark=diamond*,
+	},
+}
+\end{codeexample}
 \end{stylekey}
 
 
 \subsubsection{Placing Annotations}
+
+\begin{command}{\pgfplotsboxplotvalue\marg{key name}}
+	Same as 
+
+	|\pgfkeysvalueof{/pgfplots/boxplot/|\meta{key name}|}|.
+
+\end{command}
+
+\begin{command}{\boxplotvalue\marg{key name}}
+	Same as |\pgfplotsboxplotvalue|\marg{key name} (just shorted).
+\end{command}
+
 \begin{coordinatesystem}{boxplot box}% cs=\parg{data coordinate, box-relative offset}}
 	The |boxplot box cs| accepts two arguments of the form
  |boxplot box cs=|\parg{data coordinate, box--relative offset}
@@ -336,50 +500,192 @@ The |boxplot prepared| handler is discussed first; all its customizations apply 
 
 	The second argument is an offset expressed as signed multiple of |box extend|. An offset of $0$ means to place the point exactly on the bottom line of the box. An offset of $1$ places the point on the top line of the box. An offset of $0.5$ places the point in the middle.
 
-	FIXME : docs
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y=1.5cm, ymax=2]
+\addplot+[boxplot]
+table[row sep=\\,y index=0] {
+	data\\
+	1\\ 2\\ 1\\ 5\\ 4\\ 10\\ 
+	7\\ 10\\ 9\\ 8\\ 9\\ 9\\ 
+}
+[above]
+node at 
+  (boxplot box cs: \boxplotvalue{lower whisker},1)
+  {\pgfmathprintnumber{\boxplotvalue{lower whisker}}}
+node at 
+  (boxplot box cs: \boxplotvalue{lower quartile},1)
+  {\pgfmathprintnumber{\boxplotvalue{lower quartile}}}
+node[left] at 
+  (boxplot box cs: \boxplotvalue{median},0.5)
+  {\pgfmathprintnumber{\boxplotvalue{median}}}
+node at 
+  (boxplot box cs: \boxplotvalue{upper quartile},1)
+  {\pgfmathprintnumber{\boxplotvalue{upper quartile}}}
+node at 
+  (boxplot box cs: \boxplotvalue{upper whisker},1)
+  {\pgfmathprintnumber{\boxplotvalue{upper whisker}}}
+;
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 \end{coordinatesystem}
 
 \begin{coordinatesystem}{boxplot whisker}% cs=\parg{data coordinate, whisker-relative offset}}
+	A coordinate system which is almost the same as |boxplot box cs|, except that it aligns at |whisker extend| instead of |box extend|.
+
 	The |boxplot whisker cs| accepts two arguments of the form
  |boxplot whisker cs=|\parg{data coordinate, whisker--relative offset}
 	where the first is a value of the box plot's data (it is expressed in the same space as |median| or |upper whisker|). 
 
 	The second argument is an offset expressed as signed multiple of |whisker extend|. An offset of $0$ means to place the point exactly on the lower end of the whisker line. An offset of $1$ places the point on the upper end of the whisker line. An offset of $0.5$ places the point in the middle of the whisker line.
 
-	FIXME : docs
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y=1.5cm, ymax=2]
+\addplot+[boxplot]
+table[row sep=\\,y index=0] {
+	data\\
+	1\\ 2\\ 1\\ 5\\ 4\\ 10\\ 
+	7\\ 10\\ 9\\ 8\\ 9\\ 9\\ 
+}
+[above]
+node at 
+  (boxplot whisker cs:\boxplotvalue{lower whisker},1)
+  {\pgfmathprintnumber{\boxplotvalue{lower whisker}}}
+node at
+  (boxplot box cs: \boxplotvalue{median},1)
+  {\pgfmathprintnumber{\boxplotvalue{median}}}
+node at 
+  (boxplot whisker cs:\boxplotvalue{upper whisker},1)
+  {\pgfmathprintnumber{\boxplotvalue{upper whisker}}}
+;
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 \end{coordinatesystem}
 
-\begin{coordinatesystem}{boxplot}%
-	FIXME : is this useful? It does not respect |draw relative anchor|!
-
-	The |boxplot cs| accepts two arguments of the form
- |boxplot cs=|\parg{data coordinate, unit offset}
-	where the first is a value of the box plot's data (just like a |median| or |upper whisker|). The second is an offset expressed in axis units. An offset of $0$ means to place the point exactly on the line which connects lower and upper whisker. A offset of $k$ adds $k$ units on top of that line, or subtracts it (if $k$ is negative).
-
-	FIXME : docs
-
-\end{coordinatesystem}
+%--------------------------------------------------
+% \begin{coordinatesystem}{boxplot}%
+% 	FIXME : is this useful? It does not respect |draw relative anchor|!
+% 
+% 	The |boxplot cs| accepts two arguments of the form
+%  |boxplot cs=|\parg{data coordinate, unit offset}
+% 	where the first is a value of the box plot's data (just like a |median| or |upper whisker|). The second is an offset expressed in axis units. An offset of $0$ means to place the point exactly on the line which connects lower and upper whisker. A offset of $k$ adds $k$ units on top of that line, or subtracts it (if $k$ is negative).
+% 
+% 	FIXME : docs
+% 
+% \end{coordinatesystem}
+%-------------------------------------------------- 
 
 
 \subsubsection{Customizing Visualization Paths}
+The following keys are of interest if you want to redefine the shape of a box, of a median, or of the whiskers.
+
+Note that you should customize styles like |boxplot/every box| if you merely wish to change fill colors.
+
 \begin{pgfplotsxycodekeylist}{%
 	boxplot/draw/lower whisker,%
 	boxplot/draw/upper whisker,%
 	boxplot/draw/whisker%
 }
-	FIXME : docs
+	A couple of code keys which customize the stroke paths for whiskers.
+
+	The initial configuration is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	boxplot/draw/lower whisker/.style={%
+		/pgfplots/boxplot/draw/whisker=%
+			{\pgfplotsboxplotvalue{lower quartile}}
+			{\pgfplotsboxplotvalue{lower whisker}}
+	},
+	boxplot/draw/upper whisker/.style={%
+		/pgfplots/boxplot/draw/whisker=%
+			{\pgfplotsboxplotvalue{upper quartile}}
+			{\pgfplotsboxplotvalue{upper whisker}}%
+	},
+	boxplot/draw/whisker/.code 2 args={%
+		\draw[/pgfplots/boxplot/every whisker/.try]
+			(boxplot cs:#1) -- (boxplot cs:#2)
+			(boxplot whisker cs:#2,0)
+			--
+			(boxplot whisker cs:#2,1)
+		;
+	},%
+}
+\end{codeexample}
+
+	The key |draw/lower whisker| key is used if and only if |lower whisker| has a numeric value. The key |draw/upper whisker| is used if and only if |upper whisker| has a value. 
+
+	If one of |lower quartile| or |upper quartile| is empty, both are replaced by the following values:
+	
+	|lower quartile| $:=$ |upper whisker| and
+
+	|upper quartile| $:=$ |lower whisker|.
+
+	Thus, if the box cannot be drawn but you only have whiskers, the two whiskers will be connected with each other.
 \end{pgfplotsxycodekeylist}
 
 \begin{pgfplotscodekey}{boxplot/draw/box}
-	FIXME: docs
+	A path which is used for |every box|.
+\begin{codeexample}[code only]
+\pgfplotsset{
+	boxplot/draw/box/.code={%
+		\draw[/pgfplots/boxplot/every box/.try]
+			(boxplot box cs:\pgfplotsboxplotvalue{lower quartile},0)
+			rectangle
+			(boxplot box cs:\pgfplotsboxplotvalue{upper quartile},1)
+		;
+	},%
+}
+\end{codeexample}
+
+	It either |lower quartile| or |upper quartile| is empty, this key will not be invoked.
+
+	Note that |draw/median| will be invoked after this key.
 \end{pgfplotscodekey}
 
 \begin{pgfplotscodekey}{boxplot/draw/median}
-	FIXME: docs
+	A path which is used for every |median|. Its initial configuration is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	boxplot/draw/median/.code={%
+		\draw[/pgfplots/boxplot/every median/.try]
+			(boxplot box cs:\pgfplotsboxplotvalue{median},0)
+			--
+			(boxplot box cs:\pgfplotsboxplotvalue{median},1)
+		;
+	},%
+}
+\end{codeexample}
+	This key will be omitted if |median| is empty.
 \end{pgfplotscodekey}
 
 \begin{pgfplotscodekey}{boxplot/draw/average}
-	FIXME: docs
+	The path which is used to visualize an |average|. The initial configuration is
+\begin{codeexample}[code only]
+\pgfplotsset{
+	boxplot/draw/average/.code={%
+		\draw[/pgfplots/boxplot/every average/.try]
+			\pgfextra
+			% do NOT use \draw[mark=*] plot coordinates because
+			% boxplots uses the same plot handler to draw its
+			% outliers.
+			\pgftransformshift{%
+				% basic level access to 'boxplot box cs':
+				\pgfplotsboxplotpointabbox
+					{\pgfplotsboxplotvalue{average}}
+					{0.5}%
+			}%
+			\pgfuseplotmark{\tikz@plot@mark}%
+			\endpgfextra
+		;
+	},
+}
+\end{codeexample}
+	This key will be omitted if |average| has an empty value (the default).
+
+	The key |draw/average| will be evaluated after |draw/median| and after |draw/box|.
 \end{pgfplotscodekey}
 
 \endgroup
