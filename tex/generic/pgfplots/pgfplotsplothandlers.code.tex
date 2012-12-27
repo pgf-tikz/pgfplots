@@ -1859,6 +1859,22 @@
 \newif\ifpgfplotsplothandlercontour@labels
 \newif\ifpgfplotsplothandlercontour@filled
 
+\def\pgfplotsplothandlercontour@axis@set@inverse#1#2#3#4{%
+	\pgfplotsutilifstringequal{#1}{#4}{%
+		\def\pgfplotsplothandlercontour@axis@inv@x{#4}%
+	}{%
+		\pgfplotsutilifstringequal{#2}{#4}{%
+			\def\pgfplotsplothandlercontour@axis@inv@y{#4}%
+		}{%
+			\pgfplotsutilifstringequal{#3}{#4}{%
+				\def\pgfplotsplothandlercontour@axis@inv@z{#4}%
+			}{%
+				\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the choice axes={#1}{#2}{#3} is illegal. Please use only values x, y, and z and ensure that there is a 1:1 correspondence}\pgfeov%
+			}%
+		}%
+	}%
+}
+
 \pgfplotsset{
 	contour prepared/.code={%
 		\let\tikz@plot@handler=\pgfplotsplothandlercontourprepared
@@ -1921,6 +1937,21 @@
 	contour/levels/.initial=,
 	%
 	%
+	contour/axes/.code args={#1#2#3}{%
+		\edef\pgfplotsplothandlercontour@axis@x{#1}%
+		\edef\pgfplotsplothandlercontour@axis@y{#2}%
+		\edef\pgfplotsplothandlercontour@axis@z{#3}%
+		%
+		\edef\pgfplots@loc@TMPa{{\pgfplotsplothandlercontour@axis@x}{\pgfplotsplothandlercontour@axis@y}{\pgfplotsplothandlercontour@axis@z}}%
+		%
+		\expandafter\pgfplotsplothandlercontour@axis@set@inverse\pgfplots@loc@TMPa{x}%
+		\expandafter\pgfplotsplothandlercontour@axis@set@inverse\pgfplots@loc@TMPa{y}%
+		\expandafter\pgfplotsplothandlercontour@axis@set@inverse\pgfplots@loc@TMPa{z}%
+		%
+	},%
+	contour/axes={x}{y}{z},
+	%
+	%
 	% Interface to external tools:
 	contour external/.code={%
 		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourexternal}%
@@ -1957,11 +1988,14 @@
 		},
 	},
 }%
+
 \def\pgfplotsplothandlercontourprepared{%
 	\pgfplotsresetplothandler
 	\pgfplotsset{empty line=jump}%
 	\let\pgf@plotstreamstart=\pgfplotsplothandlervisstart@contour
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contour
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contour
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contour
 	\if m\pgfplotsplothandlercontourprepared@format
 		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourmatlabformat
 		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourmatlabformat
@@ -1971,6 +2005,15 @@
 	\fi
 	\pgfplotsplothandlercontour@prepare@point@meta
 }%
+
+\def\pgfplotsplothandlersurveystart@contour{%
+	\pgfplotsplothandlersurveystart@default
+	%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes x%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes y%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes z%
+}%
+
 \def\pgfplotsplothandlercontour@prepare@point@meta{%
 	\ifpgfplots@curplot@threedim
 		\pgfplotsset{/pgfplots/set point meta if empty=z}%
@@ -2000,6 +2043,8 @@
 	\def\c@pgfplotsplothandlercontourprepared@matlabformat@count{0}%
 	\pgfmathfloatparsenumber{nan}%
 	\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveystart@contour
 }
 \def\pgfplotsplothandlersurveypoint@contourmatlabformat{%
 	\ifnum\c@pgfplotsplothandlercontourprepared@matlabformat@cur=\c@pgfplotsplothandlercontourprepared@matlabformat@count\relax
@@ -2021,10 +2066,18 @@
 	\else
 		\let\pgfplots@current@point@z=\pgfplotsplothandlercontourprepared@matlabformat@meta
 		\let\pgfplots@current@point@meta=\pgfplotsplothandlercontourprepared@matlabformat@meta
-		\pgfplotsplothandlersurveypoint@default
+		\pgfplotsplothandlersurveypoint@contour
 		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlercontourprepared@matlabformat@cur
 	\fi
 }%
+
+\def\pgfplotsplothandlersurveypoint@contour{%
+	%
+	\pgfplotsplothandlersurveypoint@contour@axes@reordered@to@std
+	%
+	\pgfplotsplothandlersurveypoint@default
+}
+
 \def\pgfplotsplothandlersurveyend@contour{%
 	\pgfplotsplothandlercontour@init@limits
 	\ifx\pgfplotsplothandlercontour@limits@low@meta\pgfutil@empty
@@ -2501,7 +2554,60 @@
 	\let\pgfplotsplothandlersurveyend@tofile=\pgfplotsplothandlersurveyend
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourexternal
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contourexternal
+	%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes x%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes y%
+	\pgfplotsplothandlersurveypoint@contour@prepare@axes z%
 }%
+
+% #1: either x, y, or z
+% POSTCONDITION:
+% 	The following three macros are defined:
+%   \pgfplotsplothandlersurveypoint@contour@set@axes@x
+%   \pgfplotsplothandlersurveypoint@contour@set@axes@y
+%   \pgfplotsplothandlersurveypoint@contour@set@axes@z
+%   they take no arguments and assign their result to \pgfmathresult.
+\def\pgfplotsplothandlersurveypoint@contour@prepare@axes#1{%
+	\expandafter\edef\csname pgfplotsplothandlersurveypoint@contour@set@axes@#1\endcsname{%
+		\noexpand\let\noexpand\pgfmathresult=\expandafter\noexpand\csname pgfplots@current@point@\csname pgfplotsplothandlercontour@axis@#1\endcsname\endcsname
+	}%
+	\expandafter\edef\csname pgfplotsplothandlersurveypoint@contour@set@axes@@#1\endcsname{%
+		\noexpand\let\noexpand\pgfmathresult=\expandafter\noexpand\csname pgfplots@current@point@\csname pgfplotsplothandlercontour@axis@inv@#1\endcsname\endcsname
+	}%
+	%
+	\message{axes #1: STD -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@#1\endcsname^^J}%
+	\message{axes #1: INV -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@@#1\endcsname^^J}%
+}
+
+\def\pgfplotsplothandlersurveypoint@contour@axes@reordered@to@std{%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@@x
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@x@=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@@y
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@y@=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@@z
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@z@=\pgfmathresult
+	%
+	\let\pgfplots@current@point@x=\pgfplotsplothandlersurveypoint@contour@set@axes@x@
+	\let\pgfplots@current@point@y=\pgfplotsplothandlersurveypoint@contour@set@axes@y@
+	\let\pgfplots@current@point@z=\pgfplotsplothandlersurveypoint@contour@set@axes@z@
+}%
+\def\pgfplotsplothandlersurveypoint@contour@axes@std@to@reordered{%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@x
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@x@=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@y
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@y@=\pgfmathresult
+	%
+	\pgfplotsplothandlersurveypoint@contour@set@axes@z
+	\let\pgfplotsplothandlersurveypoint@contour@set@axes@z@=\pgfmathresult
+	%
+	\let\pgfplots@current@point@x=\pgfplotsplothandlersurveypoint@contour@set@axes@x@
+	\let\pgfplots@current@point@y=\pgfplotsplothandlersurveypoint@contour@set@axes@y@
+	\let\pgfplots@current@point@z=\pgfplotsplothandlersurveypoint@contour@set@axes@z@
+}%
+
 \def\pgfplotsplothandlersurveypoint@contourexternal{%
 	% temporarily disable updates to point meta limits. They should be
 	% updated during the contour prepared processing.
@@ -2512,6 +2618,8 @@
 	\let\pgfplots@current@point@z=\pgfplots@current@point@meta
 	%
 	\let\pgfplots@set@perpointmeta@limits=\pgfplotsplothandlercontourexternal@orig@perpointlimits@limits
+	%
+	\pgfplotsplothandlersurveypoint@contour@axes@std@to@reordered
 	%
 %\message{contour gnuplot: collecting point (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z) [\pgfplots@current@point@meta]...}%
 	\pgfplotsplothandlersurveypoint@tofile
