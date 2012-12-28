@@ -497,7 +497,13 @@
 	\let\pgfplotsplothandlersurveypointattime=\pgfplotsplothandlersurveypointattime@default
 	\let\pgfplotsplothandlertransformslopedattime=\pgfplotsplothandlertransformslopedattime@default
 	\let\pgfplotsplothandlerifcurrentpointcanbefirstlast=\pgfplotsplothandlerifcurrentpointcanbefirstlast@default
+	%
+	\let\pgfplotsplothandlersurveybeforesetpointmeta=\pgfplotsplothandlersurveybeforesetpointmeta@default
+	\let\pgfplotsplothandlersurveyaftersetpointmeta=\pgfplotsplothandlersurveyaftersetpointmeta@default
 }%
+
+\def\pgfplotsplothandlersurveybeforesetpointmeta@default{}
+\def\pgfplotsplothandlersurveyaftersetpointmeta@default{}
 
 % \pgfplotsplothandlersurveystart
 \def\pgfplotsplothandlersurveystart@default{}%
@@ -1861,13 +1867,13 @@
 
 \def\pgfplotsplothandlercontour@axis@set@inverse#1#2#3#4{%
 	\pgfplotsutilifstringequal{#1}{#4}{%
-		\def\pgfplotsplothandlercontour@axis@inv@x{#4}%
+		\expandafter\def\csname pgfplotsplothandlercontour@axis@inv@#4\endcsname{x}%
 	}{%
 		\pgfplotsutilifstringequal{#2}{#4}{%
-			\def\pgfplotsplothandlercontour@axis@inv@y{#4}%
+			\expandafter\def\csname pgfplotsplothandlercontour@axis@inv@#4\endcsname{y}%
 		}{%
 			\pgfplotsutilifstringequal{#3}{#4}{%
-				\def\pgfplotsplothandlercontour@axis@inv@z{#4}%
+		\expandafter\def\csname pgfplotsplothandlercontour@axis@inv@#4\endcsname{z}%
 			}{%
 				\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the choice axes={#1}{#2}{#3} is illegal. Please use only values x, y, and z and ensure that there is a 1:1 correspondence}\pgfeov%
 			}%
@@ -1937,6 +1943,10 @@
 	contour/levels/.initial=,
 	%
 	%
+	contour/contour dir/.is choice,
+	contour/contour dir/x/.style={/pgfplots/contour/axes={y}{z}{x}},
+	contour/contour dir/y/.style={/pgfplots/contour/axes={x}{z}{y}},
+	contour/contour dir/z/.style={/pgfplots/contour/axes={x}{y}{z}},
 	contour/axes/.code args={#1#2#3}{%
 		\edef\pgfplotsplothandlercontour@axis@x{#1}%
 		\edef\pgfplotsplothandlercontour@axis@y{#2}%
@@ -1949,7 +1959,7 @@
 		\expandafter\pgfplotsplothandlercontour@axis@set@inverse\pgfplots@loc@TMPa{z}%
 		%
 	},%
-	contour/axes={x}{y}{z},
+	contour/contour dir=z,
 	%
 	%
 	% Interface to external tools:
@@ -2004,6 +2014,19 @@
 		}%
 	\fi
 	\pgfplotsplothandlercontour@prepare@point@meta
+	\def\pgfplotsplothandlersurveybeforesetpointmeta{%
+		% ensure that 'point meta=z' respects 'axes={y}{z}{x}' -- it
+		% should assign the 'x' coordinate as point meta!
+		% To this end, we have to convert to reordered axes
+		% temporarily.
+		\pgfplotsplothandlersurveypoint@contour@axes@std@to@reordered
+		\pgfplotsplothandlersurveybeforesetpointmeta@default
+	}%
+	\def\pgfplotsplothandlersurveyaftersetpointmeta{%
+		\pgfplotsplothandlersurveyaftersetpointmeta@default
+		% ... and undo the reordering after point meta has been set:
+		\pgfplotsplothandlersurveypoint@contour@axes@reordered@to@std
+	}
 }%
 
 \def\pgfplotsplothandlersurveystart@contour{%
@@ -2575,8 +2598,8 @@
 		\noexpand\let\noexpand\pgfmathresult=\expandafter\noexpand\csname pgfplots@current@point@\csname pgfplotsplothandlercontour@axis@inv@#1\endcsname\endcsname
 	}%
 	%
-	\message{axes #1: STD -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@#1\endcsname^^J}%
-	\message{axes #1: INV -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@@#1\endcsname^^J}%
+%\message{axes #1: STD -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@#1\endcsname^^J}%
+%\message{axes #1: INV -> \expandafter\meaning\csname pgfplotsplothandlersurveypoint@contour@set@axes@@#1\endcsname^^J}%
 }
 
 \def\pgfplotsplothandlersurveypoint@contour@axes@reordered@to@std{%
@@ -2666,7 +2689,10 @@
 	%
 	%
 	\pgfplotsplothandlercontourprepared
-	\let\pgfplots@coord@stream@start=\relax% has already been done.
+	% the PREPARE steps in the coord stream start/end have already
+	% been done. we only need to init the plot handler survey
+	% start/end:
+	\def\pgfplots@coord@stream@start{\pgfplotsplothandlersurveystart}%
 	\def\pgfplots@coord@stream@end{\pgfplotsplothandlersurveyend}%
 	\pgfkeysgetvalue{/pgfplots/contour external/output point meta}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
