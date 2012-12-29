@@ -3518,32 +3518,22 @@
 	%
 	/pgfplots/show outer normals/.style={%
 		extra description/.append code={
-			\def\length{5}
-			\draw[->,blue] \pgfextra{%
-				\pgfpathmoveto{#1}
+			\def\length{15}
+			\def\pgfplots@@draw@normal####1####2{%
+				\pgfpathmoveto{####1}
 				\pgfpathlineto{%
 					\pgfpointadd
-					{#1}
-					{\pgfqpointscale{\length}{\pgfplotspointouternormalvectorofticklabelaxis{x}}}%
+					{####1}
+					{\pgfqpointscale{\length}{\pgfplotspointouternormalvectorofticklabelaxis{####2}}}%
 				}%
-			};
-			\draw[->,red] \pgfextra{%
-				\pgfpathmoveto{#1}%
-				\pgfpathlineto{%
-					\pgfpointadd
-					{#1}
-					{\pgfqpointscale{\length}{\pgfplotspointouternormalvectorofticklabelaxis{y}}}%
-				}%
-			};
+			}%
+			\draw[->,blue] \pgfextra{\pgfplots@@draw@normal{#1}{x}};
+			\draw[->,blue] \pgfextra{\pgfplots@@draw@normal{\pgfplotsqpointoutsideofticklabelaxisrel{x}{1}{0}}{x}};
+			\draw[->,red] \pgfextra{\pgfplots@@draw@normal{#1}{y}};
+			\draw[->,red] \pgfextra{\pgfplots@@draw@normal{\pgfplotsqpointoutsideofticklabelaxisrel{y}{1}{0}}{y}};
 			\ifpgfplots@threedim
-			\draw[->,black] \pgfextra{%
-				\pgfpathmoveto{#1}%
-				\pgfpathlineto{%
-					\pgfpointadd
-					{#1}
-					{\pgfqpointscale{\length}{\pgfplotspointouternormalvectorofticklabelaxis{z}}}%
-				}%
-			};
+			\draw[->,black] \pgfextra{\pgfplots@@draw@normal{#1}{z}};
+			\draw[->,black] \pgfextra{\pgfplots@@draw@normal{\pgfplotsqpointoutsideofticklabelaxisrel{z}{1}{0}}{z}};
 			\fi
 		},
 	},
@@ -6876,63 +6866,66 @@
 			\def\pgfplots@loc@axischar@for@first{x}%
 		\fi
 	\fi
-	%\if2\csname pgfplots@#1axislinesnum\endcsname
+	%
+	% First, compute stuff as if we had a box. Ignore the "center"
+	% styles with a single axis line for now.
+	%
+	\pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 00}{%
+		% -> both, v00 or v11 are on CH.
+		%
+		% Decide whether the '{0.5}{0}{0}' point is above or below
+		% the {0.5}{0.5}{0.5}
+		% point. This '<' operation is based on the '#1ticklabel pos'
+		% key, the 2D projection of the axis and the argument '#2'.
+		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 00}%
+		\pgfqpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}%
+		\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
+			\if u\csname pgfplots@#1ticklabel@pos\endcsname
+				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+			\fi
+		\else
+			\if l\csname pgfplots@#1ticklabel@pos\endcsname
+				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
+			\fi
+		\fi
+	}{%
+		% -> both, v01 or v10 are on CH
+		%--------------------------------------------------
+		% \pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 01}{% FIXME : eliminate sanity assertion if possible
+		% }{%
+		% 	\pgfplots@error{INTERNAL ERROR}%
+		% }%
+		%-------------------------------------------------- 
+		% Decide whether the '{0.5}{1}{0}' point is above or below
+		% the {0.5}{0.5}{0.5} point. Again, the '<' operation is based
+		% on the '#1ticklabel pos' key, the projection and #2.
+		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 10}%
+		% compute the middle point on \pgfplots@loc@to@threedim 10
+		\pgfpointadd
+			{\csname pgfplotspoint\pgfplots@loc@axischar@for@first axis\endcsname}
+			{\pgfpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}}%
+		%
+		\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
+			\if u\csname pgfplots@#1ticklabel@pos\endcsname
+				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
+			\fi
+		\else
+			\if l\csname pgfplots@#1ticklabel@pos\endcsname
+				\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
+			\fi
+		\fi
+	}%
+	%
+	% Now, adapt result to "center" styles:
+	\if2\csname pgfplots@#1axislinesnum\endcsname
 		% axis #1 lines=center .
-	\iffalse
-		% FIXME : while this here seems reasonable, it is not fully
-		% implemented. The "outer normal" is missing and one other
-		% component produces a NYI-warning
+		%
+		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec@box\endcsname{\csname pgfplots@#1ticklabelaxisspec\endcsname}%
 		%
 		% well, for 3d, this implies that all others also have
 		% "center". And since "0" == lower, "1" == upper", "2" ==
 		% center, we have to use center:
 		\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 22}%
-	\else
-		\pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 00}{%
-			% -> both, v00 or v11 are on CH.
-			%
-			% Decide whether the '{0.5}{0}{0}' point is above or below
-			% the {0.5}{0.5}{0.5}
-			% point. This '<' operation is based on the '#1ticklabel pos'
-			% key, the 2D projection of the axis and the argument '#2'.
-			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 00}%
-			\pgfqpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}%
-			\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
-				\if u\csname pgfplots@#1ticklabel@pos\endcsname
-					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
-				\fi
-			\else
-				\if l\csname pgfplots@#1ticklabel@pos\endcsname
-					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 11}%
-				\fi
-			\fi
-		}{%
-			% -> both, v01 or v10 are on CH
-			%--------------------------------------------------
-			% \pgfplotsifaxislineisonconvexhull{\pgfplots@loc@to@threedim 01}{% FIXME : eliminate sanity assertion if possible
-			% }{%
-			% 	\pgfplots@error{INTERNAL ERROR}%
-			% }%
-			%-------------------------------------------------- 
-			% Decide whether the '{0.5}{1}{0}' point is above or below
-			% the {0.5}{0.5}{0.5} point. Again, the '<' operation is based
-			% on the '#1ticklabel pos' key, the projection and #2.
-			\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 10}%
-			% compute the middle point on \pgfplots@loc@to@threedim 10
-			\pgfpointadd
-				{\csname pgfplotspoint\pgfplots@loc@axischar@for@first axis\endcsname}
-				{\pgfpointscale{0.5}{\csname pgfplotspoint#1axis\endcsname}}%
-			%
-			\ifdim\csname pgf@#2\endcsname<\csname pgfplots@tmp@center#2\endcsname\relax
-				\if u\csname pgfplots@#1ticklabel@pos\endcsname
-					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
-				\fi
-			\else
-				\if l\csname pgfplots@#1ticklabel@pos\endcsname
-					\expandafter\edef\csname pgfplots@#1ticklabelaxisspec\endcsname{\pgfplots@loc@to@threedim 01}%
-				\fi
-			\fi
-		}%
 	\fi
 }%
 \def\pgfplots@init@ticklabelaxisspec@twodim@for#1#2{%

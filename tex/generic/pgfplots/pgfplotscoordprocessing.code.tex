@@ -944,8 +944,9 @@
 % relations hold.
 % Input char   oriented surface char
 %  'v' :         is either a or b or v
-%  '0' :         is either 0, a, b, v or 2 (i.e. NOT 1)
+%  '0' :         is either 0, a, b, v or 2 (i.e. NOT 1) FIXME : is the '2' correct here!?
 %  '1' :         is either 1, a, b, v or 2 (i.e. NOT 0)
+%  '2' :         is either 2, a, b, v (i.e. NOT 0 or 1)
 % That's all. 
 %
 % If the 'oriented surface char' is 'v', then we actually don't have
@@ -954,6 +955,9 @@
 % designated orientations.
 %
 % @POST \pgfplots@loc@TMPa contains the return value macro.
+%   More precisely, \pgfplots@loc@TMPa will be EMPTY is #1#2#3 is NOT
+%   on #4#5#6 . It will contain the value on the surface if it IS on
+%   the surface
 \def\pgfplotspointonorientedsurfaceabmatchaxisline@#1#2#3:#4#5#6\pgfplots@EOI{%
 	% Search for the 'b' character:
 	\if#4b%
@@ -974,6 +978,7 @@
 	\pgfplotspointonorientedsurfaceabmatchaxisline@single{#1}{#4}%
 	\pgfplotspointonorientedsurfaceabmatchaxisline@single{#2}{#5}%
 	\pgfplotspointonorientedsurfaceabmatchaxisline@single{#3}{#6}%
+%\message{\string\pgfplotspointonorientedsurfaceabmatchaxisline@#1#2#3:#4#5#6 = '\pgfplots@loc@TMPa'.^^J}%
 }
 \def\pgfplotspointonorientedsurfaceabmatchaxisline@single#1#2{%
 	\if#1v%
@@ -998,10 +1003,19 @@
 					\let\pgfplots@loc@TMPa=\pgfutil@empty
 				\fi
 			\else
-				% return TRUE.
-				% I admit I am not sure at all if this works in all
-				% cases
-				\pgfplotspointonorientedsurfaceabmatchaxisline@warn{#1}%
+				\if2#1%
+					\if0#2%
+						\let\pgfplots@loc@TMPa=\pgfutil@empty
+					\fi
+					\if1#2%
+						\let\pgfplots@loc@TMPa=\pgfutil@empty
+					\fi
+				\else
+					% return TRUE.
+					% I admit I am not sure at all if this works in all
+					% cases
+					\pgfplotspointonorientedsurfaceabmatchaxisline@warn{#1}%
+				\fi
 			\fi
 		\fi
 	\fi
@@ -1176,8 +1190,6 @@
 % Overwrite in subclasses if necessary.
 \def\pgfplotspointouternormalvectorofaxis@ifdependson@v#1#2#3{#3}
 
-% FIXME : this doesn't work if one of the three characters is '2' (for
-% center)
 \def\pgfplotspointouternormalvectorofaxis@#1#2#3\relax{%
 	\if v#1%
 		\def\pgfplots@loc@point@orthogonal@to@v##1##2{%
@@ -1185,6 +1197,7 @@
 		}%
 		\def\pgfplots@loc@char@for@baxis{#2}%
 		\def\pgfplots@loc@char@for@naxis{#3}%
+		\def\pgfplots@loc@vaxis{x}%
 		\def\pgfplots@loc@baxis{y}%
 		\def\pgfplots@loc@naxis{z}%
 	\else
@@ -1194,6 +1207,7 @@
 			}%
 			\def\pgfplots@loc@char@for@baxis{#1}%
 			\def\pgfplots@loc@char@for@naxis{#3}%
+			\def\pgfplots@loc@vaxis{y}%
 			\def\pgfplots@loc@baxis{x}%
 			\def\pgfplots@loc@naxis{z}%
 		\else
@@ -1202,52 +1216,26 @@
 			}%
 			\def\pgfplots@loc@char@for@baxis{#1}%
 			\def\pgfplots@loc@char@for@naxis{#2}%
+			\def\pgfplots@loc@vaxis{z}%
 			\def\pgfplots@loc@baxis{x}%
 			\def\pgfplots@loc@naxis{y}%
 		\fi
 	\fi
-	\ifcase\pgfplots@loc@char@for@baxis\relax%
-		% case 0:
-		% this means : the '##1' direction of the surface
-		% orthogonal to the 'v' vector is on the lower axis
-		% limit. Since I need a vector pointing to the OUTSIDE of
-		% the axis, I need sign = -1
-		\def\pgfplots@loc@baxissign{-}%
-	\or
-		% case 1:
-		% in this case, the OUTSIDE area requires a plus sign - the b
-		% axis already points to the inside.
-		\def\pgfplots@loc@baxissign{+}%
-	\or
-		% case 2: we have the 'axis lines=centered' case.
-		% FIXME :
-		\def\pgfplots@loc@baxissign{+}%
-	\fi
+	%
+	\pgfplotspointouternormalvectorofaxis@get@otheraxis@sign{\pgfplots@loc@vaxis}{\pgfplots@loc@baxis}{\pgfplots@loc@char@for@baxis}%
+	\let\pgfplots@loc@baxissign=\pgfplotsretval
+	%
+	\pgfplotspointouternormalvectorofaxis@get@otheraxis@sign{\pgfplots@loc@vaxis}{\pgfplots@loc@naxis}{\pgfplots@loc@char@for@naxis}%
+	\let\pgfplots@loc@naxissign=\pgfplotsretval
+	%
+	%
+	% ok, compute vector scales:
 	\pgfplotsmath@ifzero{\csname pgfplots@\pgfplots@loc@baxis @veclength\endcsname}{%
 		\def\pgfplots@loc@baxissign{0}%
 		\def\pgfplots@loc@baxisscale{0}%
 	}{%
 		\edef\pgfplots@loc@baxisscale{\pgfplots@loc@baxissign\csname pgfplots@\pgfplots@loc@baxis @inverseveclength\endcsname}%
 	}%
-	%
-	% Now the same game for the other axis:
-	\ifcase\pgfplots@loc@char@for@naxis\relax
-		% case 0:
-		% this means : the '##2' direction of the surface
-		% orthogonal to the 'v' vector is on the lower axis
-		% limit. Since I need a vector pointing to the OUTSIDE of
-		% the axis, I need sign = -1
-		\def\pgfplots@loc@naxissign{-}%
-	\or
-		% case 1:
-		% in this case, the OUTSIDE area requires a plus sign - the n
-		% axis already points to the inside.
-		\def\pgfplots@loc@naxissign{+}%
-	\or
-		% case 2: centered.
-		% FIXME
-		\def\pgfplots@loc@naxissign{+}%
-	\fi
 	\pgfplotsmath@ifzero{\csname pgfplots@\pgfplots@loc@naxis @veclength\endcsname}{%
 		\def\pgfplots@loc@naxissign{0}%
 		\def\pgfplots@loc@naxisscale{0}%
@@ -1262,6 +1250,58 @@
 	}%
 	\endgroup
 }%
+
+% #1: the axis for which we want the "outer normal".
+% #2: the "other axis" for which we seek the sign.
+% #3: the entry in the three-char-identifier which corresponds to
+% "other axis".
+\def\pgfplotspointouternormalvectorofaxis@get@otheraxis@sign#1#2#3{%
+	\ifcase#3\relax%
+		% case 0:
+		% this means : the '##1' direction of the surface
+		% orthogonal to the 'v' vector is on the lower axis
+		% limit. Since I need a vector pointing to the OUTSIDE of
+		% the axis, I need sign = -1
+		\def\pgfplotsretval{-}%
+	\or
+		% case 1:
+		% in this case, the OUTSIDE area requires a plus sign - the b
+		% axis already points to the inside.
+		\def\pgfplotsretval{+}%
+	\or
+		% case 2: we have the 'axis lines=centered' case.
+		%
+		% This case is complicated. The problem is that we do not know
+		% if we are at the top or bottom limit.
+		%
+		% BUT: we know what we would have done if this would be a
+		% normal boxed axis!
+		%
+		% The idea is to return the same normal vector as if this would be a boxed axis.
+		% To this end, we have to access the "ticklabel axis spec"
+		% which would have been used in this case. 
+		%
+		% We computed it at startup. Might be a hack ... :-(
+		\edef\pgfplots@loc@TMPb{\csname pgfplots@#1ticklabelaxisspec@box\endcsname}%
+		%
+		% decode it: we have to replace '#3' by the value that it has
+		% in that boxed ticklabel axis spec!
+		\def\pgfplots@loc@TMPa##1##2##3{%
+			% search for the correct entry.
+			\if x#2\def\pgfplotsretval{##1}\fi
+			\if y#2\def\pgfplotsretval{##2}\fi
+			\if z#2\def\pgfplotsretval{##3}\fi
+		}%
+		\expandafter\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		%
+		\if 2\pgfplotsretval
+			\pgfplots@error{internal assertion failed.}%
+		\fi
+		%
+		% invoke it again!
+		\pgfplotspointouternormalvectorofaxis@get@otheraxis@sign{#1}{#2}{\pgfplotsretval}%
+	\fi
+}
 
 % very-low-level internal routine. Never invoke it directly.
 % @PRECONDITION:
