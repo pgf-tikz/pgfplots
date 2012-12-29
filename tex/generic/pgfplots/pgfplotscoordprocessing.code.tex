@@ -1646,12 +1646,138 @@
 	\pgf@pos@transform\pgf@x\pgf@y
 	\edef\pgfplots@tmp@normaldir{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
 	% 
+	\pgfplots@borderanchor@snap@to@nearest@anchor{}% takes \pgf@x and \pgf@y
+	\let\pgfplots@anchor=\pgfplotsretval
+	%
+	% Now, I'd like the 'center' of the node on one line with the
+	% 'at={}' coordinate at which it shall be placed!
+	% This can be done as follows:
+	%
+	% Compute two lines:
+	% 1. a line parallel to the #1 axis which goes
+	% through our recently identified anchor,
+	%   { x = x_a + r_1 * (#1 axis direction)
+	% 2. a line from center in direction of the normal,
+	% 	{ x = x_c + r_2 n, r in R }
+	%
+	% Calculate the intersection point and return it! This
+	% involves a lot of arithmetics :-(
+	%
+	% UPDATE: I realized that using the 'center' anchor might be too
+	% restrictive. See the 'near ticklabel align' key.
+	%
+	% Note that this is actually too much work for the 2d case - I
+	% guess it would be more efficient without it. But for 3d, it
+	% really rocks.
+	%
+	% compute (unit#1 - normal):
+	\pgfplots@tmp@normaldir
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	%
+	% and the axis direction (in fact, I use -axis dir. But that
+	% doesn't matter for the intersection of two lines).
+	% Scale unit vector to length 1 to improve conditioning:
+	\pgfqpointscale
+		{\csname pgfplotsunit#1invlength\endcsname}
+		{\csname pgfplotspointunit#1\endcsname}%
+	% FIXME : shouldn't the values be copied AFTER the CM!?
+	\pgf@xa=\pgf@x 
+	\pgf@ya=\pgf@y
+	\pgf@pos@transform\pgf@xa\pgf@ya
+	%
+	\ifcase\pgfplots@borderanchor@align\relax
+		% near ticklabel align=inside:
+		% make sure that we are close to the beginning of the axis
+		% direction vector.
+		\pgfplots@borderanchor@snap@to@nearest@anchor{%
+			% simply take \pgf@x and \pgf@y as-is.
+		}%
+	\or
+		% near ticklabel align=center:
+		\def\pgfplotsretval{center}% Ah. simple.
+	\or
+		% near ticklabel align=outside:
+		% make sure that we are far away from the beginning of the
+		% axis direction vector.
+		\pgfplots@borderanchor@snap@to@nearest@anchor{%
+			% simply take \pgf@x and \pgf@y as-is.
+			\global\pgf@x=-\pgf@x
+			\global\pgf@y=-\pgf@y
+		}%
+	\fi
+	\let\pgfplots@anchor@inner=\pgfplotsretval
+	%
+	%
+	% verify that |n^T d | 
+	\pgf@xc=\pgf@sys@tonumber\pgf@xa\pgf@xb
+	\advance\pgf@xc by\pgf@sys@tonumber\pgf@ya\pgf@yb
+	\ifdim\pgf@xc<0pt \pgf@xc=-\pgf@xc \fi
+	\ifdim\pgf@xc<0.8pt
+		% ok. 'n' and 'd' are not parallel.
+		%
+		\edef\pgfplots@LEQ{%
+		% solve linear system
+		% 	a11 a12
+		% 	a21 a22
+			{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@xa}%
+			{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@ya}%
+		}%
+		% 
+		% This here controls the anchor! Changing it might be more
+		% useful than I thought in the first place...
+		\pgf@sh@reanchor{#3}{\pgfplots@anchor@inner}%
+		\edef\pgfplots@loc@center{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+		%
+		% apply inverse matrix to right-hand-side (and compute RHS):
+		\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
+			{\pgfplots@loc@center}%
+			{\pgf@sh@reanchor{#3}{\pgfplots@anchor}}%
+		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+		%
+		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
+		\def\pgfplots@extract##1##2{%
+			\def\pgfplots@r{##1}%
+		}%
+		\expandafter\pgfplots@extract\pgfmathresult
+		% GOT IT!
+		%
+		% compute x_c + r*n:
+		\pgfpointadd
+			{\pgfplots@loc@center}%
+			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
+	\else
+		\pgfplotswarning{ticklabel anchor undetermined}{#1}{\the\pgf@xb,\the\pgf@yb}{\the\pgf@xa,\the\pgf@ya}{\the\pgf@xc}\pgfeov
+		% Something went awry: normal and unit#1 are almost parallel!?
+		% just use the determined anchor.
+		\def\pgfplots@r{0}%
+		\pgf@sh@reanchor{#3}{\pgfplots@anchor}%
+	\fi
+%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
+	\pgf@process{}% <- transport outside of group
+	\endgroup
+}%
+
+% #1: a direction vector.
+%
+% assigns the resulting anchor to \pgfplotsretval
+\def\pgfplots@borderanchor@snap@to@nearest@anchor#1{%
+	\begingroup
+	#1%
 	% Now:
 	% auto-determine the canonical (north, north east etc) anchor
 	% at which the node touches the axis (remember: the axis is to
 	% be found in direction of the normal vector).  
 	%
+	% This is kind of a snap-to-nearest-existing-anchor feature. But
+	% it tends to move the node too far away. It is used as starting
+	% point; we will refine it in the next step.
+	%
 	% This is a heuristicial procedure.
+	%
+	% Note that it does not hurt if there are "multiple best matches"
+	% (for example because they lie on the same line).
+	% The code below will move the final anchor point.
 	%
 	\def\pgfplots@thresh{0.17pt }% 80 degrees
 	%\def\pgfplots@thresh{0.3pt }%
@@ -1684,7 +1810,7 @@
 			\def\pgfplots@xcomp{}%
 		\fi
 	\fi
-	\edef\pgfplots@anchor{%
+	\edef\pgfplotsretval{%
 		\pgfplots@ycomp
 		\ifx\pgfplots@ycomp\pgfutil@empty
 		\else
@@ -1693,85 +1819,11 @@
 				\space
 			\fi
 		\fi
-		\pgfplots@xcomp}%
-	%
-	%
-	% Now, I'd like the 'center' of the node on one line with the
-	% 'at={}' coordinate at which it shall be placed!
-	% This can be done as follows:
-	%
-	% Compute two lines:
-	% 1. a line parallel to the #1 axis which goes
-	% through our recently identified anchor,
-	%   { x = x_a + r_1 * (#1 axis direction)
-	% 2. a line from center in direction of the normal,
-	% 	{ x = x_c + r_2 n, r in R }
-	%
-	% Calculate the intersection point and return it! This
-	% involves a lot of arithmetics :-(
-	%
-	% compute (unit#1 - normal):
-	\pgfplots@tmp@normaldir
-	\pgf@xb=\pgf@x
-	\pgf@yb=\pgf@y
-	%
-	% and the axis direction (in fact, I use -axis dir. But that
-	% doesn't matter).
-	% Scale unit vector to length 1 to improve conditioning:
-	\pgfqpointscale
-		{\csname pgfplotsunit#1invlength\endcsname}
-		{\csname pgfplotspointunit#1\endcsname}%
-	\pgf@xa=\pgf@x 
-	\pgf@ya=\pgf@y
-	\pgf@pos@transform\pgf@xa\pgf@ya
-	%
-	% verify that |n^T d | 
-	\pgf@xc=\pgf@sys@tonumber\pgf@xa\pgf@xb
-	\advance\pgf@xc by\pgf@sys@tonumber\pgf@ya\pgf@yb
-	\ifdim\pgf@xc<0pt \pgf@xc=-\pgf@xc \fi
-	\ifdim\pgf@xc<0.8pt
-		% ok. 'n' and 'd' are not parallel.
-		%
-		\edef\pgfplots@LEQ{%
-		% solve linear system
-		% 	a11 a12
-		% 	a21 a22
-			{\pgf@sys@tonumber\pgf@xb}{\pgf@sys@tonumber\pgf@xa}%
-			{\pgf@sys@tonumber\pgf@yb}{\pgf@sys@tonumber\pgf@ya}%
-		}%
-		% 
-		\pgf@sh@reanchor{#3}{center}%
-		\edef\pgfplots@loc@center{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
-		%
-		% apply inverse matrix to right-hand-side (and compute RHS):
-		\pgfpointdiff% {<start>}{<end>} -> computes <end> - <start>
-			{\pgfplots@loc@center}%
-			{\pgf@sh@reanchor{#3}{\pgfplots@anchor}}%
-		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
-		%
-		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
-		\def\pgfplots@extract##1##2{%
-			\def\pgfplots@r{##1}%
-		}%
-		\expandafter\pgfplots@extract\pgfmathresult
-		% GOT IT!
-		%
-		% compute x_c + r*n:
-		\pgfpointadd
-			{\pgfplots@loc@center}%
-			{\pgfqpointscale{\pgfplots@r}{\pgfplots@tmp@normaldir}}%
-	\else
-		\pgfplotswarning{ticklabel anchor undetermined}{#1}{\the\pgf@xb,\the\pgf@yb}{\the\pgf@xa,\the\pgf@ya}{\the\pgf@xc}\pgfeov
-		% Something went awry: normal and unit#1 are almost parallel!?
-		% just use the determined anchor.
-		\def\pgfplots@r{0}%
-		\pgf@sh@reanchor{#3}{\pgfplots@anchor}%
-	\fi
-%\message{==========>>>>>>>>>> I got finally (\the\pgf@x,\the\pgf@y). <<<<<<<<<===================}%
-	\pgf@process{}% <- transport outside of group
+		\pgfplots@xcomp
+	}%
+	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
-}%
-
+}
 
 \def\pgfplotspointviewdir{%
 	%\pgfplotsmathvectordatascaletrafoinverse{\pgfplots@view@dir@threedim}{default}%
