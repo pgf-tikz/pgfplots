@@ -48,9 +48,19 @@
 %-------------------------------------------------- 
 
 
+\newif\ifpgfplotslibrarysurf@updatebb
+\pgfplotslibrarysurf@updatebbtrue
+
 \pgfkeys{%
 	/pgfplots/surf shading/anchor/.initial=\pgfpointorigin,%
 	/pgfplots/surf shading/shading type/.initial=5,% triangles in form of lattice
+	%
+	% If this is true, the embedding picture's bounding box will be updated using
+	% the shading's bounding box.
+	% This bounding box may be (highly!) inaccurate for coons shadings and tensor product shadings.
+	% The 'patch' plot handler disables it and takes control over it explicitly (using interpolation
+	% points rather than bezier control points).
+	/pgfplots/surf shading/update BB/.is if=pgfplotslibrarysurf@updatebb,
 	% 
 	% can only have values '' (empty) for binary encoding or
 	% ASCIIHexEncode for base 16 encoding. Use this if some driver
@@ -474,12 +484,28 @@
 
 \def\pgfplotslibrarysurfdrawinpicture{%
 	\begingroup
-	% this here will modify both the picture's BB and the path's BB.
+	% this statement will modify both the picture's BB and the path's BB
+	% unless we take control.
+	%
 	% Note that the path's BB will eventually be updated into the
 	% picture's BB as well (meaning that 'overlay' is of no use inside
 	% of this group).
+	%
+	% Implement the 'surf shading/update BB' functionality here:
+	\let\pgfplots@@protocolsizes=\pgf@protocolsizes
+	\ifpgfplotslibrarysurf@updatebb
+	\else
+		% NO update to any BB. this implies 'overlay' 
+		% *and* disables updates to the path's BB.
+		\def\pgf@protocolsizes##1##2{\relax}%
+	\fi
 	\pgftext[at=\pgfplotslibrarysurf@corner@sw,left,bottom] {%
+		\begingroup
+		% inside of this box, we *always* need bounding boxes.
+		% restore functionality.
+		\let\pgf@protocolsizes=\pgfplots@@protocolsizes
 		\pgfplotslibrarysurfdraw
+		\endgroup
 % this does NOT work because I can't undo the box' shift:
 %\pgfplotssys@do@surfshading
 	}%
