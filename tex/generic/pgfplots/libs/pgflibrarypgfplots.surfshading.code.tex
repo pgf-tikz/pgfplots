@@ -202,7 +202,8 @@
 	\fi
 	%
 	% we want to establish a bounding box for THIS shading only! Otherwise the pdf XFORM might have a larger bounding box than we want. Is that ok here? Or does it hurt somewhere? 
-	\pgf@resetpathsizes
+	\pgf@getpathsizes{\pgfplots@loc@TMPa}%
+	\global\let\pgfplotslibrarysurf@pathsizes@before=\pgfplots@loc@TMPa
 }%
 \def\pgfplotslibrarysurf@initstream@wrongtype{%
 	\pgfplots@error{CRITICAL: shader=interp: got unsupported pdf shading type '\pgfplotslibrarysurf@type'. This may corrupt your pdf!}%
@@ -223,6 +224,7 @@
 		\global\pgf@x=\the\pgf@pathmaxx\space
 		\global\pgf@y=\the\pgf@pathmaxy\space
 	}%
+	\pgf@setpathsizes\pgfplotslibrarysurf@pathsizes@before
 }%
 
 % ATTENTION: see also \pgfplotslibrarysurfstreamcoord@cubicpatch
@@ -317,9 +319,31 @@
 \def\pgfplotslibrarysurfusepath{\pgfusepath{fill}}
 \let\pgfplotslibrarysurfusepath@orig=\pgfplotslibrarysurfusepath
 
+% We DO want to protocol the size of the shading. In fact, we NEED a
+% bounding box which contains the whole shading, otherwise it will be
+% clipped. More precisely, it will be packed into a pdf XForm object
+% and that appears to need a correct bounding box.
+%
+% But we do NOT want to update the picture's bounding box, only that
+% of the pdf XForm. The picture's bounding box will be updated as soon
+% as we *use* the shading anyway (in
+% \pgfplotslibrarysurfdrawinpicture). This here takes care of that detail:
+\def\pgfplotslibrarysurf@protocolsizes@#1#2{%
+	\ifpgf@relevantforpicturesize
+		\pgfplots@loc@tmptrue
+	\else
+		\pgfplots@loc@tmpfalse
+	\fi
+	\pgf@relevantforpicturesizefalse
+	\pgf@protocolsizes{#1}{#2}%
+	\ifpgfplots@loc@tmp
+		\pgf@relevantforpicturesizetrue
+	\fi
+}%
+
 \def\pgfplotslibrarysurfprocesscoordinate#1{%
 	#1\relax%
-	\pgf@protocolsizes{\pgf@x}{\pgf@y}%
+	\pgfplotslibrarysurf@protocolsizes@{\pgf@x}{\pgf@y}%
 }%
 \let\pgfplotslibrarysurfprocesscoordinate@orig=\pgfplotslibrarysurfprocesscoordinate%
 
@@ -331,7 +355,7 @@
 	\endscope
 	\endpgfinterruptpath
 	#1\relax%
-	\pgf@protocolsizes{\pgf@x}{\pgf@y}%
+	\pgfplotslibrarysurf@protocolsizes@{\pgf@x}{\pgf@y}%
 }%
 
 % ATTENTION: see also \pgfplotslibrarysurfstreamcoord
@@ -450,8 +474,11 @@
 
 \def\pgfplotslibrarysurfdrawinpicture{%
 	\begingroup
-	\pgftransformshift{\pgfplotslibrarysurf@corner@sw}%
-	\pgftext[at=\pgfqpoint{0pt}{0pt},left,bottom] {%
+	% this here will modify both the picture's BB and the path's BB.
+	% Note that the path's BB will eventually be updated into the
+	% picture's BB as well (meaning that 'overlay' is of no use inside
+	% of this group).
+	\pgftext[at=\pgfplotslibrarysurf@corner@sw,left,bottom] {%
 		\pgfplotslibrarysurfdraw
 % this does NOT work because I can't undo the box' shift:
 %\pgfplotssys@do@surfshading
