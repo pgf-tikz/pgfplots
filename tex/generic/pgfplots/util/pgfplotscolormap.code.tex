@@ -78,39 +78,163 @@
 	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
 	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
-	\expandafter\let\csname\pgfplots@createcolormap@name @col@comps\endcsname=\pgfplots@createcolormap@col@comps
-	\expandafter\let\csname\pgfplots@createcolormap@name @colspace\endcsname=\pgfplots@createcolormap@colspace
+	%
+	\endpgfplotscolornormalizesequence
+	\expandafter\let\csname\pgfplots@createcolormap@name @colspace\endcsname=\pgfplotsretval
+	\expandafter\let\csname\pgfplots@createcolormap@name @col@comps\endcsname=\pgfplotsretvalb
 %\pgfplots@colormap@showdebuginfofor{#1}%
 }
-\def\pgfplots@createcolormap@initcolorspace{%
-	\pgfkeysgetvalue{/pgfplots/colormap default colorspace}\pgfplots@loc@TMPa
+
+\pgfkeys{
+	/pgfplots/color sequence/colorspace/.initial=auto,
+}
+
+% the beginning of a color sequence.
+%
+% It is to be used like
+% \pgfplotscolornormalizesequence[colorspace=rgb]
+%
+% \pgfplotscolornormalizesequencenext{red}
+% -> \pgfplotsretval = {rgb}{1,0,0}
+% \pgfplotscolornormalizesequencenext{blue}
+% -> \pgfplotsretval = {rgb}{0,0,1}
+%
+% \endpgfplotscolornormalizesequence
+%
+% #1 : the color space. Can be auto, rgb, or cmyk (will be expanded).
+\def\pgfplotscolornormalizesequence[#1]{%
+	\pgfqkeys{/pgfplots/color sequence}{#1}%
+	\pgfkeysgetvalue{/pgfplots/color sequence/colorspace}\pgfplots@loc@TMPa
 	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
 	\def\pgfplots@loc@TMPb{auto}%
 	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
-		% colormap default colorspace=auto: same as empty.
+		% colorspace=auto: same as empty.
 		\let\pgfplots@loc@TMPa=\pgfutil@empty
 	\fi
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		% colormap default colorspace=auto:
-		\def\pgfplots@createcolormap@col@comps{}% to be filled from first point
-		\def\pgfplots@createcolormap@colspace{}%
+		% colorspace=auto:
+		\def\pgfplotscolornormalizesequence@colspace{}%
 	\else
 		\def\pgfplots@loc@TMPb{rgb}%
 		\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
-			% colormap default colorspace=rgb:
-			\def\pgfplots@createcolormap@colspace{rgb}%
-			\def\pgfplots@createcolormap@col@comps{3}%
+			% colorspace=rgb:
+			\def\pgfplotscolornormalizesequence@colspace{rgb}%
 		\else
 			\def\pgfplots@loc@TMPb{cmyk}%
 			\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
-				% colormap default colorspace=cmyk:
-				\def\pgfplots@createcolormap@colspace{cmyk}%
-				\def\pgfplots@createcolormap@col@comps{4}%
+				% colorspace=cmyk:
+				\def\pgfplotscolornormalizesequence@colspace{cmyk}%
 			\else
 				\pgfplots@error{Sorry, the choice 'colormap default colorspace=\pgfplots@loc@TMPa' is unknown to pgfplots, please use one of 'auto,rgb,cmyk'}%
 			\fi
 		\fi
 	\fi
+}%
+
+% ends a normalized color sequence and returns the final colorspace
+% and its number of components into \pgfplotsretval and
+% \pgfplotsretvalb, respectively
+\def\endpgfplotscolornormalizesequence{%
+	\let\pgfplotsretval=\pgfplotscolornormalizesequence@colspace
+	\pgfplotscolor@get@num@components{\pgfplotsretval}{\pgfplotsretvalb}%
+}%
+
+% accepts the next color in a sequence of colors. The color will be
+% normalized and the normalized result written to \pgfplotsretval.
+%
+% #1 the color space of the color.
+% #2 the components of the color, separated by comma.
+%
+% POSTCONDITION: 
+%   \pgfplotsretval contains '{<color space>}{<comma-separated-components>}'
+%  -> including the curly braces.
+%  
+%  \pgfplotsretvalb contains the number of input components in
+%  \pgfplotsretval
+\def\pgfplotscolornormalizesequencenextbycomponents#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\edef\pgfplots@loc@TMPb{#2}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop\pgfplots@loc@TMPb,\pgfplots@EOI,%
+	%
+	\ifx\pgfplots@loc@TMPa\pgfplotscolornormalizesequence@colspace
+	\else
+		\ifx\pgfplotscolornormalizesequence@colspace\pgfutil@empty
+			\let\pgfplotscolornormalizesequence@colspace=\pgfplots@loc@TMPa
+		\else
+			% Oh. We need to convert the color space!
+			\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{#2}}%
+			\expandafter\pgfutil@convertcolorspec\pgfplots@loc@TMPa
+				{\pgfplotscolornormalizesequence@colspace}% target color spaces
+				{\pgfplots@loc@TMPb}% target macro
+		\fi
+	\fi
+	\edef\pgfplotsretval{{\pgfplotscolornormalizesequence@colspace}{\pgfplots@loc@TMPb}}%
+	\pgfplotscolor@get@num@components{\pgfplotscolornormalizesequence@colspace}{\pgfplotsretvalb}%
+}
+
+\def\pgfplotscolor@get@num@components#1#2{%
+	\pgfutil@ifundefined{pgfplotscolor@get@num@components@#1}{%
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{The input color has an unsupported color space '#1'}\pgfeov%
+	}{%
+		\edef#2{\csname pgfplotscolor@get@num@components@#1\endcsname}%
+	}%
+}%
+
+\def\pgfplotscolor@get@num@components@rgb{3}%
+\def\pgfplotscolor@get@num@components@cmyk{4}%
+
+\def\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop#1,{%
+	\def\pgfplots@loc@TMPd{#1}%
+	\ifx\pgfplots@loc@TMPd\pgfplots@EOI
+	\else
+		\pgfplotscolornormalizesequencenextbycomponents@sanitize{#1}%
+		\expandafter\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop
+	\fi
+}
+
+% #1 the color component value
+\def\pgfplotscolornormalizesequencenextbycomponents@sanitize#1{%
+	\ifdim#1pt<0pt %
+		\pgfplots@createcolormap@rangeexception{#1}%
+	\fi
+	\ifdim#1pt>1pt %
+		\pgfplots@createcolormap@rangeexception{#1}%
+	\fi
+}
+
+% Same as \pgfplotscolornormalizesequencenextbycomponents but with
+% more freedom in the input.
+%
+% #1 some color. It can be either in a format accepted by xcolor OR of
+% the form {rgb}{0,1,0}  or {cmyk}{1,1,1,1}
+%
+% POSTCONDITION: see \pgfplotscolornormalizesequencenextbycomponents
+\def\pgfplotscolornormalizesequencenext#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplotscolornormalizesequencenext@\pgfplots@loc@TMPa\pgfplots@EOI
+}
+\def\pgfplotscolornormalizesequencenext@{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplotscolornormalizesequencenext@bycomps@gobble
+	}{%
+		\pgfplotscolornormalizesequencenext@xcolor@gobble
+	}%
+}
+\def\pgfplotscolornormalizesequencenext@bycomps@gobble#1\pgfplots@EOI{%
+	\pgfplotscolornormalizesequencenextbycomponents#1\relax\relax\relax% NO braces here. We expect them in '#1' !
+}
+\def\pgfplotscolornormalizesequencenext@xcolor@gobble#1\pgfplots@EOI{%
+	\pgfutil@colorlet{pgf@tempcol}{#1}%
+	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
+	% I expect that \pgf@tempcolor is of the form
+	% {<colorspace>}{<comma-separated components>}
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgf@tempcolor%
+	% just to be sure - if \pgf@tempcolor is invalid.
+	\relax\relax
+}
+
+\def\pgfplots@createcolormap@initcolorspace{%
+	\pgfplotscolornormalizesequence[colorspace=\pgfkeysvalueof{/pgfplots/colormap default colorspace}]
 }%
 \def\pgfplots@createcolormap@seth[#1]{%
 	\def\pgfplots@createcolormap@context{[#1]}%
@@ -215,8 +339,6 @@
 
 
 \def\pgfplots@createcolormap@grabcmyk myk{
-	\def\pgfplots@createcolormap@colspace@actual{cmyk}%
-	\def\pgfplots@createcolormap@col@comps@actual{4}%
 	\pgfutil@ifnextchar2{%
 		\pgfplots@createcolormap@grabcmyk@two@five@five
 	}{%
@@ -226,7 +348,7 @@
 }
 \def\pgfplots@createcolormap@grabcmyk@(#1)=(#2,#3,#4,#5){%
 	\def\pgfplots@createcolormap@context{cmyk(#1)=(#2,#3,#4,#5)}%
-	\pgfplots@createcolormap@nextcolor{#1}{#2}{#3}{#4}{#5}%
+	\pgfplots@createcolormap@nextcolor{#1}{{cmyk}{#2,#3,#4,#5}}%
  	\pgfplots@createcolormap@}
 \def\pgfplots@createcolormap@grabcmyk@two@five@five255{%
 	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabcmyk@two@five@five@
@@ -242,8 +364,8 @@
 	\let\pgfplots@loc@TMPc=\pgfmathresult
 	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#5}%
 	\def\pgfplots@loc@TMPd{\pgfplots@createcolormap@nextcolor{#1}}%
-	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}{\pgfmathresult}}%
-	\expandafter\pgfplots@loc@TMPd\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{{cmyk}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfplots@loc@TMPc,\pgfmathresult}}%
+	\expandafter\pgfplots@loc@TMPd\expandafter{\pgfplots@loc@TMPa}%
  	\pgfplots@createcolormap@}
 
 
@@ -269,104 +391,47 @@
 }%
 \def\pgfplots@createcolormap@grabcolor@(#1)=(#2){%
 	\def\pgfplots@createcolormap@context{color(#1)=(#2)}%
-	\pgfutil@colorlet{pgf@tempcol}{#2}%
-	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
-	\ifx\pgfplots@createcolormap@colspace\pgfutil@empty
-		% This here is mainly for backwards compatibility... in older
-		% versions, rgb was the only choice. This should still work
-		% unless overruled explicitly.
-		\def\pgfplots@createcolormap@colspace{rgb}%
-		\def\pgfplots@createcolormap@col@comps{3}%
-	\fi
-	% convert the colorspace (if needed):
-	\expandafter\pgfutil@convertcolorspec\pgf@tempcolor{\pgfplots@createcolormap@colspace}{\pgf@rgbcolor}%
-	%
-	\let\pgfplots@createcolormap@colspace@actual=\pgfplots@createcolormap@colspace
-	\let\pgfplots@createcolormap@col@comps@actual=\pgfplots@createcolormap@col@comps
-	%
-	\if4\pgfplots@createcolormap@col@comps
-		\let\pgfplots@loc@TMPa=\pgfplots@createcolormap@grabcolor@@@
-	\else
-		\let\pgfplots@loc@TMPa=\pgfplots@createcolormap@grabcolor@@
-	\fi
-	\expandafter\pgfplots@loc@TMPa\pgf@rgbcolor\relax{#1}%
+	\pgfplots@createcolormap@nextcolor{#1}{#2}%
+	% 
+	% continue loop:
+	\pgfplots@createcolormap@
 }%
-\def\pgfplots@createcolormap@grabcolor@@#1,#2,#3\relax#4{%
-	\pgfplots@createcolormap@nextRGB{#4}{#1}{#2}{#3}%
- 	\pgfplots@createcolormap@}
-\def\pgfplots@createcolormap@grabcolor@@@#1,#2,#3,#4\relax#5{%
-	\pgfplots@createcolormap@nextcolor{#5}{#1}{#2}{#3}{#4}%
- 	\pgfplots@createcolormap@}
 
-\def\pgfplots@createcolormap@rgbrangeexception#1#2#3{%
-	\pgfplots@error{Sorry, RGB[#1,#2,#3] is not supported. The allowed range is 0 <= r,g,b <= 1. The error occured near `\pgfplots@createcolormap@context'}%
-}%
-\def\pgfplots@createcolormap@rangeexception#1#2{%
-	\pgfplots@error{Sorry, the color component at index #1 (value #2) is out of range. The allowed range is 0 <= value  <= 1. The error occured near `\pgfplots@createcolormap@context'}%
+\def\pgfplots@createcolormap@rangeexception#1{%
+	\pgfplots@error{Sorry, the color component value #1 is out of range. The allowed range is 0 <= value  <= 1. The error occured near `\pgfplots@createcolormap@context'}%
 }
 
 % Ok, we parsed the next single spec.
 % #1: the width
 % #2,#3,#4 RGB values.
 \def\pgfplots@createcolormap@nextRGB#1#2#3#4{%
-	\def\pgfplots@createcolormap@colspace@actual{rgb}%
-	\def\pgfplots@createcolormap@col@comps@actual{3}%
-	\pgfplots@createcolormap@nextcolor{#1}{#2}{#3}{#4}{}%
+	\pgfplots@createcolormap@nextcolor{#1}{{rgb}{#2,#3,#4}}%
 }%
 
 % #1: h
-% #2...#5: the color components (at least 3 non-empty, can be 4).
-\def\pgfplots@createcolormap@nextcolor#1#2#3#4#5{%
-	\ifdim#2pt<0pt
-		\pgfplots@createcolormap@rangeexception0{#2}%
-	\fi
-	\ifdim#3pt<0pt
-		\pgfplots@createcolormap@rangeexception1{#3}%
-	\fi
-	\ifdim#4pt<0pt
-		\pgfplots@createcolormap@rangeexception2{#4}%
-	\fi
-	\ifdim#2pt>1pt
-		\pgfplots@createcolormap@rangeexception0{#2}%
-	\fi
-	\ifdim#3pt>1pt
-		\pgfplots@createcolormap@rangeexception1{#3}%
-	\fi
-	\ifdim#4pt>1pt
-		\pgfplots@createcolormap@rangeexception2{#4}%
-	\fi
-	\if4\pgfplots@createcolormap@col@comps@actual
-		\ifdim#5pt<0pt
-			\pgfplots@createcolormap@rangeexception3{#5}%
-		\fi
-		\ifdim#5pt>1pt
-			\pgfplots@createcolormap@rangeexception3{#5}%
-		\fi
-	\fi
-	\def\pgfplots@loc@TMPb{\pgfplots@createcolormap@nextcolor@{#1}{#2}{#3}{#4}{#5}}%
-	\ifx\pgfplots@createcolormap@colspace@actual\pgfplots@createcolormap@colspace
+% #2: a compound element of the form
+% '{<colorspace>}{<comma-separated-color-components>}'
+%  In fact, it can also be a color specification of xcolor (see
+%  \pgfplotscolornormalizesequencenext)
+\def\pgfplots@createcolormap@nextcolor#1#2{%
+	%
+	\pgfplotscolornormalizesequencenext{#2}%
+	\let\pgfplots@createcolormap@col@comps=\pgfplotsretvalb
+	%
+	% I only need the components, the colorspace is irrelevant here:
+	\edef\pgfplotsretval{\expandafter\pgfutil@secondoftwo\pgfplotsretval}%
+	%
+	% invoke
+	% \pgfplots@createcolormap@nextcolor@{#1}{C1}{C2}{C3}{C4}.
+	% We need to compute C1 ... C4 :
+	\def\pgf@colmarshal{{#1}}%
+	\expandafter\pgf@uncomma\pgfplotsretval,,%
+	\if4\pgfplots@createcolormap@col@comps
 	\else
-		\ifx\pgfplots@createcolormap@colspace\pgfutil@empty
-			\let\pgfplots@createcolormap@colspace=\pgfplots@createcolormap@colspace@actual
-			\let\pgfplots@createcolormap@col@comps=\pgfplots@createcolormap@col@comps@actual
-		\else
-			% Oh. We need to convert the color space!
-			\edef\pgfplots@loc@TMPa{{\pgfplots@createcolormap@colspace@actual}{#2,#3,#4\if4\pgfplots@createcolormap@col@comps@actual,#5\fi}}%
-			\expandafter\pgfutil@convertcolorspec\pgfplots@loc@TMPa{\pgfplots@createcolormap@colspace}{\pgfplots@loc@TMPa}%
-			% invoke
-			% \pgfplots@createcolormap@nextcolor@{#1}{C1}{C2}{C3}{C4}.
-			% We need to compute C1 ... C4 :
-			\def\pgf@colmarshal{{#1}}%
-			\expandafter\pgf@uncomma\pgfplots@loc@TMPa,,%
-			\if4\pgfplots@createcolormap@col@comps
-			\else
-				% ok, we have C4={}. Append it:
-				\edef\pgf@colmarshal{\pgf@colmarshal{}}%
-			\fi
-			\def\pgfplots@loc@TMPb{\expandafter\pgfplots@createcolormap@nextcolor@\pgf@colmarshal}%
-		\fi
+		% ok, we have C4={}. Append it:
+		\edef\pgf@colmarshal{\pgf@colmarshal{}}%
 	\fi
-	\pgfplots@loc@TMPb
+	\expandafter\pgfplots@createcolormap@nextcolor@\pgf@colmarshal%
 }%
 \def\pgfplots@createcolormap@nextcolor@#1#2#3#4#5{%
 %\message{processing color #1=(#2,#3,#4,#5) with \pgfplots@createcolormap@col@comps@actual\space components^^J}%
