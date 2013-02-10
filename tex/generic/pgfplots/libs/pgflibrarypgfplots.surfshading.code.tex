@@ -49,6 +49,7 @@
 
 
 \newif\ifpgfplotslibrarysurf@updatebb
+\newif\ifpgfplotslibrarysurf@usecolormap
 \pgfplotslibrarysurf@updatebbtrue
 
 \pgfkeys{%
@@ -89,8 +90,13 @@
 	/pgfplots/surf shading/precision/postscript/.style={%
 		/pgfplots/surf shading/precision/ps},%
 	/pgfplots/surf shading/precision/ps,% 
+	% columns:
 	/pgfplots/surf shading/cols/.initial=,%
 	/pgfplots/surf shading/colorspace/.initial=rgb,% rgb or cmyk
+	%
+	% the colormap. If this key is empty, we assume that individual
+	% color components are provided for EVERY vertex for which cdata
+	% is expected.
 	/pgfplots/surf shading/colormap/.initial={%
 		<<
 			/FunctionType 2 
@@ -147,12 +153,23 @@
 \def\pgfplotslibrarysurf@corner@sw{\pgfplots@error{This is unavailable until \string\pgfplotslibrarysurfstreamend}}
 \let\pgfplotslibrarysurf@corner@ne\pgfplotslibrarysurf@corner@sw
 
+\def\pgfplotslibrarysurf@bytespercomponent{3}%
+\def\pgfplotslibrarysurf@bitspercomponent{24}%
 
 \def\pgfplotslibrarysurf@decode{%
 	-16383.999992 16384 % see the docs of \pgfplotsbinaryencodedimenmaplinearly
 	-16383.999992 16384 %
+	\pgfplotslibrarysurf@decode@colors
+}%
+\def\pgfplotslibrarysurf@decode@colors@colormap{%
 	0 \pgfplotscolormappdfmax % map [0,2^BitsPerComponent-1] linearly to [0 1] for parametric color data
 }%
+\def\pgfplotslibrarysurf@decode@colors@explicit@one@component{%
+	% this is just one component for explicit color data.
+	% it will be replicated for every color component.
+	-16383.999992 16384 %
+}%
+
 \def\pgfplotslibrarysurf@count{0}%
 \newcount\c@pgfplotslibrarysurf@no
 
@@ -169,8 +186,7 @@
 \def\pgfplotslibrarysurf@advancestreamlen#1{}%
 
 \def\pgfplotslibrarysurfstreamstart{%
-	\pgfplotslibrarysurf@translate@colorspace
-	\let\pgfplotslibrarysurf@colorspace=\pgfplotsretval
+	\pgfplotslibrarysurfstreamstart@init@colors
 	\pgfkeysgetvalue{/pgfplots/surf shading/shading type}\pgfplotslibrarysurf@type
 	\pgfplotsapplistXglobalnewempty\pgfplotslibrarysurf@binarystream@accum
 	\pgfplotslibrarysurf@initstream
@@ -211,10 +227,50 @@
 		\pgfplotslibrarysurf@initstream@wrongtype
 	\fi
 	%
+	%
 	% we want to establish a bounding box for THIS shading only! Otherwise the pdf XFORM might have a larger bounding box than we want. Is that ok here? Or does it hurt somewhere? 
 	\pgf@getpathsizes{\pgfplots@loc@TMPa}%
 	\global\let\pgfplotslibrarysurf@pathsizes@before=\pgfplots@loc@TMPa
 }%
+
+
+\def\pgfplotslibrarysurfstreamstart@init@colors{%
+	%
+	\pgfkeysgetvalue{/pgfplots/surf shading/colormap}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfplotslibrarysurf@usecolormapfalse
+	\else
+		\pgfplotslibrarysurf@usecolormaptrue
+	\fi
+	%
+	\ifpgfplotslibrarysurf@usecolormap
+		\let\pgfplotslibrarysurf@decode@colors=\pgfplotslibrarysurf@decode@colors@colormap
+	\else
+		\pgfplotscolorspacegetcomponents{\pgfkeysvalueof{/pgfplots/surf shading/colorspace}}%
+		\c@pgf@counta=0 %
+		\c@pgf@countb=\pgfplotsretval\relax
+		%
+		\def\pgfplotslibrarysurf@decode@colors{}%
+		\pgfplotslibrarysurf@decode@colors@loop
+	\fi
+	%
+	\pgfplotslibrarysurf@translate@colorspace
+	\let\pgfplotslibrarysurf@colorspace=\pgfplotsretval
+}%
+
+\def\pgfplotslibrarysurf@decode@colors@loop{%
+	\ifnum\c@pgf@counta<\c@pgf@countb
+		%
+		\edef\pgfplotslibrarysurf@decode@colors{%
+			\pgfplotslibrarysurf@decode@colors
+			\pgfplotslibrarysurf@decode@colors@explicit@one@component
+		}%
+		\advance\c@pgf@counta by1 %
+		%
+		\expandafter\pgfplotslibrarysurf@decode@colors@loop
+	\fi
+}%
+
 \def\pgfplotslibrarysurf@initstream@wrongtype{%
 	\pgfplots@error{CRITICAL: shader=interp: got unsupported pdf shading type '\pgfplotslibrarysurf@type'. This may corrupt your pdf!}%
 }%
@@ -286,30 +342,59 @@
 % defines \pgfplotsbinaryresult to contain the result of a CDATA
 % entry and advances the stream counters.
 \def\pgfplotslibrarysurf@encode@cdata#1{%
-	\begingroup
-		% read fixed point input (in the range [0,1000]).
-		\pgf@xa=#1pt %
-		% convert to integer (= *65536):
-		\c@pgf@counta=\pgf@xa
-		% provide map [0,1000] -> [0,2^16-1]
-		\divide\c@pgf@counta by1000
-		% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
-		% the required range, that's ok.
-		\ifnum\c@pgf@counta<0
-			\c@pgf@counta=0
-		\else
-			\ifnum\c@pgf@counta>65535
-				\c@pgf@counta=65535
+	\ifpgfplotslibrarysurf@usecolormap
+		\begingroup
+			% read fixed point input (in the range [0,1000]).
+			\pgf@xa=#1pt %
+			% convert to integer (= *65536):
+			\c@pgf@counta=\pgf@xa
+			% provide map [0,1000] -> [0,2^16-1]
+			\divide\c@pgf@counta by1000
+			% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+			% the required range, that's ok.
+			\ifnum\c@pgf@counta<0
+				\c@pgf@counta=0
+			\else
+				\ifnum\c@pgf@counta>65535
+					\c@pgf@counta=65535
+				\fi
 			\fi
-		\fi
-		% Now, we have CDATA in the range [0,65535] 
-		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
-	\endgroup
-	\pgfplotsbinarysetbytes2%
-	\pgfplotslibrarysurf@advancestreamlen{2}%
-	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+			% Now, we have CDATA in the range [0,65535] 
+			\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
+		\endgroup
+		\pgfplotsbinarysetbytes2%
+		\pgfplotslibrarysurf@advancestreamlen{2}%
+		\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+	\else
+		% oh. No cdata. Ok, then encode stuff individually!
+		% We expect data of the form
+		% {<colorspaces>}{<comma-separated-components>}
+		\edef\pgfplots@loc@TMPa{\expandafter\pgfutil@secondoftwo#1}%
+		% now, \pgfplots@loc@TMPa contains the components (only).
+		\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercomponent%
+		\def\pgfplotsretval{}%
+		\expandafter\pgfplotslibrarysurf@encode@cdata@loop\pgfplots@loc@TMPa,,%
+		\let\pgfplotsbinaryresult=\pgfplotsretval
+	\fi
 }
+
+\def\pgfplotslibrarysurf@encode@cdata@loop#1,{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		%
+		\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercomponent}%
+		%
+		\pgf@xa=#1pt %
+		\pgfplotsbinaryencodedimenmaplinearly\pgf@xa
+		\edef\pgfplotsretval{\pgfplotsretval\pgfplotsbinaryresult}%
+		%
+		%
+		% continue loop:
+		\expandafter\pgfplotslibrarysurf@encode@cdata@loop
+	\fi
+}%
 
 \def\pgfplotslibrarysurf@translate@colorspace{%
 	\pgfkeysgetvalue{/pgfplots/surf shading/colorspace}\pgfplots@loc@TMPd
