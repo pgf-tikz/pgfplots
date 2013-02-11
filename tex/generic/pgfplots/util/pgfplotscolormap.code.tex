@@ -94,10 +94,16 @@
 % It is to be used like
 % \pgfplotscolornormalizesequence[colorspace=rgb]
 %
-% \pgfplotscolornormalizesequencenext{red}
+% \pgfplotscolornormalizesequencenext{color=red}
 % -> \pgfplotsretval = {rgb}{1,0,0}
-% \pgfplotscolornormalizesequencenext{blue}
+% \pgfplotscolornormalizesequencenext{color=blue}
 % -> \pgfplotsretval = {rgb}{0,0,1}
+% \pgfplotscolornormalizesequencenext{rgb=1,0,0}
+% -> \pgfplotsretval = {rgb}{1,0,0}
+% \pgfplotscolornormalizesequencenext{cmyk=1,0,0,1}
+% -> \pgfplotsretval = {rgb}{<converted value>}
+% \pgfplotscolornormalizesequencenext{1,1,1}
+% -> \pgfplotsretval = {rgb}{1,1,1} % uses default colorspace
 %
 % \endpgfplotscolornormalizesequence
 %
@@ -213,8 +219,19 @@
 % Same as \pgfplotscolornormalizesequencenextbycomponents but with
 % more freedom in the input.
 %
-% #1 some color. It can be either in a format accepted by xcolor OR of
-% the form {rgb}{0,1,0}  or {cmyk}{1,1,1,1}
+% #1 some color.
+% Accepted formats:
+% 'color=<xcolor value>'
+% 'rgb=R,G,B'
+% 'cmyk=C,M,Y,K'
+% 'C1,C2,C3'  (interpreted in the default colorspace)
+%
+% Example:
+% \pgfplotscolornormalizesequencenext{color=blue}
+% \pgfplotscolornormalizesequencenext{rgb=1,0,0}
+% \pgfplotscolornormalizesequencenext{cmyk=1,0,0,1}
+% \pgfplotscolornormalizesequencenext{1,0,0} (interpreted in the
+% colorspace set at \pgfplotscolornormalizesequence)
 %
 % POSTCONDITION: see \pgfplotscolornormalizesequencenextbycomponents
 \def\pgfplotscolornormalizesequencenext#1{%
@@ -222,16 +239,86 @@
 	\expandafter\pgfplotscolornormalizesequencenext@\pgfplots@loc@TMPa\pgfplots@EOI
 }
 \def\pgfplotscolornormalizesequencenext@{%
-	\pgfutil@ifnextchar\bgroup{%
-		\pgfplotscolornormalizesequencenext@bycomps@gobble
+	\pgfutil@ifnextchar c{%
+		\pgfplotscolornormalizesequencenext@c
 	}{%
-		\pgfplotscolornormalizesequencenext@xcolor@gobble
+		\pgfutil@ifnextchar r{%
+			\pgfplotscolornormalizesequencenext@rgb
+		}{%
+			\pgfutil@ifnextchar g{%
+				\pgfplotscolornormalizesequencenext@gray
+			}{%
+				\pgfplotscolornormalizesequencenext@defaultcolspace
+			}%
+		}%
 	}%
 }
-\def\pgfplotscolornormalizesequencenext@bycomps@gobble#1\pgfplots@EOI{%
-	\pgfplotscolornormalizesequencenextbycomponents#1\relax\relax\relax% NO braces here. We expect them in '#1' !
+
+\def\pgfplotscolornormalizesequencenext@gray gray=#1\pgfplots@EOI{%
+	% FIXME : we might be better off with real support for a gray
+	% colorspace!
+	\pgfplotscolornormalizesequencenextbycomponents{rgb}{#1,#1,#1}%
 }
-\def\pgfplotscolornormalizesequencenext@xcolor@gobble#1\pgfplots@EOI{%
+
+\def\pgfplotscolornormalizesequencenext@defaultcolspace#1\pgfplots@EOI{%
+	\ifx\pgfplotscolornormalizesequence@colspace\pgfutil@empty
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{The input color #1 cannot be interpreted; please assign a default color space first}\pgfeov%
+	\fi
+	\pgfplotscolornormalizesequencenextbycomponents{\pgfplotscolornormalizesequence@colspace}{#1}%
+}
+\def\pgfplotscolornormalizesequencenext@rgb rgb{%
+	\pgfutil@ifnextchar2{%
+		\pgfplotscolornormalizesequencenext@rgb@two@five@five
+	}{%
+		\pgfplotscolornormalizesequencenext@rgb@plain
+	}%
+}
+\def\pgfplotscolornormalizesequencenext@rgb@plain=#1\pgfplots@EOI{%
+	\pgfplotscolornormalizesequencenextbycomponents{rgb}{#1}%
+}
+
+\def\pgfplotscolornormalizesequencenext@rgb@two@five@five255=#1,#2,#3\pgfplots@EOI{%
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#2}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#3}%
+	\edef\pgfplots@loc@TMPc{{rgb}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfmathresult}}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgfplots@loc@TMPc%
+}
+
+\def\pgfplotscolornormalizesequencenext@c c{%
+	\pgfutil@ifnextchar m{%
+		\pgfplotscolornormalizesequencenext@cmyk
+	}{%
+		\pgfplotscolornormalizesequencenext@color
+	}%
+}%
+
+\def\pgfplotscolornormalizesequencenext@cmyk myk{%
+	\pgfutil@ifnextchar2{%
+		\pgfplotscolornormalizesequencenext@cmyk@two@five@five
+	}{%
+		\pgfplotscolornormalizesequencenext@cmyk@plain
+	}%
+}%
+
+\def\pgfplotscolornormalizesequencenext@cmyk@plain=#1\pgfplots@EOI{%
+	\pgfplotscolornormalizesequencenextbycomponents{cmyk}{#1}%
+}%
+\def\pgfplotscolornormalizesequencenext@cmyk@two@five@five255=#1,#2,#3,#4\pgfplots@EOI{%
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#2}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#3}%
+	\let\pgfplots@loc@TMPc=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#4}%
+	\edef\pgfplots@loc@TMPc{{cmyk}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfplots@loc@TMPc,\pgfmathresult}}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgfplots@loc@TMPc%
+}
+
+\def\pgfplotscolornormalizesequencenext@color olor=#1\pgfplots@EOI{%
 	\pgfutil@colorlet{pgf@tempcol}{#1}%
 	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
 	\edef\pgfplots@loc@TMPa{\expandafter\pgfutil@firstoftwo\pgf@tempcolor}%
@@ -248,7 +335,7 @@
 		{\pgfplots@loc@TMPb}%
 	}%
 	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgf@tempcolor%
-}
+}%
 
 \def\pgfplots@createcolormap@initcolorspace{%
 	\pgfplotscolornormalizesequence[colorspace=\pgfkeysvalueof{/pgfplots/colormap default colorspace}]
@@ -344,15 +431,9 @@
 }
 \def\pgfplots@createcolormap@grabrgb@two@five@five@(#1)=(#2,#3,#4){%
 	\def\pgfplots@createcolormap@context{rgb255(#1)=(#2,#3,#4)}%
-	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#2}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#3}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#4}%
-	\def\pgfplots@loc@TMPc{\pgfplots@createcolormap@nextRGB{#1}}%
-	\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{\pgfmathresult}}%
-	\expandafter\pgfplots@loc@TMPc\pgfplots@loc@TMPa
- 	\pgfplots@createcolormap@}
+	\pgfplots@createcolormap@nextcolor{#1}{rgb255=#2,#3,#4}%
+ 	\pgfplots@createcolormap@
+}
 
 
 \def\pgfplots@createcolormap@grabcmyk myk{
@@ -365,7 +446,7 @@
 }
 \def\pgfplots@createcolormap@grabcmyk@(#1)=(#2,#3,#4,#5){%
 	\def\pgfplots@createcolormap@context{cmyk(#1)=(#2,#3,#4,#5)}%
-	\pgfplots@createcolormap@nextcolor{#1}{{cmyk}{#2,#3,#4,#5}}%
+	\pgfplots@createcolormap@nextcolor{#1}{cmyk=#2,#3,#4,#5}%
  	\pgfplots@createcolormap@}
 \def\pgfplots@createcolormap@grabcmyk@two@five@five255{%
 	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabcmyk@two@five@five@
@@ -373,17 +454,9 @@
 }
 \def\pgfplots@createcolormap@grabcmyk@two@five@five@(#1)=(#2,#3,#4,#5){%
 	\def\pgfplots@createcolormap@context{cmyk255(#1)=(#2,#3,#4,#5)}%
-	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#2}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#3}%
-	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#4}%
-	\let\pgfplots@loc@TMPc=\pgfmathresult
-	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#5}%
-	\def\pgfplots@loc@TMPd{\pgfplots@createcolormap@nextcolor{#1}}%
-	\edef\pgfplots@loc@TMPa{{cmyk}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfplots@loc@TMPc,\pgfmathresult}}%
-	\expandafter\pgfplots@loc@TMPd\expandafter{\pgfplots@loc@TMPa}%
- 	\pgfplots@createcolormap@}
+	\pgfplots@createcolormap@nextcolor{#1}{cmyk255=#2,#3,#4,#5}%
+ 	\pgfplots@createcolormap@
+}
 
 
 \def\pgfplots@createcolormap@grabgray gray{%
@@ -392,7 +465,7 @@
 }%
 \def\pgfplots@createcolormap@grabgray@(#1)=(#2){%
 	\def\pgfplots@createcolormap@context{gray(#1)=(#2)}%
-	\pgfplots@createcolormap@nextRGB{#1}{#2}{#2}{#2}%
+	\pgfplots@createcolormap@nextcolor{#1}{gray=#2}%
  	\pgfplots@createcolormap@}
 
 \def\pgfplots@createcolormap@grabc c{%
@@ -408,7 +481,7 @@
 }%
 \def\pgfplots@createcolormap@grabcolor@(#1)=(#2){%
 	\def\pgfplots@createcolormap@context{color(#1)=(#2)}%
-	\pgfplots@createcolormap@nextcolor{#1}{#2}%
+	\pgfplots@createcolormap@nextcolor{#1}{color=#2}%
 	% 
 	% continue loop:
 	\pgfplots@createcolormap@
@@ -422,7 +495,7 @@
 % #1: the width
 % #2,#3,#4 RGB values.
 \def\pgfplots@createcolormap@nextRGB#1#2#3#4{%
-	\pgfplots@createcolormap@nextcolor{#1}{{rgb}{#2,#3,#4}}%
+	\pgfplots@createcolormap@nextcolor{#1}{rgb=#2,#3,#4}%
 }%
 
 % #1: h
