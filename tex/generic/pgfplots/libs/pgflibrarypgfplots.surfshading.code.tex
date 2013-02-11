@@ -153,8 +153,10 @@
 \def\pgfplotslibrarysurf@corner@sw{\pgfplots@error{This is unavailable until \string\pgfplotslibrarysurfstreamend}}
 \let\pgfplotslibrarysurf@corner@ne\pgfplotslibrarysurf@corner@sw
 
-\def\pgfplotslibrarysurf@bytespercomponent{3}%
-\def\pgfplotslibrarysurf@bitspercomponent{24}%
+% parametric colors (colormap) are always in [0,1000]. I
+% 2 bytes suffice for that range.
+\def\pgfplotslibrarysurf@bytespercomponent{2}%
+\def\pgfplotslibrarysurf@bitspercomponent{16}%
 
 \def\pgfplotslibrarysurf@decode{%
 	-16383.999992 16384 % see the docs of \pgfplotsbinaryencodedimenmaplinearly
@@ -167,7 +169,7 @@
 \def\pgfplotslibrarysurf@decode@colors@explicit@one@component{%
 	% this is just one component for explicit color data.
 	% it will be replicated for every color component.
-	-16383.999992 16384 %
+	0 1 % the target value for color component values.
 }%
 
 \def\pgfplotslibrarysurf@count{0}%
@@ -343,36 +345,13 @@
 % entry and advances the stream counters.
 \def\pgfplotslibrarysurf@encode@cdata#1{%
 	\ifpgfplotslibrarysurf@usecolormap
-		\begingroup
-			% read fixed point input (in the range [0,1000]).
-			\pgf@xa=#1pt %
-			% convert to integer (= *65536):
-			\c@pgf@counta=\pgf@xa
-			% provide map [0,1000] -> [0,2^16-1]
-			\divide\c@pgf@counta by1000
-			% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
-			% the required range, that's ok.
-			\ifnum\c@pgf@counta<0
-				\c@pgf@counta=0
-			\else
-				\ifnum\c@pgf@counta>65535
-					\c@pgf@counta=65535
-				\fi
-			\fi
-			% Now, we have CDATA in the range [0,65535] 
-			\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
-	%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
-		\endgroup
-		\pgfplotsbinarysetbytes2%
-		\pgfplotslibrarysurf@advancestreamlen{2}%
-		\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+		\pgfplotslibrarysurf@map@to@FFF@colormap{#1}%
 	\else
 		% oh. No cdata. Ok, then encode stuff individually!
 		% We expect data of the form
 		% {<colorspaces>}{<comma-separated-components>}
 		\edef\pgfplots@loc@TMPa{\expandafter\pgfutil@secondoftwo#1}%
 		% now, \pgfplots@loc@TMPa contains the components (only).
-		\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercomponent%
 		\def\pgfplotsretval{}%
 		\expandafter\pgfplotslibrarysurf@encode@cdata@loop\pgfplots@loc@TMPa,,%
 		\let\pgfplotsbinaryresult=\pgfplotsretval
@@ -384,10 +363,8 @@
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
 		%
-		\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercomponent}%
 		%
-		\pgf@xa=#1pt %
-		\pgfplotsbinaryencodedimenmaplinearly\pgf@xa
+		\pgfplotslibrarysurf@map@to@FFF@component{#1}%
 		\edef\pgfplotsretval{\pgfplotsretval\pgfplotsbinaryresult}%
 		%
 		%
@@ -395,6 +372,61 @@
 		\expandafter\pgfplotslibrarysurf@encode@cdata@loop
 	\fi
 }%
+
+% Defines \pgfplotsbinaryresult
+\def\pgfplotslibrarysurf@map@to@FFF@colormap#1{%
+	\begingroup
+		% read fixed point input (in the range [0,1000]).
+		\pgf@xa=#1pt %
+		% convert to integer (= *65536):
+		\c@pgf@counta=\pgf@xa
+		% provide map [0,1000] -> [0,2^16-1]
+		\divide\c@pgf@counta by1000
+		% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+		% the required range, that's ok.
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=0
+		\else
+			\ifnum\c@pgf@counta>65535
+				\c@pgf@counta=65535
+			\fi
+		\fi
+		% Now, we have CDATA in the range [0,65535] 
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
+	\endgroup
+	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercomponent%
+	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercomponent}%
+}
+
+% Defines \pgfplotsbinaryresult
+\def\pgfplotslibrarysurf@map@to@FFF@component#1{%
+	\begingroup
+		% read fixed point input (in the range [0,1]).
+		\pgf@xa=#1pt %
+		% convert to integer (= *65536):
+		\c@pgf@counta=\pgf@xa
+		% provide map [0,1] -> [0,2^16-1]
+		% well, there is nothing to do! it was in [0,1], we multiplied by 65536 implicitly... that's it.
+		%
+		% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+		% the required range, that's ok.
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=0
+		\else
+			\ifnum\c@pgf@counta>65535
+				\c@pgf@counta=65535
+			\fi
+		\fi
+		% Now, we have CDATA in the range [0,65535] 
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
+	\endgroup
+	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercomponent%
+	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+	\pgfplotslibrarysurf@advancestreamlen{\pgfplotslibrarysurf@bytespercomponent}%
+}
 
 \def\pgfplotslibrarysurf@translate@colorspace{%
 	\pgfkeysgetvalue{/pgfplots/surf shading/colorspace}\pgfplots@loc@TMPd
@@ -411,7 +443,7 @@
 			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPd
 				\def\pgfplotsretval{CMY}%
 			\else
-				\pgfplots@error{Sorry, the 'surfshading' lib failed to recognise the '/pgfplots/surf shading=\pgfplots@loc@TMPd\space choice... maybe you misspelled it?}%
+				\pgfplots@error{Sorry, the 'surfshading' lib failed to recognise the choice '/pgfplots/surf shading/colorspace=\pgfplots@loc@TMPd'... maybe you misspelled it?}%
 				\def\pgfplotsretval{RGB}%
 			\fi
 		\fi
