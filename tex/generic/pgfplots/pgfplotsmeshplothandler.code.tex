@@ -2302,20 +2302,124 @@
 		\def\pgfplotsplothandlermesh@needs@flat@color{1}%
 	\fi
 	\if1\pgfplotsplothandlermesh@needs@flat@color
-		\if\pgfplotsplothandlermesh@flatmode c% 'flat corner':
-			%
-			% use colordata of ONE corner point. That's easy, not
-			% much to do.
-			\def\pgfplotsplothandlermesh@get@flat@color{%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex}%
-				\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-				\pgfplotsaxisvisphasetransformpointmeta
-				\let\pgfplotsretval=\pgfplotspointmetatransformed%
-			}%
+		\pgfplotsplothandlermesh@init@flat@color@getter
+		%
+		\pgfplotsplothandlermesh@init@flat@color@usepath
+		%
+		%
+		\pgfplotsplothandlermesh@init@flat@color@visualize@pipe@step
+	\fi
+}%
+
+\def\pgfplotsplothandlermesh@init@flat@color@visualize@pipe@step{%
+	\ifx\pgfplotsplothandlermesh@PIPE@REFINE\pgfplotsplothandlermesh@PIPE@REFINE@no@op
+		\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
+	\else
+		\ifpgfplotsplothandlermesh@hide@refined@edges
+			% this is (at most) partially implemented.
+			\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke
 		\else
-			% 'flat mean':
-			%
-			% use colordata as mean of all corners for shading.
+			\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
+		\fi
+		%
+		% FIXME : that doesn't work.
+		% filling *always* seems to need a stroke operation,
+		% otherwise there will be translucent edges.
+		% I need to adjust the stroke color :-(
+		%
+		% FIXME : even that doesn't work correctly. The problem
+		% is: drawing adjacent patches on top of each other
+		% OVERDRAWS edges: once with the correct stroke color;
+		% once with the fill color.
+		%
+		\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqstroke
+			\let\pgfplotsplothandlermesh@usepathfill=\relax
+			\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
+		\else
+			\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqfillstroke
+				\let\pgfplotsplothandlermesh@usepathfill=\pgfusepathqfillstroke
+				\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
+			\else
+				\let\pgfplotsplothandlermesh@usepathfill=\relax
+				\let\pgfplotsplothandlermesh@usepathstroke=\relax
+			\fi
+		\fi
+	\fi
+}%
+
+\def\pgfplotsplothandlermesh@init@flat@color@usepath{%
+	\if\pgfplots@meshmode m%
+		% 'mesh' plot: stroke only and use the 'flat' code
+		% here just to define the color for each mesh
+		% segment.
+		\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
+	\else
+		% 'surf' plot: 
+		\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
+		\if\pgfplotsplothandlermesh@shader3% faceted interp
+			% it has an extra fill command (shading)
+			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
+		\fi
+		%
+		% the distinction between 'faceted' and 'flat' is
+		% technical: it is just the default draw color.
+		%
+		% 'flat,draw=black' is the same as 'faceted'.
+		\pgfkeysgetvalue{/pgfplots/faceted color}\pgfplots@loc@TMPb
+		\def\pgfplots@loc@TMPc{none}%
+		\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPc
+			\pgfkeyslet{/pgfplots/faceted color}\pgfutil@empty
+			\def\pgfplots@loc@TMPb{}%
+		\fi
+		%
+		\def\pgfplots@loc@TMPa{0}%
+		\if\pgfplotsplothandlermesh@shader1% faceted
+			\def\pgfplots@loc@TMPa{1}%
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty
+				% oh. no faceted color. Then: fill only, use
+				% whatever color is available.
+				\def\pgfplots@loc@TMPa{0}%
+				%\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
+			\fi
+		\fi
+		\if\pgfplotsplothandlermesh@shader3% faceted interp
+			\def\pgfplots@loc@TMPa{1}%
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty
+				% oh. no faceted color. Then: no-op!
+				% This is the same as interp with more overhead
+				% (but allows z buffering).
+				\def\pgfplots@loc@TMPa{0}%
+				\def\pgfplotsplothandlermesh@usepath{\pgfusepath{discard}}%
+			\fi
+		\fi
+		\if1\pgfplots@loc@TMPa
+			% make sure there is a the correct color.
+			\expandafter\def\expandafter\pgfplots@drawoptions\expandafter{%
+				\pgfplots@drawoptions
+				\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/faceted color}}%
+			}%
+		\fi
+		%
+	\fi
+}
+
+\def\pgfplotsplothandlermesh@init@flat@color@getter{%
+	\if\pgfplotsplothandlermesh@flatmode c% 'flat corner':
+		%
+		% use colordata of ONE corner point. That's easy, not
+		% much to do.
+		\def\pgfplotsplothandlermesh@get@flat@color{%
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex}%
+			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+			\pgfplotsaxisvisphasetransformpointmeta
+			\let\pgfplotsretval=\pgfplotspointmetatransformed%
+		}%
+	\else
+		% 'flat mean':
+		%
+		% use colordata as mean of all corners for shading.
+		\if0\pgfplotsplothandlermesh@colorinput
+			% mesh/color input=colormap
 			\global\pgfplots@tmpa=0pt
 			\def\pgfplotsplothandlermesh@get@flat@color{%
 				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
@@ -2328,99 +2432,25 @@
 				\edef\pgfplotsretval{\pgf@sys@tonumber\pgfplots@tmpa}%
 				\global\pgfplots@tmpa=0pt
 			}%
-		\fi
-		%
-		%
-		\if\pgfplots@meshmode m%
-			% 'mesh' plot: stroke only and use the 'flat' code
-			% here just to define the color for each mesh
-			% segment.
-			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
 		\else
-			% 'surf' plot: 
-			\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfillstroke
-			\if\pgfplotsplothandlermesh@shader3% faceted interp
-				% it has an extra fill command (shading)
-				\let\pgfplotsplothandlermesh@usepath=\pgfusepathqstroke
-			\fi
+			% mesh/color input=explicit
+			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
+			\pgf@xa=1pt %
+			\divide\pgf@xa by\pgfplotsretval\relax
+			\edef\pgfplotsplothandlermesh@get@flat@color@@{\pgf@sys@tonumber\pgf@xa}%
 			%
-			% the distinction between 'faceted' and 'flat' is
-			% technical: it is just the default draw color.
-			%
-			% 'flat,draw=black' is the same as 'faceted'.
-			\pgfkeysgetvalue{/pgfplots/faceted color}\pgfplots@loc@TMPb
-			\def\pgfplots@loc@TMPc{none}%
-			\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPc
-				\pgfkeyslet{/pgfplots/faceted color}\pgfutil@empty
-				\def\pgfplots@loc@TMPb{}%
-			\fi
-			%
-			\def\pgfplots@loc@TMPa{0}%
-			\if\pgfplotsplothandlermesh@shader1% faceted
-				\def\pgfplots@loc@TMPa{1}%
-				\ifx\pgfplots@loc@TMPb\pgfutil@empty
-					% oh. no faceted color. Then: fill only, use
-					% whatever color is available.
-					\def\pgfplots@loc@TMPa{0}%
-					%\let\pgfplotsplothandlermesh@usepath=\pgfusepathqfill
-				\fi
-			\fi
-			\if\pgfplotsplothandlermesh@shader3% faceted interp
-				\def\pgfplots@loc@TMPa{1}%
-				\ifx\pgfplots@loc@TMPb\pgfutil@empty
-					% oh. no faceted color. Then: no-op!
-					% This is the same as interp with more overhead
-					% (but allows z buffering).
-					\def\pgfplots@loc@TMPa{0}%
-					\def\pgfplotsplothandlermesh@usepath{\pgfusepath{discard}}%
-				\fi
-			\fi
-			\if1\pgfplots@loc@TMPa
-				% make sure there is a the correct color.
-				\expandafter\def\expandafter\pgfplots@drawoptions\expandafter{%
-					\pgfplots@drawoptions
-					\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/faceted color}}%
+			\def\pgfplotsplothandlermesh@get@flat@color{%
+				\pgfplotscolornormalizesequencezero
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
+					\pgfplotscolornormalizesequenceaddweighted
+						{\pgfplotsretval}
+						{\pgfplotsplothandlermesh@get@flat@color@@}%
+						{\pgfplotspatchvertexmeta}%
 				}%
-			\fi
-			%
-		\fi
-		%
-		\ifx\pgfplotsplothandlermesh@PIPE@REFINE\pgfplotsplothandlermesh@PIPE@REFINE@no@op
-			\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
-		\else
-			\ifpgfplotsplothandlermesh@hide@refined@edges
-				% this is (at most) partially implemented.
-				\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@separate@fillstroke
-			\else
-				\let\pgfplotsplothandlermesh@VISUALIZE@std=\pgfplotsplothandlermesh@VISUALIZE@std@fill@andor@stroke
-			\fi
-			%
-			% FIXME : that doesn't work.
-			% filling *always* seems to need a stroke operation,
-			% otherwise there will be translucent edges.
-			% I need to adjust the stroke color :-(
-			%
-			% FIXME : even that doesn't work correctly. The problem
-			% is: drawing adjacent patches on top of each other
-			% OVERDRAWS edges: once with the correct stroke color;
-			% once with the fill color.
-			%
-			\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqstroke
-				\let\pgfplotsplothandlermesh@usepathfill=\relax
-				\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
-			\else
-				\ifx\pgfplotsplothandlermesh@usepath\pgfusepathqfillstroke
-					\let\pgfplotsplothandlermesh@usepathfill=\pgfusepathqfillstroke
-					\let\pgfplotsplothandlermesh@usepathstroke=\pgfusepathqstroke
-				\else
-					\let\pgfplotsplothandlermesh@usepathfill=\relax
-					\let\pgfplotsplothandlermesh@usepathstroke=\relax
-				\fi
-			\fi
+			}%
 		\fi
 	\fi
 }%
-
 
 \def\pgfplotsplothandlermesh@init@jumphandling{%
 	% For matrix input, a "jump" should result in something
