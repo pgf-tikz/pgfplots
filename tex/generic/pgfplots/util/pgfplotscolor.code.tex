@@ -1,0 +1,303 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007-2013 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\pgfkeys{
+	/pgfplots/color sequence/colorspace/.initial=auto,
+}
+
+% the beginning of a normalized color sequence.
+%
+% It is to be used like
+% \pgfplotscolornormalizesequence[colorspace=rgb]
+%
+% \pgfplotscolornormalizesequencenext{1,1,1}
+% -> \pgfplotsretval = {rgb}{1,1,1} % uses default colorspace
+% \pgfplotscolornormalizesequencenext{color=red}
+% -> \pgfplotsretval = {rgb}{1,0,0}
+% \pgfplotscolornormalizesequencenext{color=blue}
+% -> \pgfplotsretval = {rgb}{0,0,1}
+% \pgfplotscolornormalizesequencenext{rgb=1,0,0}
+% -> \pgfplotsretval = {rgb}{1,0,0}
+% \pgfplotscolornormalizesequencenext{cmyk=1,0,0,1}
+% -> \pgfplotsretval = {rgb}{<converted value>}
+%
+% \endpgfplotscolornormalizesequence
+%
+% Every color provided in the sequence will be normalized by
+% transforming it to the common color space.
+%
+% #1 : keys in the /pgfplots/color sequence path
+\def\pgfplotscolornormalizesequence[#1]{%
+	\pgfqkeys{/pgfplots/color sequence}{#1}%
+	\pgfkeysgetvalue{/pgfplots/color sequence/colorspace}\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+	\def\pgfplots@loc@TMPb{auto}%
+	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+		% colorspace=auto: same as empty.
+		\let\pgfplots@loc@TMPa=\pgfutil@empty
+	\fi
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% colorspace=auto:
+		\def\pgfplotscolornormalizesequence@colspace{}%
+	\else
+		\def\pgfplots@loc@TMPb{rgb}%
+		\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+			% colorspace=rgb:
+			\def\pgfplotscolornormalizesequence@colspace{rgb}%
+		\else
+			\def\pgfplots@loc@TMPb{cmyk}%
+			\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+				% colorspace=cmyk:
+				\def\pgfplotscolornormalizesequence@colspace{cmyk}%
+			\else
+				\pgfplots@error{Sorry, the choice 'colormap default colorspace=\pgfplots@loc@TMPa' is unknown to pgfplots, please use one of 'auto,rgb,cmyk'}%
+			\fi
+		\fi
+	\fi
+}%
+
+% ends a normalized color sequence and returns the final colorspace
+% and its number of components into \pgfplotsretval and
+% \pgfplotsretvalb, respectively
+\def\endpgfplotscolornormalizesequence{%
+	\let\pgfplotsretval=\pgfplotscolornormalizesequence@colspace
+	\pgfplotscolor@get@num@components{\pgfplotsretval}{\pgfplotsretvalb}%
+}%
+
+% accepts the next color in a sequence of colors. The color will be
+% normalized and the normalized result written to \pgfplotsretval.
+%
+% SEE \pgfplotscolornormalizesequencenext -- it is MUCH more powerful!
+%
+% #1 the color space of the color.
+% #2 the components of the color, separated by comma.
+%
+% POSTCONDITION: 
+%   \pgfplotsretval contains '{<color space>}{<comma-separated-components>}'
+%  -> including the curly braces.
+%  
+%  \pgfplotsretvalb contains the number of input components in
+%  \pgfplotsretval
+\def\pgfplotscolornormalizesequencenextbycomponents#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\edef\pgfplots@loc@TMPb{#2}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop\pgfplots@loc@TMPb,\pgfplots@EOI,%
+	%
+	\ifx\pgfplots@loc@TMPa\pgfplotscolornormalizesequence@colspace
+	\else
+		\ifx\pgfplotscolornormalizesequence@colspace\pgfutil@empty
+			\let\pgfplotscolornormalizesequence@colspace=\pgfplots@loc@TMPa
+		\else
+			% Oh. We need to convert the color space!
+			\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{#2}}%
+			\expandafter\pgfutil@convertcolorspec\pgfplots@loc@TMPa
+				{\pgfplotscolornormalizesequence@colspace}% target color spaces
+				{\pgfplots@loc@TMPb}% target macro
+		\fi
+	\fi
+	\edef\pgfplotsretval{{\pgfplotscolornormalizesequence@colspace}{\pgfplots@loc@TMPb}}%
+	\pgfplotscolor@get@num@components{\pgfplotscolornormalizesequence@colspace}{\pgfplotsretvalb}%
+}
+
+% assigns the number of color components for the given colorspace to
+% \pgfplotsretval
+\def\pgfplotscolorspacegetcomponents#1{%
+	\pgfplotscolor@get@num@components{#1}{\pgfplotsretval}%
+}%
+
+\def\pgfplotscolor@get@num@components#1#2{%
+	\pgfutil@ifundefined{pgfplotscolor@get@num@components@#1}{%
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{The input color has an unsupported color space '#1'}\pgfeov%
+	}{%
+		\edef#2{\csname pgfplotscolor@get@num@components@#1\endcsname}%
+	}%
+}%
+
+\def\pgfplotscolor@get@num@components@rgb{3}%
+\def\pgfplotscolor@get@num@components@cmyk{4}%
+\def\pgfplotscolor@colspacename@rgb{rgb}%
+\def\pgfplotscolor@colspacename@cmyk{cmyk}%
+
+\def\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop#1,{%
+	\def\pgfplots@loc@TMPd{#1}%
+	\ifx\pgfplots@loc@TMPd\pgfplots@EOI
+	\else
+		\pgfplotscolornormalizesequencenextbycomponents@sanitize{#1}%
+		\expandafter\pgfplotscolornormalizesequencenextbycomponents@sanitize@loop
+	\fi
+}
+
+% #1 the color component value
+\def\pgfplotscolornormalizesequencenextbycomponents@sanitize#1{%
+	\ifdim#1pt<0pt %
+		\pgfplots@createcolormap@rangeexception{#1}%
+	\fi
+	\ifdim#1pt>1pt %
+		\pgfplots@createcolormap@rangeexception{#1}%
+	\fi
+}
+
+% Same as \pgfplotscolornormalizesequencenextbycomponents but with
+% more freedom in the input.
+%
+% #1 some color.
+% Accepted formats:
+% 'color=<xcolor value>'
+% 	<xcolor value> is any valid expression of the xcolor package.
+%
+% 'rgb=R,G,B'  
+% 	R,G,B are numbers in [0,1]
+%
+% 'rgb255=R,G,B'
+% 	R,G,B are numbers in [0,255]
+%
+% 'cmyk=C,M,Y,K'
+% 	C, M, Y, and K are numbers in [0,1]
+%
+% 'cmyk255=C,M,Y,K'
+% 	C, M, Y, and K are numbers in [0,255]
+%
+% 'gray=G'
+%   G is a gray scale number in [0,1]
+%
+% 'C1,C2,C3'  
+% 	any number of Ci can folow, each is interpreted in the default
+% 	colorspace (i.e. the one set before at the beginning of the
+% 	sequence)
+%
+%
+% Example:
+% \pgfplotscolornormalizesequencenext{color=blue}
+% \pgfplotscolornormalizesequencenext{rgb=1,0,0}
+% \pgfplotscolornormalizesequencenext{cmyk=1,0,0,1}
+% \pgfplotscolornormalizesequencenext{1,0,0} (interpreted in the
+% colorspace set at \pgfplotscolornormalizesequence)
+%
+% POSTCONDITION: see \pgfplotscolornormalizesequencenextbycomponents
+\def\pgfplotscolornormalizesequencenext#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplotscolornormalizesequencenext@\pgfplots@loc@TMPa\pgfplots@EOI
+}
+\def\pgfplotscolornormalizesequencenext@{%
+	\pgfutil@ifnextchar c{%
+		\pgfplotscolornormalizesequencenext@c
+	}{%
+		\pgfutil@ifnextchar r{%
+			\pgfplotscolornormalizesequencenext@rgb
+		}{%
+			\pgfutil@ifnextchar g{%
+				\pgfplotscolornormalizesequencenext@gray
+			}{%
+				\pgfplotscolornormalizesequencenext@defaultcolspace
+			}%
+		}%
+	}%
+}
+
+\def\pgfplotscolornormalizesequencenext@gray gray=#1\pgfplots@EOI{%
+	% FIXME : we might be better off with real support for a gray
+	% colorspace!
+	\pgfplotscolornormalizesequencenextbycomponents{rgb}{#1,#1,#1}%
+}
+
+\def\pgfplotscolornormalizesequencenext@defaultcolspace#1\pgfplots@EOI{%
+	\ifx\pgfplotscolornormalizesequence@colspace\pgfutil@empty
+		\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{The input color #1 cannot be interpreted; please assign a default color space first}\pgfeov%
+	\fi
+	\pgfplotscolornormalizesequencenextbycomponents{\pgfplotscolornormalizesequence@colspace}{#1}%
+}
+\def\pgfplotscolornormalizesequencenext@rgb rgb{%
+	\pgfutil@ifnextchar2{%
+		\pgfplotscolornormalizesequencenext@rgb@two@five@five
+	}{%
+		\pgfplotscolornormalizesequencenext@rgb@plain
+	}%
+}
+\def\pgfplotscolornormalizesequencenext@rgb@plain=#1\pgfplots@EOI{%
+	\pgfplotscolornormalizesequencenextbycomponents{rgb}{#1}%
+}
+
+\def\pgfplotscolornormalizesequencenext@rgb@two@five@five255=#1,#2,#3\pgfplots@EOI{%
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#2}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfplots@createcolormap@grabrgb@two@five@five@rescale{#3}%
+	\edef\pgfplots@loc@TMPc{{rgb}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfmathresult}}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgfplots@loc@TMPc%
+}
+
+\def\pgfplotscolornormalizesequencenext@c c{%
+	\pgfutil@ifnextchar m{%
+		\pgfplotscolornormalizesequencenext@cmyk
+	}{%
+		\pgfplotscolornormalizesequencenext@color
+	}%
+}%
+
+\def\pgfplotscolornormalizesequencenext@cmyk myk{%
+	\pgfutil@ifnextchar2{%
+		\pgfplotscolornormalizesequencenext@cmyk@two@five@five
+	}{%
+		\pgfplotscolornormalizesequencenext@cmyk@plain
+	}%
+}%
+
+\def\pgfplotscolornormalizesequencenext@cmyk@plain=#1\pgfplots@EOI{%
+	\pgfplotscolornormalizesequencenextbycomponents{cmyk}{#1}%
+}%
+\def\pgfplotscolornormalizesequencenext@cmyk@two@five@five255=#1,#2,#3,#4\pgfplots@EOI{%
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#1}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#2}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#3}%
+	\let\pgfplots@loc@TMPc=\pgfmathresult
+	\pgfplots@createcolormap@grabcmyk@two@five@five@rescale{#4}%
+	\edef\pgfplots@loc@TMPc{{cmyk}{\pgfplots@loc@TMPa,\pgfplots@loc@TMPb,\pgfplots@loc@TMPc,\pgfmathresult}}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgfplots@loc@TMPc%
+}
+
+\def\pgfplotscolornormalizesequencenext@color olor=#1\pgfplots@EOI{%
+	\pgfutil@colorlet{pgf@tempcol}{#1}%
+	\pgfutil@extractcolorspec{pgf@tempcol}{\pgf@tempcolor}%
+	\edef\pgfplots@loc@TMPa{\expandafter\pgfutil@firstoftwo\pgf@tempcolor}%
+	\edef\pgfplots@loc@TMPb{\expandafter\pgfutil@secondoftwo\pgf@tempcolor}%
+	%
+	% I expect that \pgf@tempcolor is of the form
+	% {<colorspace>}{<comma-separated components>}
+	%
+	% unfortunately, the <colorspace> has strange catcodes such that
+	% we cannot easily compare it by means of \ifx. I normalize it
+	% here:
+	\edef\pgf@tempcolor{%
+		{\csname pgfplotscolor@colspacename@\pgfplots@loc@TMPa\endcsname}%
+		{\pgfplots@loc@TMPb}%
+	}%
+	\expandafter\pgfplotscolornormalizesequencenextbycomponents\pgf@tempcolor%
+}%
+
+\endinput
