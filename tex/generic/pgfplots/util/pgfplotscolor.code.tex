@@ -127,29 +127,22 @@
 %  \pgfplotsretvalb contains the number of input components in
 %  \pgfplotsretval
 \def\pgfplotscolornormalizesequencenextbycomponents#1#2{%
-	\edef\pgfplots@loc@TMPb{#2}%
 	\edef\pgfplotscolornormalizesequence@cur@colspace{#1}%
-	\pgfutil@ifundefined{pgfplots@colspace@name@\pgfplotscolornormalizesequence@cur@colspace}{%
-		\pgfplotscolor@colorspaceknownfalse
-	}{%
-		\pgfplotscolor@colorspaceknowntrue
-	}%
-	\def\pgfplotsretval{}%
-	\c@pgf@counta=0 %
-	\expandafter\pgfplotscolornormalizesequencenext@prepare@loop\pgfplots@loc@TMPb,\pgfplots@EOI,%
+	\pgfplotscolornormalizesequencenextbycomponents@normalize@components{#2}%
 	%
-	\edef\pgfplots@loc@TMPa{#1}%
-	\ifx\pgfplots@loc@TMPa\pgfplotscolornormalizesequence@colspace
+	\ifx\pgfplotscolornormalizesequence@cur@colspace\pgfplotscolornormalizesequence@colspace
 	\else
 		\ifx\pgfplotscolornormalizesequence@colspace\pgfutil@empty
-			\pgfutil@ifundefined{pgfplots@colspace@name@\pgfplots@loc@TMPa}{%
-				\pgfplotscolornormalizesequencenext@color@error{{#1}{#2}}%
-			}{%
-				\let\pgfplotscolornormalizesequence@colspace=\pgfplots@loc@TMPa
-			}%
+			\pgfplotscolornormalizesequencenextbycomponents@assign@auto@colspace
+		\fi
+		%
+		\ifx\pgfplotscolornormalizesequence@colspace\pgfplotscolornormalizesequence@cur@colspace
+			% Ah, ok - the colorspace is NOW the correct one (because
+			% we chose it as the colorspace for this complete color
+			% sequence.
 		\else
 			% Oh. We need to convert the color space!
-			\edef\pgfplots@loc@TMPa{{\pgfplots@loc@TMPa}{\pgfplotsretval}}%
+			\edef\pgfplots@loc@TMPa{{\pgfplotscolornormalizesequence@cur@colspace}{\pgfplotsretval}}%
 			\expandafter\pgfutil@convertcolorspec\pgfplots@loc@TMPa
 				{\pgfplotscolornormalizesequence@colspace}% target color spaces
 				{\pgfplotsretval}% target macro
@@ -158,6 +151,50 @@
 	\edef\pgfplotsretval{\pgfplotsretval}%
 	\pgfplotscolor@get@num@components{\pgfplotscolornormalizesequence@colspace}{\pgfplotsretvalb}%
 }
+
+\def\pgfplotscolornormalizesequencenextbycomponents@assign@auto@colspace{%
+	% Ah; we have '/pgfplots/color sequence/colorspace=auto'.
+	% Well, check if the current colorspace (stored in
+	% \pgfplotscolornormalizesequence@cur@colspace) is suitable.
+	%
+	% It is suitable if it is rgb or cmyk. In all other cases,
+	% we choose either rgb or cmyk. More precisely. 'cmy' is
+	% mapped to cmyk. All other cases are treated as rgb.
+	%
+	\def\pgfplots@loc@TMPa{cmyk}%
+	\ifx\pgfplotscolornormalizesequence@cur@colspace\pgfplots@loc@TMPa
+		\let\pgfplotscolornormalizesequence@colspace=\pgfplotscolornormalizesequence@cur@colspace
+	\else
+		\def\pgfplots@loc@TMPa{cmy}%
+		\ifx\pgfplotscolornormalizesequence@cur@colspace\pgfplots@loc@TMPa
+			\def\pgfplotscolornormalizesequence@colspace{cmyk}%
+		\else
+			% rgb appears to be the best choice: (1) it is backwards
+			% compatible and (2) gray or something like that might fit
+			% badly to any other colors in the sequence.
+			\def\pgfplotscolornormalizesequence@colspace{rgb}%
+		\fi
+	\fi
+}
+
+% #1: color components
+%
+% PRECONDITION: \pgfplotscolornormalizesequence@cur@colspace is the
+% current color space
+%
+% POSTCONDITION: \pgfplotsretval contains the normalized color
+% components
+\def\pgfplotscolornormalizesequencenextbycomponents@normalize@components#1{%
+	\pgfutil@ifundefined{pgfplots@colspace@name@\pgfplotscolornormalizesequence@cur@colspace}{%
+		\pgfplotscolor@colorspaceknownfalse
+	}{%
+		\pgfplotscolor@colorspaceknowntrue
+	}%
+	\edef\pgfplots@loc@TMPb{#1}%
+	\def\pgfplotsretval{}%
+	\c@pgf@counta=0 %
+	\expandafter\pgfplotscolornormalizesequencenext@prepare@loop\pgfplots@loc@TMPb,\pgfplots@EOI,%
+}%
 
 % assigns the number of color components for the given colorspace to
 % \pgfplotsretval
@@ -437,11 +474,6 @@
 	%
 }%
 
-\def\pgfplotscolornormalizesequencenext@color@error#1{%
-	% FIXME : do not refer to 'colormap' here:
-	\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the current configuration is to auto-detect the output colorspace. However, the first provided color '#1' has an unsupported output colorspace '\pgfplots@loc@TMPa'. Please provide a color with supported first color or configure the output colorspace 'colormap default colorspace'. Note that conversion to the output colorspace is possible. (near \pgfplotscolornormalizesequence@context@message)}\pgfeov%
-}
-
 % Defines \pgfplotsretval to be a "neutral" color, i.e. one in which
 % all components are zero.
 \def\pgfplotscolornormalizesequencezero{%
@@ -470,8 +502,8 @@
 		\expandafter\let
 		\expandafter\pgfplots@glob@TMPd\csname pgfplotscolornormalizesequencegetnumcomponents@\pgfplotsretval\endcsname
 	\endgroup
-	\edef\pgfplots@loc@TMPa{#1:#3}%
-	\expandafter\pgfplots@glob@TMPd\pgfplots@loc@TMPa\relax{#2}%
+	\edef\pgfplots@loc@TMPa{#1:#3\noexpand\relax{#2}}%
+	\expandafter\pgfplots@glob@TMPd\pgfplots@loc@TMPa%
 }%
 
 \def\pgfplotscolornormalizesequenceaddweighted@single#1#2#3{%
