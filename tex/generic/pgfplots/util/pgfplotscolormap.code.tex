@@ -8,7 +8,7 @@
 % 
 % It is based on Till Tantau's PGF package.
 %
-% Copyright 2007/2008 by Christian Feuersänger.
+% Copyright 2007-2013 by Christian Feuersänger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -114,16 +114,9 @@
 	{%
 		\pgfutil@ifnextchar;{\pgfplots@createcolormap@grabsemicolon}%
 		{%
-			\pgfutil@ifnextchar r{\pgfplots@createcolormap@grabrgb}%
+			\expandafter\pgfutil@ifnextchar\pgfplots@activesemicolon{\pgfplots@createcolormap@grabsemicolon@active}%
 			{%
-				\pgfutil@ifnextchar g{\pgfplots@createcolormap@grabgray}%
-				{%
-					\pgfutil@ifnextchar c{\pgfplots@createcolormap@grabc}%
-					{
-						\expandafter\pgfutil@ifnextchar\pgfplots@activesemicolon{\pgfplots@createcolormap@grabsemicolon@active}%
-						{\pgfplots@createcolormap@error}%
-					}%
-				}%
+				\pgfplots@createcolormap@grabnext
 			}%
 		}%
 	}%
@@ -135,6 +128,117 @@
 		\pgfplots@error{Illformed colormap specification: I could not read the substring `\the\t@pgfplots@toka' starting at `\the\t@pgfplots@tokb'}%
 	}%
 }%
+
+\def\pgfplots@createcolormap@grabnext#1({%
+	\pgfplots@createcolormap@grabnext@{#1}%
+}
+\def\pgfplots@createcolormap@grabnext@#1#2){%
+	\pgfutil@in@={#1}%
+	\ifpgfutil@in@
+		% Ah. we do not have a position, i.e. we have
+		%   color=(green)
+		% or something like this.
+		%
+		% this here defines \pgfplots@loc@TMPa to contain the
+		% colorspace:
+		\pgfplots@createcolormap@grabnext@remove@equal@sign#1\pgfplots@EOI
+		%
+		\pgfplots@createcolormap@grabnext@computenextposition
+		\let\pgfplots@loc@TMPb=\pgfmathresult% posisiton
+		\def\pgfplots@loc@TMPc{#2}% color data
+		\let\pgfplots@loc@TMPd=\pgfplots@createcolormap@grabnext@complete
+	\else
+		% Ah. We have something like 'color(1cm)' and we did not see
+		% the equal sign so far.
+		\def\pgfplots@loc@TMPa{#1}% colorspace
+		\def\pgfplots@loc@TMPb{#2}% position
+		%
+		% and collect the color data:
+		\def\pgfplots@loc@TMPd{%
+			\pgfutil@ifnextchar={%
+				\pgfplots@createcolormap@grabnext@@
+			}{%
+				\pgfplots@createcolormap@error#1(#2)%
+			}%
+		}%
+	\fi
+	\pgfplots@loc@TMPd
+}%
+
+\def\pgfplots@createcolormap@grabnext@remove@equal@sign#1=#2\pgfplots@EOI{%
+	\def\pgfplots@loc@TMPa{#1}%
+	%
+	% FIXME : what if #2 is not empty!?
+}%
+
+\def\pgfplots@createcolormap@grabnext@@={%
+	\pgfutil@ifnextchar({%
+		\pgfplots@createcolormap@grabnext@@@
+	}{%
+		\pgfplots@createcolormap@error=%
+	}%
+}%
+\def\pgfplots@createcolormap@grabnext@@@(#1){%
+	\def\pgfplots@loc@TMPc{#1}%
+	\pgfplots@createcolormap@grabnext@complete
+}%
+
+\def\pgfplots@createcolormap@grabnext@complete{%
+	\edef\pgfplots@loc@TMPa{%
+		{\pgfplots@loc@TMPb}% position
+		{%
+		\pgfplots@loc@TMPa% colorspace
+		=\pgfplots@loc@TMPc% color data
+		}%
+	}%
+	\expandafter\pgfplots@createcolormap@nextcolor\pgfplots@loc@TMPa
+	%
+	% continue loop:
+	\pgfplots@createcolormap@
+}%
+
+% POSTCONDITION:
+%   \pgfplots@loc@TMPa contains the colorspace
+%   \pgfplots@loc@TMPb contains the position
+%   \pgfplots@loc@TMPc contains the color components
+\def\pgfplots@createcolormap@grabnext@split#1=#2\pgfplots@EOI{%
+	\pgfutil@in@({#1}%
+	\ifpgfutil@in@
+		\pgfplots@createcolormap@grabnext@split@pos#1\pgfplots@EOI
+	\else
+		\def\pgfplots@loc@TMPa{#1}%
+		\pgfplots@createcolormap@grabnext@computenextposition
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+	\fi
+	\def\pgfplots@loc@TMPc{#2}%
+}%
+
+\def\pgfplots@createcolormap@grabnext@computenextposition{%
+	% determine next step size automatically:
+	\ifx\pgfplots@createcolormap@H\pgfutil@empty
+		\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
+		\ifpgfplotsarrayempty
+			% first:
+			\def\pgfmathresult{0sp}%
+		\else
+			% second:
+			\def\pgfmathresult{1cm}%
+		\fi
+	\else
+		% not first:
+		\pgfmathadd@\pgfplots@createcolormap@LAST\pgfplots@createcolormap@H
+	\fi
+}%
+
+\def\pgfplots@createcolormap@grabnext@split@pos#1(#2){%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\def\pgfplots@loc@TMPa{#1}%
+		\def\pgfplots@loc@TMPb{#2}%
+	}{%
+		\pgfplots@createcolormap@error#1(#2)%
+	}%
+}%
+
 \def\pgfplots@createcolormap@grabsemicolon;{\pgfplots@createcolormap@}%
 
 {
@@ -142,111 +246,6 @@
 	\gdef\pgfplots@createcolormap@grabsemicolon@active;{\pgfplots@createcolormap@}%
 }
 
-\def\pgfplots@createcolormap@next{%
-	\pgfutil@ifnextchar({%
-		\pgfplots@createcolormap@next@
-	}{%
-		% determine next step size automatically:
-		\ifx\pgfplots@createcolormap@H\pgfutil@empty
-			\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
-			\ifpgfplotsarrayempty
-				% first:
-				\def\pgfmathresult{0sp}%
-			\else
-				% second:
-				\def\pgfmathresult{1cm}%
-			\fi
-		\else
-			% not first:
-			\pgfmathadd@\pgfplots@createcolormap@LAST\pgfplots@createcolormap@H
-		\fi
-		\expandafter\pgfplots@createcolormap@next@\expandafter(\pgfmathresult)%
-	}%
-}%
-
-\def\pgfplots@createcolormap@grabrgb rgb{
-	\pgfutil@ifnextchar2{%
-		\pgfplots@createcolormap@grabrgb@two@five@five
-	}{%
-		\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabrgb@
-		\pgfplots@createcolormap@next
-	}%
-}
-\def\pgfplots@createcolormap@grabrgb@(#1)=(#2,#3,#4){%
-	\def\pgfplots@createcolormap@context{rgb(#1)=(#2,#3,#4)}%
-	\pgfplots@createcolormap@nextRGB{#1}{#2}{#3}{#4}%
- 	\pgfplots@createcolormap@}
-\def\pgfplots@createcolormap@grabrgb@two@five@five@rescale#1{%
-	\pgfmath@basic@multiply@{0.003921568}{#1}%
-}%
-\def\pgfplots@createcolormap@grabrgb@two@five@five255{%
-	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabrgb@two@five@five@
-	\pgfplots@createcolormap@next
-}
-\def\pgfplots@createcolormap@grabrgb@two@five@five@(#1)=(#2,#3,#4){%
-	\def\pgfplots@createcolormap@context{rgb255(#1)=(#2,#3,#4)}%
-	\pgfplots@createcolormap@nextcolor{#1}{rgb255=#2,#3,#4}%
- 	\pgfplots@createcolormap@
-}
-
-
-\def\pgfplots@createcolormap@grabcmyk myk{
-	\pgfutil@ifnextchar2{%
-		\pgfplots@createcolormap@grabcmyk@two@five@five
-	}{%
-		\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabcmyk@
-		\pgfplots@createcolormap@next
-	}%
-}
-\def\pgfplots@createcolormap@grabcmyk@(#1)=(#2,#3,#4,#5){%
-	\def\pgfplots@createcolormap@context{cmyk(#1)=(#2,#3,#4,#5)}%
-	\pgfplots@createcolormap@nextcolor{#1}{cmyk=#2,#3,#4,#5}%
- 	\pgfplots@createcolormap@}
-\def\pgfplots@createcolormap@grabcmyk@two@five@five255{%
-	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabcmyk@two@five@five@
-	\pgfplots@createcolormap@next
-}
-\def\pgfplots@createcolormap@grabcmyk@two@five@five@(#1)=(#2,#3,#4,#5){%
-	\def\pgfplots@createcolormap@context{cmyk255(#1)=(#2,#3,#4,#5)}%
-	\pgfplots@createcolormap@nextcolor{#1}{cmyk255=#2,#3,#4,#5}%
- 	\pgfplots@createcolormap@
-}
-
-
-\def\pgfplots@createcolormap@grabgray gray{%
-	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabgray@
-	\pgfplots@createcolormap@next
-}%
-\def\pgfplots@createcolormap@grabgray@(#1)=(#2){%
-	\def\pgfplots@createcolormap@context{gray(#1)=(#2)}%
-	\pgfplots@createcolormap@nextcolor{#1}{gray=#2}%
- 	\pgfplots@createcolormap@}
-
-\def\pgfplots@createcolormap@grabc c{%
-	\pgfutil@ifnextchar m{%
-		\pgfplots@createcolormap@grabcmyk
-	}{%
-		\pgfplots@createcolormap@grabcolor
-	}%
-}%
-\def\pgfplots@createcolormap@grabcolor olor{%
-	\let\pgfplots@createcolormap@next@\pgfplots@createcolormap@grabcolor@
-	\pgfplots@createcolormap@next
-}%
-\def\pgfplots@createcolormap@grabcolor@(#1)=(#2){%
-	\def\pgfplots@createcolormap@context{color(#1)=(#2)}%
-	\pgfplots@createcolormap@nextcolor{#1}{color=#2}%
-	% 
-	% continue loop:
-	\pgfplots@createcolormap@
-}%
-
-% Ok, we parsed the next single spec.
-% #1: the width
-% #2,#3,#4 RGB values.
-\def\pgfplots@createcolormap@nextRGB#1#2#3#4{%
-	\pgfplots@createcolormap@nextcolor{#1}{rgb=#2,#3,#4}%
-}%
 
 % #1: h
 % #2: a compound element of the form
@@ -390,6 +389,21 @@
 	\endgroup
 }
 
+% Defines \pgfplotsretval to contain the mesh width of colormap #1
+\def\pgfplotscolormapgetmeshwidth#1{%
+	\expandafter\let\expandafter\pgfplotsretval\csname pgfpl@cm@#1@h\endcsname%
+}%
+
+% defines macro #2 to contain a serialized variant of the color
+% components (only the color components!)
+\def\pgfplotscolormapserializecomponentstomacro#1#2{%
+	\pgfplotsapplistXnewempty\pgfplots@serialize@list@
+	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\elem},\to\pgfplots@serialize@list@
+	}%
+	\pgfplotsapplistXlet#2=\pgfplots@serialize@list@
+}%
+
 % Copies the contents of the colormap named '#1' into a macro '#2'.
 % Invocation of the macro will then re-create the colormap.
 %
@@ -397,11 +411,7 @@
 % #2: a macro name
 \def\pgfplotscolormapserializetomacro#1#2{%
 	\begingroup
-		\pgfplotsapplistXnewempty\pgfplots@serialize@list@
-		\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
-			\expandafter\pgfplotsapplistXpushback\expandafter{\elem},\to\pgfplots@serialize@list@
-		}%
-		\pgfplotsapplistXlet\pgfplots@serialize@list=\pgfplots@serialize@list@
+		\pgfplotscolormapserializecomponentstomacro{#1}\pgfplots@serialize@list
 		\toks0={\expandafter\def\csname pgfpl@cm@#1@h\endcsname}%
 		\toks1={\expandafter\def\csname pgfpl@cm@#1@invh\endcsname}%
 		\toks2={%
