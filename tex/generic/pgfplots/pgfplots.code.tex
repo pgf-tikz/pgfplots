@@ -68,7 +68,6 @@
 \newif\ifpgfplotsplothandlermesh@patch@type@sampling
 \newif\ifpgfplots@clip@limits
 \newif\ifpgfplots@clip
-\newif\ifpgfplots@clip@has@bb
 \newif\ifpgfplots@plot@coords@mathparser
 \pgfplots@plot@coords@mathparsertrue
 \newif\ifpgfplots@enlargelimits
@@ -1673,8 +1672,10 @@
 	% graphical elements):
 	/pgfplots/clip mode/individual/.code=	\def\pgfplots@clipmode{2},
 	/pgfplots/clip mode=global,
-	/pgfplots/clip has bounding box/.is if=pgfplots@clip@has@bb,
-	/pgfplots/clip has bounding box=true, % the compat stuff. this is for backw. compat.
+	/pgfplots/clip bounding box/.is choice,
+	/pgfplots/clip bounding box/default tikz/.code=\def\pgfplots@clip@BB@mode{0},
+	/pgfplots/clip bounding box/upper bound/.code=\def\pgfplots@clip@BB@mode{1},
+	/pgfplots/clip bounding box=default tikz, % the compat stuff. this is for backw. compat.
 	% will be used if it exists:
 	/pgfplots/axis background/.style={},
 	/pgfplots/axis background style/.style={/pgfplots/axis background/.append style={#1}},
@@ -3687,14 +3688,14 @@
 	/pgfplots/compat/bar width by units/default/.style={/pgfplots/compat/bar width by units/pre 1.3},
 	%
 	/pgfplots/compat/general/.is choice,
-	/pgfplots/compat/general/pre 1.3/.style={/pgfplots/log origin=infty,/pgfplots/clip has bounding box=true},%
+	/pgfplots/compat/general/pre 1.3/.style={/pgfplots/log origin=infty,/pgfplots/clip bounding box=default tikz},%
 	/pgfplots/compat/general/1.3/.style=	{/pgfplots/compat/general/pre 1.3},
 	/pgfplots/compat/general/1.4/.style=	{/pgfplots/compat/general/pre 1.3},%
 	/pgfplots/compat/general/1.5/.style=	{/pgfplots/log origin=0},%
 	/pgfplots/compat/general/1.5.1/.style=	{/pgfplots/compat/general/1.5},%
 	/pgfplots/compat/general/1.6/.style=	{/pgfplots/compat/general/1.5},%
 	/pgfplots/compat/general/1.7/.style=	{/pgfplots/compat/general/1.5},%
-	/pgfplots/compat/general/1.8/.style=	{/pgfplots/compat/general/1.5,/pgfplots/clip has bounding box=false},%
+	/pgfplots/compat/general/1.8/.style=	{/pgfplots/compat/general/1.5,/pgfplots/clip bounding box=upper bound},%
 	/pgfplots/compat/general/newest/.style=	{/pgfplots/compat/general/1.8},
 	/pgfplots/compat/general/default/.style={/pgfplots/compat/general/1.5},
 	%
@@ -8118,29 +8119,112 @@
 	% Replace \pgfplots@clippath@install by one which makes use of the
 	% optimized version (if ##1=\pgfusepath{clip})
 	\def\pgfplots@clippath@install##1{%
-		\begingroup
-			\def\pgfplots@loc@TMPa{##1}%
-				% the 'clip' path has been precomputed because it is often
-				% used: FIXME: unfinished, see above
-				%\expandafter\pgfsys@invoke\expandafter{\pgfplots@clippath@install@clip@protocolled}%
-			\ifx\pgfplots@loc@TMPa\pgfplots@clippath@install@test
+		\def\pgfplots@loc@TMPa{##1}%
+		\let\pgfplots@clippath@install@aftergroup=\pgfutil@empty
+			% the 'clip' path has been precomputed because it is often
+			% used: FIXME: unfinished, see above
+			%\expandafter\pgfsys@invoke\expandafter{\pgfplots@clippath@install@clip@protocolled}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@clippath@install@test
+			\if0\pgfplots@clip@BB@mode
+				% clip bounding box=default tikz
+			\else
+				% clip bounding box=upper bound
+				%
 				% do NOT take the clip path into account for the bounding
 				% box! That is very strange when you hide the axis.
 				%
 				% note that we do not need it: the path's BB will be
 				% extracted anyway by this BB code.
-				\ifpgfplots@clip@has@bb
-				\else
-					\pgf@relevantforpicturesizefalse
-				\fi
+				%
+				% However, we will use the clip path's BB as
+				% *upper bound* - but only after the paths in the
+				% current scope have been completed.
+				% The implementation of this upper bound is hooked
+				% into '\endscope':
+				\edef\pgfplots@clippath@install@aftergroup{%
+					\ifpgf@relevantforpicturesize
+						\noexpand\pgf@relevantforpicturesizetrue
+					\else
+						\noexpand\pgf@relevantforpicturesizefalse
+					\fi
+					\noexpand\pgfplots@clippath@install@BB@upper@bound
+				}%
+				\pgf@relevantforpicturesizefalse
+				%
 			\fi
-			\pgf@resetpathsizes% FIXME: this here should not be necessary!
-			\pgfplots@clippath@install@pathcmd{##1}%
-		\endgroup
+		\fi
+		\pgf@resetpathsizes% FIXME: this here should not be necessary!
+		\pgfplots@clippath@install@pathcmd{##1}%
+		\pgfplots@clippath@install@aftergroup
 	}%
 	%
 }%
 \def\pgfplots@clippath@install@test{\pgfusepath{clip}}%
+
+% This is the main part of the implementation for 
+% 'clip bounding box=upper bound' : it collects the bounding box of everything inside of
+% the clipped area. Then in the associated \endscope, it clips that bounding box to the expected 
+% clip path -- and protocols that size.
+\def\pgfplots@clippath@install@BB@upper@bound{%
+	\tikzset{
+		execute at end scope=\pgfplots@clippath@install@BB@update,
+		%
+		% no special handling for nested scopes:
+		% unnecessary; tikz handles that on its own:
+		%execute at begin scope=\let\pgfplots@clippath@install@BB@update=\relax,
+	}%
+	\pgfinterruptboundingbox
+	% count everything in the current scope into a separate bounding box
+}%
+
+\def\pgfplots@clippath@install@BB@update{%
+	% we are inside of \endscope.
+	%
+	% this here is the BB of the current scope!
+	% More precisely: in *the* scope in which we started the clip
+	% path, not in nested scopes.
+	%
+	\ifdim\pgf@picminx=16000pt %
+		\xdef\pgfplots@glob@TMPa{}%
+	\else
+		\xdef\pgfplots@glob@TMPa{%
+			{\the\pgf@picminx}%
+			{\the\pgf@picminy}%
+			{\the\pgf@picmaxx}%
+			{\the\pgf@picmaxy}%
+		}%
+	\fi
+	\endpgfinterruptboundingbox
+	\ifx\pgfplots@glob@TMPa\pgfutil@empty
+	\else
+		\expandafter\pgfplots@clippath@install@BB@update@\pgfplots@glob@TMPa
+	\fi
+}%
+
+\def\pgfplots@clippath@install@BB@update@#1#2#3#4{%
+	\pgfqpoint{#1}{#2}%
+	\pgfplots@clip@to@clippath%
+	\pgf@protocolsizes{\pgf@x}{\pgf@y}%
+	%
+	\pgfqpoint{#3}{#4}%
+	\pgfplots@clip@to@clippath%
+	\pgf@protocolsizes{\pgf@x}{\pgf@y}%
+}%
+
+\def\pgfplots@clip@to@clippath{%
+	\pgf@xa=\pgf@x
+	\pgf@ya=\pgf@y
+	\pgfplotspointbblowerleft
+	\ifdim\pgf@xa<\pgf@x \pgf@xa=\pgf@x \fi
+	\ifdim\pgf@ya<\pgf@y \pgf@ya=\pgf@y \fi
+	%
+	\pgfplotspointbbupperright
+	\ifdim\pgf@xa>\pgf@x \pgf@xa=\pgf@x \fi
+	\ifdim\pgf@ya>\pgf@y \pgf@ya=\pgf@y \fi
+	%
+	\pgfqpoint{\pgf@xa}{\pgf@ya}%
+}%
+
 
 \def\pgfplotspointbb@assertvaluesexist{%
 	\ifx\pgfplotspoint@bb@@@\relax
