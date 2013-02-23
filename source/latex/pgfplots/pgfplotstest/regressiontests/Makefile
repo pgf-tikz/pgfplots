@@ -1,4 +1,4 @@
-# This is a unit-test framework for tex.
+# This is a regression-test framework for tex.
 #
 # The idea is as follows:
 #
@@ -66,11 +66,12 @@ DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
 # -------------------------------------------------
 # stuff for references:
+# allow dynamic creation of reference files. I have never used something else.
 ENABLE_DYNAMIC_REFERENCES=1
 
 UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
-PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/unittests=)
+PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/regressiontests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
