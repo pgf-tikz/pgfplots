@@ -184,7 +184,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
 	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || \
-		( sh ../compile_failed.sh "../$<" "$@" "\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); exit 1 )
+		( sh ../../scripts/compile_failed.sh "../$<" "$@" "\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); exit 1 )
 
 else
 #disable dynamic reference (re-)creation:
@@ -197,7 +197,7 @@ endif
 %.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
 	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || \
-		( sh ./compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
+		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
