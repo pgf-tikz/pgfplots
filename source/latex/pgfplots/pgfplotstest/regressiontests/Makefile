@@ -64,6 +64,8 @@ DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 ACCEPTED_NORMALIZED_ERROR=5e-4
 DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
+INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY=plotdata/risingdrop3d.png plotdata/plotgraphics3dsurf.png
+
 # -------------------------------------------------
 # stuff for references:
 # allow dynamic creation of reference files. I have never used something else.
@@ -194,10 +196,15 @@ references/%.pdf: %.tex
 endif
 
 # make sure this rule is AFTER references/%.pdf !
-%.pdf: %.tex %.compile.sh
+%.pdf: %.tex %.compile.sh $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
 	@echo "$@: recompiling $< ..."
 	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || \
 		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
+
+# temporary links to graphics which are in the doc directory:
+# see $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
+plotdata/%: 
+	cd plotdata && ln -s ../../../../../../doc/latex/pgfplots/plotdata/$(notdir $@)
