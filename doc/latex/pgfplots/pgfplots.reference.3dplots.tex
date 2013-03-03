@@ -32,8 +32,7 @@ Enough for now, let's continue.
 
 	A long list of coordinates |(|\meta{x}|,|\meta{y}|,|\meta{z}|)| is expected, separated by white spaces. The input list can be either an unordered series of coordinates, for example for scatter or line plots. It can also have matrix structure, in which case an |empty line| (which is equivalent to ``|\par|'') marks the end of one matrix row. Matrix structure can also be provided if one of |mesh/rows| or |mesh/cols| is provided explicitly.
 	
-\long\def\temporarytest{\noexpand\par}
-\begin{codeexample}[newline=\temporarytest]
+\begin{codeexample}[]
 \begin{tikzpicture}
 	\begin{axis}
 		% this yields a 3x4 matrix:
@@ -132,8 +131,7 @@ Enough for now, let's continue.
 
 	Here, \declaretext{x varies} means a sequence of points where $n$=|mesh/cols| successive points have the $y$ coordinate fixed. This is intuitive when you write down a function because $x$ is horizontal and $y$ vertical. Note that in matrix terminology, $x$ refers to \emph{column indices} whereas $y$ refers to \emph{row indices}. Thus, |x varies| is equivalent to \declaretext{rowwise} ordering in this sense. This is the initial configuration.
 	
-\long\def\temporarytest{\noexpand\par}
-\begin{codeexample}[newline=\temporarytest]
+\begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[mesh/ordering=x varies]
 	% this yields a 3x4 matrix in `x varies'
@@ -151,8 +149,7 @@ Enough for now, let's continue.
 	\noindent Note that |mesh/ordering| is mandatory, even though the size of the matrix can be provided in different ways. The example above uses |empty line|s to mark scanlines. One could also say |mesh/rows=3| and omit the |empty line|s.
 
 	Consequently, |mesh/ordering=|\declaretext{y varies} provides points such that successive $m$=|mesh/rows| points form a column, i.e. the $x$ coordinate is fixed and the $y$ coordinate changes. In this sense, |y varies| is equivalent to \declaretext{colwise} ordering, it is actually a matrix transposition.
-\long\def\temporarytest{\noexpand\par}
-\begin{codeexample}[newline=\temporarytest]
+\begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[mesh/ordering=y varies]
 	% this yields a 3x4 matrix in colwise ordering:
@@ -858,6 +855,149 @@ The following example uses |mark=cube*| and |z buffer=sort| to place boxes at ea
 
 	If anyone has ideas how to fix this problem: let me know. As far as I know, Postscript should accept 32~bit coordinates, so it might be a mistake in the shading driver.
 \end{pgfplotskey}
+
+\subsection{Surface Plots with Explicit Color}
+{%
+\tikzset{external/figure name/.add={}{surf_explicit_color_}}%
+\tikzset{
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/mesh/},
+}%
+
+The surface plots described in Section~\ref{sec:pgfplots:surfplots} are all based on |colormap|s. This section introduces a different type of surface plot. In fact, it uses the very same plot handlers: it applies to |mesh|, |surf|, and |patch| plots. However, the way colors are provided and the way \PGFPlots\ interpolates colors is substantially different. 
+
+This section describes surface plots with explicit colors. These expect colors like |red|, |green|, or |rgb=(0.5,0.2,1)| for every vertex of the |mesh| -- and interpolates smoothly between these vertices. This appears to be simpler, perhaps even more straight-forward than |surf|ace plots based on |colormap|s. It is not. Surface plots with explicit color are more difficult to define, and they are more difficult to read.
+
+If you are in doubt of whether to use a surface colored by a |colormap| or explicit colors, you should prefer |colormap|s for reasons discussed below.
+
+\begin{pgfplotskey}{mesh/color input=\mchoice{colormap,explicit,explicit mathparse} (initially colormap)}
+Allows to configure how \PGFPlots\ expects color input for surface plots.
+
+The choice \declaretext{colormap} uses the standard colormaps. This particular choice expects scalar values of |point meta|, which are mapped linearly into the colormap. It resembles the surface plots which are explained in more detail in Section~\ref{sec:pgfplots:surfplots}. It is the default configuration and covers (probably) most common use--cases.
+
+The choice \declaretext{explicit} expects explicitly provided |point meta| of symbolic form: every coordinate of your stream is supposed to have an explicitly defined color as |point meta|. Here, ``explicitly provided'' refers to |point meta=explicit symbolic|. This choice and the available color formats are explained in all detail in the following sub--sections.% (more precisely: in Section~\ref{sec:surf:explicit:color}).
+
+The choice \declaretext{explicit mathparse} is similar to |explicit|, but it allows to provide just one math expression which is evaluated for every coordinate. The math expression can be of the form |rgb=x,y,0.5| in which case |x| is used to define the ``red'' component, |y| is used to define the ``green'' component and the ``blue'' component is fixed to |0.5|. This key is also explained in more detail in the following sub--sections.%, especially in Section~\ref{sec:surf:explicit:color:math}.
+
+We continue with a brief summary over the different choices, along with their properties.
+
+The main use--case of |mesh/color input=|\declaretext{colormap} is to allow a map between the interpolated colors and some value of interest. This map can be shown as |colorbar|:
+\begin{codeexample}[]
+% \usepgflibrary{patchplots}
+\begin{tikzpicture}
+	\begin{axis}[small,view={0}{90}, colorbar]
+	\addplot3[surf,shader=interp,patch type=bilinear]
+	coordinates {
+		(0,0,0) (1,0,0) 
+		
+		(0,1,0) (1,1,1) 
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent Note that the preceding example is a standard |surf| plot except for |patch type=bilinear| which controls how color is to be interpolated. There is a $2 \times 2$ matrix, and its $z$ values are used as color data. Clearly, value $z=0$ corresponds to blue and $z=1$ corresponds to red -- and all other colors in--between are not directly related to blue and red; they are taken from the colormap. The colormap defines which colors appear: those which make up the colormap and those which can occur as interpolated colors between the colors of the color map. The pairwise mixture of colors is a property of |mesh/color input=colormap|, not of |mesh/color input=explicit| (where more than two colors are mixed together). Furthermore, the surface indicates contours of constant $z$ level. Take, for example, the yellow contour. We know that it has some value between $0.3$ and $0.4$, say $0.35$. Since these shadings are continuous, we know that the point $z=0.35$ occurs between $z=0$ and $z=1$ -- at every point of the surface. Due to the colormap, each point on the surface which has $z=0.35$ will receive the yellow color. This is because the interpolation is carried out on the scalar |point meta| value, which is afterwards mapped into the |colormap|. This contour--property is also unique for colormap surfaces.
+
+Here is a simple approach with the same vertices, but |mesh/color input=|\declaretext{explicit}:
+\begin{codeexample}[]
+% \usepgflibrary{patchplots}
+\begin{tikzpicture}
+	\begin{axis}[small,view={0}{90}]
+	\addplot3[surf,shader=interp,patch type=bilinear,
+		mesh/color input=explicit]
+	coordinates {
+		(0,0,0) [color=blue] (1,0,0) [color=green]
+		
+		(0,1,0) [color=yellow] (1,1,1) [color=red]
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent The coordinates and the view is the same, even the way colors are being interpolated bilinearly. However, we have four different colors in the corners. We see these corners in the output, and we see that they are smoothly mixed together. However, the mix contains all four colors, not just two. As a direct consequence, there are no contour lines. 
+
+The absence of direct information how to map color information to ``some information of the data visualization'' implies that \emph{if} you want to use |surf|ace plots with explicit color, you have to state clearly what you want to show. This is considerably simpler for |colormap|s. 
+
+The following example configures $z=0$ to receive |blue| and $z=1$ to receive |red| as in our preceding |colormap| example (see above) using |mesh/color input=|\declaretext{explicit}.
+\begin{codeexample}[]
+% \usepgflibrary{patchplots}
+\begin{tikzpicture}
+	\begin{axis}[small,view={0}{90}]
+	\addplot3[surf,shader=interp,patch type=bilinear,
+		mesh/color input=explicit]
+	coordinates {
+		(0,0,0) [color=blue] (1,0,0) [color=blue]
+		
+		(0,1,0) [color=blue] (1,1,1) [color=red]
+	};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent We see the bilinear nature of the interpolation; it is related to that of |mesh/color input=colormap| above (compare the contour lines in--between). In most cases, you simply want to show some contour lines. And for such cases, a |colormap| is the way to go.
+
+There might be cases where |mesh/color input=explicit| is adequate. However, you will need to think it through properly. And you need to explain clearly what you did because your audience will also have to think a lot before they make sense of any data visualization based on explicit color interpolation.
+
+A potential use--case could be to show a surface with $(x,y,z)$ and some two--dimensional quantity which is encoded as mixture of red and green. The following example relies on |mesh/color input=|\declareandlabel{explicit mathparse} and |point meta=symbolic| to provide a vector of math expressions:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+    \addplot3[
+        patch,
+        patch type=bilinear,
+        shader=interp,
+        mesh/color input=explicit mathparse,
+        domain=0:1,
+        samples=30,
+        point meta={symbolic={%
+			(sin(deg(x*pi*2))+1)/2,% R
+			(sin(deg(y*pi*2))+1)/2,% G
+			0% B
+			}
+		},
+        ]
+    {sin(deg(x*pi*2))+sin(deg(y*pi*2))};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The precise definition how colors can be provided is subject of the next sections.
+\end{pgfplotskey}
+
+\subsubsection{Providing Colors Explicitly For Each Coordinate}
+\label{sec:surf:explicit:color}
+The choice |mesh/color input=explicit| expects a choice of |point meta| which results in symbolic values. 
+
+The accepted format of colors is quite similar to that of Colormap definitions (compare Section~\ref{sec:colormap:input:format} on page~\pageref{sec:colormap:input:format}). The common format is \meta{color model}|=|\meta{arguments}. In contrast to the similar input format inside of colormap definitions, the syntax here has no round braces and does not have the \meta{length} argument. Nevertheless, the same \meta{color model}s with the same \meta{arguments} are accepted here. The choices are
+
+% ATTENTION : a VERY similar description (actually: the same) is in the colormap section
+% maintain both; the syntax is different
+\begin{description}
+\item[rgb]|=|\meta{red}|,|\meta{green}|,|\meta{blue} where each component is in the interval $[0,1]$,
+\item[rgb255] which is similar to |rgb| except that each component is expected in the interval |[0,255]|,
+\item[gray]|=|\meta{value} with \meta{value} in the interval $[0,1]$,
+\item[color]|=|\meta{named color} where \meta{named color} is a predefined (named) color like `|red|' or a color expression like `|red!50|',
+\item[cmyk]|=|\meta{cyan}|,|\meta{magenta}|,|\meta{yellow}|,|\meta{black} where each component is in the interval $[0,1]$,
+\item[cmyk255] which is the same as |cmyk| but expects components in the interval $[0,255]$,
+\item[cmy]|=|\meta{cyan}|,|\meta{magenta}|,|\meta{yellow} where each component is in the interval $[0,1]$,
+\item[hsb]|=|\meta{hue}|,|\meta{saturation}|,|\meta{brightness} where each component is in the interval $[0,1]$,
+\item[Hsb] which is the same as |hsb| except that \meta{hue} is accepted in the interval $[0,360]$ (degree),
+\item[HTML]|=|\meta{hex red}\meta{hex green}\meta{hex blue} where component is expected to be a hex number between |00| and |FF| (a variant of |rgb255|),
+\item[wave]|=|\meta{wave length} which expects a single wave length as numeric argument in the range $[363,814]$.
+\end{description}
+
+\subsubsection{Providing Colors as Math Expression}
+\label{sec:surf:explicit:color:math}
+
+\begin{pgfplotskey}{%
+	mesh/colorspace explicit color input=\mchoice{rgb,cmy,cmyk,gray,wave,hsb,HsB} (initially value of \texttt{colorspace explicit color output})%
+}
+\end{pgfplotskey}
+
+\begin{pgfplotskey}{%
+	mesh/colorspace explicit color output=\mchoice{rgb,cmyk,gray} (initially rgb)%
+}
+\end{pgfplotskey}
+
+
+}
 
 \subsection{Contour Plots}
 {
