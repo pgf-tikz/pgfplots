@@ -207,4 +207,4 @@ endif
 # temporary links to graphics which are in the doc directory:
 # see $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
 plotdata/%: 
-	cd plotdata && ln -s ../../../../../../doc/latex/pgfplots/plotdata/$(notdir $@)
+	cd plotdata && ln -fs ../../../../../../doc/latex/pgfplots/plotdata/$(notdir $@)
