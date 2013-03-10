@@ -5,6 +5,9 @@ RESULTS=$(UNITTESTS:.tex=.pdf)
 
 all: $(RESULTS)
 
+clean:
+	rm -fr $(RESULTS)
+
 %.pdf: %.tex %.compile.sh
 	@echo "$@: recompiling $< ..."
 	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || \
