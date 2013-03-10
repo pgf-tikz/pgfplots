@@ -71,6 +71,8 @@ INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY=plotdata/risingdrop3d.png plotdata/plotgraph
 # allow dynamic creation of reference files. I have never used something else.
 ENABLE_DYNAMIC_REFERENCES=1
 
+STATISTICS=$$(ls unittest_*.pdf | wc -l)/$$(ls unittest_*.tex | wc -l) [F=$$(ls unittest_*.diff.png | wc -l)]
+
 UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/regressiontests=)
@@ -197,7 +199,7 @@ endif
 
 # make sure this rule is AFTER references/%.pdf !
 %.pdf: %.tex %.compile.sh $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
-	@echo "$@: recompiling $< ..."
+	@echo "$(STATISTICS) $@: recompiling $< ..."
 	@rm -f $@; sh ./$(@:.pdf=.compile.sh) $(<:.tex=) >/dev/null 2>&1  || \
 		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 
