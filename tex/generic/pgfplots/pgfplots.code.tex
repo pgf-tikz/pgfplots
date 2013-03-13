@@ -7686,6 +7686,14 @@
 }
 
 \def\pgfplotsutil@END@cell@picture#1{%
+		\xdef\pgfplots@cell@picture@remembered{%
+			\ifpgfrememberpicturepositiononpage
+				\noexpand\pgfrememberpicturepositiononpagetrue
+			\else
+				\noexpand\pgfrememberpicturepositiononpagefalse
+			\fi
+		}%
+		\xdef\pgfplots@cell@pictureid{\pgfpictureid}%
 		\endtikzpicture%
 		\begingroup
 			\ifdim\pgf@picmaxx=-16000pt\relax%
@@ -7802,6 +7810,8 @@
 		\endgroup
 	\endpgfinterruptboundingbox
 	\endgroup
+	\global\let\pgfplots@cell@picture@remembered=\relax
+	\global\let\pgfplots@cell@pictureid=\pgfutil@empty
 }%
 
 \def\pgfplots@BEGIN@init@and@draw@axis{%
@@ -10458,6 +10468,9 @@
 	% once more again - just to be sure that it works with LaTeX which
 	% introduces a further grouping level:
 	\aftergroup\pgf@restore@layerlist@from@global
+	%
+	\pgfplots@cell@picture@remembered
+	\aftergroup\pgfplots@cell@picture@remembered
 }
 
 \def\pgfplots@beforenode{%
@@ -10504,6 +10517,7 @@
 		\global\pgf@x=\pgf@xa
 		\global\pgf@y=\pgf@xb
 		\edef\pgfplots@offset{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
+		\pgfplots@finally@correct@remembered@picture@positions
 		%
 		\pgfutil@for\pgfplots@child@node@name:=\pgfplots@named@child@node@list\do{%
 			\ifx\pgfplots@child@node@name\pgfutil@empty
@@ -10521,6 +10535,88 @@
 		}%
 		\endgroup
     \fi%
+}%
+
+% The feature 'remember picture' relies on the global position of
+% pgfpictures.
+%
+% If we have 'remember picture=true' and 'cell picture=true', that
+% global position has been shifted as well. We have to correct it.
+%
+% This, in turn, requires to patch the .aux file.
+%
+% PRECONDITION: takes the offset \pgf@x,\pgf@y.
+\def\pgfplots@finally@correct@remembered@picture@positions{%
+	% Note that the cell picture is already closed - but
+	% fortunately, we have saved its picture id.
+	\ifx\pgfplots@cell@pictureid\pgfutil@empty
+		% ah - no cell picture. OK; nothing to do.
+	\else
+		% ah - there WAS a cell picture ...
+		\pgfplots@cell@picture@remembered
+		\ifpgfrememberpicturepositiononpage
+			% ... AND it had its "remember picture" flag activated.
+			%
+			% It is task of
+			% \pgfplots@finally@correct@child@node@positions to
+			% express ALL node locations in terms of \pgfpictureid.
+			%
+			% So, we can simply replace the (already written) pdfmark
+			% of \pgfplots@cell@pictureid by that of \pgfpictureid
+			% (which, however, is NOT written because the picture is
+			% not finished).
+			%
+			% It will be written eventually because the outer picture
+			% will implicitly inherit
+			% \pgfrememberpicturepositiononpagetrue
+			% -> see all usages of \pgfplots@cell@picture@remembered
+			\begingroup
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\noexpand
+				\noexpand\pgfplotsreplacepdfmark
+					{\pgfplots@cell@pictureid}{\pgfpictureid}%
+			}%
+			\expandafter\write\expandafter\pgfutil@auxout\expandafter{\pgfplots@loc@TMPa}%
+			\endgroup
+		\fi
+	\fi
+}%
+
+% Replaces the pdfmark for #1 by that of #2.
+% 
+% Note that when this macro is executed (it resides in the .aux file),
+% the pdfmark for #2 is typically UNDEFINED.
+%
+% #1: the pgfpictureid to modify
+% #2: the pgfpictureid which contains the correct values
+\def\pgfplotsreplacepdfmark#1#2{%
+	\pgfsys@getposition{#1}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\relax
+		% hm. strange. Perhaps the driver does not support it?
+	\else
+		% Ok, make a "lazy replace":
+		\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgf@sys@pdf@mark@pos@#1\endcsname
+		\expandafter\global\expandafter\let\csname pgf@sys@pdf@mark@pos@#1@old\endcsname=\pgfplots@loc@TMPa%
+		% 
+		\expandafter\gdef\csname pgf@sys@pdf@mark@pos@#1\endcsname{%
+			% this is the lazy replace, assuming knowledge about how
+			% pgf calls its internal structures :-/
+			%
+			% If pgf changes its name, this macro will never be
+			% called and we do not hurt someone.
+			\pgfsys@getposition{#2}{\pgfplots@loc@TMPa}%
+			\ifx\pgfplots@loc@TMPa\relax
+				% oh - the picture if for #2 has no remembered name!?
+				% Perhaps something failed?
+				% try a fall-back. This will most fail (most
+				% probably). Issue a warning?
+				\csname pgf@sys@pdf@mark@pos@#1@old\endcsname
+			\else
+				% use #2:
+				\pgfplots@loc@TMPa
+			\fi
+		}%
+	\fi
 }%
 
 \def\pgfplots@environment@axis{%
