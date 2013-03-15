@@ -187,12 +187,12 @@ The |pgfinterruptboundingbox| environment does not include its content into the 
 \subsection{Clipping}
 \label{sec:clipping}%
 
-While bounding box restrictions allow to reduce the picture's final size while keeping the same graphical output, clipping incluences both the picture size and the visible output.
+Clipping incluences both the picture size and the visible output in contrast to bounding box restrictions which reduce the picture's final size while keeping the same graphical output.
 
 Typically, \PGFPlots\ uses the path for a boxed axis as clip path. However, clipping has some special features and fine--tuning keys which are explained in this section.
 
 \begin{pgfplotskey}{clip=\mchoice{true,false} (initially true)}
-	Whether any paths inside an axis shall be clipped.
+	Controls whether any paths inside of an axis shall be clipped.
 
 	This is in effect even if |hide axis=true|. 
 	
@@ -208,6 +208,8 @@ Typically, \PGFPlots\ uses the path for a boxed axis as clip path. However, clip
 	As a consequence, markers will be drawn completely, or not at all. The value |clip marker paths=true| is here for backwards compatibility: it does not introduce special marker treatment, so markers may be drawn partially if they are close to the clipping boundary\footnote{Please note that clipped marker paths may be slightly faster during \TeX\ compilation.}.
 
 	This key has no effect if |clip=false|.
+
+	Note that clip marker paths also affects the sequence in which plots and their markers are drawn on top of each other. See also the related key |clip mode|.
 \end{pgfplotskey}
 
 \begin{pgfplotskey}{clip bounding box=\mchoice{default tikz,upper bound} (initially controlled by compat key)}
@@ -225,3 +227,42 @@ Typically, \PGFPlots\ uses the path for a boxed axis as clip path. However, clip
 
 	The key has no effect if |clip=false|.
 \end{pgfplotskey}
+
+\begin{pgfplotskey}{clip mode=\mchoice{global,individual} (initially global)}
+	This key controls how \PGFPlots\ implements the |clip=true| feature (which is on by default). Its primary motivation is control where markers are placed: are markers on top of everything else (choice |global|) or are they overdrawn by following plots (choice |individual|)?
+	
+
+	The choice \declaretext{global} tells \PGFPlots\ to install one single clip path for the complete picture\footnote{The choice \texttt{clip mode=global} was the only supported clipping mechanism up to and including version 1.5.}.
+	In order to avoid clipped marker paths, any markers are processed after the clip path has been closed, i.e.\ on a separate layer (see |clip marker paths|). An unexpected side--effect is that marks are on top of plots, even if the plots have been added after the markers.
+
+	The choice \declaretext{individual} instructs \PGFPlots\ to install a separate clip path for \emph{every} |\addplot| command. Consequently, the plot will be clipped. But most importantly, its markers will be drawn immediately after the clip path has been deactivated.
+
+	An unexpected side--effect of |clip mode=individual| is that 
+	\begin{enumerate}
+		\item the resulting pdf will be slightly larger due to the repeated paths,
+		\item custom drawing instruction like |\node| or |\draw| need to be clipped \emph{manually}: use
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[
+		clip mode=individual,
+	]
+	\addplot+[samples=3] {x^2};
+
+	\begin{scope}
+		\clip \pgfextra{\pgfplotspathaxisoutline};
+
+		\draw (axis cs:-20,15) -- (axis cs:20,15);
+
+		\draw (axis cs:-20,20) -- (axis cs:20,20);
+	\end{scope}
+
+	\addplot+[samples=2] {x};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+		\noindent to install a custom clip path around your |\draw| instructions for such a use--case. Here, the path instruction |\pgfplotspathaxisoutline| results in a path of the axis outline, i.e.\ the path which is used for the background paths or for clipping. Since it is a basic level macro, it needs to be encapsulated by |\pgfextra|.
+	\end{enumerate}
+
+	Note that |clip marker paths| can lead to the same result as |clip mode=individual| if the plot does not reach the boundaries.
+\end{pgfplotskey}
+
