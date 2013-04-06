@@ -82,7 +82,7 @@ The value is now `\the\count0'.
 \end{codeexample}
  The precise rules can be found in~\cite{texbook}, but it should be kept in mind that care needs to be taken here. More than once, my code failed to produce the expected result because \TeX\ kept expanding macros and the registers got unexpected results. Here is the correct method:
 \begin{codeexample}[]
-1. \count0=42 % a white space after the number aborts the reading process.
+1. \count0=42 % a white space after the number aborts the reading process. It is discarded.
 The value is now `\the\count0'.
 2. The following code will absorb the `3' of '3.':
 \def\macro{1234}
@@ -117,11 +117,74 @@ The value is now \the\dimen0.
 \begin{command}{\toks\meta{number}}
 \label{cmd:toks}
 	There are also 255 token registers which can be thought of as special string variables. Of course, every macro assignment |\def\macro|\marg{content} is also some kind of string variable, but token registers are special: their contents won't be expanded when used with |\the\toks|\meta{number}. This can be used for fine grained expansion control, see Section~\ref{sec:expansion:control} below.
+
+\begin{codeexample}[]
+\toks0={abc}%
+\toks1={DEF}%
+The value is now \the\toks0 \the\toks1.
+\end{codeexample}
+	Note the white space after |\the\toks0|: its purpose is to stop the number parsing when \TeX\ scans for |0|. The white space is discarded.
+
+	Token registers can also contain the special token |#| which would typically have a special meaning inside of macros:
+\begin{codeexample}[]
+\toks0={#1}%
+\message{Meaning is \the\toks0}%
+\end{codeexample}
+	This outputs ``\texttt{Meaning is \#\#1}'' in your log file.
+
+	Token registers are mainly useful when it comes to fine grained expansion control and are discussed in more depth in Section~\ref{sec:expansion:control}.
 \end{command}
 
 \subsubsection{Allocating Registers}
+There is a very limited number of registers. Consequently, one has to think carefully how to allocate them. Typical use--cases for registers are temporary variables (like some intermediate result) and long--living resources which are to be accumulated while the document or some part of it is to be generated.
+
+It is clearly a bad idea to carelessly overwrite a register.
+
+\TeX\ comes with a single way to ``allocate'' registers:
+\begin{commandlist}{\newdimen\meta{\textbackslash macroname},\newcount\meta{\textbackslash macroname},\newtoks\meta{\textbackslash macroname}}
+	These macros allocate a new register which is then accessable as \meta{\textbackslash macroname}.
+\begin{codeexample}[]
+\newdimen\variable
+
+\variable=42pt
+
+The value is now \the\variable.
+\end{codeexample}
+
+	The resulting \meta{\textbackslash macroname} can now be used in the same way as if you used the register directly. In fact, it is often simpler because you do not need to worry about the register's number.
+
+	The allocation relies on some global integer variable which is increased for each allocation. This ensures that variables stored in such allocated variables do not accidentally overwrite the contents of some other variable.
+
+	Note that deallocation is impossible.
+\end{commandlist}
+	
+While it is perfectly reasonable to allocate long--living variables, one should avoid the allocation of a new variable just because one needs a ``new'' temporary variable.
+
+It makes sense to allocate a couple of named variables like |\tempa|, |\tempb|, or something like that and reuse these values for every temporary evaluation. Clearly, care needs to be taken to avoid unintended overwrites.
+
+It is also possible to use token registers as explained above. However, the usage should be protected by means of groups:
+\begin{codeexample}[]
+\toks3={Value outside of group}
+
+\begingroup
+\toks3={Value inside of group}
+toks3 inside of group: \the\toks3
+\endgroup
+
+toks3 outside of group: \the\toks3
+\end{codeexample}
+	Groups constitute \TeX's concept of ``scope'' and are explained somewhere else in this document.
 
 \subsubsection{Using More than 256 Registers}
+\TeX\ on its own is restricted to 256 registers. However, you can manually activate ``extended \TeX\ mode'' by using
+\begin{codeexample}[code only]
+\usepackage{etex}	
+\end{codeexample}
+early in your preamble. This is actually a very good idea: it allows access to 65536 registers. Today's documents which involve lots of packages actually need |etex|.
+
+Note that even |etex| does not justify wild and uncontrolled allocated of registers just to store temporary variables.
+
+If you want almost unlimited temporary variables, you should store the temporaries in macros. This, of course, involves conversion from numbers to string, but it is the only save way which avoids the limited number of registers.
 
 \subsection{Arithmetics in \TeX}
 \begin{command}{\advance\meta{register}\texttt{ by}\meta{quantity}}
@@ -166,6 +229,8 @@ The value is now \the\count0.
 \divide\dimen0 by 20
 The value is now \the\dimen0.
 \end{codeexample}
+
+	It is impossible to divide by some non--integer number.
 \end{command}
 
 \begin{command}{\dimen\meta{number}\texttt{=}\meta{fixed point number without unit}\textbackslash dimen\meta{number}}
@@ -176,6 +241,10 @@ The value is now \the\dimen0.
 The value is now \the\dimen0.
 \end{codeexample}
 \end{command}
+
+This is actually all that \TeX\ allows. One needs powerful macro packages like \PGF\ with its |\pgfmathparse|\marg{expression} to do some ``real'' arithmetics.
+
+Note that the limited number range of these registers also applies to the result of any numerical operation.
 
 
 \subsection{Expansion Control}
