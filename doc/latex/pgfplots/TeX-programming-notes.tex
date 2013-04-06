@@ -945,6 +945,125 @@ Again, we make clear the subtleties contained therein:
 \subsection{More On \TeX}
 This document is far from complete. I recommend reading about conditional expressions in \cite{schwartz} (German, online version) or \cite{texbook} (bounded book). Hints about loops can be found in the manual of \PGFPlots, \cite{pgfplots} and the manual of \PGF, \cite{tikz}. Moreover, \PGFPlots\ and \PGF\ come with a whole lot of utility functions which are documented in the source |.code.tex| files.
 
+\section{Survey of Key--Value Handling using \PGF Keys}
+
+One of the most important things for every \TeX\ package is key--value input. There is a good overview and survey over different key--value packages, among them |xkeyval| and |pgfkeys|, in~\cite{keyvalintro}. 
+
+In addition to the paper mentioned above and the extensive reference manual for |pdfkeys| in~\cite{tikz}, I give a brief survey over |pgfkeys| here. The addressed audience is primarily package writers or macro programmers. This section should allow you to define your own user interfaces and styles for \PGFPlots\ and for \PGF. It should also improve the understanding of |pgfkeys| and how it is to be used. I also address the topic of key filtering which is mainly useful for package writers.
+
+The package |pgfkeys| is available as stand--alone package |\usepackage{pgfkeys}|. However, I believe that you never need to load it explicitly (but who knows).
+
+It comes with two user interfaces. I believe that it is a best--practice to use the best of both worlds; although it might be sufficient to use just one of them. Consequently, I discuss both of them and propose best--practices afterwards.
+
+\subsection{The Low--Level (Direct) API of \PGF Keys}
+Let us start with the low--level API of \PGF Keys. It consists of a couple of macros which allow to define keys, assign values, and get their values back.
+
+\begin{command}{\pgfkeyssetvalue\marg{/key path/key name}\marg{value}}
+	This macro (re)defines a key. 
+	
+	It is (almost) equivalent to a macro definition of sorts
+
+|\expandafter\def\csname key@|\meta{/key path/key name}|\endcsname|\marg{value};
+
+	i.e.\ it stores \meta{value} into a new macro such that the key can be looked up in constant time in \TeX's hash map. 
+	Note that in contrast to other key--value packages like |xkeyval|, the low--level macro name which is used to store the value is \emph{not} part of the \PGF Keys API\footnote{Note that \texttt{key@} is unrelated to \PGF Keys.} -- use |\pgfkeysgetvalue| and its friends to access the value.
+
+	The only limit for the number of possible keys is the size of \TeX's hash map (which is very large).
+
+	You may have wondered what the slash `|/|' means. Users which are accustomed to \PGF/\PGFPlots\ know that there exists some kind of ``key path'' which qualifies \meta{key name}. The \meta{key path} has the purpose to provide a name space such that many many keys with the same name can exist piecefully without ever touching another -- provided the correct \meta{key path} has been used. It can be seen as a (unix) file path: you can have many files with the same name, provided the files reside in different directories (i.e.\ have different paths).
+
+	You should \emph{always} provide a key path, and it is highly recommended to use a different key path than just `|/|'.
+
+	The \meta{value} can be anything; it is just stored. It can even contain |#|.
+\end{command}
+
+\begin{command}{\pgfkeysgetvalue\marg{/key path/key name}\marg{\textbackslash macro}}
+	As you might have guessed, this macro allows to retrieve the value for some key and store it into \meta{\textbackslash macro}.
+
+	Now that we have read about |\pgfkeyssetvalue| and |\pgfkeysgetvalue|, we can also provide an example:
+\begin{codeexample}[]
+\pgfkeyssetvalue{/notes/key}{abc}
+
+\pgfkeysgetvalue{/notes/key}\temp 
+
+The value of key \texttt{/notes/key} is `\temp'.
+\end{codeexample}
+
+	There is few magic around these two keys; it is just like a hashmap access with some special naming convention for the keys (due to the key path). Note that since ``hashmap access'' is what \TeX\ does all the time when it handles macros, we could have replaced the pair |\pgfkeyssetvalue|/|\pgfkeysgetvalue| by |\def| and suitable |\let| commands, perhaps combined with |\csname...\endcsname|. The advantage of \PGF Keys comes into play as soon as we inspect the high--level user interface in the next section.
+
+	Note that since |\pgfkeyssetvalue| is essentially the same as a suitable |\def|, the assignment is local to the current \TeX\ group. In other words: the assignment will be undone by the next closing curly brace, or the next |\endgroup|, or the next |\end|\marg{environment}.
+\end{command}
+
+\begin{command}{\pgfkeyslet\marg{/key path/key name}\marg{\textbackslash macro}}
+	This is essentially the same as |\pgfkeyssetvalue|, except that the key's value is already available inside of \meta{\textbackslash macro}:
+
+\begin{codeexample}[]
+\def\something{abc}
+\pgfkeyslet{/notes/key}{\something}
+
+\pgfkeysgetvalue{/notes/key}\temp 
+
+The value of key \texttt{/notes/key} is `\temp'.
+\end{codeexample}
+	
+	Just like |\pgfkeyssetvalue| boils down to |\def|, |\pgfkeyslet| boils down to |\let|.
+\end{command}
+
+\begin{command}{\pgfkeysvalueof\marg{/key path/key name}}
+	This is essentially the same as |\pgfkeysgetvalue|\marg{/key path/key name}\marg{\textbackslash macro} \meta{\textbackslash macro}; i.e.\ it expands to the value stored in a key.
+\begin{codeexample}[]
+\pgfkeyssetvalue{/notes/key}{abc}
+
+The value of key \texttt{/notes/key} is `\pgfkeysvalueof{/notes/key}'.
+\end{codeexample}
+	
+	However, this key has one major advantage: it can be used inside of an |\edef| (because it is fully expandable):
+\begin{codeexample}[]
+\pgfkeyssetvalue{/notes/key}{abc}
+
+\edef\temp{--- \pgfkeysvalueof{/notes/key} ---}
+
+The value of key \texttt{/notes/key} along with dashes is \temp.
+\end{codeexample}
+	
+	It boils down to a suitable |\csname ... \endcsname|. Consequently, it expands to |\relax| if the key happens to be undefined.
+\end{command}
+
+\begin{command}{\pgfkeysdef\marg{/key path/key name}\marg{macro body}}
+	This is a variant of |\pgfkeyssetvalue|. However, it has a substantial difference which appears to be unmotivated as long as we discuss the low--level API. It defines a so--called code--key.
+
+	Code--keys are executable macros. They take an argument, and they do something with it. ``Assigning values'' to such a key is equivalent to invoking \meta{macro body} in a ``suitable'' way.
+
+	The result of this macro call is a new key named \meta{/key path/key name/}|.@cmd|. That key, in turn, is stored as executable macro. The macro is equivalent to the following definition (up to the name, of course):
+
+	|\def\macro#1\pgfeov|\marg{macro body}.
+
+	This macro is stored (using |\pgfkeyslet|) under \meta{/key path/key name/}|.@cmd|. 
+
+	We can use |\pgfkeysgetvalue| and/or |\pgfkeysvalueof| to access this special key\footnote{Note that the suffix |/.@cmd| is part of the public API of \PGF Keys, so it is no hackery to make use of it.}, even though its use becomes more apparent later in this document: 
+
+\begin{codeexample}[]
+\pgfkeysdef{/notes/code key}{Expansion with value #1---X.}%
+
+We ``assign a value'' or ``execute the code key'' (which is equivalent): 
+\pgfkeysvalueof{/notes/code key/.@cmd}abc\pgfeov
+\end{codeexample}
+	Note that in this case, we \emph{have} to use |\pgfeov| to terminate the argument list. We could have placed our argument into curly braces, but we have to provide |\pgfeov|; just as we had to add the suffix |/.@cmd|. 
+
+\end{command}
+
+\begin{commandlist}{%
+	\pgfkeysifdefined\marg{/key path/key name}\marg{true case}\marg{false case},
+	\pgfkeysifassignable\marg{/key path/key name}\marg{true case}\marg{false case}}
+	These keys provide conditionals based on existance or type of a key. Please refer to the reference manual in~\cite{tikz} for details.
+\end{commandlist}
+
+\subsection{The Standard API of \PGF Keys}
+Now that we have seen how things defined by \PGF Keys can be accessed at a rather low level of abstraction, we will repeat the same using a higher level. This section explains the standard API of \PGF Keys; this is how Keys can be defined and maintained easily, and it is also the end user interface.
+
+
+
+
 %\subsection{Conditional Expressions}
 
 %\subsection{Loops}
