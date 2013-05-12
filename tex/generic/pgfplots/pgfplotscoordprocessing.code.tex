@@ -3656,13 +3656,24 @@
 	\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, I do not know how to transform the coordinate system '\pgfplots@loc@TMPa' to '\pgfplots@loc@TMPb'. Maybe you misspelled the 'data cs'? Or perhaps the feature is not yet implemented?}\pgfeov%
 }%
 
-\def\pgfplotsaxisserializedatapoint{%
+% Takes the current point and serializes it into \pgfplotsretval.
+%
+% The serialization includes the coordinates (as returned by the
+% current plot handler), the point meta, and any "visualization
+% depends on" keys.
+%
+% See \pgfplotsaxisdeserializedatapointfrom
+\def\pgfplotsaxisserializedatapointtostring{%
 	\pgfplotsplothandlerserializepointto\pgfplotsaxisserializedatapoint@val
 	\pgfplotsaxisserializedatapoint@private
 	\t@pgfplots@toka=\expandafter{\pgfplotsaxisserializedatapoint@val}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
-	\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb;\the\t@pgfplots@toka}}%
-	\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplots@loc@TMPa}%
+	\edef\pgfplotsretval{{\the\t@pgfplots@tokb;\the\t@pgfplots@toka}}%
+}%
+
+\def\pgfplotsaxisserializedatapoint{%
+	\pgfplotsaxisserializedatapointtostring
+	\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplotsretval}%
 }%
 \def\pgfplotsaxisserializedatapoint@private{%
 	\let\pgfplotsretval=\pgfplots@current@point@meta
@@ -6666,6 +6677,9 @@
 \def\pgfplots@streamerrorbarcoords#1#2{%
 }%
 
+% Error bars have a strange implementation: they are COLLECTED during
+% the survey phase. The result of the collection is stored into macro '#1'. 
+% Later, the macro '#1' is *executable* and draws the error bars.
 \def\pgfplots@streamerrorbar@recordto#1{%
 	\def\pgfplots@streamerrorbarstart{%
 		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@
@@ -6674,8 +6688,33 @@
 		\pgfplotsapplistXlet#1=\pgfplots@streamerrorbar@recordto@@
 		\pgfplotsapplistXnewempty\pgfplots@streamerrorbar@recordto@@% clear
 	}%
+	%
+	%
+	% ##1 of the form (<x>,<y>,<z>)
+	% ##2 of the form (<x>,<y>,<z>)
 	\def\pgfplots@streamerrorbarcoords##1##2{%
-		\pgfplotsapplistXpushback{\pgfplots@errorbar@draw{##1}{##2}}\to\pgfplots@streamerrorbar@recordto@@
+		% It turns out that we ALSO want to access the original point
+		% data, including its point meta and any visualization depends
+		% on aspects.
+		%
+		% In order to keep it simple, I add this information here
+		% using a standard form:
+		\pgfplotsaxisserializedatapointtostring
+		\t@pgfplots@tokb={%
+			\pgfplots@errorbar@draw{##1}{##2}%
+		}%
+		\edef\pgfplots@loc@TMPa{
+			% deserialize the current point ...
+			\noexpand\pgfplotsaxisdeserializedatapointfrom\pgfplotsretval%
+			% FIXME : do we want to call \pgfplotsaxisvisphasetransformpointmeta
+			% here!? it is necessary for point meta
+			%
+			% ... and draw the error bar.
+			\the\t@pgfplots@tokb
+		}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}%
+		\to
+			\pgfplots@streamerrorbar@recordto@@
 	}%
 }
 \def\pgfplots@streamerrorbar@directdraw{%
