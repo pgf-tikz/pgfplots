@@ -14,6 +14,12 @@ This module requires the numpy module.
 
 For example of usage, see the executable part at the bottom.
 
+
+ATTENTION: this file has been provided by 3rd party users in the hope that it
+may be useful. However, it is not maintained by the pgfplots team as such. Use at your own risk.
+
+See also a related (improved) pgfplots code generation for python on https://github.com/olivierverdier/pygfplots
+
 """
 import numpy as np
 import subprocess
