@@ -1,0 +1,119 @@
+
+In this tutorial, we assume that we have two functions for which we seek a plot: the first is a sampled function given by a huge data file and the second is the math expression $g(x,y)=\exp(-x^2-y^2)\cdot x$. 
+
+Our first function actually consists of two data files: the first file contains some scattered data which is used to discretized (``sample'') a function and the second file contains data for the function as such. 
+Our requirement here is two draw \emph{two} graphs into the same axis: one in which the function is plotted as a smooth, colored surface and one in which the scattered data file should be on top of the surface because it provides more detail how the function was represented in the computer. 
+
+The second function which is given as math expression should be visualized using a contour plot. 
+
+We expect both to be side--by--side.
+
+
+\subsection{Surface Plot from Data File}
+Our first step is to load the data file and to plot a surface. 
+
+Clearly, functions of two variables require a more sophisticated input format: they are typically sampled on a unified grid with $n \times m$ points, i.e.\ $n$~points for $x$ and $m$~points for $y$, resulting in a total of matrix with $n\cdot m$ values $f_{ij} = f(x_i,y_i)$. How can we read matrix data? And what if you have more than just the $z$ value? A standard way is to write the matrix to a table, either in row--wise ordering or in column--wise ordering (both are common). 
+
+Here, we assume that our function values are written to a table in which the $y$ values vary from line to line. Here is an extract of the data file (which is too large to list it here):
+
+    \lstinputlisting[columns=fixed,breaklines=false,firstline=3,tabsize=15,lastline=6]{plotdata/concat_VV_together.dat}%
+    \vskip-0.9\baselineskip
+    $\vdots$
+    \vskip-0.4\baselineskip
+    \lstinputlisting[columns=fixed,breaklines=false,firstline=34,tabsize=15,lastline=43]{plotdata/concat_VV_together.dat}%
+    \vskip-0.9\baselineskip
+    $\vdots$
+
+The input file contains $x_0$, $x_1$, and $f(x_0,x_1)$ in columns named |x_0|, |x_1|, and |f(x)|, respectively. In addition, it contains some meta data which is irrelevant for us here.
+
+Note that our input file contains \emph{empty lines} whenever |x_0| changes. This is a common data format which simplifies the detection of ``scanline length''. A scanline is one line in the input matrix, for example the line consisting of all points with $x_0 = 0$. With such scanlines, \PGFPlots\ can automatically deduce the size of the input matrix.
+
+In order to plot the file as a surface, we proceed as in the previous example by using |\addplot table|. However, we have to use |\addplot3| to indicate that a three--dimensional result is expected:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+\addplot3[surf,mesh/ordering=y varies]
+    table {plotdata/concat_VV_together.dat};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+The example looks familiar compared to our results of the preceding tutorials: a |tikzpicture| environment containing an |axis| environment and the mentioned |\addplot3| command. The option list contains |surf|, which tells \PGFPlots\ how to visualize the input data. The key |mesh/ordering=y varies| tells \PGFPlots\ how to decode the input matrix. This is important; otherwise \PGFPlots\ would have chosen |x varies| which does not match our file.
+
+Note that we there is no need to configure either |mesh/rows=|\meta{N} or |mesh/cols=|\meta{N} here because these parameters are automatically deduced from the scan line lengths marked by empty lines in our input file.
+
+Since our |\addplot3 table| statement does not contain any hints which columns should be plotted, \PGFPlots\ simply plots the first three columns against each other.
+
+The colors of a |surf| plot are chosen from the function values (unless you configure some other value for |point meta|; this is similar to the scatter plot example). In case of a function of two variables, the function value is the third column.
+
+
+\subsection{Fine--Tuning}
+In order to stress how colors are to be mapped to values, we add a color bar. In addition, we rotate the view a little bit and add axis labels. Furthermore, we would like to have a smooth color mapping.
+
+We end up at
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+    view/h=40,
+    colorbar horizontal,
+    xlabel=$x$, ylabel=$y$,
+]
+\addplot3[surf,mesh/ordering=y varies,
+    shader=interp]
+    table {plotdata/concat_VV_together.dat};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+Here, |view/h| rotates the ``horizontal'' parts of the view (only). It chooses a new view angle for the orthographic projection. As you guessed, there is also a |view/v| key and a |view=|\marg{h}\marg{v} variant.
+
+The key |colorbar horizontal| is a style which activates a |colorbar| and configures it to be displayed horizontally. The labels are placed using |xlabel| and |ylabel| as we saw it before for visualizations of one--dimensional functions. A Colorbar uses the current |colormap| and adds axis descriptions to show how values are mapped to colors.
+
+The |shader=interp| key activates a smooth color interpolation.
+
+\subsection{Adding Scattered Data on Top of the Surface}
+As motivated earlier, we have a second data set, one which characterizes how the function has been represented in some computer simulation. We would like to add the second data set as scatter plot on top of the function. 
+
+The data set as such is the very same as the one used in Section~\ref{sec:tut3:usecaseA}, so we do not need to list it here again. However, we have to include the two--dimensional scatter data into the three--dimensional axis in a suitable way. We chose to place it on a fixed $z$ value as follows:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+    view/h=40,
+    colorbar horizontal,
+    xlabel=$x$, ylabel=$y$,
+]
+\addplot3[surf,mesh/ordering=y varies,
+    shader=interp]
+    table {plotdata/concat_VV_together.dat};
+
+\addplot3[blue,mark=*,
+    mark options={fill=blue!80!black},
+    only marks,mark size=0.6pt] 
+table[z expr=1.2]
+    {plotdata/concat_VV_together_grid.dat};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+Now, we have two |\addplot3 table| statements in the same axis. None of them uses the |cycle list| as we used explicit option lists. The first is our surface plot. Note that it is plotted before the scatter plot: \PGFPlots\ cannot handle depth information between adjacent |\addplot| statements. It does, however, handle |z buffer| information for data of a single |\addplot| statement. The second plot is our scatter plot: we recognize |only marks| and |mark size| from Section~\ref{sec:tut3:usecaseA}. In addition, we configured some color and marker options.
+
+An important aspect is |\addplot3 table[z expr=1.2]| -- it tells \PGFPlots\ how to choose $z$ values for the input file (otherwise, \PGFPlots\ would have used the third column of that file). This is a convenient way to insert two--dimensional data into a three--dimensional axis, provided you have \emph{table} data. There is also a different way which works for both tables and math expressions (or other input types). This different way is to install a |z filter|, but that is beyond the scope of this tutorial for now.
+
+\subsection{Computing a Contour Plot of a Math Expression}
+FIXME
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+    title={$x \exp(-x^2-y^2)$}, 
+    enlarge x limits,
+    view={0}{90},
+    xlabel=$x$, ylabel=$y$,
+]
+\addplot3[domain=-2:2,
+    contour gnuplot={number=14},thick] 
+    {exp(-x^2-y^2)*x};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
