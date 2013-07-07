@@ -100,6 +100,9 @@
 %
 % ATTENTION: call \pgfplots@stacked@initialise before the first call
 % of beginplot!
+%
+% ATTENTION: install this before 'visualization depends on' - it
+% modifies \pgfplotsaxisserializedatapoint@private
 \def\pgfplots@stacked@beginplot{%
 %\message{pgfplots@stacked@beginplot: PLOT STARTED.}%
 	\ifpgfplots@stacked@isinitialised
@@ -107,6 +110,7 @@
 		\pgfplots@error{LOGIC ERROR: please call \string\pgfplots@stacked@initialise.}%
 	\fi
 	\def\pgfplotsstackedzerolevelcurrent{}%
+	\pgfplots@stacked@prepare@value@serialization
 	% accumulate this command here for \closedcycle:
 	\ifpgfplots@stacked@isfirstplot
 		\global\pgfplotslistnewempty\pgfplots@stacked@zerolevellist
@@ -151,14 +155,67 @@
 	\global\pgfplotslistnewempty\pgfplots@stacked@nextzerolevellist
 }%
 
+% ATTENTION: install this before 'visualization depends on' - it
+% modifies \pgfplotsaxisserializedatapoint@private
 \def\pgfplots@stacked@visphase@beginplot{%
 	\let\pgfplots@stacked@closedcycle@impl=\pgfutil@empty
+	\pgfplots@stacked@prepare@value@serialization
+}%
+
+\def\pgfplots@stacked@prepare@value@serialization{%
+	% This here is SIMILAR to 'visualization depends on'.
+	%
+	% The only difference is that 'visualization depends on' expands
+	% its arguments whereas this one here does not.
+	%
+%	\pgfplotsset{%
+%		visualization depends on=value \pgfplotsstackedzerolevelcurrent\as\pgfplotsstackedzerolevel
+%	}%
+	%
+	%
+	% Modify the axis private parts such that a data point is
+	% serialized to the form
+	% {Z{<stacked zerolevel value>}{<point meta>};<x coordinate>,<y coordinate>,<z coordinate>}
+	%
+	% for example, a 2d data pont (0,1) without point meta is serialized to 
+	% {Z{}{};0Y0.0e0],1Y1.0e0],}
+	%
+	% The deserialization looks for the magic token 'Z'. The next
+	% parameter is the zero level of the data point, the following one
+	% the "old" private serialization stuff (typically just point
+	% meta).
+	%
+	% Note that the zero level of a data point might have its own zero
+	% level (grand father) ... this would be part here as well, even
+	% if it is useless (?). This causes recursive references to all
+	% zero levels... and more memory for stacked plots.
+	%
+	% The zero'th level has an empty zero level point.
+	\expandafter\def\expandafter\pgfplotsaxisserializedatapoint@private\expandafter{%
+		\pgfplotsaxisserializedatapoint@private
+		\t@pgfplots@toka=\expandafter{\pgfplotsstackedzerolevelcurrent}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+		\edef\pgfplotsretval{%
+			Z{\the\t@pgfplots@toka}%
+			{\the\t@pgfplots@tokb}%
+		}%
+	}%
+	%
+	\let\pgfplots@stacked@deserialize@without@zerolevel=\pgfplotsaxisdeserializedatapointfrom@private
+	\def\pgfplotsaxisdeserializedatapointfrom@private##1{%
+		\pgfplotsaxisdeserializedatapointfrom@private@stacked@##1%
+	}%
+}%
+
+\def\pgfplotsaxisdeserializedatapointfrom@private@stacked@ Z#1#2{%
+	\def\pgfplotsstackedzerolevel{#1}%
+	\pgfplots@stacked@deserialize@without@zerolevel{#2}%
 }%
 
 \def\pgfplots@stacked@parsezerolevelpoint#1{%
 	\begingroup
-%	\pgfplotsaxisdeserializedatapointfrom{#1}%
-	\pgfplotsplothandlerdeserializepointfrom{#1}%
+	\pgfplotsaxisdeserializedatapointfrom#1% no braces here!
+%	\pgfplotsplothandlerdeserializepointfrom{#1}%
 	\pgfplots@stacked@smuggle
 	\endgroup
 	% the value of \pgfplotsstackedzerolevelcurrent will be configured as
@@ -251,7 +308,8 @@
 		\let\pgfplots@stacked@PGF@zerolevel\pgfplots@loc@TMPa
 	\else
 		\begingroup
-		\expandafter\pgfplotsplothandlerdeserializepointfrom\expandafter{\pgfplotsstackedzerolevel}%
+		%\expandafter\pgfplotsplothandlerdeserializepointfrom\expandafter{\pgfplotsstackedzerolevel}%
+		\expandafter\pgfplotsaxisdeserializedatapointfrom\pgfplotsstackedzerolevel%
 		%
 		% avoid endless recursion:
 		\let\pgfplots@stacked@finishpoint=\relax
@@ -310,16 +368,33 @@
 	%
 	% for logs, I remember just zerolevel+current; not its log.
 	\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
-	\pgfplotsplothandlerserializepointto\pgfplotsretval
-	%\axisserializedatapointtostring
-	% 
+	%
+	% this here would also be ok, but it would only store the coords
+	% of the zero level...
+	%\pgfplotsplothandlerserializepointto\pgfplotsretval
+%\message{serializing current value current value to \meaning\pgfplotsretval^^J}%
+	%
+	\begingroup
+	%
+	% without this line, the "zerolevel" would also know all its zero
+	% levels recursively:
+	\pgfplots@stacked@strip@parents@zerolevel
+	%
+	\pgfplotsaxisserializedatapointtostring
 	\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{\pgfplotsretval}%
+	\endgroup
+	%
+	% 
 	%
 	\pgfplots@if{pgfplots@\pgfplots@stacked@dir islinear}{%
 	}{%
 		\pgfplotscoordmath{\pgfplots@stacked@dir}{log}{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}%
 		\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
 	}%
+}
+
+\def\pgfplots@stacked@strip@parents@zerolevel{%
+	\def\pgfplotsstackedzerolevelcurrent{}%
 }
 
 % This here is a re-implementation of the stored plot processing.
