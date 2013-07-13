@@ -13,6 +13,9 @@ pgfplotstable: pgfplotstable.pdf
 # export TEXMFCNF=.:
 # but it seems as if that is ignored for some reason
 TEXMFCNF_FOR_MEMLIMITS=export TEXMFCNF=~/texmf/mytexcnf:
+TEXINPUTS:=$(TEXINPUTS):./plotdata
+
+$(info texinputs = $(TEXINPUTS))
 
 include pgfplots.makefile
 
