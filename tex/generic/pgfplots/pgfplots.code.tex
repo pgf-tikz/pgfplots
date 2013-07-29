@@ -7,7 +7,7 @@
 % 
 % It is based on Till Tantau's PGF package.
 %
-% Copyright 2007-2012 by Christian Feuersänger.
+% Copyright 2007-2013 by Christian Feuersänger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -36,6 +36,7 @@
 \input pgfplotsplothandlers.code.tex
 \input pgfplots.scaling.code.tex
 \input pgfplotscoordprocessing.code.tex
+\input pgfplots.markers.code.tex
 \input pgfplotsticks.code.tex
 \input pgfplots.paths.code.tex
 
@@ -7481,46 +7482,6 @@
 	\fi
 }%
 
-% validates 'mark layer' such that it can be queried afterwards.
-\def\pgfplots@prepare@layered@graphics@marks{%
-	\ifpgfplots@layered@graphics
-		\pgfkeysgetvalue{/pgfplots/mark layer}\pgfplots@loc@TMPa
-		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-			\def\pgfplots@loc@TMPa{auto}%
-		\fi
-		\def\pgfplots@loc@TMPb{auto}%
-		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-			% COMBINATION: 'activate layers,mark layer=auto' --> keep
-			% backwards compatibility with 'clip marker paths'
-			% -> nothing to do.
-			\pgfkeyslet{/pgfplots/mark layer}\pgfutil@empty%
-		\else
-			% mark layer=like plot
-			\def\pgfplots@loc@TMPb{like plot}%
-			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-				% draw markers together with their plot (no matter
-				% on which layer):
-				\pgfplots@clip@marker@pathstrue
-				\pgfkeyslet{/pgfplots/mark layer}\pgfutil@empty%
-			\else
-				\edef\pgfplots@loc@TMPb{\pgfkeysvalueof{/pgfplots/on layer}}%
-				\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
-					% nothing to do; they are on the same layer
-					% anyway: (this is the same as 'like plot'
-					\pgfplots@clip@marker@pathstrue
-					\pgfkeyslet{/pgfplots/mark layer}\pgfutil@empty%
-				\else
-					% OK, marks will be plotted on their own layer.
-				\fi
-			\fi
-		\fi
-	\else
-		% reset its value:
-		\pgfkeyslet{/pgfplots/mark layer}\pgfutil@empty%
-	\fi
-}%
-
 % #2: context information (for improved error recovery), optional
 \def\pgfplotsonlayer#1{%
 	\pgfutil@ifnextchar\bgroup{\pgfplotsonlayer@{#1}}{\pgfplotsonlayer@{#1}{}}%
@@ -8317,25 +8278,7 @@
 	\fi
 	\pgfplots@draw@axis@post
 	%
-	% Draw any markers for which drawing has been postponed.
-	%
-	% The motivation here is that markers should be drawn on top of
-	% their plots, and AFTER the clip path.
-	%
-	% If the plotting logic added serialized marker streams to
-	% \pgfplots@stored@markerlist, these markers will be plotted here.
-	%
-	% Note that this list will be EMPTY if
-	% \ifpgfplots@clip@marker@paths is true.
-	%
-	% whats the better sequence for \ifpgfplots@axis@on@top and \ifpgfplots@clip@marker@paths !? 
-	% This here looks better, I think... markers should not be obscured by descriptions.
-	\pgfplotslistforeach\pgfplots@stored@markerlist\as\pgfplots@loc@TMPa{%
-%\message{Executing marker stuff: \meaning\pgfplots@loc@TMPa]]]]]}%
-%\tracingmacros=2\tracingcommands=2
-		\pgfplots@loc@TMPa
-	}%
-	\global\pgfplotslistnewempty\pgfplots@stored@markerlist% clear.
+	\pgfplots@markers@visphase@after@axis
 	%
 	\begingroup
 	\pgfkeysvalueof{/pgfplots/after end axis/.@cmd}\pgfeov%
@@ -10337,7 +10280,7 @@
 		\pgfplots@install@path@replacements
 		%
 		\pgfplots@stacked@initialise
-		\global\pgfplotslistnewempty\pgfplots@stored@markerlist
+		\pgfplots@markers@visphase@after@axis@prepare
 		\ifpgfplots@stacked@reverse
 			% This here applies any scaling trafos and assembles a
 			% NEW \pgfplots@stored@plotlist!
@@ -10389,7 +10332,6 @@
 				% routines.
 				\pgfkeys{/pgf/fpu=false}%
 				%
-				% modifies \pgfplots@stored@markerlist if necessary.
 				\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 				\endscope
 				\pgfplots@execute@at@end@plot@visualization@internal
