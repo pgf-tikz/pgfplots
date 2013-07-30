@@ -1,6 +1,13 @@
 
 pgfplotsGetLuaBinaryStringFromCharIndicesChunkSize = 7000;
 
+if unpack == nil then
+	-- LUA 0.76 renamed unpack to table.unpack
+	pgfplotsUnpack = table.unpack;
+else
+	pgfplotsUnpack = unpack;
+end
+
 -- Takes a table containing an arbitrary number of integers in the range 0..255 and converts it 
 -- into a binary stream of the corresponding binary chars.
 --
@@ -21,10 +28,10 @@ function pgfplotsGetLuaBinaryStringFromCharIndices(charIndices)
 	-- ok, append all full chunks of chunkSize first:
 	local numFullChunks = math.floor(len/chunkSize);
 	for i = 0, numFullChunks-1, 1 do
-		table.insert(buf, string.char(unpack(charIndices, 1+i*chunkSize, (i+1)*chunkSize)));
+		table.insert(buf, string.char(pgfplotsUnpack(charIndices, 1+i*chunkSize, (i+1)*chunkSize)));
 	end
 	-- append the rest:
-	table.insert(buf, string.char(unpack(charIndices, 1+numFullChunks*chunkSize)));
+	table.insert(buf, string.char(pgfplotsUnpack(charIndices, 1+numFullChunks*chunkSize)));
 	return table.concat(buf);
 end
 
