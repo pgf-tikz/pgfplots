@@ -81,120 +81,49 @@
 % their plots, and AFTER the clip path.
 %
 \def\pgfplots@markers@visphase@after@axis{%
-	% If the plotting logic added serialized marker streams to
-	% \pgfplots@stored@markerlist, these markers will be plotted here.
-	%
-	% Note that this list will be EMPTY if
-	% \ifpgfplots@clip@marker@paths is true.
-	%
-	% whats the better sequence for \ifpgfplots@axis@on@top and \ifpgfplots@clip@marker@paths !? 
-	% This here looks better, I think... markers should not be obscured by descriptions.
-	\pgfplotslistforeach\pgfplots@stored@markerlist\as\pgfplots@loc@TMPa{%
-%\message{Executing marker stuff: \meaning\pgfplots@loc@TMPa]]]]]}%
-%\tracingmacros=2\tracingcommands=2
-		\pgfplots@loc@TMPa
-	}%
-	\global\pgfplotslistnewempty\pgfplots@stored@markerlist% clear.
-}
-
-\def\pgfplots@markers@visphase@afterpath@clipped{%
-	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
-	\else
-		\pgfkeysgetvalue{/pgfplots/mark layer}\pgfplots@loc@TMPa
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-			\ifpgfplots@clip@marker@paths
-				% Draw markers on top of the plot lines:
-				%
-				\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
-				\pgfextra 
-					\pgfplots@markers@install@plotmark@handler
-					\pgfplots@recorded@marker@stream 
-				\endpgfextra
-				;
+	% FIXME : extract common patterns! Perhaps using some environment.
+	\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
+		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
+%\message{^^JProcessing stored plot with precommand '\meaning\pgfplots@stored@current@precmd';^^J  pgfplots@plotcmd '\meaning\pgfplots@stored@current@cmd'^^J postcommand '\meaning\pgfplots@stored@current@postcmd'^^J}%
+%\message{DATA: '\meaning\pgfplots@stored@current@data';^^J}%
+		% The precmd sets all required variables needed to
+		% finalize a plot.
+		% @see the stream preparation routines.
+		\pgfplots@stored@current@precmd
+		\ifx\pgfplots@markers@visphase@name\pgfplots@markers@visphase@name@endaxis@unclipped
+			\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+				% Ah: some \pgfplotsextra command like \draw,\path,
+				% \node or even \scope or \endscope.
 			\else
-				% sigh... ok, store the marker list (once more again).
-				% They need to be drawn after the clipped area.
 				%
-				% fortunately, the serialization is not expensive.
-				\pgfplots@markers@stored@REMEMBER@MARK@COMMAND
+				% this code here means we REALLY have a plotting
+				% command!
+				\begingroup
+				\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/mark layer}}{a plot or graphical element (or inherited from the axis)}%
+				\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
+				\ifpgfplots@threedim
+				\else
+					% axis = 2d and plot=3d is forbidden here.
+					\pgfplots@curplot@threedimfalse
+				\fi
+				\pgfplots@execute@at@begin@plot@visualization@internal
+				%
+				\scope[current plot style]%
+				\pgfplots@visphase@markers
+				\endscope
+				%
+				\pgfplots@execute@at@end@plot@visualization@internal
+				\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
+				\endpgfplotsonlayer
+				\endgroup
 			\fi
-		\else
-			% oh - we need a mark layer!
-			\pgfplotsonlayer{\pgfkeysvalueof{/pgfplots/mark layer}}{mark layer}%
-			\pgfplots@markers@serialize@mark@command
-			\pgfplotsretval
-			\endpgfplotsonlayer
+			\pgfplots@stored@current@postcmd
 		\fi
-	\fi
-	\gdef\pgfplots@recorded@marker@stream{}% clear
-}%
-
-% This method MUST be called while \pgfplots@stored@plotlist is
-% evaluated, that means
-% - \pgfplots@stored@* commands need to be valid,
-% - the precommand has already been invoked.
-% - pgfplots@recorded@marker@stream exists
-% - current plot style is valid
-\def\pgfplots@markers@stored@REMEMBER@MARK@COMMAND{%
-	\pgfplots@markers@serialize@mark@command
-	\ifpgfplots@clip
-		\if2\pgfplots@clipmode
-			% clip mode=individual:
-			\global\let\pgfplots@stored@markerlist@last=\pgfplotsretval
-		\else
-			% clip mode=global
-			\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotsretval}\to\pgfplots@stored@markerlist
-		\fi
-	\fi
-}%
+	}%
+}
 
 \def\pgfplots@execute@at@begin@plot@visualization@internal{%
 	\global\let\pgfplots@stored@markerlist@last=\relax
-}%
-
-\def\pgfplots@markers@visphase@afterpath@unclipped{%
-	\ifpgfplots@clip
-		\if2\pgfplots@clipmode
-			% clip=true and 'clip mode=individually'
-			\pgfplots@stored@markerlist@last
-			\global\let\pgfplots@stored@markerlist@last=\relax
-		\fi
-	\fi
-}%
-
-\def\pgfplots@markers@serialize@mark@command{%
-	\pgfkeysgetvalue{/tikz/current plot style/.@cmd}{\pgfplots@loc@TMPa}%
-	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\pgfeov}%
-	\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@cmd[current plot style]}%
-	\t@pgfplots@tokc=\expandafter{\pgfplots@recorded@marker@stream}%
-	\edef\pgfplots@loc@TMPa{%
-		\noexpand\pgfkeysvalueof{/pgfplots/execute at begin plot visualization}%
-		\noexpand\def\noexpand\tikz@plot@mark{\tikz@plot@mark}% make sure we restore the environment setting
-		\noexpand\pgfkeysdef{/tikz/current plot style}{\the\t@pgfplots@toka}%
-		% de-activate the FPU here if it was active! I fear its number
-		% format may cause errors when used in low-level
-		% routines.
-		\noexpand\pgfkeys{/pgf/fpu=false}%
-		%
-		\noexpand\xdef\noexpand\pgfplots@metamin{\pgfplots@metamin}%
-		\noexpand\xdef\noexpand\pgfplots@metamax{\pgfplots@metamax}%
-		\noexpand\def\noexpand\pgfplotspointmetainputhandler{\pgfplotspointmetainputhandler}%
-		%
-		\the\t@pgfplots@tokb
-		\noexpand\pgfextra
-		\noexpand\pgfplots@markers@install@plotmark@handler
-		\the\t@pgfplots@tokc
-		\noexpand\endpgfextra
-		;%
-		\noexpand\pgfkeysvalueof{/pgfplots/execute at end plot visualization}%
-	}%
-	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
-	\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@precmd}%
-	\edef\pgfplotsretval{%
-		\noexpand\scope% make sure that 'fill opacity' and 'dotted' styles remain local!
-		\the\t@pgfplots@tokb
-		\the\t@pgfplots@toka
-		\noexpand\endscope}%
 }%
 
 \def\pgfplots@markers@install@plotmark@handler{%
@@ -304,8 +233,28 @@
 	}%
 	\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\expandafter\pgfplots@loc@TMPb\expandafter{\pgfplots@loc@TMPa}}%
 	\edef\pgfplots@basiclevel@plothandler{\the\t@pgfplots@tokc}%
+	\expandafter\def\expandafter\pgfplots@basiclevel@plothandler\expandafter{%
+		\pgfplots@basiclevel@plothandler
+		\global\let\pgfplots@markers@plotstreamstart=\pgf@plotstreamstart
+		\def\pgf@plotstreamstart{%
+			\pgfplots@markers@plotstreamstart
+			\global\let\pgfplots@markers@mark@handler@@=\pgf@plotstreampoint
+			\global\let\pgf@plotstreampoint=\pgfplots@markers@mark@handler
+		}%
+	}%
+	\let\tikz@plot@handler=\pgfplots@basiclevel@plothandler
 	%
 	\pgfplots@basiclevel@plothandler
+	%
+}%
+
+\def\pgfplots@markers@mark@handler#1{%
+	\ifpgfplots@clip
+		% check for clip marker paths:
+		\pgfplotsaxisifcontainspoint{\pgfplots@markers@mark@handler@@{#1}}{}%
+	\else
+		\pgfplots@markers@mark@handler@@{#1}
+	\fi
 }%
 
 
