@@ -3429,7 +3429,7 @@
 		\pgfplots@markers@survey@set@visphasename
 		\let\pgfplots@markers@visphase@name=\pgfplotsretval
 		%
-		\pgfplotssurveyphase@set@visphase@names
+		\pgfplotssurveyphase@set@visphase@names{#1}%
 		\let\pgfplots@visphase@names=\pgfplotsretval
 		%
 		%
@@ -3555,13 +3555,25 @@
 % It is allowed if a plot has an empty list of visualization phases
 % (common for 'only marks').
 %
-\def\pgfplotssurveyphase@set@visphase@names{%
+% #1: any tikz path instructions after the \addplot command but before
+% the semicolon.
+\def\pgfplotssurveyphase@set@visphase@names#1{%
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
 		% Ah - "only marks". In this case, we rely on the (special)
 		% marker visualization phase - there is no need for a further
 		% phase.
-		\let\pgfplotsretval=\pgfutil@empty
+		\pgfplotsutil@trim{#1}%
+		\ifx\pgfplotsretval\pgfutil@empty
+			% OK, we do not have after-path instructions.
+			% No need for this phase.
+			\let\pgfplotsretval=\pgfutil@empty
+		\else
+			% Hm. We found after-path instructions! These *need* to be
+			% done during the standard visualization phase. Ok, then
+			% do it, even if it has no uses otherwise!
+			\let\pgfplotsretval=\pgfplotsaxis@visphase@name@default
+		\fi
 	\else
 		\let\pgfplotsretval=\pgfplotsaxis@visphase@name@default
 	\fi
@@ -6887,16 +6899,6 @@
 		\fi
 		\pgfplotstreamend
 	}%
-	\def\pgfplots@visualize@performserialization{%
-		\t@pgfplots@tokb=\expandafter{\pgfplotsaxisdeserializedatapointfrom@private@lastvalue}%
-		\edef\pgfplots@loc@TMPa{%
-			\noexpand\pgfplots@stream@decode@and@apply
-				{\the\c@pgfplots@coordindex}
-				{\the\t@pgfplots@tokb}%
-				{\the\pgf@x}{\the\pgf@y}
-		}%
-		\expandafter\pgfplotsapplistXXpushback\expandafter{\pgfplots@loc@TMPa}%
-	}%
 	\begingroup
 	\let\E=\noexpand
 	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -7314,7 +7316,18 @@
 	\pgfextra
 	\tikzset{every plot/.try}%
 	\pgfplots@coord@stream@INIT@finalize@storedcoords%
-	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coord@stream@finalize@storedcoords@START@coords}%
+	\iffalse
+	%\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
+		% discard!? Well, no need to loop through the elements.
+		% But there may be a good reason that we entered the phase!
+		% keep it.
+		% FIXME : this does not work, although it might be desirable.
+		% It fails because we need the named start/end points.
+		\pgfplots@coord@stream@start
+		\pgfplots@coord@stream@end
+	\else
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coord@stream@finalize@storedcoords@START@coords}%
+	\fi
 	\pgfutil@IfUndefined{pgfplotlastpoint}{}{%
 		\tikz@make@last@position{\pgfplotlastpoint}%  
 	}%
@@ -7336,18 +7349,16 @@
 % plot path. This depends on the current visualization phase and the
 % available visualization phases.
 \def\pgfplotsaxisvisphase@get@afterpath#1{%
-	\ifx\pgfplots@visphase@names\pgfutil@empty
-		% ah - there are NO standard visualization phases. Consequently, we
-		% MUST be in the marker visualization phase. Draw them.
+	\ifx\pgfplots@visphase@name\pgfplotsaxis@visphase@name@default
+		% ah - we have the standard visualization phase. Draw them
+		% here.
+		%
+		% Note that the existance of (nontrivial) after path
+		% instructions ALWAYS implies the existance of a standard
+		% visualization phase (compare \pgfplotssurveyphase@set@visphase@names)
 		\def\pgfplotsretval{#1}%
 	\else
-		\ifx\pgfplots@visphase@name\pgfplotsaxis@visphase@name@default
-			% ah - we have the standard visualization phase. Draw them
-			% here.
-			\def\pgfplotsretval{#1}%
-		\else
-			\let\pgfplotsretval=\pgfutil@empty
-		\fi
+		\let\pgfplotsretval=\pgfutil@empty
 	\fi
 }%
 
