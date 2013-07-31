@@ -174,6 +174,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 		git clone $(PGFPLOTS_GIT_BASEDIR) $(notdir $(TMP_REPOSITORY)) || exit 1; \
 	fi; \
 	cd $(TMP_REPOSITORY) || exit 1; \
+	git reset --hard >/dev/null 2>&1; \
 	cat $(WORKING_DIR)/$$REFERENCE_SCRIPT $(AUTO_INDENT_PIPE); \
 	sh $(WORKING_DIR)/$$REFERENCE_SCRIPT  1>/dev/null 2>&1; \
 	if [ $$? -ne 0 ]; then \
@@ -182,6 +183,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 		rm -fr $(TMP_REPOSITORY); \
 		exit 1; \
 	fi
+	@./patch_repository.sh $(TMP_REPOSITORY)
 	@cd references || exit 1;\
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_CVS_PATH)/generic//:$(PGF_CVS_PATH)/latex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
