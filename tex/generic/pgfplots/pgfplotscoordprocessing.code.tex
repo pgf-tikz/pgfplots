@@ -3017,7 +3017,6 @@
 % 	- For now, the following things are global / local:
 % 		- point coordinate list: local
 % 		- meta data limits: global,
-% 		- recorded error bar commands: local,
 % 		- what about stacked plot stuff: appears to be a combination
 % 		of local/global.
 % 		- all that will be serialized and written into
@@ -3238,15 +3237,13 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@beginplot
 	\fi
-	%
-	\pgfplots@prepare@visualization@dependencies
-	%
 	\ifpgfplots@errorbars@enabled
 		% prepare error bar processing.
 		\pgfplots@errorbars@survey@begin
-	\else
-		\let\pgfplots@recordederrorbar=\pgfutil@empty
 	\fi
+	%
+	%
+	\pgfplots@prepare@visualization@dependencies
 	%
 	% Inside of math expressions, 'x', 'y' and 'z' expand to the
 	% current x,y and z coords respectively. Introduce these (and some
@@ -3491,28 +3488,10 @@
 			}%
 		}%
 		%
-		% Ok, now assemble the POST COMMANDS. Error bar
-		% commands will be append here (if any)
-		\ifx\pgfplots@recordederrorbar\pgfutil@empty
-			\pgfplots@glob@TMPa
-				{%
-					% Post commands are empty here.
-				}%
-		\else
-			\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-			\t@pgfplots@tokb=\expandafter{\pgfplots@recordederrorbar}%
-			\def\pgfplots@loc@TMPb{%
-				\noexpand\pgfplots@errorbars@finishwithstyleoptions[current plot style]{\the\t@pgfplots@tokb}%
+		\pgfplots@glob@TMPa
+			{%
+				% Post commands are empty here.
 			}%
-			\xdef\pgfplots@glob@TMPa{
-				\the\t@pgfplots@toka
-				{
-					% Post commands: append error bar commands.
-					\pgfplots@loc@TMPb
-				}%
-			}%
-			\pgfplots@glob@TMPa
-		\fi
 		%^^^^^^^^^^^^ ... END of \pgfplots@addplot@enqueue@coords HERE
 	\fi
 	\pgfplots@end@plot
@@ -3907,16 +3886,26 @@
 	\fi
 }%
 \def\pgfplots@prepare@visualization@depends@on@preparetype@value value#1\as#2{%
-	\begingroup
 	% remove spaces from #1:
 	\pgfkeys@spdef\pgfplots@loc@TMPa{#1}%
-	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
-	\t@pgfplots@tokb=\expandafter{\csname\string#2@value\endcsname}%
-	\xdef\pgfplots@glob@TMPa{%
-		\noexpand\def\the\t@pgfplots@tokb{\the\t@pgfplots@toka}%
-	}%
-	\endgroup
-	\let#2=\pgfplots@glob@TMPa
+	%
+	% ok, prepare the value.
+	\def\pgfplots@loc@TMPb{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		% oh - a special case! We have value\macro\as\macro. 
+		% this is special; we do not need to EXECUTE #2 to arrive at its value.
+		% But we need to define #2@value as that will be stored.
+		\expandafter\def\csname\string#2@value\endcsname{#2}%
+	\else
+		\begingroup
+		\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
+		\t@pgfplots@tokb=\expandafter{\csname\string#2@value\endcsname}%
+		\xdef\pgfplots@glob@TMPa{%
+			\noexpand\def\the\t@pgfplots@tokb{\the\t@pgfplots@toka}%
+		}%
+		\endgroup
+		\let#2=\pgfplots@glob@TMPa
+	\fi
 }
 
 \def\pgfplotsaxisdeserializedatapointfrom@private@withdeplist#1{%
@@ -6420,6 +6409,9 @@
 	\ifpgfplots@stackedmode
 		\pgfplots@stacked@visphase@beginplot
 	\fi
+	\ifpgfplots@errorbars@enabled
+		\pgfplots@errorbars@visphase@begin
+	\fi
 	\pgfplots@prepare@visualization@dependencies
 	%
 	\def\pgfplots@loc@TMPa{0}% <-- if (collectmark positions)
@@ -6444,6 +6436,9 @@
 	\def\pgfplots@coord@stream@end@{%
 		\ifpgfplots@stackedmode
 			\pgfplots@stacked@visphase@endplot
+		\fi
+		\ifpgfplots@errorbars@enabled
+			\pgfplots@errorbars@visphase@end
 		\fi
 		\ifpgfplots@apply@datatrafo
 			\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
