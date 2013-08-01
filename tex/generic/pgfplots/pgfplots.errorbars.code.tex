@@ -455,6 +455,75 @@
 	\fi
 }%
 
+% A dummy plot handler which is used in a special visualization phase
+% for error bars.
+\def\pgfplots@errorbars@plot@handler{%
+	\gdef\pgf@plotstreamstart{%
+		\pgfplots@streamerrorbar@directdraw
+		\global\let\pgf@plotstreampoint=\pgfplots@errorbars@plot@handler@point
+		\global\let\pgf@plotstreamspecial=\relax
+		\global\let\pgf@plotstreamend=\pgfplots@streamerrorbarend
+		\pgfplots@streamerrorbarstart
+	}%
+}%
+
+\def\pgfplots@errorbars@plot@handler@point#1{%
+	\pgf@process{#1}%
+	\edef\pgfplots@errorbars@src{(\the\pgf@x,\the\pgf@y)}%
+	%
+	% we want to allow scatter plots to vary depending on 'point
+	% meta'. This here does not hurt:
+	\pgfplotsaxisvisphasetransformpointmetaifany
+	%
+	\pgfplots@errorbars@plot@handler@point@dir x%
+	\pgfplots@errorbars@plot@handler@point@dir y%
+	\ifpgfplots@curplot@threedim
+		\pgfplots@errorbars@plot@handler@point@dir z%
+	\fi
+}
+
+% #1: one of x,y, or z
+% #2: the error bar value in dir #1
+% output: \pgfplots@errorbars@trg in the form (<x>,<y>,<z>)
+\def\pgfplots@errorbars@to@pt#1#2{%
+	\begingroup
+	\expandafter\let\csname pgfplots@current@point@#1\endcsname=#2%
+	\ifpgfplots@curplot@threedim
+		\edef\pgfplotsretval{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)}%
+	\else
+		\edef\pgfplotsretval{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	\fi
+	\global\let\pgfplots@errorbars@trg=\pgfplotsretval
+	\endgroup
+}%
+
+% #1: a <\macro> containing the value 
+% #2: either x,y, or z
+\def\pgfplots@errorbars@plot@handler@point@dir@@#1#2{%
+	\ifx#1\pgfutil@empty
+	\else
+		\pgfplotsaxisvisphasetransformcoordinateentry{#2}{#1}%
+		\pgfplots@errorbars@to@pt{#2}{\pgfmathresult}%
+		\pgfplots@streamerrorbarcoords{\pgfplots@errorbars@src}{\pgfplots@errorbars@trg}%
+	\fi
+}%
+
+\def\pgfplots@errorbars@plot@handler@point@dir#1{%
+	\ifcase\csname pgfplots@errorbars@#1direction\endcsname
+		% none
+	\or
+		% plus
+		\expandafter\pgfplots@errorbars@plot@handler@point@dir@@\csname pgfplots@current@point@error@#1@plus\endcsname#1%
+	\or
+		% minus
+		\expandafter\pgfplots@errorbars@plot@handler@point@dir@@\csname pgfplots@current@point@error@#1@minus\endcsname#1%
+	\or
+		% both
+		\expandafter\pgfplots@errorbars@plot@handler@point@dir@@\csname pgfplots@current@point@error@#1@plus\endcsname#1%
+		\expandafter\pgfplots@errorbars@plot@handler@point@dir@@\csname pgfplots@current@point@error@#1@minus\endcsname#1%
+	\fi
+}%
+
 \def\pgfplots@streamerrorbarstart{%
 }%
 \def\pgfplots@streamerrorbarend{%
@@ -481,73 +550,9 @@
 	\endscope
 }
 
-\def\pgfplots@errorbar@draw@float(#1,#2)(#3,#4){%
-	\ifpgfplots@apply@datatrafo@x
-		\pgfplotscoordmath{x}{datascaletrafo}{#1}%
-		\let\pgfplots@xarg=\pgfmathresult%
-		\pgfplotscoordmath{x}{datascaletrafo}{#3}%
-		\let\pgfplots@error@xarg=\pgfmathresult%
-	\else
-		\def\pgfplots@xarg{#1}%
-		\def\pgfplots@error@xarg{#3}%
-	\fi
-	\ifpgfplots@apply@datatrafo@y
-		\pgfplotscoordmath{y}{datascaletrafo}{#2}%
-		\let\pgfplots@yarg=\pgfmathresult%
-		\pgfplotscoordmath{y}{datascaletrafo}{#4}%
-		\let\pgfplots@error@yarg=\pgfmathresult%
-	\else
-		\def\pgfplots@yarg{#2}%
-		\def\pgfplots@error@yarg{#4}%
-	\fi
-	\edef\pgfplots@loc@TMPa{{(\pgfplots@xarg,\pgfplots@yarg)}{(\pgfplots@error@xarg,\pgfplots@error@yarg)}}%
-	\def\pgfplots@loc@TMPb{\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}}%
-	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfeov
-}
-\def\pgfplots@errorbar@draw@float@threedim(#1,#2,#3)(#4,#5,#6){%
-	\ifpgfplots@apply@datatrafo@x
-		\pgfplotscoordmath{x}{datascaletrafo}{#1}%
-		\let\pgfplots@xarg=\pgfmathresult%
-		\pgfplotscoordmath{x}{datascaletrafo}{#4}%
-		\let\pgfplots@error@xarg=\pgfmathresult%
-	\else
-		\def\pgfplots@xarg{#1}%
-		\def\pgfplots@error@xarg{#4}%
-	\fi
-	\ifpgfplots@apply@datatrafo@y
-		\pgfplotscoordmath{y}{datascaletrafo}{#2}%
-		\let\pgfplots@yarg=\pgfmathresult%
-		\pgfplotscoordmath{y}{datascaletrafo}{#5}%
-		\let\pgfplots@error@yarg=\pgfmathresult%
-	\else
-		\def\pgfplots@yarg{#2}%
-		\def\pgfplots@error@yarg{#5}%
-	\fi
-	\ifpgfplots@apply@datatrafo@z
-		\pgfplotscoordmath{z}{datascaletrafo}{#3}%
-		\let\pgfplots@zarg=\pgfmathresult%
-		\pgfplotscoordmath{z}{datascaletrafo}{#6}%
-		\let\pgfplots@error@zarg=\pgfmathresult%
-	\else
-		\def\pgfplots@zarg{#3}%
-		\def\pgfplots@error@zarg{#6}%
-	\fi
-	\edef\pgfplots@loc@TMPa{{(\pgfplots@xarg,\pgfplots@yarg,\pgfplots@zarg)}{(\pgfplots@error@xarg,\pgfplots@error@yarg,\pgfplots@error@zarg)}}%
-	\def\pgfplots@loc@TMPb{\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}}%
-	\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfeov
-}
-
 \def\pgfplots@errorbar@draw#1#2{%
 	\begingroup
-	\ifpgfplots@apply@datatrafo
-		\ifpgfplots@curplot@threedim
-			\pgfplots@errorbar@draw@float@threedim#1#2%
-		\else
-			\pgfplots@errorbar@draw@float#1#2%
-		\fi
-	\else
-		\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}{#1}{#2}\pgfeov%
-	\fi
+	\pgfkeysvalueof{/pgfplots/error bars/draw error bar/.@cmd}{#1}{#2}\pgfeov%
 	\endgroup
 }%
 
