@@ -80,6 +80,7 @@ TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 PGF_CVS_PATH=~/code/tex/pgf
+PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
@@ -183,9 +184,9 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 		rm -fr $(TMP_REPOSITORY); \
 		exit 1; \
 	fi
-	@./patch_repository.sh $(TMP_REPOSITORY)
+	@#./patch_repository.sh $(TMP_REPOSITORY)
 	@cd references || exit 1;\
-	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_CVS_PATH)/generic//:$(PGF_CVS_PATH)/latex//:$(TEXINPUTS); \
+	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
