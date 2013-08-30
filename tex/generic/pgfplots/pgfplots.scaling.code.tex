@@ -3003,14 +3003,18 @@
 % 
 \def\pgfplots@compute@number@order@for@trafo@isfloat#1\tocount#2{%
 	\pgfmathfloatparsenumber{#1}%
-	\pgfmathfloatgetflags{\pgfmathresult}{#2}%
-	\ifnum#2=0
-		% ah - it is 0.0 !
-		% return 10^{-70} .
-		#2=-70 %
+	\expandafter\pgfmathfloat@decompose@E\pgfmathresult\relax#2\relax
+	\advance#2 by1
+}
+
+\def\pgfplots@if@is@float@zero#1#2#3{%
+	\pgfmathfloatparsenumber{#1}%
+	\pgfmathfloatgetflags{\pgfmathresult}{\c@pgf@countd}%
+	\ifnum\c@pgf@countd=0 %
+		% ah - it *is* 0.0:
+		#2%
 	\else
-		\expandafter\pgfmathfloat@decompose@E\pgfmathresult\relax#2\relax
-		\advance#2 by1
+		#3%
 	\fi
 }
 
@@ -3060,19 +3064,39 @@
 				%
 %\message{minmax = [\pgfplots@data@min@float,\pgfplots@data@max@float]^^J}%
 				% Step 1: compute 'm', the data order
-				\pgfplots@compute@number@order@for@trafo@isfloat
-					\pgfplots@data@min@float
-					\tocount\data@cur@order
+				\pgfplots@if@is@float@zero{\pgfplots@data@min@float}{%
+					\pgfplots@if@is@float@zero{\pgfplots@data@max@float}{%
+						\data@max@order=0 % both are zero. ok.
+					}{%
+						% one of them is zero. Take the other one!
+						\pgfplots@compute@number@order@for@trafo@isfloat
+							\pgfplots@data@max@float
+							\tocount\data@cur@order
+						\data@max@order=\data@cur@order
+					}%
+				}{%
+					\pgfplots@if@is@float@zero{\pgfplots@data@max@float}{%
+						% one of them is zero. Take the other one!
+						\pgfplots@compute@number@order@for@trafo@isfloat
+							\pgfplots@data@min@float
+							\tocount\data@cur@order
+						\data@max@order=\data@cur@order
+					}{%
+						% none of them is zero. Compute MAX:
+						\pgfplots@compute@number@order@for@trafo@isfloat
+							\pgfplots@data@min@float
+							\tocount\data@cur@order
+						\data@max@order=\data@cur@order
+						\pgfplots@compute@number@order@for@trafo@isfloat
+							\pgfplots@data@max@float
+							\tocount\data@cur@order
+						\ifnum\data@cur@order>\data@max@order
+							\data@max@order=\data@cur@order
+						\fi
+					}%
+				}%
 				%
-				\data@max@order=\data@cur@order
 				%
-				\pgfplots@compute@number@order@for@trafo@isfloat
-					\pgfplots@data@max@float
-					\tocount\data@cur@order
-				%
-				\ifnum\data@cur@order>\data@max@order
-					\data@max@order=\data@cur@order
-				\fi
 				%
 				% Step 2: compute 'q', the #1-size of the axis.
 				%\expandafter\ifx\csname pgfplots@#1\endcsname\pgfutil@empty
