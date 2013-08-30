@@ -445,6 +445,115 @@ The number is printed using the current number printing options, see the manual 
 \section{Accessing Axis Limits}
 It is also possible to access axis limits during the visualization phase, i.e.\ during |\end{axis}|. Please refer to the reference documentation for |xmin| on page~\pageref{page:access:limits}.
 
+\section{Accessing Point Coordinate Values}
+During the visualization phase, \PGFPlots\ provides access to the currently processed coordinate and its values.
+
+This access requires a call to specific macros. These macros write the coordinate values to some publicy available key--value pairs. Then, the current point's $x$, $y$, $z$, and color data can be accessed.
+
+\begin{command}{\pgfplotspointgetcoordinates}
+	A macro which is supposed to be called during the visualization phase. Afterwards, the followings keys will be set:
+
+	\declaretext{/data point/x} will contain the current point's $x$ coordinate. 
+
+	\declaretext{/data point/y} will contain the current point's $y$ coordinate. 
+
+	\declaretext{/data point/z} will contain the current point's $z$ coordinate (if applicable). 
+
+	\declaretext{/data point/meta} will contain the current point's |point meta| value (if applicable). 
+
+	\declaretext{/data point/index} will contain the current point's index in the coordinate stream. This is actually the same as |\coordindex|.
+	
+	The returned value are the same as they can be read on the axes, they are also the same as you would write them into |axis cs|.
+
+	This means that any |x coord inv trafo| has been applied on the value. It also means that the exponential function has been called even though the internal coordinate was present in log format.
+
+	This function is implicitly called for any |scatter| plot (including |nodes near coords|).
+
+	This allows to access \emph{all} coordinate values at once:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[
+		domain=0:360,
+		samples=9,
+		only marks,
+		nodes near coords={%
+			\footnotesize
+			$(\pgfmathprintnumber{\pgfkeysvalueof{/data point/x}},
+	 		  \pgfmathprintnumber{\pgfkeysvalueof{/data point/y}})$%
+		},
+	]
+	{sin(x)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Note that the preceding example would have been simpler if we would have printed just one value: |nodes near coords| resorts to the |point meta|. And that, in turn, contains the $y$ coordinate anyway by default.
+
+	A more advanced example would be a |ybar| plot in which nodes shall be placed at the lower end of the axis, together with some dotted lines to the respective bars:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	ybar,
+	nodes near coords,
+	%
+	% we want to provide absole 'at' values for the nodes:
+	scatter/position=absolute,
+	every node near coord/.style={
+		at={(axis cs:\pgfkeysvalueof{/data point/x},-1)},
+		% pretty printing:
+		anchor=north,
+		/pgf/number format/fixed,
+		/pgf/number format/precision=1,
+		% assign a name which can be referenced below:
+		name=nodenearcoord\pgfkeysvalueof{/data point/index},
+	},
+	% ... draw a dotted line between the marker and the bar:
+	/pgfplots/scatter/@post marker code/.add code={}{
+		\draw[dotted,help lines] 
+		(nodenearcoord\pgfkeysvalueof{/data point/index}) 
+		-- 
+		(axis cs:
+			\pgfkeysvalueof{/data point/x},
+			{min(0,\pgfkeysvalueof{/data point/y})});
+	},
+	% assign suitable tick labels:
+	xtick=data,
+]
+% some dummy data:
+\addplot+[
+	domain=0:360,
+	bar width=360/9,
+	samples=9]
+	{sin(x)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{command}
+
+\begin{command}{\pgfplotspointgetnormalizedcoordinates}
+	A macro which is very similar to |\pgfplotspointgetcoordinates|.
+	Consequently, it is supposed to be called during the visualization phase. 
+
+	It assigns the very same output macros, but the values are different. More precisely, it defines the macros
+
+	\declaretext{/data point/x} will contain the current point's \emph{normalized} $x$ coordinate. 
+
+	\declaretext{/data point/y} will contain the current point's \emph{normalized} $y$ coordinate. 
+
+	\declaretext{/data point/z} will contain the current point's \emph{normalized} $z$ coordinate (if applicable). 
+
+	\declaretext{/data point/meta} will contain the current point's |point meta| value (if applicable). 
+
+	\declaretext{/data point/index} will contain the current point's index in the coordinate stream. This is actually the same as |\coordindex|.
+	
+	The keyword \declaretext{normalized} means that the values are in a suitable numerical form which can be consumed by the axis. To be more specific: any user |x coord inv trafo| is \emph{ignored}. An important example would be |symbolic x coords|: the normalized coordinates would be some associated numbers, not the symbols. The results returned by |\pgfplotspointgetcoordinates| would be the symbols. For logarithm axes, the normalized values are the logs.
+
+	Typically, normalized values are much more useful when you want to apply some math operation like averaging or subtraction.
+
+
+	This function needs to be called explicitly. It is currently used by |ybar stacked| to align |nodes near coords|.
+\end{command}
+
 \section{Layer Access}
 \begin{command}{\pgfplotsonlayer\marg{layer name}}
     A low-level command which will check if the current axis has layer support activated and, if so, calls |\pgfonlayer|\marg{layer name}.
