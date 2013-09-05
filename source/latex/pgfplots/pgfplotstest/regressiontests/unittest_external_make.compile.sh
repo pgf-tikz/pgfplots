@@ -1,5 +1,6 @@
 # cause nonzero exit status to fail the script:
 set -e
+
 rm -f $@.dat
 echo "0 0" >> $@.dat
 echo "1 1" >> $@.dat
