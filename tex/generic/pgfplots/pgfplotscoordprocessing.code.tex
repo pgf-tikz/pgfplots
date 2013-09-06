@@ -4165,12 +4165,13 @@
 %   or
 %   '(x,y[,z]) +- (ex,ey)'
 %   or
+%   '(x,y[,z]) += (ex+,ey+) -= (ex-,ey-)'
+%   or
 %   '(x,y) [meta]'
 %   or
 %   '(x,y) +- (ex,ey) [meta]'
 %   separated by white-space.
 %
-% The per-point meta is not implemented yet.
 \long\def\pgfplots@coord@stream@foreach#1{%
 	\pgfplots@coord@stream@start
 	\pgfplotsscanlinelengthinitzero
@@ -4217,19 +4218,26 @@
 		\def\pgfplots@current@point@x{#1}%
 		\def\pgfplots@current@point@y{#2}%
 	\fi
+	\let\pgfplots@current@point@error@x@plus=\pgfutil@empty
+	\let\pgfplots@current@point@error@x@minus=\pgfutil@empty
+	\let\pgfplots@current@point@error@y@plus=\pgfutil@empty
+	\let\pgfplots@current@point@error@y@minus=\pgfutil@empty
+	\let\pgfplots@current@point@meta=\pgfutil@empty
+	\pgfplots@foreach@plot@coord@NEXT@cont
+}
+\def\pgfplots@foreach@plot@coord@NEXT@cont{%
 	\pgfutil@ifnextchar+{%
-		\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE%
+		\pgfplots@foreach@plot@coord@NEXT@plus%
 	}{%
-		\let\pgfplots@current@point@error@x@plus=\pgfutil@empty
-		\let\pgfplots@current@point@error@x@minus=\pgfutil@empty
-		\let\pgfplots@current@point@error@y@plus=\pgfutil@empty
-		\let\pgfplots@current@point@error@y@minus=\pgfutil@empty
-		\pgfutil@ifnextchar[{%
-			\pgfplots@foreach@plot@coord@NEXT@meta
+		\pgfutil@ifnextchar-{%
+			\pgfplots@foreach@plot@coord@NEXT@minus%
 		}{%
-			\let\pgfplots@current@point@meta=\pgfutil@empty
-			\pgfplots@coord@stream@coord
-			\pgfplots@foreach@plot@coord@ITERATE
+			\pgfutil@ifnextchar[{%
+				\pgfplots@foreach@plot@coord@NEXT@meta
+			}{%
+				\pgfplots@coord@stream@coord
+				\pgfplots@foreach@plot@coord@ITERATE
+			}%
 		}%
 	}%
 }
@@ -4238,29 +4246,57 @@
 	\pgfplots@coord@stream@coord
 	\pgfplots@foreach@plot@coord@ITERATE
 }%
-% processing something like '(x,y) +- (error_x,error_y)'
-\def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE+-#1({%
-	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@%
+\def\pgfplots@foreach@plot@coord@NEXT@plus+{%
+	\pgfutil@ifnextchar={%
+		\pgfplots@foreach@plot@coord@NEXT@pluseq%
+	}{%
+		\pgfplots@foreach@plot@coord@NEXT@plusminus%
+	}%
 }
+\def\pgfplots@foreach@plot@coord@NEXT@minus-=#1({%
+	\def\pgfplots@foreach@plot@coord@state{-}%
+	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@
+}
+\def\pgfplots@foreach@plot@coord@NEXT@pluseq=#1({%
+	\def\pgfplots@foreach@plot@coord@state{+}%
+	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@
+}
+\def\pgfplots@foreach@plot@coord@NEXT@plusminus-#1({%
+	\def\pgfplots@foreach@plot@coord@state{B}%
+	\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@
+}
+
+% processing something like '(x,y) +- (error_x,error_y)'
 \def\pgfplots@foreach@plot@coord@NEXT@WITH@ERRORRANGE@#1,#2){%
 	\ifpgfplots@plot@coords@mathparser
 		\pgfmathparse{#1}%
-		\let\pgfplots@current@point@error@x@plus=\pgfmathresult
+		\let\pgfplots@loc@TMPb=\pgfmathresult
 		\pgfmathparse{#2}%
-		\let\pgfplots@current@point@error@y@plus=\pgfmathresult
+		\let\pgfplots@loc@TMPc=\pgfmathresult
 	\else
-		\def\pgfplots@current@point@error@x@plus{#1}%
-		\def\pgfplots@current@point@error@y@plus{#2}%
+		\def\pgfplots@loc@TMPb{#1}%
+		\def\pgfplots@loc@TMPc{#2}%
 	\fi
-	\let\pgfplots@current@point@error@x@minus=\pgfplots@current@point@error@x@plus
-	\let\pgfplots@current@point@error@y@minus=\pgfplots@current@point@error@y@plus
-	\pgfutil@ifnextchar[{%
-		\pgfplots@foreach@plot@coord@NEXT@meta
-	}{%
-		\let\pgfplots@current@point@meta=\pgfutil@empty
-		\pgfplots@coord@stream@coord
-		\pgfplots@foreach@plot@coord@ITERATE
-	}%
+	%
+	\if +\pgfplots@foreach@plot@coord@state
+		% ah, it was a "+=" item:
+		\let\pgfplots@current@point@error@x@plus=\pgfplots@loc@TMPb
+		\let\pgfplots@current@point@error@y@plus=\pgfplots@loc@TMPc
+	\else
+		\if -\pgfplots@foreach@plot@coord@state
+			% ah, it was a "-=" item:
+			\let\pgfplots@current@point@error@x@minus=\pgfplots@loc@TMPb
+			\let\pgfplots@current@point@error@y@minus=\pgfplots@loc@TMPc
+		\else
+			% ah, it was a "+-" item:
+			\let\pgfplots@current@point@error@x@plus=\pgfplots@loc@TMPb
+			\let\pgfplots@current@point@error@x@minus=\pgfplots@loc@TMPb
+			\let\pgfplots@current@point@error@y@plus=\pgfplots@loc@TMPc
+			\let\pgfplots@current@point@error@y@minus=\pgfplots@loc@TMPc
+		\fi
+	\fi
+	%
+	\pgfplots@foreach@plot@coord@NEXT@cont
 }
 \def\pgfplots@foreach@plot@coord@FINISH\pgfplots@EOI{}
 
