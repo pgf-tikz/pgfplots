@@ -71,7 +71,7 @@ INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY=plotdata/risingdrop3d.png plotdata/plotgraph
 # allow dynamic creation of reference files. I have never used something else.
 ENABLE_DYNAMIC_REFERENCES=1
 
-STATISTICS=$$(ls unittest_*.pdf | wc -l)/$$(ls unittest_*.tex | wc -l) [F=$$(ls unittest_*.diff.png | wc -l)]
+STATISTICS=$$(ls unittest_*.pdf | wc -l)/$$(ls unittest_*.tex | wc -l) [F=$$(find -maxdepth 1 -name 'unittest_*.diff.png' | wc -l)]
 
 UNIT_PDF_REFERENCES=$(UNIT_SOURCES:%.tex=references/%.pdf)
 WORKING_DIR=$(shell pwd)
