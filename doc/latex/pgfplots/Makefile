@@ -15,6 +15,8 @@ pgfplotstable: pgfplotstable.pdf
 TEXMFCNF_FOR_MEMLIMITS=export TEXMFCNF=~/texmf/mytexcnf:
 TEXINPUTS:=$(TEXINPUTS):./plotdata
 
+vpath %.dat ./plotdata
+
 $(info texinputs = $(TEXINPUTS))
 
 include pgfplots.makefile
