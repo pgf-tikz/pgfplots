@@ -33,7 +33,7 @@ $OUTPREFIX=$ARGV[0];
 $OUTHTMLNAME=$ARGV[1];
 
 $header = 
-'\documentclass{article}
+'\documentclass{standalone}
 % translate with >> pdflatex -shell-escape <file>
 
 % This file is an extract of the PGFPLOTS manual, copyright by Christian Feuersaenger.
