@@ -164,6 +164,10 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 
 		$match =~ s/\\plotcoords/$plotcoord_cmd/o;
 
+		# no need for \begin{center} ... \end{center} . In fact, it is incompatible with standalone.
+		$match =~ s/\\begin{center}//o;
+		$match =~ s/\\end{center}//o;
+
 		if ( ($codeexamplearg =~ m/code only/) ) {
 			print OUTHTML "<div class=\"img\">\n";
 			print OUTHTML "\t<div class=\"codeonly\">".maskForHTML($match)."</div>\n";

@@ -35,6 +35,6 @@ images: $(PREPARED_SRC:%.tex=%.png)
 # %.pdf: %.tex
 
 %.pdf:
-	export TEXINPUTS="$(TEXINPUTS):..:../figures:" && lualatex -interaction batchmode -halt-on-error -shell-escape $(@:.pdf=) 2>/dev/null 1>/dev/null
+	export TEXINPUTS="$(TEXINPUTS):..:../figures:../plotdata:" && lualatex -interaction batchmode -halt-on-error -shell-escape $(@:.pdf=) 2>/dev/null 1>/dev/null
 	#pdfcrop $@ $@ 2>/dev/null 1>/dev/null
 	@rm $(@:.pdf=.log) $(@:.pdf=.aux)
