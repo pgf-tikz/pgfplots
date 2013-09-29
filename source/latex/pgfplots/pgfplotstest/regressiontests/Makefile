@@ -191,7 +191,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
-	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>/dev/null 2>&1 || \
+	sh ../$(<:.tex=.compile.sh) $(<:.tex=) 1>$(<:.tex=.log.all) 2>&1 || \
 		( sh ../../scripts/compile_failed.sh "../$<" "$@" "\nPlease check $(<:.tex=.checkoutreferencerev.sh)" $(AUTO_INDENT_PIPE); exit 1 )
 
 else
