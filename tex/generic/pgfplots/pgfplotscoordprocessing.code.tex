@@ -6927,13 +6927,26 @@
 		\pgfplotscoordmathparsemacro{default}{\pgfplots@time}%
 		\pgfkeysgetvalue{/tikz/pos segment}\pgfplots@pos@segment
 		%
-		% 1. compute the total length of the plot (by integrating along a linear spline)
+\iffalse
+	% this here is a simple experiment which finds x or y
+	% values. IMPLEMENT IT!
+	\def\pgfplotspointattime@do@set@current@value{%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@current@point@y}%
+		\let\pgfplotspointattime@value@current=\pgfmathresult
+	}%
+	\def\pgfplotspointattime@do@set@target@value{%
+		\let\pgfplotspointattime@value@target=\pgfplots@time
+	}%
+	\def\pgfplots@ifpointattime@do@set@current@value@accumulates##1##2{##2}%
+\fi
 		%
-		\let\pgfplotspointattime@do=\pgfplotspointattime@do@set@current@value
+		\let\pgfplotspointattime@do=\relax
 		\let\pgfplots@coord@stream@start@=\pgfplots@coord@stream@start@plot@at@time
 		\let\pgfplots@coord@stream@coord@=\pgfplots@coord@stream@coord@plot@at@time
 		\def\pgfplots@coord@stream@end@{}%
 		\pgfplots@ifpointattime@do@set@current@value@accumulates{%
+			% 1. compute the total length of the plot (by integrating along a linear spline)
+			%
 			% we need to compute the TOTAL length in order to set the
 			% target values.
 			\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@plot@timer@args}%
@@ -7015,13 +7028,18 @@
 		\def\pgfplots@last@was@empty{1}%
 	\else
 		\ifx\pgfplots@pos@segment\c@pgfplots@segments
+			\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
+			\pgfplotspointattime@do@set@current@value
+			%
 			\ifx\pgfplots@last@processed\pgfutil@empty
 			\else
-				\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 				\pgfplotspointattime@do
 			\fi
 			%
-			\pgfplotsplothandlerserializepointto{\pgfplots@last@processed}%
+			\let\pgfplots@len@last@last=\pgfplots@len@last
+			\let\pgfplots@len@last=\pgfplotspointattime@value@current
+			\let\pgfplots@last@last=\pgfplots@last@processed
+			\let\pgfplots@last@processed=\pgfplots@cur
 		\fi
 		\def\pgfplots@last@was@empty{0}%
 	\fi
@@ -7050,9 +7068,12 @@
 }
 
 \def\pgfplotspointattime@do@set@current@value{%
-	\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
-	\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplotspointattime@value@current}}%
-	\let\pgfplotspointattime@value@current=\pgfmathresult
+	\ifx\pgfplots@last@processed\pgfutil@empty
+	\else
+		\pgfplotsplothandlersurveydifflen{\pgfplots@last@processed}{\pgfplots@cur}%
+		\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplotspointattime@value@current}}%
+		\let\pgfplotspointattime@value@current=\pgfmathresult
+	\fi
 %\message{plot at time (#1, segment \pgfplots@pos@segment): length \pgfplotspointattime@value@current^^J}%
 }%
 
@@ -7067,8 +7088,6 @@
 }%
 
 \def\pgfplotspointattime@do@find@target@value{%
-	\pgfplotspointattime@do@set@current@value
-	%
 	% compare \pgfplotspointattime@value@target and \pgfplotspointattime@value@current to see if
 	% we passed the target interval:
 	\pgfplotscoordmath{default}{if less than}
@@ -7077,14 +7096,11 @@
 		{% HIT!
 			\def\pgfplots@HIT{1}%
 			\pgfplotspointattime@pointbetween@two
+			%
+			% we cannot stop the loop; what we can turn it into no-op:
 			\let\pgfplots@coord@stream@coord@=\relax
 		}{%
 		}%
-	\let\pgfplots@len@last@last=\pgfplots@len@last
-	\let\pgfplots@len@last=\pgfplotspointattime@value@current
-	\let\pgfplots@last@last=\pgfplots@last@processed
-	%FIXME : what is/was this line supposed to do!?
-	%\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 }%
 
 \def\pgfplotspointattime@pointbetween@two{%
@@ -7094,7 +7110,7 @@
 	\pgfplotscoordmath{default}{op}{divide}{{\pgfplots@tmp}{\pgfmathresult}}%
 	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
 	\let\pgfplots@time@between@two=\pgfmathresult
-%\message{HIT between \pgfplots@len@last\space and \pgfplotspointattime@value@current\space (\pgfplots@time@between@two)^^J}%
+%\message{HIT of \pgfplotspointattime@value@target\space between \pgfplots@len@last\space and \pgfplotspointattime@value@current\space (\pgfplots@time@between@two)^^J}%
 	\ifx\pgfplots@last@processed\pgfutil@empty
 		\pgfplotsplothandlerserializepointto{\pgfplots@cur}%
 	\else
