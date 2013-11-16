@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Sa 16. Nov 21:05:48 CET 2013 %%%
+%%% Date of this copy: Sa 16. Nov 22:03:05 CET 2013 %%%
 
 
 
@@ -31,6 +31,8 @@
 \usepgflibrary{intersections}
 \usepgfmodule{decorations}
 
+\newif\ifpgfpathfilledintersections@split
+
 \pgfkeys{%
 	/pgf/filled intersection/reverse/.is choice,
 	/pgf/filled intersection/reverse/false/.code=\def\pgfpathfilledintersections@reverse@mode{0},%
@@ -39,6 +41,18 @@
 	% checks the coordinates of the first two path instructions as heuristics:
 	/pgf/filled intersection/reverse/auto/.code=\def\pgfpathfilledintersections@reverse@mode{2},%
 	/pgf/filled intersection/reverse/auto,
+	/pgf/filled intersection/split/.is if=pgfpathfilledintersections@split,
+	/pgf/filled intersection/split/.default=true,
+	/pgf/filled intersection/result stream/begin/.code=,%
+	/pgf/filled intersection/result stream/next ready/.code={
+		% prepend to any previous path elements:
+		\pgfgetpath\pgf@temp
+		\t@pgf@tokc=\expandafter{\pgf@temp}%
+		\t@pgf@toka=\expandafter{\pgfretval}%
+		\edef\pgfretval{\the\t@pgf@tokc\the\t@pgf@toka}%
+		\pgfsetpath{\pgfretval}%
+	},%
+	/pgf/filled intersection/result stream/end/.code=,%
 }%
 
 % \pgfpathfilledintersections[<options>]{<first path>}{<second path>}
@@ -56,7 +70,6 @@
 	\pgfprocessround{#2}{#2}%
 	\pgfprocessround{#3}{#3}%
 	%
-\message{Combination of \meaning#2\space and \meaning#3...^^J}%
 	\if2\pgfpathfilledintersections@reverse@mode
 		% reverse=auto
 		\expandafter\pgfpathfilledintersections@heuristics@get@direction#2\pgf@stop
@@ -71,33 +84,21 @@
 		\fi
 	\fi
 	%
-	\if1\pgfpathfilledintersections@reverse@mode
-		% reverse=true
-		%
-		% Ok, then reverse one of the path. We choose the second one as that is easier to debug.
-		% FIXME : might make sense to determine which one is shorter...
-		\pgf@reverse@path{#3}%
-		\let#3=\pgfretval
+	\pgfpathfilledintersections@invoke{result stream/begin}%
+	%
+	\ifpgfpathfilledintersections@split
+		\pgfpathfilledintersections@compute@splitted{#2}{#3}%
+	\else
+		\pgfpathfilledintersections@compute{#2}{#3}%
+		\pgfpathfilledintersections@invoke{result stream/next ready}%
 	\fi
 	%
-	\expandafter\pgfpathfilledintersections@replace@first@moveto#3\pgf@stop
-	\let#3=\pgfretval
-	% 
-	% simply concatenate them:
-	% ... and prepend any previous path elements:
-	\pgfgetpath\pgf@temp
-	\t@pgf@tokc=\expandafter{\pgf@temp}%
+	\pgfpathfilledintersections@invoke{result stream/end}%
 	%
-	\t@pgf@toka=\expandafter{#2}%
-	\t@pgf@tokb=\expandafter{#3}%
-	\edef\pgfretval{\the\t@pgf@tokc\the\t@pgf@toka\the\t@pgf@tokb}%
-	%
-\message{   = \meaning\pgfretval^^J}%
-	% that's it.
-	%
-	\pgfsetpath{\pgfretval}%
 	\endgroup
 }%
+
+\def\pgfpathfilledintersections@invoke#1{\pgfkeysvalueof{/pgf/filled intersection/#1/.@cmd}\pgfeov}
 
 \def\pgfpathfilledintersections@replace@first@moveto#1#2\pgf@stop{%
 	\ifx#1\pgfsyssoftpath@movetotoken
@@ -106,6 +107,71 @@
 		\def\pgfretval{#1#2}%
 	\fi
 }%
+
+\def\pgfpathfilledintersections@compute@splitted#1#2{%
+	% 1. compute intersection points:
+	\pgfintersectionofpaths%
+		{%
+			\pgfsetpath#1%
+		}%
+		{%
+			\pgfsetpath#2%
+		}%
+	% FIXME : computing the intersections is fine... but it would be
+	% even finer to report the resulting points back to tikz!
+	%
+	% 2.  split the first involved path into the
+	% segments induced by the intersection points:
+	\pgf@insert@intersections@in@path{1}%
+	\let\pgfpathfilled@a@segments=\pgfretval
+	% 2. split the second involved path into the
+	% segments induced by the intersection points:
+	\pgf@insert@intersections@in@path{2}%
+	\let\pgfpathfilled@b@segments=\pgfretval
+	%
+	\ifnum\pgfpathfilled@a@segments=\pgfpathfilled@b@segments\relax
+	\else
+		\pgferror{Illegal internal state encountered: the number segments induced by the intersection points of the two paths DIFFER between the first and the second path: first path has \pgfpathfilled@a@segments\space whereas the second has \pgfpathfilled@b@segments.}%
+	\fi
+	%
+	% Recombine the pairs of segments (a_i, b_i), i = 0,..., N-1 in a
+	% filled way:
+	\def\c@pgfpathfilled@counter{0}%
+	\pgfmathloop
+	\ifnum\c@pgfpathfilled@counter<\pgfpathfilled@a@segments\relax
+		\expandafter\let\expandafter\pgf@loc@path@a\csname pgf@intersect@path@split@a@\c@pgfpathfilled@counter\endcsname
+		\expandafter\let\expandafter\pgf@loc@path@b\csname pgf@intersect@path@split@b@\c@pgfpathfilled@counter\endcsname
+		%
+		\pgfpathfilledintersections@compute{\pgf@loc@path@a}{\pgf@loc@path@b}%
+		% report to the result stream. It knows how to deal with it:
+		\pgfpathfilledintersections@invoke{result stream/next ready}%
+		%
+		\pgfutil@advancestringcounter\c@pgfpathfilled@counter
+	\repeatpgfmathloop
+}
+
+\def\pgfpathfilledintersections@compute#1#2{%
+\message{Combination of \meaning#1\space and \meaning#2...^^J}%
+	%
+	\if1\pgfpathfilledintersections@reverse@mode
+		% reverse=true
+		%
+		% Ok, then reverse one of the path. We choose the second one as that is easier to debug.
+		% FIXME : might make sense to determine which one is shorter...
+		\pgf@reverse@path{#2}%
+		\let#2=\pgfretval
+	\fi
+	%
+	\expandafter\pgfpathfilledintersections@replace@first@moveto#2\pgf@stop
+	\let#2=\pgfretval
+	% 
+	\t@pgf@toka=\expandafter{#1}%
+	\t@pgf@tokb=\expandafter{#2}%
+	\edef\pgfretval{\the\t@pgf@toka\the\t@pgf@tokb}%
+	%
+\message{   = \meaning\pgfretval^^J}%
+	% that's it.
+}
 
 \def\pgfpathfilledintersections@heuristics@get@direction#1#2#3{%
 	\pgfutil@ifnextchar\pgf@stop{%
@@ -347,13 +413,13 @@
 \def\pgf@insert@intersections@in@path#1{%
 	\ifcase#1\relax
 		% 0
-		\pgf@error{illegal argument supplied.}
+		\pgferror{illegal argument supplied.}
 	\or
 		\def\pgf@insert@intersections@src{a}%
 	\or
 		\def\pgf@insert@intersections@src{b}%
 	\else
-		\pgf@error{illegal argument supplied.}
+		\pgferror{illegal argument supplied.}
 	\fi
 	\ifnum\pgfintersectionsolutions=0 %
 		\pgfutil@namelet{pgf@intersect@path@split@\pgf@insert@intersections@src @0}{pgf@intersect@path@\pgf@insert@intersections@src}%
