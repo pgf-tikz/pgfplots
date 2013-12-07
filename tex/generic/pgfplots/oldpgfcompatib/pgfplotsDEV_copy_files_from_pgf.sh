@@ -37,7 +37,7 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 FILES=(\
 	`find $PGFDIR/latex/pgf/doc -name '*.tex'`\
 	$PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
-	$PGFDIR/generic/pgf/libraries/pgflibraryfilledintersections.code.tex \
+	$PGFDIR/generic/pgf/libraries/pgflibraryfillbetween.code.tex \
 )
 for A in "${FILES[@]}"; do
 	echo "creating compatibility version for `basename $A` ... " 
