@@ -1,0 +1,124 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2013 by Christian Feuersaenger
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\usetikzlibrary{intersections}
+
+\pgfutil@IfUndefined{pgflibraryfillbetween.code.tex}{%
+	\input pgfplotsoldpgfsupp_pgflibraryfillbetween.code.tex
+}{%
+	\usepgflibrary{fillbetween}
+}%
+
+\pgfkeys{%
+	/pgfplots/fill between/.code={\pgfqkeys{/pgfplots/fill between}{#1}},
+	/pgfplots/fill between/of/.code=\pgfplotslibraryfillbetween@parse#1\pgfplots@EOI,
+	/pgfplots/fill between/.search also={/pgf/fill between},
+}
+
+\def\pgfplotslibraryfillbetween@parse#1 and #2\pgfplots@EOI{%
+	\def\pgfplots@fillbetween@a{#1}%
+	\def\pgfplots@fillbetween@b{#2}%
+}%
+
+% The options are from 
+% \addplot[#1] fill between[#3] #4;
+\def\pgfplotslibraryfillbetween@addplot#1#2#3{%
+	%
+	\pgfplots@log3{fill between: activating layered graphics (will use \pgfplotslibraryfillbetween@path@layer@name@default\space if possible)}%
+	\pgfplotssetlateoptions{set layers}%
+	%
+	\pgfplots@addplot@enqueue@coords{%
+		% precmd
+	}{%
+		% empty - this here is a TikZ instruction, not a "real" \addplot command
+	}{%
+		% the path instruction:
+		\pgfplotslibraryfillbetween@path{#1}{#2}{#3}%
+	}{%	
+		% post command.
+	}%
+}
+
+\def\pgfplotslibraryfillbetween@path@layer@name@default{pre main}%
+
+\def\pgfplotslibraryfillbetween@path#1#2#3{%
+	%
+	% automagically try to use the correct layer:
+	\let\pgfplotslibraryfillbetween@path@layer@name=\pgfplotslibraryfillbetween@path@layer@name@default
+	\pgfutil@IfUndefined{pgf@layerlist}{%
+		% hm. No layers active!? A pity...
+		\pgfplotslibraryfillbetween@path@warn@layer
+		\let\pgfplotslibraryfillbetween@path@layer@name\pgfutil@empty%
+	}{%
+		\edef\pgfplots@loc@TMPa{\noexpand\pgfutil@in@{\pgfplotslibraryfillbetween@path@layer@name}}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgf@layerlist}%
+		\ifpgfutil@in@
+		\else
+			\pgfplotslibraryfillbetween@path@warn@layer
+			\let\pgfplotslibraryfillbetween@path@layer@name\pgfutil@empty%
+		\fi
+	}%
+	%
+	\pgfplotsonlayer{\pgfplotslibraryfillbetween@path@layer@name}%
+	%
+	\path[#1,/pgfplots/fill between={#2}] 
+		\pgfextra
+			\pgfplotslibraryfillbetween@path@generatepath
+		\endpgfextra
+		#3%
+	;%
+	%
+	\endpgfplotsonlayer
+}
+
+\def\pgfplotslibraryfillbetween@path@warn@layer{%
+	\pgfplots@warning{'fill between': Could not activate graphics layer '\pgfplotslibraryfillbetween@path@layer@name'. Filled path will be on top of the other ones.}%
+}%
+\def\pgfplotslibraryfillbetween@path@generatepath{%
+	\pgfplotslibraryfillbetween@path@check
+	\expandafter\let\expandafter\pgfplots@fillbetween@a@path
+		\csname tikz@intersect@path@name@\pgfplots@fillbetween@a\endcsname
+	\expandafter\let\expandafter\pgfplots@fillbetween@b@path
+		\csname tikz@intersect@path@name@\pgfplots@fillbetween@b\endcsname
+	\pgfpathfillbetween{\pgfplots@fillbetween@a@path}{\pgfplots@fillbetween@b@path}%
+}%
+
+\def\pgfplotslibraryfillbetween@path@check{%
+	\pgfutil@IfUndefined{tikz@intersect@path@name@\pgfplots@fillbetween@a}{%
+		\pgfplotsthrow{invalid argument}
+		{\pgfplots@fillbetween@a}%
+		{fill between: the mandatory argument 'of=<name path A> and <name path B> is missing or has empty arguments. Please ensure that the option has been set and that both path names have been assigned (perhaps you need 'name path global=\pgfplots@fillbetween@a' somewhere?)}%
+		\pgfeov
+	}{}%
+	\pgfutil@IfUndefined{tikz@intersect@path@name@\pgfplots@fillbetween@b}{%
+		\pgfplotsthrow{invalid argument}
+		{\pgfplots@fillbetween@b}%
+		{fill between: the mandatory argument 'of=<name path A> and <name path B> is missing or has empty arguments. Please ensure that the option has been set and that both path names have been assigned (perhaps you need 'name path global=\pgfplots@fillbetween@b' somewhere?)}%
+		\pgfeov
+	}{}%
+}
+
+\endinput
