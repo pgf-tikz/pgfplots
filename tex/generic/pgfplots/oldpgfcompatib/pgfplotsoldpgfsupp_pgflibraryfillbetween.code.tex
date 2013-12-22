@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: So 22. Dez 21:52:18 CET 2013 %%%
+%%% Date of this copy: So 22. Dez 22:00:14 CET 2013 %%%
 
 
 
@@ -135,23 +135,37 @@
 }%
 
 \def\pgfpathfillbetween@compute@splitted#1#2{%
-	% 1. compute intersection points:
-	%       FIXME : there are implicit assumptions on the INTERNAL ORDER of the two paths! Which one!?
-	%		FIXME : I certainly need to configure some of the sorting keys of \pgfintersectionofpaths...?
-	%		FIXME : a *real* solution would work for any kind of paths. This here does not, it works for the "common use-cases"
+	% 0. normalize path sequences.
+	%  ATTENTION : there are implicit assumptions on the INTERNAL ORDER of the two paths!
+    %    This implementation needs to loop over them synchronously, i.e. it processes
+	%       the 0.th segment of a and the 0th of b, 
+	%       the 1.th segment of a and the 1th of b, 
+	%    and so on. Here, "i th segment" implies a sort order in ascending x direction.
+	%    This is, however, a weakness of \pgfintersectionofpaths - it does not really support this kind of sorting.
+	%    
+	%   I work around this by restricting the implementation to the "common use-cases", i.e. to two plots of functions which do not intersect themselves (i.e. to "functions" in the original sense). This will probably (almost surely) fail for parametric functions or circles.
+    %  
 	\if0\pgfpathfillbetween@reverse@mode
 		% reverse=false
-\message{REVERSING!^^J}%
 		%
-		% This case is actually more involved here!
+		% This means one plot is in direction '+' and one in '-', i.e.
+		% a:  x ---> x ---> x
+		% b:  x <--- x <--- x
 		%
-		% Ok, then reverse one of the paths. We choose the second one as that is easier to debug.
-		% FIXME : might make sense to determine which one is shorter...
+		% However, we have the implicit assumption that both paths can be processed synchronously, i.e. that they have the SAME direction.
+		% To this end, we have to reverse one of them here (since \pgfintersectionofpaths does not automatically sort results in a suitable way):
+		%
 		\pgf@reverse@path{#2}%
 		\let#2=\pgfretval
 		%
+		% However, we need to re-reverse the individual segments later-on...
+		% So: set 'reverse=true'. Will be respected when assembling the splitted segments...
 		\def\pgfpathfillbetween@reverse@mode{1}%
 	\fi
+	%
+	% 1. compute intersection points:
+	\pgf@intersect@sortfalse
+	\pgf@intersect@sort@by@second@pathfalse
 	\pgfintersectionofpaths%
 		{%
 			\pgfsetpath#1%
@@ -161,7 +175,6 @@
 		}%
 	%
 	%
-\message{INSERTING INTERSECTIONS INTO PATH 1^^J}%
 	% FIXME : computing the intersections is fine... but it would be
 	% even finer to report the resulting points back to tikz!
 	% -> call the *tikz* intersection lib through some sort of callback!?
@@ -171,7 +184,6 @@
 	\pgf@insert@intersections@in@path{1}%
 	\let\pgfpathfilled@a@segments=\pgfretval
 %
-\message{INSERTING INTERSECTIONS INTO PATH 2^^J}%
 	% 2. split the second involved path into the
 	% segments induced by the intersection points:
 	\pgf@insert@intersections@in@path{2}%
