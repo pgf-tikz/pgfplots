@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: So 8. Dez 20:36:56 CET 2013 %%%
+%%% Date of this copy: So 22. Dez 21:52:18 CET 2013 %%%
 
 
 
@@ -105,6 +105,8 @@
 		\ifx\pgfpath@filled@dir@first\pgfpath@filled@dir@second
 			% Ok, they (seem to) have the same direction. Reverse one of them:
 			\def\pgfpathfillbetween@reverse@mode{1}%
+		\else
+			\def\pgfpathfillbetween@reverse@mode{0}%
 		\fi
 	\fi
 	%
@@ -134,6 +136,22 @@
 
 \def\pgfpathfillbetween@compute@splitted#1#2{%
 	% 1. compute intersection points:
+	%       FIXME : there are implicit assumptions on the INTERNAL ORDER of the two paths! Which one!?
+	%		FIXME : I certainly need to configure some of the sorting keys of \pgfintersectionofpaths...?
+	%		FIXME : a *real* solution would work for any kind of paths. This here does not, it works for the "common use-cases"
+	\if0\pgfpathfillbetween@reverse@mode
+		% reverse=false
+\message{REVERSING!^^J}%
+		%
+		% This case is actually more involved here!
+		%
+		% Ok, then reverse one of the paths. We choose the second one as that is easier to debug.
+		% FIXME : might make sense to determine which one is shorter...
+		\pgf@reverse@path{#2}%
+		\let#2=\pgfretval
+		%
+		\def\pgfpathfillbetween@reverse@mode{1}%
+	\fi
 	\pgfintersectionofpaths%
 		{%
 			\pgfsetpath#1%
@@ -141,13 +159,19 @@
 		{%
 			\pgfsetpath#2%
 		}%
+	%
+	%
+\message{INSERTING INTERSECTIONS INTO PATH 1^^J}%
 	% FIXME : computing the intersections is fine... but it would be
 	% even finer to report the resulting points back to tikz!
+	% -> call the *tikz* intersection lib through some sort of callback!?
 	%
 	% 2.  split the first involved path into the
 	% segments induced by the intersection points:
 	\pgf@insert@intersections@in@path{1}%
 	\let\pgfpathfilled@a@segments=\pgfretval
+%
+\message{INSERTING INTERSECTIONS INTO PATH 2^^J}%
 	% 2. split the second involved path into the
 	% segments induced by the intersection points:
 	\pgf@insert@intersections@in@path{2}%
@@ -175,12 +199,12 @@
 }
 
 \def\pgfpathfillbetween@compute#1#2{%
-\message{Combination of \meaning#1\space and \meaning#2...^^J}%
+%\message{Combination of \meaning#1\space and \meaning#2...^^J}%
 	%
 	\if1\pgfpathfillbetween@reverse@mode
 		% reverse=true
 		%
-		% Ok, then reverse one of the path. We choose the second one as that is easier to debug.
+		% Ok, then reverse one of the paths. We choose the second one as that is easier to debug.
 		% FIXME : might make sense to determine which one is shorter...
 		\pgf@reverse@path{#2}%
 		\let#2=\pgfretval
@@ -198,7 +222,7 @@
 	%
 	\edef\pgfretval{\the\t@pgf@toka\the\t@pgf@tokb\the\t@pgf@tokc}%
 	%
-\message{   = \meaning\pgfretval^^J}%
+%\message{   = \meaning\pgfretval^^J}%
 	% that's it.
 }
 
@@ -438,6 +462,8 @@
 % path. It also splits the path into the segments induced by the
 % intersection points.
 %
+% FIXME : this assumes that the intersections are sorted "in a suitable way"!
+%
 % #1 : should be '1' if the FIRST argument of
 % \pgfintersectionofpaths should be used and '2' the SECOND
 % argument of \pgfintersectionofpaths should be used on input.
@@ -540,6 +566,26 @@
 		%
 		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
 		% FIXME : experimental: add support for other path operations!
+		% for curveto:
+		% using decasteljau
+%--------------------------------------------------
+% Point lerp(float t, Point A, Point B) {
+% return A*(1-t) + B*t; // + and * overloaded for Points
+% }
+% 
+% void split(t, Point P[4], Point L[4], Point R[4]) {
+% 	Point P01 = lerp(t, P[0], P[1]);
+% 	Point P12 = lerp(t, P[1], P[2]);
+% 	Point P23 = lerp(t, P[2], P[3]);
+% 	Point P012 = lerp(t, P01, P12);
+% 	Point P123 = lerp(t, P12, P13);
+% 	Point Q = lerp(t, P012, P123);
+% 	L[0] = P[0]; L[1] = P01; L[2] = P012; L[3] = Q;
+% 	R[0] = Q;
+% 	R[1] = P123; R[2] = P23; R[3] = P[3];
+% }
+%-------------------------------------------------- 
+		% combined with \let\pgfintersectionsolutionsortbytime=\relax and \ifpgf@intersect@sort=\iftrue (computes time offsets)
 		\edef\pgf@loc@TMPa{\noexpand\pgfsyssoftpath@linetotoken{\the\pgf@x}{\the\pgf@y}}%
 		\expandafter\pgfapplistpushback\pgf@loc@TMPa\to{pgfretval@tmp}%
 		%
