@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: So 22. Dez 23:09:47 CET 2013 %%%
+%%% Date of this copy: Mo 23. Dez 16:36:25 CET 2013 %%%
 
 
 
@@ -569,17 +569,11 @@
 	\fi
 }%
 
-\def\pgf@insert@intersections@in@path@@{%
-\message{processing segment \the\c@pgf@path@segment\space (current solution \pgf@insert@cursolution; target segment \the\c@pgf@path@segment@trg)^^J}%
-	\pgfmathloop
-	% we need to loop: it is fully acceptable if more than one
-	% solution is on the same segment.
-	\ifnum\c@pgf@path@segment=\c@pgf@path@segment@trg
-		%
-		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
-		% FIXME : experimental: add support for other path operations!
-		% for curveto:
-		% using decasteljau
+% ----------------------------------------------------------------------------------
+
+
+% Splits a Bezier curve at a designated time 't'
+% using decasteljau
 %--------------------------------------------------
 % Point lerp(float t, Point A, Point B) {
 % return A*(1-t) + B*t; // + and * overloaded for Points
@@ -597,6 +591,101 @@
 % 	R[1] = P123; R[2] = P23; R[3] = P[3];
 % }
 %-------------------------------------------------- 
+% INPUT:
+%  #1: a value in the range [0,1] which determines the split point
+%  #2,#3,#4,#5: the points of the curve, each of the form {<x>}{<y>}
+% 
+% OUTPUT:
+%  \pgfretval@L{{<A>}{<B>}{<C>}{<D>}}
+%  \pgfretval@R{{<A>}{<B>}{<C>}{<D>}}
+%
+% @see \pgf@split@curveto@softpaths
+\def\pgf@split@curveto#1#2#3#4#5{%
+	\begingroup
+	\pgf@xa=-#1pt %
+	\advance\pgf@xa by1pt %
+	\edef\pgf@split@one@m@t{\pgf@sys@tonumber\pgf@xa}%
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{#2}{#3}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@AB
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{#3}{#4}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@BC
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{#4}{#5}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@CD
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{\pgf@split@curveto@p@AB}{\pgf@split@curveto@p@BC}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@ABC
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{\pgf@split@curveto@p@BC}{\pgf@split@curveto@p@CD}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@BCD
+	%
+	\pgf@split@curveto@lerp{#1}{\pgf@split@one@m@t}{\pgf@split@curveto@p@ABC}{\pgf@split@curveto@p@BCD}%
+	\pgf@split@curveto@tomacro\pgf@split@curveto@p@Q
+	%
+	\xdef\pgf@marshal{%
+		\edef\noexpand\pgfretval@L{{#2}{\pgf@split@curveto@p@AB}{\pgf@split@curveto@p@ABC}{\pgf@split@curveto@p@Q}}%
+		\edef\noexpand\pgfretval@R{{\pgf@split@curveto@p@Q}{\pgf@split@curveto@p@BCD}{\pgf@split@curveto@p@CD}{#5}}%
+	}%
+	\endgroup
+	\pgf@marshal
+}
+
+% Splits a Bezier curve at a designated time 't'
+%
+% This variants takes a part of a softpath as input:
+%
+% #1: a curveto- a macro containing a softpath of the form 
+%   <x><y>\pgfsyssoftpath@curvetosupportatoken<x><y>\pgfsyssoftpath@curvetosupportbtoken<x><y>\pgfsyssoftpath@curvetotoken<x><y>
+% #2: t in [0,1]
+%
+% OUTPUT: \pgfretval@L contains the LEFT segment (in the same softpath format) and \pgfretval@R contains the RIGHT segment (in the softpath format)
+\def\pgf@split@curveto@softpaths#1#2{%
+	\expandafter\pgf@split@curveto@softpaths@#1{#2}%
+}
+
+\def\pgf@split@curveto@softpaths@#1#2\pgfsyssoftpath@curvetosupportatoken#3#4\pgfsyssoftpath@curvetosupportbtoken#5#6\pgfsyssoftpath@curvetotoken#7#8#9{%
+	\pgf@split@curveto{#9}%
+		{{#1}{#2}}%
+		{{#3}{#4}}%
+		{{#5}{#6}}%
+		{{#7}{#8}}%
+	\expandafter\pgf@split@curveto@softpaths@@\pgfretval@L\pgfretval@L
+	\expandafter\pgf@split@curveto@softpaths@@\pgfretval@R\pgfretval@R
+}%
+
+\def\pgf@split@curveto@softpaths@@#1#2#3#4#5{%
+	\def#5{#1\pgfsyssoftpath@curvetosupportatoken#2\pgfsyssoftpath@curvetosupportbtoken#3\pgfsyssoftpath@curvetotoken#4}%
+}%
+
+% ----------------------------------------------------------------------------------
+
+% defines \pgf@x, \pgf@y to be A*(1-t) + B*t
+% #1: the scalar value 't' in [0,1]
+% #2: the scalar value '1-t' in [0,1]
+% #3: a 2d point 'A' of the form {<x>}{<y>}
+% #4: a 2d point 'B' of the form {<x>}{<y>}
+\def\pgf@split@curveto@lerp#1#2#3#4{%
+	\pgfpointadd
+		{\pgfqpointscale{#2}{\expandafter\pgfqpoint#3}}%
+		{\pgfqpointscale{#1}{\expandafter\pgfqpoint#4}}%
+}%
+
+\def\pgf@split@curveto@tomacro#1{%
+	\edef#1{{\the\pgf@x}{\the\pgf@y}}%
+}
+
+\def\pgf@insert@intersections@in@path@@{%
+\message{processing segment \the\c@pgf@path@segment\space (current solution \pgf@insert@cursolution; target segment \the\c@pgf@path@segment@trg)^^J}%
+	\pgfmathloop
+	% we need to loop: it is fully acceptable if more than one
+	% solution is on the same segment.
+	\ifnum\c@pgf@path@segment=\c@pgf@path@segment@trg
+		%
+		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
+		% FIXME : experimental: add support for other path operations!
+		% for curveto:
 		% combined with \let\pgfintersectionsolutionsortbytime=\relax and \ifpgf@intersect@sort=\iftrue (computes time offsets)
 		\edef\pgf@loc@TMPa{\noexpand\pgfsyssoftpath@linetotoken{\the\pgf@x}{\the\pgf@y}}%
 		\expandafter\pgfapplistpushback\pgf@loc@TMPa\to{pgfretval@tmp}%
