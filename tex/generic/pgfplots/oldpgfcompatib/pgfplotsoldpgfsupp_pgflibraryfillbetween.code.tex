@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Mo 23. Dez 16:36:25 CET 2013 %%%
+%%% Date of this copy: Mo 23. Dez 18:09:16 CET 2013 %%%
 
 
 
@@ -35,6 +35,7 @@
 
 \pgfkeys{%
 	/pgf/fill between/reverse/.is choice,
+	/pgf/fill between/reverse/.default=true,
 	/pgf/fill between/reverse/false/.code=\def\pgfpathfillbetween@reverse@mode{0},%
 	/pgf/fill between/reverse/true/.code=\def\pgfpathfillbetween@reverse@mode{1},%
 	%
@@ -164,8 +165,12 @@
 	\fi
 	%
 	% 1. compute intersection points:
-	\pgf@intersect@sortfalse
 	\pgf@intersect@sort@by@second@pathfalse
+	%
+	% Make sure that we compute the time offsets. We *need* them in order to split curveto paths.
+	\pgf@intersect@sorttrue
+	% BUT: we do NOT want to sort by time; we only need the value:
+	\let\pgfintersectionsolutionsortbytime=\relax
 	\pgfintersectionofpaths%
 		{%
 			\pgfsetpath#1%
@@ -211,7 +216,7 @@
 }
 
 \def\pgfpathfillbetween@compute#1#2{%
-%\message{Combination of \meaning#1\space and \meaning#2...^^J}%
+\message{Combination of \meaning#1\space and \meaning#2...^^J}%
 	%
 	\if1\pgfpathfillbetween@reverse@mode
 		% reverse=true
@@ -640,7 +645,7 @@
 %   <x><y>\pgfsyssoftpath@curvetosupportatoken<x><y>\pgfsyssoftpath@curvetosupportbtoken<x><y>\pgfsyssoftpath@curvetotoken<x><y>
 % #2: t in [0,1]
 %
-% OUTPUT: \pgfretval@L contains the LEFT segment (in the same softpath format) and \pgfretval@R contains the RIGHT segment (in the softpath format)
+% OUTPUT: \pgfretval@L contains the LEFT segment (in the same softpath format) and \pgfretval@R contains the RIGHT segment (in the softpath format), \pgfretval contains the intersection point (i.e. the point evaluated at 't')
 \def\pgf@split@curveto@softpaths#1#2{%
 	\expandafter\pgf@split@curveto@softpaths@#1{#2}%
 }
@@ -656,7 +661,9 @@
 }%
 
 \def\pgf@split@curveto@softpaths@@#1#2#3#4#5{%
-	\def#5{#1\pgfsyssoftpath@curvetosupportatoken#2\pgfsyssoftpath@curvetosupportbtoken#3\pgfsyssoftpath@curvetotoken#4}%
+	% we can silently omit the moveto component.
+	\def#5{\pgfsyssoftpath@curvetosupportatoken#2\pgfsyssoftpath@curvetosupportbtoken#3\pgfsyssoftpath@curvetotoken#4}%
+	\def\pgfretval{#1}%
 }%
 
 % ----------------------------------------------------------------------------------
@@ -676,19 +683,16 @@
 	\edef#1{{\the\pgf@x}{\the\pgf@y}}%
 }
 
+
 \def\pgf@insert@intersections@in@path@@{%
-\message{processing segment \the\c@pgf@path@segment\space (current solution \pgf@insert@cursolution; target segment \the\c@pgf@path@segment@trg)^^J}%
+\message{processing segment \the\c@pgf@path@segment\space (current solution \pgf@insert@cursolution/\pgfintersectionsolutions; target segment \the\c@pgf@path@segment@trg, currentxy \pgfinsert@intersect@tok@currentxy, lastxy \pgfinsert@intersect@tok@lastxy)^^J}%
 	\pgfmathloop
 	% we need to loop: it is fully acceptable if more than one
 	% solution is on the same segment.
 	\ifnum\c@pgf@path@segment=\c@pgf@path@segment@trg
 		%
-		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
-		% FIXME : experimental: add support for other path operations!
-		% for curveto:
-		% combined with \let\pgfintersectionsolutionsortbytime=\relax and \ifpgf@intersect@sort=\iftrue (computes time offsets)
-		\edef\pgf@loc@TMPa{\noexpand\pgfsyssoftpath@linetotoken{\the\pgf@x}{\the\pgf@y}}%
-		\expandafter\pgfapplistpushback\pgf@loc@TMPa\to{pgfretval@tmp}%
+		\pgf@insert@intersections@split@segment
+		\expandafter\pgfapplistpushback\pgfretval\to{pgfretval@tmp}%
 		%
 		%
 		% report the current result segment!
@@ -698,6 +702,7 @@
 		% ... and start a new result segment. Keep in mind that it
 		% should start with a moveto:
 		\pgfapplistnewempty{pgfretval@tmp}%
+		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
 		\edef\pgf@loc@TMPa{\noexpand\pgfsyssoftpath@movetotoken{\the\pgf@x}{\the\pgf@y}}%
 		\expandafter\pgfapplistpushback\pgf@loc@TMPa\to{pgfretval@tmp}%
 		%
@@ -712,13 +717,56 @@
 		\fi
 	\repeatpgfmathloop
 	\expandafter\pgfapplistpushback\pgfinsert@intersect@tok\to{pgfretval@tmp}%
+	\let\pgfinsert@intersect@tok@lastxy=\pgfinsert@intersect@tok@currentxy
 	\advance\c@pgf@path@segment by1 %
 }%
 
+% INPUT:
+%  - \pgfinsert@intersect@tok@type is the current type (one of \pgfsyssoftpath@linetotoken or \pgfsyssoftpath@curvetotoken)
+%  - \pgf@insert@cursolution is the current intersection index
+%  - \pgfinsert@intersect@tok is the current path segment. On output, it is the *remaining* path segment.
+%  - \pgfinsert@intersect@tok@lastxy the (x,y) coordinates of the last seen coordinate.
+%
+% OUTPUT:
+%  - \pgfretval the segment which has been splitted off. It will be appended to the result.
+%  - \pgfinsert@intersect@tok the remaining path segment which is to be processed
+%  - \pgfinsert@intersect@tok@lastxy the (x,y) coordinates of the last seen coordinate which is to be processed.
+\def\pgf@insert@intersections@split@segment{%
+	\ifx\pgfinsert@intersect@tok@type\pgfsyssoftpath@linetotoken
+		\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
+		\edef\pgfretval{\noexpand\pgfsyssoftpath@linetotoken{\the\pgf@x}{\the\pgf@y}}%
+		% ... and keep \pgfinsert@intersect@tok at its current value (it is \pgfsyssoftpath@linetotoken{<next x>}{<next y>})
+	\else
+		\ifx\pgfinsert@intersect@tok@type\pgfsyssoftpath@curvetotoken
+			% Ah; a curveto. That's more involved!
+			% First, get the time offset of the current intersection:
+			\edef\pgf@split@it@time{\csname pgf@intersect@solution@\pgf@insert@cursolution @time@\pgf@insert@intersections@src\endcsname}%
+			\let\pgf@split@it@start=\pgfinsert@intersect@tok@lastxy
+			% we have to insert the last XY coordinates:
+			\t@pgf@toka=\expandafter{\pgf@split@it@start}%
+			\t@pgf@tokb=\expandafter{\pgfinsert@intersect@tok}%
+			\edef\pgf@temp{\the\t@pgf@toka\the\t@pgf@tokb}%
+			% Split into TWO curveto operations!
+			\pgf@split@curveto@softpaths{\pgf@temp}{\pgf@split@it@time}%
+\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
+\message{Splitted curve to segment at t=\pgf@split@it@time; point \the\pgf@x,\the\pgf@y. Evaluation returned point \pgfretval^^J}%
+			% ok, the first returned sub-curveto is the result of this method...
+			\let\pgfretval=\pgfretval@L
+			% ... and the second is the "remainder" which is still to be processed.
+			\let\pgfinsert@intersect@tok=\pgfretval@R
+		\else
+			\pgferror{Unsupported path type \meaning\pgfinsert@intersect@tok@type. Cannot process these paths.}%
+		\fi
+	\fi
+	%
+	\csname pgfpoint@intersect@solution@\pgf@insert@cursolution\endcsname%
+	\edef\pgfinsert@intersect@tok@lastxy{{\the\pgf@x}{\the\pgf@y}}%
+}%
 
 \def\pgf@insert@intersections@loop#1{%
 	\ifx#1\pgf@stop%
-		\def\pgfinsert@intersect@tok{}%
+		\let\pgfinsert@intersect@tok\pgfutil@empty%
+		\let\pgfinsert@intersect@tok@type\pgfutil@empty
 		\pgf@insert@intersections@in@path@@%
 		\let\pgfinsert@intersect@next=\relax%
 	\else%
@@ -746,26 +794,31 @@
 
 \def\pgfinsert@intersect@token@moveto#1#2{%
 	\def\pgfinsert@intersect@tok{\pgfsyssoftpath@movetotoken{#1}{#2}}%
+	\let\pgfinsert@intersect@tok@type\pgfsyssoftpath@movetotoken
+	\def\pgfinsert@intersect@tok@lastxy{{#1}{#2}}%
 	\expandafter\pgfapplistpushback\pgfinsert@intersect@tok\to{pgfretval@tmp}%
-	\def\pgfpointinsert@intersect@start{\pgfqpoint{#1}{#2}}%
 	\pgf@insert@intersections@loop%
 }
 
 \def\pgfinsert@intersect@token@lineto#1#2{%
 	\def\pgfinsert@intersect@tok{\pgfsyssoftpath@linetotoken{#1}{#2}}%
+	\let\pgfinsert@intersect@tok@type\pgfsyssoftpath@linetotoken
+	\def\pgfinsert@intersect@tok@currentxy{{#1}{#2}}%
 	\pgf@insert@intersections@in@path@@%
 	\pgf@insert@intersections@loop
 }
 \def\pgfinsert@intersect@token@close#1#2{%
 	\def\pgfinsert@intersect@tok{\pgfsyssoftpath@closepathtoken{#1}{#2}}%
+	\let\pgfinsert@intersect@tok@type\pgfsyssoftpath@linetotoken
+	\def\pgfinsert@intersect@tok@currentxy{{#1}{#2}}%
 	\pgf@insert@intersections@in@path@@%
 	\pgf@insert@intersections@loop
 }
 
 \def\pgfinsert@intersect@token@curveto#1#2\pgfsyssoftpath@curvetosupportbtoken#3#4\pgfsyssoftpath@curvetotoken#5#6{%
-	\def\pgfinsert@intersect@tok{\pgfsyssoftpath@curvetosupportatoken{#1}{#2}\pgfsyssoftpath@curvetosupportbtoken{#3}{#4}{#5}{#6}}%
-	\def\pgfpointinsert@intersect@firstsupport{\pgfqpoint{#1}{#2}}%
-	\def\pgfpointinsert@intersect@secondsupport{\pgfqpoint{#3}{#4}}%
+	\def\pgfinsert@intersect@tok{\pgfsyssoftpath@curvetosupportatoken{#1}{#2}\pgfsyssoftpath@curvetosupportbtoken{#3}{#4}\pgfsyssoftpath@curvetotoken{#5}{#6}}%
+	\let\pgfinsert@intersect@tok@type\pgfsyssoftpath@curvetotoken
+	\def\pgfinsert@intersect@tok@currentxy{{#5}{#6}}%
 	\pgf@insert@intersections@in@path@@%
 	\pgf@insert@intersections@loop
 }
