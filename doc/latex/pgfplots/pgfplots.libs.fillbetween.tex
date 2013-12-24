@@ -4,6 +4,11 @@
 	It can also identify segments of the intersections and fill the segments individually.
 \end{pgfplotslibrary}
 
+\begingroup
+\pgfkeys{
+	/pgfmanual/gray key prefixes/.add={}{,/pgfplots/fill between/},
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/fill between/},
+}
 
 \begin{addplotoperation}[]{fill between}{[\marg{source options}]}
 	A special plotting operation which takes two named paths on input and generates one or more paths resembling the filled area between the input paths.
@@ -24,7 +29,13 @@
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
+	The operation |fill between| requires at least one input key: the two involved paths in the form |of=|\meta{first}| and |\meta{second}. Here, both \meta{first} and \meta{second} need to be defined using |name path| (or |name path global|). The arguments can be exchanged, i.e.\ we would archieve the same effect for |of=B and A|.
 
+	A |fill between| operation takes the two input paths, analyzes their orientation (i.e.\ are its coordinates given increasing in $x$ direction?), connects them, and generates a |fill| path. 
+	
+	As mentioned above, the input paths need to be defined in advance (forward references are unsupported). If you would generate the filled path manually, you would draw it \emph{before} the other ones such that it does not overlap. This is done implicitly by \PGFPlots: as soon as \PGFPlots\ encounteres a |fill between| plot, it will activate layered graphics. The filled path will be placed on layer \declareandlabel{pre main} which is between the main layer and the background layer.\label{Layer!pre main} 
+
+	A |fill between| operation is just like a usual plot: it makes use of the |cycle list|, i.e.\ it receives default plot styles. Our first example above uses the default |cycle list| which has a brown color. We can easily redefine the appearance just as for any other plot by adding options in square braces:
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}
@@ -37,79 +48,78 @@
 \end{tikzpicture}
 \end{codeexample}
 
+	Note that there the number of data points does not restrict |fill between|. In particular, you can combine different arguments easily.
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}
-	\addplot[blue,name path=A,domain=0:1] {sin(360*x)};
+	\addplot[blue,name path=A,domain=0:1] 
+		{sin(360*x)};
 
-	\addplot[red, name path=B,domain=0:1] {0.5};
+	\addplot[red, name path=B,domain=0:1,samples=2] 
+		{0.5};
 
 	\addplot[orange] fill between[of=A and B];
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
 
+The combination of input plots is also possible if one or both of the plots make use of |smooth| interpolation:
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}
-	\addplot+[name path=A,samples=7,smooth,domain=0:1] {sin(360*x)};
+	\addplot+[name path=A,samples=7,smooth,domain=0:1] 
+		{sin(360*x)};
 
-	\addplot+[name path=B,samples=15,domain=0:1] {cos(360*x)};
+	\addplot+[name path=B,samples=15,domain=0:1]
+		{cos(360*x)};
 
 	\addplot[orange] fill between[of=A and B];
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
 
+	Actually, a |fill between| path operates directly on the low--level input path segments. As such, it is much closer to, say, a \Tikz\ decoration than to a plot; only its use-cases (legends, styles, layering) are tailored to the use as a plot. However, the input paths can be paths and/or plots. The example below combines one |\addplot| and one |\path|.
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[ymin=-0.2,enlargelimits]
-	\addplot+[name path=A,smooth] coordinates {(0,0) (1,1) (2,0)};
+	\addplot+[name path=A,smooth] 
+		coordinates {(0,0) (1,1) (2,0)};
 
-	\path[name path=B] (axis cs:0.5,-0.2) -- (axis cs:1.8,-0.2);
+	\path[name path=B]
+		(axis cs:0.5,-0.2) -- (axis cs:1.8,-0.2);
 
 	\addplot[orange] fill between[of=A and B];
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
+	
+	As mentioned above, |fill between| takes the two input paths as such and combines them to a filled segment. To this end, it connects the end--points of both paths. This can be seen in the example above: the path named `|B|' has different $x$ coordinates than `|A|' and results in a trapezoidal output.
 
+	
+	Here is another example in which a plot and a normal path are combined using |fill between|. Note that the |\draw| path is generated using nodes of path `|A|'. In such a scenario, we may want to fill only the second segment which is also possible, see |split| below.
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,samples=15,domain=0:1]
+		{cos(360*x)}
+		coordinate[pos=0.25] (nodeA0) {}
+		coordinate[pos=0.75] (nodeA1) {};
+
+	\draw[name path=B]
+		(nodeA0) -- (nodeA1);
+
+	\addplot[orange] fill between[of=A and B];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 	A |fill between| plot is different from other plotting operations with respect to the following items:
 	\begin{enumerate}
-		\item It has no own markers.
-		\item It supports no |pos| nodes.
-		\item It supports no error bars.
-		\item It cannot be stacked.
+		\item It has no own markers and no |nodes near coords|. However, its input paths can have both.
+		\item It supports no |pos| nodes. However, its input paths can have any annotations as usual.
+		\item It supports no error bars. Again, its input paths support that \PGFPlots\ offers for plots.
+		\item It cannot be stacked (its input plots can be, of course).
 	\end{enumerate}
 \end{addplotoperation}
-
-\begin{pgfplotskey}{fill between/of=\meta{first} and \meta{second}}
-	This key is mandatory. It defines which paths should be combined.
-
-	The arguments are names which have been assigned to paths or plots in advance using |name path|. Paths with these two names are expected in the same tikz picture.
-
-	The |fillbetween| library supports a variety of input paths, namely
-	\begin{itemize}
-		\item plots of functions, i.e.\ each $x$ coordinate has at most one $y$ coordinate,
-		\item plots with interruptions,
-		\item \Tikz\ paths which meet the same restrictions and are labelled by |name path|,
-		\item |smooth| curves or |curveto| paths,
-		\item mixed smooth / non-smooth parts.
-	\end{itemize}
-	However, it has at most restricted support (or none at all) for paths which
-	\begin{itemize}
-		\item have self-intersections (i.e.\ parametric plots might pose a problem),
-		\item have coordinates which are given in a strange input sequence,
-		\item consist of lots of individually separated sub-paths (like |mesh| or |surf| plots),
-	\end{itemize}
-
-	Note that the input paths do not necessarily need to be given in the same sequence, see |fill between/reverse|.
-\end{pgfplotskey}
-
-\begin{pgfplotskey}{/tikz/name path=\marg{name}}
-	A \Tikz\ instruction which assigns a name to a path or plot.
-
-	This is mandatory to define input arguments for |fill between/of|.
-\end{pgfplotskey}
 
 \begin{pgfplotskey}{fill between/split=\mchoice{true,false} (initially false)}
 	Activates the generation of more than one output segment. 
@@ -117,6 +127,107 @@
 	The initial choice |split=false| is quite fast and robust, it simply concatenates the input paths and generates exactly \emph{one} output segment.
 
 	The choice |split=true| results in a computation of every intersection of the two curves (by means of the |tikz| library |intersections|). Then, each resulting segment results in a separate drawing instruction.
+
+	The choice |split=false| is the default and has been illustrated with various examples above.
+
+	The choice |split=true| is very useful in conjunction with the various styles. For example, we could use  |every odd segment| to choose a different color for every odd segment:
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,samples=7,smooth,domain=0:1] 
+		{sin(360*x)};
+
+	\addplot+[name path=B,samples=15,domain=0:1]
+		{cos(360*x)};
+
+	\addplot[orange] fill between[of=A and B,
+		split,
+		every odd segment/.style={yellow},
+		];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	
+	Similarly, we could style the regions individually using |every segment no|:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,samples=15,smooth,domain=0:1] 
+		{sin(720*x)};
+
+	\path[name path=B]
+		(axis cs:\pgfkeysvalueof{/pgfplots/xmin},0)
+	--  (axis cs:\pgfkeysvalueof{/pgfplots/xmax},0)
+	;
+
+	\addplot fill between[of=A and B,
+		split,
+		every segment no 0/.style={orange},
+		every segment no 1/.style={pattern=north east lines},
+		every segment no 2/.style={pattern=north west lines},
+		every segment no 3/.style={shade,top color=orange, bottom color=blue},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	The |split| option allows us to revisit our earlier example in which we wanted to draw only one of the segments:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,samples=15,domain=0:1]
+		{cos(360*x)}
+		coordinate[pos=0.25] (nodeA0) {}
+		coordinate[pos=0.75] (nodeA1) {};
+
+	\draw[name path=B]
+		(nodeA0) -- (nodeA1);
+
+	\addplot[fill=none] % default: fill none
+	fill between[of=A and B,
+		split,
+		% draw only selected ones:
+		every segment no 1/.style={fill,orange},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+	Each segment results in an individual |\fill| instruction, i.e.\ each segment is its own, independent, path. This allows to use all possible \Tikz\ path operations, including |pattern|, |shade|, or |decorate|.
+\begin{codeexample}[]
+% requires 
+% \usetikzlibrary{decorations.markings,shapes.arrows}
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,domain=0:1,samples=2] {x};
+
+	\addplot+[name path=B] table {
+		x y
+		0 2
+		0.5 -1
+		1 3
+	};
+
+	\addplot fill between[of=A and B,
+		split,
+		every even segment/.style={
+			postaction={decorate}, 
+			decoration={
+				markings,
+				mark=between positions 0 and 1
+				  step 1cm with {
+					\node [single arrow,fill=orange,
+						single arrow head extend=3pt,
+						transform shape] 
+					{};
+				}
+			},
+		},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
 \end{pgfplotskey}
 
 \begin{stylekey}{/pgfplots/fill between/every segment}
@@ -152,12 +263,43 @@
 	See |every segment| for the sequence in which the styles will be invoked.
 \end{stylekey}
 
+\begin{pgfplotskey}{fill between/of=\meta{first} and \meta{second}}
+	This key is mandatory. It defines which paths should be combined.
+
+	The arguments are names which have been assigned to paths or plots in advance using |name path|. Paths with these two names are expected in the same tikz picture.
+
+	The |fillbetween| library supports a variety of input paths, namely
+	\begin{itemize}
+		\item plots of functions, i.e.\ each $x$ coordinate has at most one $y$ coordinate,
+		\item plots with interruptions,
+		\item \Tikz\ paths which meet the same restrictions and are labelled by |name path|,
+		\item |smooth| curves or |curveto| paths,
+		\item mixed smooth / non-smooth parts.
+	\end{itemize}
+	However, it has at most restricted support (or none at all) for paths which
+	\begin{itemize}
+		\item have self-intersections (i.e.\ parametric plots might pose a problem),
+		\item have coordinates which are given in a strange input sequence,
+		\item consist of lots of individually separated sub-paths (like |mesh| or |surf| plots),
+	\end{itemize}
+
+	Note that the input paths do not necessarily need to be given in the same sequence, see |fill between/reverse|.
+\end{pgfplotskey}
+
+\begin{key}{/tikz/name path=\marg{name}}
+	A \Tikz\ instruction which assigns a name to a path or plot.
+
+	This is mandatory to define input arguments for |fill between/of|.
+\end{key}
+
 \begin{pgfplotskey}{fill between/reverse=\mchoice{auto,true,false} (initially auto)}
 	Configures whether the input paths specified by |of| need to be reversed in order to arrive at a suitable path concatenation.
 
-	The initial choice \declaretext{auto} will handle this automatically.
+	The initial choice \declaretext{auto} will handle this automatically. To this end, it applies the following heuristics: it compares the two first coordinates of each plot: if both plots have their $x$ coordinates in ascending order, one of them will be reversed (same if both are in descending order). If one is in ascending and on in descending, they will not be reversed. If the $x$ coordinates of the first two points are equal, the $y$ coordinates are being compared.
 
 	The choice \declaretext{true} will always reverse one of the involved paths. This is suitable if both paths have the same direction (for example, both are specified in increasing $x$ order).
 
 	The choice \declaretext{false} will not reverse the involved paths. This is suitable if one path has, for example, coordinates in increasing $x$ order whereas the other path has coordinates in decreasing $x$ order.
 \end{pgfplotskey}
+
+\endgroup
