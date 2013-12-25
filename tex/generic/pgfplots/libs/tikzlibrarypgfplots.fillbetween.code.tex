@@ -62,6 +62,16 @@
 	/pgfplots/fill between/every odd segment/.style={},
 	/pgfplots/fill between/every even segment/.style={},
 	%
+	/pgfplots/fill between/soft clip/.code={%
+		\pgfplotslibfillbetween@softclip{c}#1\pgfplots@EOI
+	},
+	/pgfplots/fill between/soft clip first/.code={%
+		\pgfplotslibfillbetween@softclip{a}#1\pgfplots@EOI
+	},%
+	/pgfplots/fill between/soft clip second/.code={%
+		\pgfplotslibfillbetween@softclip{b}#1\pgfplots@EOI
+	},%
+	%
 	% #1: drawing options.
 	/pgfplots/fill between/@draw style/.style={
 		/pgf/fill between/result stream/begin/.code={%
@@ -188,5 +198,85 @@
 		\pgfeov
 	}{}%
 }
+
+\def\pgfplotslibfillbetween@softclip#1{%
+	\def\pgfplotslibfillbetween@softclip@trg{#1}%
+	\tikz@scan@one@point\pgfplotslibfillbetween@softclip@bb@scan@a
+}%
+
+\def\pgfplotslibfillbetween@softclip@bb@scan@a#1{%
+	\def\pgfplotslibfillbetween@softclip@bb@a{#1}%
+	\pgfutil@ifnextchar r{%
+		\pgfplotslibfillbetween@softclip@bb@scan@rectangle
+	}{%
+		\pgfplotslibfillbetween@softclip@@error
+	}%
+}%
+
+\def\pgfplotslibfillbetween@softclip@bb@scan@rectangle rectangle{%
+	\tikz@scan@one@point\pgfplotslibfillbetween@softclip@bb@scan@b
+}%
+
+\def\pgfplotslibfillbetween@softclip@bb@scan@b#1{%
+	\def\pgfplotslibfillbetween@softclip@bb@b{#1}%
+	\pgfutil@ifnextchar \pgfplots@EOI{%
+		\pgfplotslibfillbetween@softclip@@activate
+		\pgfplots@gobble@until@EOI
+	}{%
+		\pgfplotslibfillbetween@softclip@@error
+	}%
+}%
+
+\def\pgfplotslibfillbetween@softclip@@error#1\pgfplots@EOI{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	\pgfplotsthrow{invalid argument}
+		{\pgfplots@loc@TMPa}%
+		{fill between: the argument of 'soft clip' has an unexpected format near '\pgfplots@loc@TMPb'; expected '(<pt>) rectangle (<pt>)'}%
+		\pgfeov
+}%
+
+% INPUT:
+%  - two PGF points \pgfplotslibfillbetween@softclip@bb@a and \pgfplotslibfillbetween@softclip@bb@b.
+%  - \pgfplotslibfillbetween@softclip@trg (one of 'a' or 'b' the target path)
+%
+% POSTCONDITION: one of \pgffillbetweensetsoftclippathfirst or
+% \pgffillbetweensetsoftclippathsecond is invoked with a suitable path.
+\def\pgfplotslibfillbetween@softclip@@activate{%
+	% Expand points to {<x>}{<y>} ...
+	\pgf@process{\pgfplotslibfillbetween@softclip@bb@a}%
+	\edef\pgfplotslibfillbetween@softclip@bb@a{{\the\pgf@x}{\the\pgf@y}}%
+	\pgf@process{\pgfplotslibfillbetween@softclip@bb@b}%
+	\edef\pgfplotslibfillbetween@softclip@bb@b{{\the\pgf@x}{\the\pgf@y}}%
+	%
+	\pgfinterruptpath
+	\pgf@relevantforpicturesizefalse%
+	\expandafter\pgfqpoint\pgfplotslibfillbetween@softclip@bb@a
+	\pgf@xa=\pgf@x
+	\pgf@ya=\pgf@y
+	\expandafter\pgfqpoint\pgfplotslibfillbetween@softclip@bb@b
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	%
+	\pgfpathmoveto{\pgfqpoint{\pgf@xa}{\pgf@ya}}%
+	\pgfpathlineto{\pgfqpoint{\pgf@xa}{\pgf@yb}}%
+	\pgfpathlineto{\pgfqpoint{\pgf@xb}{\pgf@yb}}%
+	\pgfpathlineto{\pgfqpoint{\pgf@xb}{\pgf@ya}}%
+	\pgfpathclose
+	\pgfgetpath\pgfplots@loc@TMPa
+	\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
+	\endpgfinterruptpath
+	%
+	\if a\pgfplotslibfillbetween@softclip@trg
+		\pgffillbetweensetsoftclippathfirst{\pgfplots@glob@TMPa}%
+	\else
+		\if b\pgfplotslibfillbetween@softclip@trg
+			\pgffillbetweensetsoftclippathsecond{\pgfplots@glob@TMPa}%
+		\else
+			\pgffillbetweensetsoftclippathfirst{\pgfplots@glob@TMPa}%
+			\pgffillbetweensetsoftclippathsecond{\pgfplots@glob@TMPa}%
+		\fi
+	\fi
+}%
 
 \endinput
