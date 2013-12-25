@@ -14,7 +14,7 @@
 %%%  - nested \input commands have been updated
 %%%  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Di 24. Dez 10:55:32 CET 2013 %%%
+%%% Date of this copy: Mi 25. Dez 13:25:13 CET 2013 %%%
 
 
 
@@ -109,6 +109,10 @@
 			\def\pgfpathfillbetween@reverse@mode{0}%
 		\fi
 	\fi
+	%
+	% clip, if configured (no-op otherwise):
+	\pgfpathfillbetween@clip{#2}{\pgfpathfillbetween@clip@A}\let#2=\pgfretval%
+	\pgfpathfillbetween@clip{#3}{\pgfpathfillbetween@clip@B}\let#3=\pgfretval%
 	%
 	\pgfpathfillbetween@invoke{result stream/begin}%
 	%
@@ -876,4 +880,133 @@
 	}%
 	\expandafter\pgf@insert@intersections@loop\pgf@marshal%
 }
+
+% ---------------------------------------------------------------------------------
+%
+%  CLIPPING as part of 'fill between'.
+%
+%  "clip" means to get rid of parts at the beginning and/or end of a
+%  path ("poor-mans-clipping").
+%
+%  The idea is to have a path on input which serves as a kind of clip
+%  path. Everything outside of the clip path is cutted away.
+%
+%  The difference to "real" clipping is that it is applied to the
+%  path, not to the viewer -- the path can still be drawn with any
+%  decorations, line widths, etc.
+%
+%  Another difference is that this feature is (considerably) less sophisticated.
+%
+%  #1: the input path
+%  #2: the clip path (if it is empty, no clipping will be applied)
+% OUTPUT:
+%  \pgfretval is #1 with modifications
+\def\pgfpathfillbetween@clip#1#2{%
+	\ifx#2\pgfutil@empty
+		\let\pgfretval=#1%
+	\else
+		\begingroup
+		\pgf@intersect@sortfalse
+		\pgfintersectionofpaths%
+			{%
+				\pgfsetpath#1%
+			}%
+			{%
+				\pgfsetpath#2%
+			}%
+		%
+		%
+		\ifnum\pgfintersectionsolutions=0 %
+		\else
+			% split the first involved path into the
+			% segments induced by the intersection points:
+			\pgf@insert@intersections@in@path{1}%
+			\let\pgfpathfilled@a@segments=\pgfretval
+			%
+			\expandafter\pgfpathfillbetween@get@first@coord#1\pgf@stop
+			\let\pgfpathfilled@a@firstcoord=\pgfretval
+			\expandafter\pgfpathfillbetween@get@first@coord#2\pgf@stop
+			\let\pgfpathfilled@b@firstcoord=\pgfretval
+			%
+			% Answer the question "b@pgffill@is@outside@clip = (is #1 outside of the clip path)
+			%
+			% I do not want to implement clipping in its entirety - I
+			% hope it is sufficient to assume that *if* we have at
+			% least one intersection, then we can deduce the answer
+			% based on the first coord of '#1' and of '#2'. In
+			% general, this will be wrong. But in the special case
+			% where #2 is actually a rectangle which has been built to
+			% cut off either beginning or end of #1, we can use it.
+			% Will need adoptions eventually.
+			\pgfpathfillbetween@check@x@less@than{\pgfpathfilled@a@firstcoord}{\pgfpathfilled@b@firstcoord}%
+			\let\b@pgffill@is@outside@clip=\pgfretval
+			%
+			% Now, create a new path which contains only those
+			% segments which are INSIDE of the clip path.
+			%
+			% I assume that I can rely on "even/odd" matching: if the
+			% first is inside, the second is outside, the third
+			% inside, etc.
+			\pgfapplistnewempty{pgfretval@tmp}%
+			\def\c@pgfpathfilled@counter{0}%
+			\pgfmathloop
+			\ifnum\c@pgfpathfilled@counter<\pgfpathfilled@a@segments\relax
+				\if0\b@pgffill@is@outside@clip
+					\expandafter\let\expandafter\pgf@loc@path@a\csname pgf@intersect@path@split@a@\c@pgfpathfilled@counter\endcsname
+					\expandafter\pgfapplistpushback\pgf@loc@path@a\to{pgfretval@tmp}%
+				\fi
+				\pgfpathfillbetween@negate\b@pgffill@is@outside@clip
+				%
+				\pgfutil@advancestringcounter\c@pgfpathfilled@counter
+			\repeatpgfmathloop
+			\pgfapplistlet#1={pgfretval@tmp}%
+		\fi
+		%
+		\global\let\pgf@glob@TMPa=#1%
+		\endgroup
+		\let\pgfretval=\pgf@glob@TMPa
+	\fi
+}
+
+% #1: of the form '{<x>}{<y>}'
+% #2: of the form '{<x>}{<y>}'
+\def\pgfpathfillbetween@check@x@less@than#1#2{%
+	\edef\pgf@temp{#1#2}%
+	\expandafter\pgfpathfillbetween@check@x@less@than@\pgf@temp
+}%
+
+% #1: x1
+% #2: y1
+% #3: x2
+% #4: y2
+\def\pgfpathfillbetween@check@x@less@than@#1#2#3#4{%
+	\ifdim#1<#3\relax
+		\def\pgfretval{1}%
+	\else
+		\def\pgfretval{0}%
+	\fi
+}%
+
+\def\pgfpathfillbetween@negate#1{%
+	\if0#1%
+		\def#1{1}%
+	\else
+		\def#1{0}%
+	\fi
+}
+
+% #1: a macro containing the clip path. More precisely, it is supposed to be a return value of \pgfgetpath.
+\def\pgffillbetweensetclippathfirst#1{%
+	\let\pgfpathfillbetween@clip@A=#1%
+}%
+
+% #1: a macro containing the clip path. More precisely, it is supposed to be a return value of \pgfgetpath.
+\def\pgffillbetweensetclippathsecond#1{%
+	\let\pgfpathfillbetween@clip@B=#1%
+}%
+
+\pgffillbetweensetclippathfirst{\pgfutil@empty}
+\pgffillbetweensetclippathsecond{\pgfutil@empty}
+
+% ---------------------------------------------------------------------------------
 \endinput
