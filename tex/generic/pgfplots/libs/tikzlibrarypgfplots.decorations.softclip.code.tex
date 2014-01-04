@@ -28,6 +28,8 @@
 % clipping to an input path, but rather than simply instructing the
 % display driver to clip the path, it computes a new clip path from
 % the input.
+%
+% This library is (currently) on top of tikz.
 
 \usetikzlibrary{intersections}
 
@@ -47,18 +49,29 @@
 	/pgf/decoration/soft clip path/.code={%
 		\pgfplotslibfillbetween@softclip{\pgfplotslibfillbetween@softclip@assign}#1\pgfplots@EOI
 	},
+	/pgf/decoration/every soft clipped path/.style={},%
 }
 
+% #1 a macro containing a soft path
 \def\pgfplotslibfillbetween@softclip@assign#1{%
 	\let\pgf@decoration@soft@clip=#1%
 }%
 
-\let\pgf@decoration@soft@clip=\pgfutil@empty
+\pgfplotslibfillbetween@softclip@assign{\pgfutil@empty}%
+
 \pgfdeclaredecoration{soft clip}{replace}{
 
 	\state{replace}[width=\pgfdecoratedpathlength]{%
-		\pgfpathcomputesoftclippath{\pgfdecoratedpath}{\pgf@decoration@soft@clip}%
-		\pgfsetpath{\pgfretval}%
+		\ifx\pgf@decoration@soft@clip\pgfutil@empty
+			\pgfplotsthrow{invalid argument}
+				{\pgf@decoration@soft@clip}%
+				{The mandatory argument 'soft clip path=(A) rectangle (B)' has not been set}%
+				\pgfeov
+		\else
+			\tikzset{/pgf/decoration/every soft clipped path}%
+			\pgfpathcomputesoftclippath{\pgfdecoratedpath}{\pgf@decoration@soft@clip}%
+			\pgfsetpathandBB{\pgfretval}%
+		\fi
 	}
 }
 
@@ -86,7 +99,16 @@
 	\ifx#2\pgfutil@empty
 		\let\pgfretval=#1%
 	\else
-		\begingroup
+		\ifx#1\pgfutil@empty
+			\let\pgfretval=#1%
+		\else
+			\pgfpathcomputesoftclippath@{#1}{#2}%
+		\fi
+	\fi
+}
+
+\def\pgfpathcomputesoftclippath@#1#2{%
+	\begingroup
 		\pgfprocessround{#1}{#1}%
 		\pgfprocessround{#2}{#2}%
 		%
@@ -141,9 +163,8 @@
 		\fi
 		%
 		\global\let\pgf@glob@TMPa=\pgfretval%
-		\endgroup
-		\let\pgfretval=\pgf@glob@TMPa
-	\fi
+	\endgroup
+	\let\pgfretval=\pgf@glob@TMPa
 }
 
 % Defines "\def\pgfretval{1}" if (the first point of #1 is outside of the path #2)
