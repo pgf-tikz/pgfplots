@@ -978,7 +978,12 @@ This automatic reconfiguration is essentially part of the styles |xbar stacked| 
 
 
 \subsection{Area Plots}
-Area plots are a combination of |\closedcycle| and |stack plots|. They can be combined with any other plot type.
+Area plots means two--dimensional plots in which an area is filled between a couple of curves. Note that this is a rather incomplete characterization as |mesh|, |surf|ace, and |patch| plots are, of course, also ``area plots'' of some sort. 
+
+This section covers two types of area plots, namely those which are defined by |stack plots| and those which are defined using |\addplot fill between|.
+
+\subsubsection{Filling Using Stacked Plots}
+The first (and older) option to fill areas between plots is a combination of |\closedcycle| and |stack plots|. They can be combined with any other plot type.
 
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -998,8 +1003,12 @@ Area plots are a combination of |\closedcycle| and |stack plots|. They can be co
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
+\noindent The main property of this kind of area visualization is that all plots of an axis are taken together, and since they are stacked, they form areas.
+
 \noindent
-Area plots may need modified legends, for example using the |area legend| key. Furthermore, one may want to consider the |axis on top| key such that filled areas do not overlap ticks and grid lines. 
+Area plots may need modified legends, for example using the |area legend| key. Furthermore, one may want to consider the |axis on top| key such that filled areas do not overlap ticks and grid lines since such plots typically cover huge areas of the axis. 
+
+Note that Area plots which rely on |stack plots| have one severe limitation: stacking works if and only if each plot has the same coordinates (in our case of |stack plots=y|, each plot has the same $x$~coordinates).
 
 \begin{stylekey}{/pgfplots/area style}
 	A style which sets
@@ -1126,6 +1135,161 @@ Area plots may need modified legends, for example using the |area legend| key. F
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
+
+
+\subsubsection{Filling Under/Between Named Plots}
+{%
+\label{sec:fillbetween:in:area:plots}
+\pgfkeys{
+	/pgfmanual/gray key prefixes/.add={}{,/pgfplots/fill between/},
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/fill between/},
+}%
+
+The second way to fill areas under or between plots is the |fillbetween| library shipped with \PGFPlots.
+
+\tikzname\ allows to name a plot or a path using |name path|. The |fillbetween| library offers the special ``plot type'' |\addplot fill between| which expects two such named paths on input. Then, it generates filled areas between these named paths. 
+
+The biggest difference to Area plots by means of |stack plots| as discussed in the previous section is that |\addplot fill between| accepts \emph{arbitrary} input plots: the coordinates can vary, the ranges can vary, even |smooth| and |sharp plot| can be combined. In addition, |\addplot fill between| allows to select only sub--regions between the two input paths by means of its |soft clip| feature, and it accepts individually styled fill segments using its styles |every even segment|, |every segment no \meta{index}| etc.
+
+The reference documentation is Section~\ref{sec:fillbetween}, but the following examples attempt to cover basic use--cases around fill--between. Please refer to the reference documentation in Section~\ref{sec:fillbetween} for an in--depth discussion of every involved key.
+
+
+The following advanced example selects two partial areas using |soft clip| in order to fill these areas:
+\begin{codeexample}[]
+% requires \usepgfplotslibrary{fillbetween}
+\begin{tikzpicture}
+\begin{axis}
+	\addplot+[name path=A,domain=0:5] {x^2};
+
+	\path[name path=B] 
+		(axis cs:\pgfkeysvalueof{/pgfplots/xmin},0) --
+		(axis cs:\pgfkeysvalueof{/pgfplots/xmax},0);
+
+	\addplot[gray] fill between[of=A and B,
+		soft clip={
+			(axis cs:3,-1) 
+			rectangle 
+			(axis cs:4,100)
+		},
+	];
+
+	\addplot[gray!30] fill between[of=A and B,
+		soft clip={
+			(axis cs:2,-1) 
+			rectangle 
+			(axis cs:3,100)
+		},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+The preceding example is characterized by two paths, each of which is named using |name path|. The path named `|A|' is a plot of $x^2$. The other path named `|B|' is actually nothing but the visible $x$ axis, the |\path| instruction means that it is not drawn at all. Note that |\pgfkeysvalueof{/pgfplots/xmin}| expands to the visible lower $x$ axis limit. Finally, we see two |\addplot fill between| instructions, both with the selection |of=A and B| and both with (different) values of |soft clip|. The |soft clip| key restricts the filled segments to the bounding rectangle defined by some path \meta{lower corner}| rectangle |\meta{upper corner} where the two arguments are the lower-- and upper corner of an invisible rectangular bounding box. Only those parts of the filled segment makes up the result of |\addplot fill between|.
+
+This restriction to a specific interval (or better: rectangle) is also available when stroking the involved paths `|A|' or `|B|': \PGFPlots\ comes with |decoration=soft clip| which can be combined with |postaction| as follows.
+\begin{codeexample}[]
+% requires \usepgfplotslibrary{fillbetween}
+\begin{tikzpicture}
+\begin{axis}
+	\def\clippath{
+		(axis cs:3,-1) 
+		rectangle 
+		(axis cs:4,100)
+	}
+	\addplot+[name path=A,domain=0:5,
+		mark=none,
+		postaction={decorate,red,line width=2pt,
+			decoration={
+				soft clip,
+				soft clip path={\clippath},
+			},
+		},
+	] {x^2};
+
+	\path[name path=B] 
+		(axis cs:\pgfkeysvalueof{/pgfplots/xmin},0) --
+		(axis cs:\pgfkeysvalueof{/pgfplots/xmax},0);
+
+	\addplot[orange] fill between[of=A and B,
+		soft clip={\clippath},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+The preceding example has a |\def\clippath| which defines a re-usable bounding box. Here, the |fill between| statement is similar to the preceding example, with the only difference that our macro is used as value. The main difference is the |postaction| in plot `|A|'. A |postaction| is a \tikzname\ construct which allows to draw the same path twice. The second time the plot is drawn makes use of the option list after |postaction|. In our case, it is a |decoration| which will be drawn in |red| with thick lines. The |decoration| applies a |soft clip| path. In this context, |soft clip| is applied to one path only, but the idea is the same: only the parts within the |soft clip| argument are displayed.
+
+
+Note that |fill between| is also possible for arbitrary plots, not just the $x$~axis. In fact, one can combine any two plots.
+\begin{codeexample}[]
+% requires \usepgfplotslibrary{fillbetween}
+\begin{tikzpicture}
+\begin{axis}
+	\addplot[blue,name path=A,domain=0:5] {x^2};
+
+	\addplot[red,name path=B,smooth] table {
+		x y
+		0 10
+		1 8
+		2 6
+		3 1
+		4 5
+	};
+
+	\addplot[gray!50] fill between[of=A and B,
+		soft clip={
+			(axis cs:3,-1) 
+			rectangle 
+			(axis cs:4,100)
+		},
+	];
+
+	\addplot[gray!10,draw=black] fill between[
+		of=A and B,
+		soft clip={
+			(axis cs:1,-1) 
+			rectangle 
+			(axis cs:2.5,100)
+		},
+	];
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent The preceding example has two plots with a different number of samples, a different range, and a different input method. Nevertheless, the area between these two plots can be filled just as in the previous examples, including any intersections.
+
+
+It is also possible to define individual styles for the filled segments. To this end, one has to set the |split| key which activates separate output paths. This enables the use of special styles, the in the following example two styles with explicitly numbered segment indices:
+\begin{codeexample}[]
+% requires \usepgfplotslibrary{fillbetween}
+\begin{tikzpicture}
+\begin{axis}
+	\addplot[blue,name path=A,domain=0:5] {x^2};
+
+	\addplot[red,name path=B,smooth] table {
+		x y
+		0 10
+		1 8
+		2 6
+		3 1
+		4 5
+	};
+
+	\addplot[gray] fill between[of=A and B,
+		split,
+		every segment no 0/.style=
+			{pattern color=gray!50,
+			 pattern=north east lines},
+		every segment no 1/.style=
+			{pattern=north west lines},
+	];
+
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\noindent Note that the example has no |soft clip| argument. Consequently, it fills between the start-- and end points of the involved paths. The |split| argument combined with the styles yields individually drawn fill segments.
+
+
+}
+
 
 \subsection{Scatter Plots}
 \label{sec:pgfplots:scatter:2d}
