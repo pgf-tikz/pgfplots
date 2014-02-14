@@ -118,7 +118,7 @@
 		%
 %\message{computing soft clip path for ^^J\meaning#1 and ^^J\meaning#2^^J  first point of input is outside of clip path=\b@pgffill@is@outside@clip^^J}%
 		%
-		\pgf@intersect@sortfalse
+		\pgfintersectionsortbyfirstpath
 		\pgfintersectionofpaths%
 			{%
 				\pgfsetpath#1%
@@ -130,7 +130,7 @@
 		%
 		\ifnum\pgfintersectionsolutions=0 %
 			\if1\b@pgffill@is@outside@clip
-				% entiry path is outside of the clipped area.
+				% entire path is outside of the clipped area.
 				\let\pgfretval=\pgfutil@empty
 			\else
 				\let\pgfretval=#1%
@@ -167,12 +167,17 @@
 	\let\pgfretval=\pgf@glob@TMPa
 }
 
+% #1: input path (non-empty)
+% #2: soft clip path
 % Defines "\def\pgfretval{1}" if (the first point of #1 is outside of the path #2)
-% Defines "\def\pgfretval{0}" if (the first point of #1 is inside  of the path #2)
+% Defines "\def\pgfretval{0}" if (the first point of #1 is inside of or on the path #2)
 \def\pgfpathcomputesoftclippath@is@first@outside@of@path#1#2{%
-	% APPROACH: should a line starting at the first coordinate of the
+	% APPROACH: shoot a line starting at the first coordinate of the
 	% first path through "the middle of #2". Then make an even/odd
 	% check on the number of intersections.
+	%
+	% FIXME : for now, I only support (x,y) rectangle (X,Y) anyway --
+	% optimize for that case!? This here might be too complex...
 	\begingroup
 	\expandafter\pgfpathfillbetween@get@first@coord#1\pgf@stop
 	\let\pgfpathfilled@a@firstcoord=\pgfretval%
@@ -221,17 +226,48 @@
 	%
 	\ifnum\pgfintersectionsolutions=0 %
 		% this must not happen! We have taken great care such that we
-		% *have* at intersection points!
+		% *have* at least 1 intersection points!
 		\pgferror{Illegal state encountered: the computation of a softpath failed. The failure occurred while computing whether the first input coordinate is inside of the clip path (found no intersections)}%
 	\fi
 	%
-	\ifodd\pgfintersectionsolutions\relax%
+	\pgfpathcomputesoftclippath@if@is@first@on@boundary{%
 		\def\pgfretval{0}%
-	\else
-		\def\pgfretval{1}%
-	\fi
+	}{%
+		\ifodd\pgfintersectionsolutions\relax%
+			\def\pgfretval{0}%
+		\else
+			\def\pgfretval{1}%
+		\fi
+	}%
 	\pgfmath@smuggleone\pgfretval
 	\endgroup
+}
+
+\def\pgfpathcomputesoftclippath@if@is@first@on@boundary#1#2{%
+	\pgfpathcomputesoftclippath@compute@infty@norm{%
+		\pgfpointdiff%
+			{\expandafter\pgfqpoint\pgfpathfilled@a@firstcoord}%
+			{\pgfpointintersectionsolution{1}}%
+	}%
+	\ifdim\pgf@x<\pgfintersectiontolerance\relax
+		% YES: the first point IS on the boundary: the first
+		% intersection solution == first point.
+		#1%
+	\else
+		% No, it is NOT equal to the first intersection solution - and
+		% thus NOT on the boundary.
+		#2%
+	\fi
+}%
+
+% Defines \pgf@x to be the infty norm of vector #1
+\def\pgfpathcomputesoftclippath@compute@infty@norm#1{%
+	\pgf@process{#1}%
+	\ifdim\pgf@x<0sp \global\pgf@x=-\pgf@x\fi
+	\ifdim\pgf@y<0sp \global\pgf@y=-\pgf@y\fi
+	\ifdim\pgf@x<\pgf@y 
+		\global\pgf@x=\pgf@y
+	\fi
 }
 
 % Defines \pgfretval to be a *scalar* "size indicator" (1-norm) of the bounding
