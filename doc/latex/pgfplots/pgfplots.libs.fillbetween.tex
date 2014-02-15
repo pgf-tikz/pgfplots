@@ -480,7 +480,9 @@ The combination of input plots is also possible if one or both of the plots make
 \end{pgfplotskey}
 
 
-\subsection{Basic Level Reference}
+\subsection{Low Level Reference}
+
+There are a couple of basic level functions which allow to control |fillbetween| on a lower level of abstraction. The author of this package lists them here for highly experienced power-users (only). It might be suitable to study the source code to get details about these methods and how and where they are used.
 
 \begin{command}{\pgfplotsfillbetween\oarg{options}\marg{draw style}}
 	This is the low-level interface of |fill between|; it generates one or more paths.
@@ -493,7 +495,10 @@ The combination of input plots is also possible if one or both of the plots make
 
 	\draw[name path=second] (0,0.5) -- (2,0.5);
 
-	\pgfplotsfillbetween[of=first and second,split, every even segment/.style={orange}]{red}
+	\pgfplotsfillbetween[of=first and second,
+		split, 
+		every even segment/.style={orange}]
+		{red}
 \end{tikzpicture}
 \end{codeexample}
 	The first argument \meta{options} describes how to compute the filled regions like |of| or |split|. It corresponds to those items which are in |\addplot fill between|\oarg{options}.
@@ -503,4 +508,195 @@ The combination of input plots is also possible if one or both of the plots make
 	Note that |\pgfplotsfillbetween| is \emph{no} typically |\path| statement: it generates one or more of \tikzname\ |\path| statements (each with their own, individual \emph{draw style}).
 \end{command}
 
+
+\begin{command}{\pgfcomputeintersectionsegments\marg{1 or 2}}
+ Given that some intersections have been computed already (and are in
+ the current scope), this command computes the intersection segments
+ for one of the input arguments.
+
+ On output, |\pgfretval| contains the number of computed segments. The
+ segments as such can be accessed via |\pgfgetintersectionsegmentpath|.
+
+	The argument \meta{1 or 2} should be |1| if intersection segments of the \emph{first} argument of
+ |\pgfintersectionofpaths| are to be computed and |2| the \emph{second}
+ argument of |\pgfintersectionofpaths| should be used as input.
+
+	This macro is part of |fillbetween|.
+
+	Let us illustrate the effects of some of these methods on the following example.
+\begin{codeexample}[]
+\begin{tikzpicture}
+    \draw[red] (0,0) -- (1,1) -- (2,0);
+    \draw[blue] (0,0.5) -- (2,0.5);
+\end{tikzpicture}
+\end{codeexample}
+	We have two lines, both start on the left-hand-side. Our goal is to get a new path consisting of the intersections segments on the lower part of the picture, i.e.\ we would like to see
+\begin{codeexample}[]
+\begin{tikzpicture}
+	% this is our goal - but computed automatically.
+    \draw[black] (0,0) -- (0.5,0.5) -- (1.5,0.5) -- (2,0);
+\end{tikzpicture}
+\end{codeexample}
+	
+	In order to let |fillbetween| compute the target path, we assign names to the input paths, compute the intersections -- and recombined them using |\pgfcomputeintersectionsegments|:
+
+\begin{codeexample}[vbox]
+\begin{tikzpicture}[line join=round,x=3cm,y=3cm]
+    \draw[name path=first,red] (0,0) -- (1,1) -- (2,0);
+    \draw[name path=second,blue] (0,0.5) -- (2,0.5);
+
+	% from 'name path' to softpaths...
+	\pgfplotsgetnamedpath{first}
+	\let\A=\pgfplotsretval
+	\pgfplotsgetnamedpath{second}
+	\let\B=\pgfplotsretval
+
+	% compute intersections using the PGF intersection lib...
+	\pgfintersectionofpaths{\pgfsetpath\A}{\pgfsetpath\B}%
+
+	% ... and compute the intersection *segments* for both input
+	% paths...
+	\pgfcomputeintersectionsegments1
+	\pgfcomputeintersectionsegments2
+
+	% ... recombine the intersection segment paths!
+	\pgfgetintersectionsegmentpath{1}{0}% path 1, segment 0
+	\pgfsetpathandBB\pgfretval% this starts a new path
+	\pgfgetintersectionsegmentpath{2}{1}% path 2, segment 1
+	\pgfpathreplacefirstmoveto\pgfretval% connect, not move. Try to eliminate this line to see the effect
+	\pgfaddpathandBB\pgfretval% append
+	\pgfgetintersectionsegmentpath{1}{2}%
+	\pgfpathreplacefirstmoveto\pgfretval
+	\pgfaddpathandBB\pgfretval
+	\pgfsetlinewidth{3}
+	\pgfsetcolor{black}
+	\pgfusepath{stroke}
+\end{tikzpicture}
+\end{codeexample}
+	Note that this operates on a relatively low level. However, you can easily insert these statements into a |\pgfextra| in order to embed it into \tikzname. This allows access to any \tikzname\ options, including |decorate|:
+\begin{codeexample}[vbox]
+\begin{tikzpicture}[line join=round,x=3cm,y=3cm]
+    \draw[name path=first,red] (0,0) -- (1,1) -- (2,0);
+    \draw[name path=second,blue] (0,0.5) -- (2,0.5);
+
+	\draw[orange,
+		decorate,decoration={
+			footprints,
+			foot of=bird,
+			stride length=15pt,
+			foot sep=2pt,
+			foot length=6pt},
+	]
+	\pgfextra
+		% from 'name path' to softpaths...
+		\pgfplotsgetnamedpath{first}
+		\let\A=\pgfplotsretval
+		\pgfplotsgetnamedpath{second}
+		\let\B=\pgfplotsretval
+		%
+		% compute intersections using the PGF intersection lib...
+		\pgfintersectionofpaths{\pgfsetpath\A}{\pgfsetpath\B}%
+		%
+		% ... and compute the intersection *segments* for both input
+		% paths...
+		\pgfcomputeintersectionsegments1
+		\pgfcomputeintersectionsegments2
+		%
+		% ... recombine the intersection segment paths!
+		\pgfgetintersectionsegmentpath{1}{0}% path 1, segment 0
+		\pgfsetpathandBB\pgfretval% this starts a new path
+		\pgfgetintersectionsegmentpath{2}{1}% path 2, segment 1
+		\pgfpathreplacefirstmoveto\pgfretval% connect, not move
+		\pgfaddpathandBB\pgfretval% append
+		\pgfgetintersectionsegmentpath{1}{2}%
+		\pgfpathreplacefirstmoveto\pgfretval
+		\pgfaddpathandBB\pgfretval
+	\endpgfextra
+	;
+\end{tikzpicture}
+\end{codeexample}
+\end{command}
+
+\begin{command}{\pgfgetintersectionsegmentpath\marg{1 or 2}\marg{index}}
+	Defines |\pgfretval| to contain the desired path segment as softpath.
+
+	The result has the same quality as a path returned by |\pgfgetpath| and can be used by means of |\pgfsetpath|, |\pgfsetpathandBB|, or |\pgfaddpathandBB|.
+
+	The value \meta{1 or 2} resembles the argument of a preceding call to |\pgfcomputeintersectionsegments|: it identifies which of the two paths for which intersections have been computed is to be selected.
+
+	The second argument \meta{index} is a number $0 \le i < N$ where $N$ is the total number of computed segments. The total number of computed segments is returned by |\pgfcomputeintersectionsegments|.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfplotsgetnamedpath\marg{string name}}
+	Defines |\pgfplotsretval| to contains the softpath associated with \meta{string name}. The \meta{string name} is supposed to be the value of |name path| or |name path| global.
+
+	The resulting value is a softpath, i.e.\ it has the same quality as those returned by |\pgfgetpath|.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfgetpath\marg{\textbackslash softpathmacro}}
+	Stores the current softpath into the macro \meta{\textbackslash softpathmacro}.
+
+	See also |\pgfplotsgetnamedpath|.
+
+	This macro is part of \pgfname.
+\end{command}
+
+\begin{command}{\pgfsetpath\marg{\textbackslash softpathmacro}}
+	Replaces the current softpath from the macro \meta{\textbackslash softpathmacro}.
+
+	This does not update any bounding boxes. Note that this takes a soft--path as it is, no transformation will be applied. The only way to modify the path and its coordinates is a decoration or a canvas transformation.
+
+	This macro is part of \pgfname.
+\end{command}
+\begin{command}{\pgfaddpath\marg{\textbackslash softpathmacro}}
+	Appends the softpath from the macro \meta{\textbackslash softpathmacro} to the current softpath.
+
+	This does not update any bounding boxes. Note that this takes a soft--path as it is, no transformation will be applied. The only way to modify the path and its coordinates is a decoration or a canvas transformation.
+
+	This macro is part of \pgfname.
+\end{command}
+
+\begin{command}{\pgfsetpathandBB\marg{\textbackslash softpathmacro}}
+	Replaces the current softpath from the macro \meta{\textbackslash softpathmacro}.
+
+	This updates the picture's bounding box by the coordinates found inside of \meta{\textbackslash softpathmacro}. Aside from that, the same restrictions as for |\pgfsetpath| hold here as well.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfaddpathandBB\marg{\textbackslash softpathmacro}}
+	Appends the softpath of macro \meta{\textbackslash softpathmacro} to the current softpath.
+
+	This updates the picture's bounding box by the coordinates found inside of \meta{\textbackslash softpathmacro}. Aside from that, the same restrictions as for |\pgfsetpath| hold here as well.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfpathreplacefirstmoveto\marg{\textbackslash softpathmacro}}
+	Takes a macro containing a softpath on input, replaces its first moveto operation by a lineto operation and returns it as |\pgfretval|.
+
+	The argument \meta{\textbackslash softpathmacro} is one which can be retrieved by |\pgfgetpath|.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfintersectionofpaths\marg{first}\marg{second}}
+	The \pgfname\ basic layer command to compute intersections of two softpaths. The arguments \meta{first} and \meta{second} are supposed to set paths, i.e.\ they should contain something like |\pgfsetpath{\somesoftpath}|.
+
+	Results are stored into variables of the current scope.
+
+	This macro is part of \pgfname.
+\end{command}
+
+\begin{command}{\pgfpathcomputesoftclippath\marg{\textbackslash inputsoftpath}\marg{\textbackslash softclippath}}
+	Does the work for |soft clip|: it computes the soft--clip--path of \meta{\textbackslash inputsoftpath} when it is clipped against \meta{\textbackslash softclippath}.
+	
+	The algorithm has been tested and written for rectangular soft clip paths. It will accept complicated clip paths, and might succeed with some of them. Nevertheless, rectangular soft clip paths are the ones which are supported officially.
+
+	See |soft clip| for details.
+\end{command}
 \endgroup
