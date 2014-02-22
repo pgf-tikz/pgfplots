@@ -1,0 +1,220 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2013 by Christian Feuersaenger
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+
+% This library adds support for high-level instructions for "fill area
+% between two arbitrary plots of functions".
+%
+% It activates the syntax \pgfpathfillbetween
+% where A and B are two plots named by 'name path='.
+%
+% In fact, this here is not much more than a low-level invocation of
+% \pgfpathfillbetween
+% and a couple of styles. It could become a TikZ library because it
+% actually works on any two named paths, but it has its restrictions
+% regarding the supported input paths: both need to be plots of
+% functions (non-intersecting, should have at most one function value
+% for each canvas X coord)
+
+\pgfutil@IfUndefined{pgfplotsset}{%
+	\pgferror{Please load pgfplots before pgfplots.fillbetween.}%
+	\endinput
+}{}%
+
+\usetikzlibrary{intersections}
+\usetikzlibrary{decorations.softclip}
+
+\pgfutil@IfUndefined{pgfintersectiongetsolutiontimes}{%
+	\pgfplotsusecompatibilityfile{pgflibraryintersections.code.tex}%
+}{}%
+
+\pgfkeys{%
+	/pgfplots/fill between/of/.code=\pgfplotslibraryfillbetween@parse#1\pgfplots@EOI,
+	%
+	/pgfplots/fill between/on layer/.initial=pre main,
+	/pgfplots/fill between/every segment/.style={},
+	/pgfplots/fill between/every odd segment/.style={},
+	/pgfplots/fill between/every even segment/.style={},
+	%
+	% soft clip={(axis cs:0,0) rectangle (axis cs:1,1)}
+	/pgfplots/fill between/soft clip/.code={%
+		\pgfplotslibsoftclip@setkey{\pgffillbetweensetsoftclippath}#1\pgfplots@EOI
+	},
+	/pgfplots/fill between/soft clip first/.code={%
+		\pgfplotslibsoftclip@setkey{\pgffillbetweensetsoftclippathfirst}#1\pgfplots@EOI
+	},%
+	/pgfplots/fill between/soft clip second/.code={%
+		\pgfplotslibsoftclip@setkey{\pgffillbetweensetsoftclippathsecond}#1\pgfplots@EOI
+	},%
+	%
+	% #1: drawing options.
+	/pgfplots/fill between/@draw style/.style={
+		/pgf/fill between/result stream/begin/.code={%
+			\gdef\c@pgflibraryfill@segment{0}%
+			\pgfplots@search@also@tikz
+		},%
+		/pgf/fill between/result stream/next ready/.code={%
+			\let\pgflibraryfill@path=\pgfretval
+			\def\pgfplots@loc@TMPa{%
+				/pgfplots/.cd,
+				/pgfplots/fill between/every segment,
+				#1,%
+				/pgfplots/fill between/every segment no \c@pgflibraryfill@segment/.try,
+			}%
+			\ifodd\c@pgflibraryfill@segment\relax
+				\expandafter\def\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPa
+					/pgfplots/fill between/every odd segment,
+				}%
+			\else
+				\expandafter\def\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPa
+					/pgfplots/fill between/every even segment,
+				}%
+			\fi
+			%
+			\expandafter\fill\expandafter[\pgfplots@loc@TMPa]
+				\pgfextra \pgfsetpathandBB{\pgflibraryfill@path}\endpgfextra;%
+			\pgfplotsutil@advancestringcounter@global\c@pgflibraryfill@segment
+		},%
+		/pgf/fill between/result stream/end/.code=,%
+	},
+	/pgfplots/every fill between/.style={/pgfplots/area legend,/tikz/fill},
+	/pgfplots/fill between/.search also={/pgf/fill between,/pgfplots},
+	%
+	%
+	%
+	%--------------------------------------------------
+	% /pgfplots/execute at begin axis@@/.add={%
+	% 	\def\b@pgfplotslibraryfill@added
+	% }{%
+	% 	
+	% },%
+	%-------------------------------------------------- 
+}
+
+\def\pgfplotslibraryfillbetween@parse#1 and #2\pgfplots@EOI{%
+	\def\pgfplots@fillbetween@a{#1}%
+	\def\pgfplots@fillbetween@b{#2}%
+}%
+
+% \pgfplotsfillbetween[<options>]{<draw style>}
+%
+% <options> must contain 'of=<A> and <B>' and may configure how the
+% area is computed.
+%
+% <draw style> affects every drawn region.
+%
+\def\pgfplotsfillbetween{\pgfutil@ifnextchar[{\pgfplotsfillbetween@opt}{\pgfplotsfillbetween@opt[]}}
+\def\pgfplotsfillbetween@opt[#1]#2{%
+	\begingroup
+	\pgfqkeys{/pgfplots/fill between}{% 
+		% prepare the low-level path generation instruction(s):
+		/pgfplots/fill between/@draw style={#2},%
+		%
+		% set up input options:
+		#1,%
+	}%
+	% automagically try to use the correct layer:
+	\pgfkeysgetvalue{/pgfplots/fill between/on layer}\pgfplotslibraryfillbetween@path@layer@name
+	\pgfplotslibraryfillbetween@determine@layer
+	%
+	\pgfplotsonlayer{\pgfplotslibraryfillbetween@path@layer@name}%
+	%
+		\pgfplotslibraryfillbetween@path@generatepath
+	%
+	\endpgfplotsonlayer
+	\endgroup
+}%
+
+% Defines \pgfplotslibraryfillbetween@path@layer@name
+\def\pgfplotslibraryfillbetween@determine@layer{%
+	\ifx\pgfplotslibraryfillbetween@path@layer@name\pgfutil@empty
+	\else
+		\pgfutil@IfUndefined{pgf@layerlist}{%
+			% hm. No layers active!? A pity...
+			\pgfplotslibraryfillbetween@path@warn@layer
+			\let\pgfplotslibraryfillbetween@path@layer@name\pgfutil@empty%
+		}{%
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfutil@in@{\pgfplotslibraryfillbetween@path@layer@name}}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgf@layerlist}%
+			\ifpgfutil@in@
+			\else
+				\pgfplotslibraryfillbetween@path@warn@layer
+				\let\pgfplotslibraryfillbetween@path@layer@name\pgfutil@empty%
+			\fi
+		}%
+	\fi
+}%
+
+\def\pgfplotslibraryfillbetween@path@warn@layer{%
+	\pgfplots@warning{'fill between': Could not activate graphics layer '\pgfplotslibraryfillbetween@path@layer@name'. Filled path will be on top of the other ones. Please ensure that '/pgfplots/activate layers=true' and '\pgfplotslibraryfillbetween@path@layer@name' is somewhere in the layer list (or set '/pgfplots/fill between/on layer=').}%
+}%
+
+\def\pgfplotslibraryfillbetween@path@generatepath{%
+	\pgfplotslibraryfillbetween@path@check
+	\expandafter\let\expandafter\pgfplots@fillbetween@a@path
+		\csname tikz@intersect@path@name@\pgfplots@fillbetween@a\endcsname
+	\expandafter\let\expandafter\pgfplots@fillbetween@b@path
+		\csname tikz@intersect@path@name@\pgfplots@fillbetween@b\endcsname
+	\pgfpathfillbetween{\pgfplots@fillbetween@a@path}{\pgfplots@fillbetween@b@path}%
+}%
+
+\def\pgfplotslibraryfillbetween@path@check{%
+	\pgfutil@IfUndefined{tikz@intersect@path@name@\pgfplots@fillbetween@a}{%
+		\pgfplotsthrow{invalid argument}
+		{\pgfplots@fillbetween@a}%
+		{fill between: the mandatory argument 'of=<name path A> and <name path B> is missing or has empty arguments. Please ensure that the option has been set and that both path names have been assigned (perhaps you need 'name path global=\pgfplots@fillbetween@a' somewhere?)}%
+		\pgfeov
+	}{}%
+	\pgfutil@IfUndefined{tikz@intersect@path@name@\pgfplots@fillbetween@b}{%
+		\pgfplotsthrow{invalid argument}
+		{\pgfplots@fillbetween@b}%
+		{fill between: the mandatory argument 'of=<name path A> and <name path B> is missing or has empty arguments. Please ensure that the option has been set and that both path names have been assigned (perhaps you need 'name path global=\pgfplots@fillbetween@b' somewhere?)}%
+		\pgfeov
+	}{}%
+}
+
+
+%-----------------------------------------
+%
+% Utilities to work with path segments
+%
+%-----------------------------------------
+
+% Defines \pgfplotsretval such that it contains the named path '#1'
+\def\pgfplotsgetnamedpath#1{%
+	\pgfutil@IfUndefined{tikz@intersect@path@name@#1}{%
+		\pgfplotsthrow{invalid argument}
+		{\pgfplotsretval}%
+		{There is no named path called '#1'. Perhaps you misspelled it?}%
+		\pgfeov
+	}{%
+		\expandafter\let\expandafter\pgfplotsretval
+			\csname tikz@intersect@path@name@#1\endcsname
+	}%
+}%
+
+
+\endinput

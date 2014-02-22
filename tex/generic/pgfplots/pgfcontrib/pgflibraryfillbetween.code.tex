@@ -1,23 +1,3 @@
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% This file is a copy of some part of PGF/Tikz.
-%%% It has been copied here to provide :
-%%%  - compatibility with older PGF versions
-%%%  - availability of PGF contributions by Christian Feuersaenger
-%%%    which are necessary or helpful for pgfplots.
-%%%
-%%% For reasons of simplicity, I have copied the whole file, including own contributions AND
-%%% PGF parts. The copyrights are as they appear in PGF.
-%%%
-%%% Note that pgfplots has compatible licenses.
-%%% 
-%%% This copy has been modified in the following ways:
-%%%  - nested \input commands have been updated
-%%%  
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Fr 14. Feb 21:37:39 CET 2014 %%%
-
-
-
 % Copyright 2013 by Christian Feuersaenger
 %
 % This file may be distributed and/or modified
@@ -29,6 +9,9 @@
 
 
 \usepgflibrary{intersections}
+% FIXME : ARCHITECTURE VIOLATION:  REQUIRES
+% \usetikzlibrary{pgfplots.decorations.softclip} 
+%
 %\usepgfmodule{decorations}
 
 \newif\ifpgfpathfillbetween@split
@@ -72,12 +55,7 @@
 	% contains the lowlevel path as result (i.e. you can write
 	% \pgfsetpath\pgfretval to activate it).
 	/pgf/fill between/result stream/next ready/.code={
-		% prepend to any previous path elements:
-		\pgfgetpath\pgf@temp
-		\t@pgf@tokc=\expandafter{\pgf@temp}%
-		\t@pgf@toka=\expandafter{\pgfretval}%
-		\edef\pgfretval{\the\t@pgf@tokc\the\t@pgf@toka}%
-		\pgfsetpathandBB{\pgfretval}%
+		\pgfaddpathandBB{\pgfretval}%
 	},%
 	%
 	% 'end' has no arguments.
@@ -124,18 +102,30 @@
 	\pgfpathcomputesoftclippath{#2}{\pgfpathfillbetween@softclip@A}\let#2=\pgfretval%
 	\pgfpathcomputesoftclippath{#3}{\pgfpathfillbetween@softclip@B}\let#3=\pgfretval%
 	%
-	\pgfpathfillbetween@invoke{result stream/begin}%
-	%
-	\ifpgfpathfillbetween@split
-		\pgfpathfillbetween@compute@splitted{#2}{#3}%
+	\ifx#2\pgfutil@empty
+		\pgfpathfillbetween@warning{first}%
 	\else
-		\pgfpathfillbetween@compute{#2}{#3}%
-		\pgfpathfillbetween@invoke{result stream/next ready}%
+		\ifx#3\pgfutil@empty
+			\pgfpathfillbetween@warning{second}%
+		\else
+			\pgfpathfillbetween@invoke{result stream/begin}%
+			%
+			\ifpgfpathfillbetween@split
+				\pgfpathfillbetween@compute@splitted{#2}{#3}%
+			\else
+				\pgfpathfillbetween@compute{#2}{#3}%
+				\pgfpathfillbetween@invoke{result stream/next ready}%
+			\fi
+			\pgfpathfillbetween@invoke{result stream/end}%
+		\fi
 	\fi
 	%
-	\pgfpathfillbetween@invoke{result stream/end}%
 	%
 	\endgroup
+}%
+
+\def\pgfpathfillbetween@warning#1{%
+	\pgfwarning{fill between skipped: the #1 input path is empty.}%
 }%
 
 % Replaces all 'moveto' operations inside of the soft path '#1' by
@@ -314,11 +304,51 @@
 
 % A utility function like \pgfsetpath which calls \pgfsetpath *and* protocols
 % the size of each path segment (i.e. compute the bounding box).
+%
+% #1 a macro containing a softpath (i.e. something returned by
+% \pgfgetpath)
 \def\pgfsetpathandBB#1{%
 	\expandafter\pgfsetpath@protocolsizes@loop#1\pgf@stop
 	%
 	\pgfsetpath{#1}%
 }%
+
+% Like \pgfsetpathandBB, but this here *appends* to the existing
+% softpath.
+%
+% #1 a macro containing a softpath (i.e. something returned by
+% \pgfgetpath)
+\def\pgfaddpathandBB#1{%
+	\expandafter\pgfsetpath@protocolsizes@loop#1\pgf@stop
+	\pgfaddpath#1%
+}
+
+% Like \pgfsetpath, but this here *appends* to the existing
+% softpath.
+%
+% #1 a macro containing a softpath (i.e. something returned by
+% \pgfgetpath)
+\def\pgfaddpath#1{%
+	% append to any previous path elements:
+	\pgfgetpath\pgf@temp
+	\t@pgf@tokc=\expandafter{\pgf@temp}%
+	\t@pgf@toka=\expandafter{#1}%
+	\edef\pgfretval{\the\t@pgf@tokc\the\t@pgf@toka}%
+	\pgfsetpath{\pgfretval}%
+}
+
+% Takes a softpath on input, replaces its first moveto by a lineto,
+% and returns it as softpath.
+% #1: a macro containing a softpath (i.e. the result of \pgfgetpath)
+% 
+% On output, \pgfretval contains a modified path.
+\def\pgfpathreplacefirstmoveto#1{%
+	\ifx#1\pgfutil@empty
+		\let\pgfretval=#1%
+	\else
+		\expandafter\pgfpathfillbetween@replace@first@moveto#1\pgf@stop
+	\fi
+}
 
 % Defines \pgfretval to be '+' if the path's direction is "ascending"
 % and "-" otherwise.
@@ -568,29 +598,16 @@
 }
 
 % ----------------------------------------
-
-% Defines \pgfretval to contain a modified path including the
-% intersections of a preceding call to \pgfintersectionofpaths.
+% Given that some intersections have been computed already (and are in
+% the current scope), this command computes the intersection segments
+% for one of the input arguments.
 %
-% However, it does not only insert the intersection points into the
-% path. It also splits the path into the segments induced by the
-% intersection points.
-%
-% FIXME : this assumes that the intersections are sorted "in a suitable way"!
+% On output, \pgfretval contains the number of computed segments. The
+% segments as such can be accessed via \pgfgetintersectionsegmentpath.
 %
 % #1 : should be '1' if the FIRST argument of
 % \pgfintersectionofpaths should be used and '2' the SECOND
 % argument of \pgfintersectionofpaths should be used on input.
-%
-%  On output, there will be a number of individual path segments. The
-%  number is stored into \pgfretval.
-%  The resulting path segments will be available as
-%      \csname pgf@intersect@path@split@a@[0....N-1]\endcsname
-%   provided that '#1 = 1' or
-%
-%      \csname pgf@intersect@path@split@b@[0....N-1]\endcsname
-%
-%   in the case '#1 = 2'.
 %
 % EXAMPLE:
 %
@@ -640,16 +657,7 @@
 %   	}
 %   % 
 \def\pgfcomputeintersectionsegments#1{%
-	\ifcase#1\relax
-		% 0
-		\pgferror{illegal argument supplied.}
-	\or
-		\def\pgf@insert@intersections@src{a}%
-	\or
-		\def\pgf@insert@intersections@src{b}%
-	\else
-		\pgferror{illegal argument supplied.}
-	\fi
+	\pgfcomputeintersectionsegments@set@src{#1}%
 	\ifnum\pgfintersectionsolutions=0 %
 		\pgfutil@namelet{pgf@intersect@path@split@\pgf@insert@intersections@src @0}{pgf@intersect@path@\pgf@insert@intersections@src}%
 		\def\pgfretval{0}%
@@ -679,6 +687,36 @@
 	\fi
 }%
 
+% Defines \pgfretval to contain the desired path segment as softpath.
+%
+% @see \pgfsetpath
+% @see \pgfsetpathandBB
+% @see \pgfaddpathandBB
+%
+% #1: the value '1' if results for the FIRST argument of
+% \pgfintersectionofpaths are requested or '2' if results for the
+% SECOND path are requested (compare \pgfcomputeintersectionsegments).
+% #2: the segment index (a number 0<= #2 < numbersegments).
+%  The number of segments is returned by
+%  \pgfcomputeintersectionsegments.
+\def\pgfgetintersectionsegmentpath#1#2{%
+	\pgfcomputeintersectionsegments@set@src{#1}%
+	\expandafter\let\expandafter\pgfretval\csname pgf@intersect@path@split@\pgf@insert@intersections@src @#2\endcsname
+}%
+
+\def\pgfcomputeintersectionsegments@set@src#1{%
+	\ifcase#1\relax
+		% 0
+		\pgferror{illegal argument supplied.}
+	\or
+		\def\pgf@insert@intersections@src{a}%
+	\or
+		\def\pgf@insert@intersections@src{b}%
+	\else
+		\pgferror{illegal argument supplied.}
+	\fi
+}%
+
 \def\pgfintersectionsolutionsortbytime@@{%
 	% this is an O(n^2) sort method. It might suffice provided that
 	% the number of intersections is small... and it is the same
@@ -690,8 +728,7 @@
 	% at all (linear time).
 	\pgf@intersect@solutions@sortfinishtrue%
 	\pgfmathloop%
-		\ifnum\pgfmathcounter=\pgfintersectionsolutions\relax%
-		\else%
+		\ifnum\pgfmathcounter<\pgfintersectionsolutions\relax%
 			\pgfutil@tempcnta=\pgfmathcounter%
 			\advance\pgfutil@tempcnta by1\relax%
 			%
