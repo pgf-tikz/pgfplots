@@ -7,8 +7,8 @@
 
 \begingroup
 \pgfkeys{
-	/pgfmanual/gray key prefixes/.add={}{,/tikz/fill between/},
-	/pdflinks/search key prefixes in/.add={}{,/tikz/fill between/},
+	/pgfmanual/gray key prefixes/.add={/tikz/fill between/,}{},
+	/pdflinks/search key prefixes in/.add={/tikz/fill between/,}{},
 }
 
 \subsection{Filling an Area}
@@ -575,8 +575,119 @@ The combination of input plots is also possible if one or both of the plots make
 \end{codeexample}
 \end{tikzkey}
 
+\subsection{Intersection Segment Recombination}
+{%
+\pgfkeys{
+	/pgfmanual/gray key prefixes/.add={/tikz/segments/,}{},
+	/pdflinks/search key prefixes in/.add={/tikz/segments/,}{},
+}%
 
-\subsection{Low Level Reference}
+The implementation of |fill between| relies on path recombination internally: all intersection segments are computed and concatenated in a suitable order (possibly reversed).
+
+This method can also be applied to plain \tikzname\ paths to achieve interesting effects:
+\begin{codeexample}[width=7cm,vbox]
+\begin{tikzpicture}
+\pgfmathdeclarefunction{dnorm}{2}{%
+  \pgfmathparse{1/(#2*sqrt(2*pi))*exp(-((x-#1)^2)/(2*#2^2))}%
+}
+\begin{axis}[domain=-3:12,samples=25,smooth,width=12cm,height=7cm]
+
+% Draw curves
+\addplot[name path=g3,thin] {dnorm(3,1.5)};
+\addplot[name path=g6,thin] {dnorm(6,1.5)};
+
+% Draw vertical bar:
+\draw [name path=red,red,thick]
+	({rel axis cs:0,0}-|{axis cs:6,0}) -- ({rel axis cs:0,1}-|{axis cs:6,0});
+
+\path[name path=axis] (axis cs:-10,0) -- (axis cs:16,0);
+
+\addplot fill between[of=g3 and g6,
+	soft clip={domain=-6:6},
+	split,
+	every segment no 0/.style={left color=blue,right color=white},
+	every segment no 1/.style={pattern=grid,pattern color=gray},
+];
+
+\path[name path=lower,
+	%draw=red,ultra thick,
+] 
+\pgfextra
+	\tikzpathintersectionsegments[of=g3 and g6,
+		sequence=B0 -- A1,
+	]%
+\endpgfextra;
+
+\tikzfillbetween[
+	of=axis and lower,
+	soft clip={domain=-6:6}]
+	{pattern=north west lines, pattern color=orange}
+
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+
+\begin{command}{\tikzpathintersectionsegments\oarg{options}}
+	Evaluates \meta{options} and appends intersection segments to the current path.
+
+	This command acquires the two input paths which are argument of the mandatory |of| key and it parses the \meta{series specification} which is argument of |sequence|. Afterwards, it computes the intersection segments and concatenates them according to \meta{series specification}. Each resulting segment is appended to the current path as--is.
+
+	Note that this method operates on the transformed paths and does not apply coordinate transformations on its own. It is more like a decoration than a standard path command, although it does not have an input path.
+\end{command}
+
+\begin{key}{/tikz/segments/of=\marg{name1} and \marg{name2}}
+	Defines the two input paths.
+\end{key}
+
+\begin{key}{/tikz/segments/sequence=\marg{series specification} (initially A0 -- B1)}
+	Selects the intersection segments and their sequence.
+
+	The \meta{series specification} consists of a sequence of entries of the form |A|\meta{index} |-- B|\meta{index} |-- A|\meta{index}. It is probably best shown before we delve into the details:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[domain=0:10]
+
+\addplot[name path=first,blue] 
+	{sin(deg(x)) + 2/5*x};
+
+\addplot[name path=second,red,
+	samples=16,smooth] 
+	{cos(deg(1.2*x)) + 2/5*x};
+
+\draw[black,-stealth,
+	decorate,decoration={
+		saw,
+		post=lineto,
+		post length=10pt},
+]
+	\pgfextra
+		\tikzpathintersectionsegments[
+			of=first and second,
+			sequence={A0 -- B1 -- B2 
+				-- B3 -- A3[reverse]}
+		]
+	\endpgfextra
+;
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The preceding example defines two input plots of different sampling density, one is a |sharp plot| and one is |smooth|. Afterwards, it draws a third path with a |saw| decoration -- and that path concatenates intersection segments. The entry |A0| means to take the $0$th intersection segment of the first input path. In this context, the first input path is always called `|A|', regardless of its actual name. The second item is |--| which means to connect the previous segment with the next one. Without this item, it would have moved to the next one, leaving a gap. The third item is |B1| which means to use the $1$st intersection segment of the second input path. Again, the second input path is always called `|B|', regardless of its actual name. The other items are straighforward until we arrive at |A3[reverse]|: it is possible to append an \emph{reversed} path segment this way.
+
+	The general syntax is to add an (arbitrary) sequence of \verb.[--] [A|B].\marg{index}\oarg{options} where \meta{options} is optional.
+
+	Note that segment indices start at $0$. They will be processed by means of \pgfname's math parser and may depend on |\pgfintersectionsolutions| (which is the number of intersections).
+
+	Note that curly braces around \marg{index} can be omitted if the index has just one digit.
+\end{key}
+
+\begin{key}{/tikz/segments/reverse=\mchoice{true,false} (false)}
+	Allows to reverse affected path segments.
+\end{key}
+
+}
+
+\subsection{Basic Level Reference}
 
 There are a couple of basic level functions which allow to control |fillbetween| on a lower level of abstraction. The author of this package lists them here for highly experienced power-users (only). It might be suitable to study the source code to get details about these methods and how and where they are used.
 
@@ -731,6 +842,20 @@ There are a couple of basic level functions which allow to control |fillbetween|
 	Defines |\pgfretval| to contain the softpath associated with \meta{string name}. The \meta{string name} is supposed to be the value of |name path| or |name path| global.
 
 	The resulting value is a softpath, i.e.\ it has the same quality as those returned by |\pgfgetpath|.
+
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\tikznamecurrentpath\marg{string name}}
+	Takes the current softpath (the one assembled by previous moveto, lineto, or whatever operations), and assigns the name \meta{string name} to it.
+	
+	This macro is part of |fillbetween|.
+\end{command}
+
+\begin{command}{\pgfcomputereversepath\marg{\textbackslash softpathmacro}}
+	Takes a softpath \meta{\textbackslash softpathmacro} and computes its reversed path.
+
+	It stores the resulting softpath into |\pgfretval|.
 
 	This macro is part of |fillbetween|.
 \end{command}

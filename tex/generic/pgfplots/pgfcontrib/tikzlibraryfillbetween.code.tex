@@ -235,7 +235,7 @@
 %
 %-----------------------------------------
 
-% Defines \pgfplotsretval such that it contains the named path '#1'
+% Defines \pgfretval such that it contains the named path '#1'
 \def\tikzgetnamedpath#1{%
 	\pgfutil@IfUndefined{tikz@intersect@path@name@#1}{%
 		\pgferror{There is no named path called '#1'. Perhaps you misspelled it?}%
@@ -243,6 +243,11 @@
 		\expandafter\let\expandafter\pgfretval
 			\csname tikz@intersect@path@name@#1\endcsname
 	}%
+}%
+
+\def\tikznamecurrentpath#1{%
+	\pgfgetpath\pgf@temp
+	\expandafter\global\expandafter\let\csname tikz@intersect@path@name@#1\endcsname=\pgf@temp
 }%
 
 % Executes #2 if #1 is a named path and #3 otherwise.
@@ -253,6 +258,127 @@
 		\def\tikz@next{#2}%
 	}%
 	\tikz@next
+}%
+
+
+% ---------------------------------------------------------------------------------------
+
+\newif\iftikzpathsegments@reverse
+\def\tikzlibrarysegments@parse#1 and #2\pgf@stop{%
+	\def\tikz@path@segments@a{#1}%
+	\def\tikz@path@segments@b{#2}%
+}%
+
+
+\pgfkeys{
+	/tikz/segments/of/.code=\tikzlibrarysegments@parse#1\pgf@stop,
+	/tikz/segments/of={} and {},
+	/tikz/segments/sequence/.initial=A0 -- B1,
+	/tikz/segments/reverse/.is if=tikzpathsegments@reverse,
+	/tikz/segments/reverse/.default=true,
+}
+
+\def\tikzpathintersectionsegments[#1]{%
+	\begingroup
+	\pgfqkeys{/tikz/segments}{#1}%
+	\tikzgetnamedpath{\tikz@path@segments@a}%
+	\let\tikz@path@segments@A=\pgfretval
+	\tikzgetnamedpath{\tikz@path@segments@b}%
+	\let\tikz@path@segments@B=\pgfretval
+	% compute intersections using the PGF intersection lib...
+	\pgfintersectionofpaths{\pgfsetpath\tikz@path@segments@A}{\pgfsetpath\tikz@path@segments@B}%
+	%
+	% ... and compute the intersection *segments* for both input
+	% paths...
+	\pgfcomputeintersectionsegments1%
+	\pgfcomputeintersectionsegments2%
+	%
+	\pgfkeysgetvalue{/tikz/segments/sequence}\tikz@sequence
+	%
+	\def\b@tikz@isect@nextismoveto{1}%
+	\expandafter\tikzpathintersectionsegments@parse@loop\tikz@sequence\pgf@stop
+	\endgroup
+}%
+
+\def\tikzpathintersectionsegments@parse@loop{%
+	\pgfutil@ifnextchar-{%
+		\tikz@isect@p@lineto
+	}{%
+		\pgfutil@ifnextchar A{%
+			\tikz@isect@p@next
+		}{%
+			\pgfutil@ifnextchar B{%
+				\tikz@isect@p@next
+			}{%
+				\pgfutil@ifnextchar\pgf@stop{%
+					\tikz@isect@finish
+				}{%
+					\tikz@isect@p@error
+				}%
+			}%
+		}%
+	}%
+}%
+
+\def\tikz@isect@finish\pgf@stop{}%
+
+\def\tikz@isect@p@lineto--{%
+	\def\b@tikz@isect@nextismoveto{0}%
+	\tikzpathintersectionsegments@parse@loop
+}%
+
+\def\tikz@isect@p@error#1\pgf@stop{%
+	\pgferror{The argument of 'sequence' has an unexpected format near '#1'. Please write something like A0 -- B1 -- A1}%
+}
+
+\def\tikz@isect@p@next#1#2{%
+	\pgfutil@ifnextchar[{%
+		\tikz@isect@p@next@opt{#1}{#2}%
+	}{%
+		\tikz@isect@p@next@opt{#1}{#2}[]%
+	}%
+}%
+\def\tikz@isect@p@next@opt#1#2[#3]{%
+	\begingroup
+	%
+	% set keys (if any):
+	\def\tikz@temp{#3}%
+	\ifx\tikz@temp\pgfutil@empty
+	\else
+		\pgfqkeys{/tikz/segments}{#3}%
+	\fi
+	%
+	% parse arguments:
+	\pgfmathparse{round(#2)}%
+	\let\tikz@index=\pgfmathresult
+	%
+	\if A#1%
+		\def\tikz@path{1}%
+	\else
+		\if B#1%
+			\def\tikz@path{2}%
+		\else
+			\def\tikz@path{}%
+			\pgferror{The argument of 'sequence' has an unexpected format near '#1#2': expected A#2 or B#2}%
+		\fi
+	\fi
+	%
+	%
+	% PROCESS IT:
+	\ifx\tikz@path\pgfutil@empty
+	\else
+		\pgfgetintersectionsegmentpath{\tikz@path}{\tikz@index}%
+		\iftikzpathsegments@reverse
+			\pgf@reverse@path\pgfretval
+		\fi
+		\if0\b@tikz@isect@nextismoveto
+			\pgfpathreplacefirstmoveto\pgfretval
+		\fi
+		\pgfaddpathandBB\pgfretval
+	\fi
+	\endgroup
+	\def\b@tikz@isect@nextismoveto{1}%
+	\tikzpathintersectionsegments@parse@loop
 }%
 
 \endinput
