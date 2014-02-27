@@ -1,6 +1,14 @@
 # cause nonzero exit status to fail the script:
 set -e
 
+echo compile "$@"
+export TEXINPUTS="${TEXINPUTS/..:/}"
+echo "Modified TEXINPUTS to ${TEXINPUTS} to avoid search path problems with .dep files"
+
+if [ ! -f "$@.tex" ]; then
+	ln -s ../$@.tex
+fi
+
 rm -f $@.dat
 echo "0 0" >> $@.dat
 echo "1 1" >> $@.dat
