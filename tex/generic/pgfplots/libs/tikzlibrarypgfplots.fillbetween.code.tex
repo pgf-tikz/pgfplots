@@ -61,7 +61,41 @@
 		\edef\pgfplots@loc@TMPa{(axis cs:\pgfkeysvalueof{/pgfplots/xmin},#1) rectangle (axis cs:\pgfkeysvalueof{/pgfplots/xmax},#2)}%
 		\pgfkeysalso{/tikz/soft clip assign/path/.expand once=\pgfplots@loc@TMPa}%
 	},%
+	%
+	/pgfplots/execute at begin axis@@/.add={}{%
+		\gdef\pgfplotsfillbetween@list@of@layers@with@clippath{}%
+		\gdef\b@pgfplotsfillbetween@list@has@set@layers{0}%
+	},
 }
+
+\def\pgfplotsfillbetween@ensure@clipping@on@layer{%
+	\ifpgfplots@clip
+		\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
+		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+		%
+		% check if 'pre main,' is inside of the already prepared layers:
+		\def\pgfplots@loc@TMPb{\expandafter\pgfutil@in@\expandafter{\pgfplots@loc@TMPa,}}%
+		\expandafter\pgfplots@loc@TMPb\expandafter{\pgfplotsfillbetween@list@of@layers@with@clippath}%
+		%
+		\ifpgfutil@in@
+			% ah - already prepared. Good, nothing left to do.
+		\else
+			\pgfplots@log3{fill between: found 'clip=true'. installing clip path for layer '\pgfplots@loc@TMPa'...}%
+			\xdef\pgfplotsfillbetween@list@of@layers@with@clippath{\pgfplots@loc@TMPa,\pgfplotsfillbetween@list@of@layers@with@clippath}%
+			%
+			\edef\pgfplots@loc@TMPb{%
+				\noexpand\pgfplotsextra{%
+					\noexpand\pgfplotsonlayer{\pgfplots@loc@TMPa}%
+					\noexpand\pgfplotspathaxisoutline
+					\noexpand\pgfusepath{clip}%
+					\noexpand\endpgfplotsonlayer
+				}%
+			}%
+			\pgfplots@loc@TMPb
+			%
+		\fi
+	\fi
+}%
 
 % The options are from 
 % \addplot[#1] fill between[#2] #3;
@@ -75,12 +109,7 @@
 	\pgfplots@remember@survey@option@list
 	%
 	%
-	\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-	\else
-		\pgfplots@log3{fill between: activating layered graphics}%
-		\pgfplotssetlateoptions{set layers}%
-	\fi
+	\pgfplotslibraryfillbetweenpreparecurrentlayer
 	%
 	\pgfplots@addplot@enqueue@coords{%
 		% precmd
@@ -96,6 +125,21 @@
 	}{%	
 		% post command.
 	}%
+}
+
+% SIDE-EFFECT: modifies \b@pgfplotsfillbetween@list@has@set@layers and
+% \pgfplotsfillbetween@list@of@layers@with@clippath
+\def\pgfplotslibraryfillbetweenpreparecurrentlayer{%
+	\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\if0\b@pgfplotsfillbetween@list@has@set@layers
+			\pgfplots@log3{fill between: activating layered graphics}%
+			\pgfplotssetlateoptions{set layers}%
+			\gdef\b@pgfplotsfillbetween@list@has@set@layers{1}%
+		\fi
+		\pgfplotsfillbetween@ensure@clipping@on@layer
+	\fi
 }
 
 \def\pgfplots@tikzfillbetween{\pgfutil@ifnextchar[{\pgfplots@tikzfillbetween@opt}{\pgfplots@tikzfillbetween@opt[]}}
