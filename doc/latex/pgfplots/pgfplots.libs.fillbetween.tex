@@ -681,6 +681,40 @@ This method can also be applied to plain \tikzname\ paths to achieve interesting
 
 \begin{key}{/tikz/segments/reverse=\mchoice{true,false} (false)}
 	Allows to reverse affected path segments.
+\begin{codeexample}[]
+\begin{tikzpicture}
+    \begin{axis}[xmin=0,xmax=5,ymin=0,ymax=5]
+    \addplot [name path=f,domain=0:5,samples=100] 
+        {(x - 2)^2/(7*x) + 1};
+
+    \addplot [name path=border,
+		color=blue, ultra thick, dashed] 
+		coordinates {(2,0) (2,5) } ;
+
+	\fill[
+		intersection segments={
+			of=f and border,
+			sequence={A0 -- B1}},
+		pattern=north east lines,
+	]
+	-- cycle;
+
+	\fill[
+		intersection segments={
+			of=f and border,
+			sequence={B1[reverse] -- A1}},
+		pattern=north west lines,
+	]
+	-- (rel axis cs:1,1) -- cycle;
+
+    \end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The preceding example defines two input plots: the plot named |f| which is the plot of the curve and the blue |border| line.
+
+	It then computes fills paths relying on two |intersection segments|, one which resembles the part above the curve which is \emph{left} of the border and one which resembles the part on the \emph{right} of the border.
+
+	It works by concatenating |intersection segments| in a suitable |sequence| (add further |\draw| statements to visualize the individual segments). Note that |B1| is used twice: once in normal direction and once |reverse|d. The |intersection segments| merely constitute the start of the paths; they are extended by |--cycle| and |-- (rel axis cs:1,1) -- cycle|, respectively. Keep in mind that |rel axis cs| is a relative coordinate system in which |1| means $100\%$ of the respective axis -- in this case, we have the upper right corner which is $100\%$ of $x$ and $100\%$ of $y$.
 \end{key}
 
 }
@@ -745,7 +779,9 @@ There are a couple of basic level functions which allow to control |fillbetween|
 \end{tikzpicture}
 \end{codeexample}
 	
-	In order to let |fillbetween| compute the target path, we assign names to the input paths, compute the intersections -- and recombined them using |\pgfcomputeintersectionsegments|:
+	In order to let |fillbetween| compute the target path, we assign names to the input paths, compute the intersections -- and recombined them using |\pgfcomputeintersectionsegments|.
+
+	\paragraph{Attention:} Before you want to replicate this example, you may want to read about |intersection segments| which is a much simpler way to get the same effect!
 
 \begin{codeexample}[vbox]
 \begin{tikzpicture}[line join=round,x=3cm,y=3cm]
@@ -822,6 +858,7 @@ There are a couple of basic level functions which allow to control |fillbetween|
 	;
 \end{tikzpicture}
 \end{codeexample}
+	\paragraph{Attention:} Before you want to replicate this example, you may want to read about |intersection segments| which is a much simpler way to get the same effect!
 \end{command}
 
 \begin{command}{\pgfgetintersectionsegmentpath\marg{1 or 2}\marg{index}}
@@ -924,4 +961,23 @@ There are a couple of basic level functions which allow to control |fillbetween|
 
 	See |soft clip| for details.
 \end{command}
+
+\subsection{Pitfalls and Limitations}
+
+The |fillbetween| backend is quite powerful and successfully computes many use--cases around ``filling path segments of arbitrary plots'' out of the box.
+
+However, it has a couple of limitations which may or may not be overcome by future releases:
+\begin{enumerate}
+	\item The first limitation is scalability. The underlying algorithms are relatively inefficient and scale badly if the number of samples is large. Please apply it to ``reasonable sample sizes'' and plots with a ``reasonable number of intersections''. That means: if it takes too long, you may need to reduce the sampling density.
+	\item The second limitation is accuracy. The |fillbetween| functionality relies on the |intersections| library of \pgfname\ which, in turn, may fail to find all intersections (although its accuracy and reliability has been improved considerably as part of the work on |fillbetween|, thanks to Mark Wibrow of the \pgfname\ team for his assistance).
+
+	The work-around for this limitation might be to reduce the sampling density -- and to file bug reports.
+	\item Another limitation is generality. The |fillbetween| library allows to combine |smooth| and |sharp plots|, even |const plots| with jumps, and all out of the box. It will do so successfully as long as you have ``plot--like'' structures. But it may fail if 
+		\begin{itemize}
+			\item plots intersect themselves and you try to compute individual segments using |split| or |intersection segments|,
+			\item the plot has circles,
+			\item the two involved plots have infinitely many intersections (i.e.\ are on top of each other).
+		\end{itemize}
+\end{enumerate}
+Many of these limitations are present in \pgfname\ as well, especially when |decorate|ing paths or when using |name intersections|.
 \endgroup
