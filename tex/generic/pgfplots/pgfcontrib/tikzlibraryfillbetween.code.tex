@@ -323,13 +323,19 @@
 	\let\tikz@path@segments@A=\pgfretval
 	\tikzgetnamedpath{\tikz@path@segments@b}%
 	\let\tikz@path@segments@B=\pgfretval
-	% compute intersections using the PGF intersection lib...
-	\pgfintersectionofpaths{\pgfsetpath\tikz@path@segments@A}{\pgfsetpath\tikz@path@segments@B}%
 	%
-	% ... and compute the intersection *segments* for both input
-	% paths...
-	\pgfcomputeintersectionsegments1%
-	\pgfcomputeintersectionsegments2%
+	% this macro will be called whenever we need an intersection
+	% segment. Perhaps we do not need it at all
+	\def\tikz@ensurehascomputedintersection{%
+		% compute intersections using the PGF intersection lib...
+		\pgfintersectionofpaths{\pgfsetpath\tikz@path@segments@A}{\pgfsetpath\tikz@path@segments@B}%
+		%
+		% ... and compute the intersection *segments* for both input
+		% paths...
+		\pgfcomputeintersectionsegments1%
+		\pgfcomputeintersectionsegments2%
+		\let\tikz@ensurehascomputedintersection=\relax
+	}%
 	%
 	\pgfkeysgetvalue{/tikz/segments/sequence}\tikz@sequence
 	%
@@ -387,8 +393,16 @@
 	\fi
 	%
 	% parse arguments:
-	\pgfmathparse{round(#2)}%
-	\let\tikz@index=\pgfmathresult
+	\edef\pgfmathresult{#2}%
+	\def\tikz@temp{*}%
+	\ifx\pgfmathresult\tikz@temp
+		\def\b@tikz@select@all{1}%
+	\else
+		\def\b@tikz@select@all{0}%
+		\tikz@ensurehascomputedintersection
+		\pgfmathparse{round(#2)}%
+		\let\tikz@index=\pgfmathresult
+	\fi
 	%
 	\if A#1%
 		\def\tikz@path{1}%
@@ -405,7 +419,13 @@
 	% PROCESS IT:
 	\ifx\tikz@path\pgfutil@empty
 	\else
-		\pgfgetintersectionsegmentpath{\tikz@path}{\tikz@index}%
+		\if1\b@tikz@select@all%
+			% ok... select the *entire* path. 
+			% #1 = A|B :
+			\expandafter\let\expandafter\pgfretval\csname tikz@path@segments@#1\endcsname
+		\else
+			\pgfgetintersectionsegmentpath{\tikz@path}{\tikz@index}%
+		\fi
 		\iftikzpathsegments@reverse
 			\pgf@reverse@path\pgfretval
 		\fi

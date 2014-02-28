@@ -319,10 +319,12 @@ The combination of input plots is also possible if one or both of the plots make
 		\item It can be of the form \declaretext{domain}|=|\meta{xmin}|:|\meta{xmax}. This choice is equivalent to
 
 			|(axis cs:|\meta{xmin}|,\pgfkeysvalueof{/pgfplots/ymin}) rectangle |
+
 			|(axis cs:|\meta{xmax}|,\pgfkeysvalueof{/pgfplots/ymax})|.
 		\item It can be of the form \declaretext{domain y}|=|\meta{ymin}|:|\meta{ymax}. This choice is equivalent to
 
-			|axis cs:(\pgfkeysvalueof{/pgfplots/xmin},|\meta{ymin}|) rectangle |
+			|(axis cs:(\pgfkeysvalueof{/pgfplots/xmin},|\meta{ymin}|) rectangle |
+
 			|(axis cs:\pgfkeysvalueof{/pgfplots/xmax},|\meta{ymax}|)|.
 		\item It can be |(|\meta{x}|,|\meta{y}|) rectangle (|\meta{X}|,|\meta{Y}|)|. In this case, it is the rectangle defined by the given points.
 		\item It can be the name of a named path, i.e.\ |soft clip=A| if there exists a path with |name path=A|.
@@ -514,25 +516,9 @@ The combination of input plots is also possible if one or both of the plots make
 \begin{tikzpicture}
 	\begin{axis}
 
-	\addplot+[name path=A] {x};
+	\addplot[blue,-stealth,name path=A] {x};
 
-	\draw[name path=B] 
-		(axis cs:0,-5)
-	 -- (axis cs:0,5);
-
-	\addplot[gray!50] fill between[of=A and B,
-		reverse=false];
-	\end{axis}
-\end{tikzpicture}
-\end{codeexample}
-
-\begin{codeexample}[]
-\begin{tikzpicture}
-	\begin{axis}
-
-	\addplot+[name path=A] {x};
-
-	\draw[name path=B] 
+	\draw[-stealth,name path=B] 
 		(axis cs:0,-5)
 	 -- (axis cs:0,5);
 
@@ -541,12 +527,93 @@ The combination of input plots is also possible if one or both of the plots make
 	\end{axis}
 \end{tikzpicture}
 \end{codeexample}
+	In this case, we chose |reverse=true|. This is essentially equivalent to the instruction
+	\begin{itemize}
+		\item use path |A|
+		\item append the reversed path |B|
+		\item fill the result.
+	\end{itemize}
+	In other words, it is equivalent to the following path construction based on |intersection segments|:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[set layers]
+
+	\addplot[blue,-stealth,name path=A] {x};
+
+	\draw[-stealth,name path=B] 
+		(axis cs:0,-5)
+	 -- (axis cs:0,5);
+
+	\pgfonlayer{pre main}
+	\fill[gray!50,intersection segments={of=A and B,
+		sequence={A* -- B*[reverse]}}];
+	\endpgfonlayer
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	Here, we filled the |intersection segments| of |A| and |B| by taking all (indicated by |*|) segments of |A| and all of |B| in reversed order.
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}
+
+	\addplot[blue,-stealth,name path=A] {x};
+
+	\draw[-stealth,name path=B] 
+		(axis cs:0,-5)
+	 -- (axis cs:0,5);
+
+	\addplot[gray!50] fill between[of=A and B,
+		reverse=false];
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	In this case, we chose |reverse=false|. This, in turn, can be expressed as
+	\begin{itemize}
+		\item use path |A|,
+		\item connect with path |B|,
+		\item fill the result.
+	\end{itemize}
+	In other words, it resembles the follower |intersections segments| construction:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[set layers]
+
+	\addplot[blue,-stealth,name path=A] {x};
+
+	\draw[-stealth,name path=B] 
+		(axis cs:0,-5)
+	 -- (axis cs:0,5);
+
+	\pgfonlayer{pre main}
+	\fill[gray!50,intersection segments={of=A and B,
+		sequence={A* -- B*}}];
+	\endpgfonlayer
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
 \end{tikzkey}
 
 \begin{tikzkey}{fill between/on layer=\marg{layer name} (initially pre main)}
 	Defines the layer on which |\addplot fill between| fill be drawn. \PGFPlots\ defines the layer |pre main| to be right before the |main| layer and |pre main| is also the initial configuration for any |fill between| path.
 
-	As soon as you type |\addplot fill between|, \PGFPlots\ will activate layered graphics such that this works automagically.
+	As soon as you type |\addplot fill between|, \PGFPlots\ will activate layered graphics using |set layers| such that this works automagically. \PGFPlots\ will also install a clip path the first time it encounters this layer.
+
+	Set \meta{layer name} to the empty string to place deactivate special layer support for |fill between|.
+
+	Note that this auto-activation of |set layers| and the installation of a |clip| path is done for |\addplot fill between|, not for the lower--level drawing instructions like |\tikzfillbetween| or |intersection segments|. If you need them, you have to install a layer list manually using either |set layers| (if inside of an axis) or |\pgfsetlayers|. The clip path for an axis can be installed manually using 
+	
+\begin{codeexample}[code only]
+\pgfplotsextra{
+	\pgfonlayer{pre main} 
+	\pgfplotspathaxisoutline
+	\pgfusepath{clip}
+	\endpgfonlayer
+}
+\end{codeexample}
+	
+	(should this ever be necessary).
 \end{tikzkey}
 
 \begin{tikzkey}{fill between/inner moveto=\mchoice{connect,keep} (initially connect)}
@@ -587,41 +654,47 @@ The implementation of |fill between| relies on path recombination internally: al
 This method can also be applied to plain \tikzname\ paths to achieve interesting effects:
 \begin{codeexample}[width=7cm,vbox]
 \begin{tikzpicture}
-\pgfmathdeclarefunction{dnorm}{2}{%
-  \pgfmathparse{1/(#2*sqrt(2*pi))*exp(-((x-#1)^2)/(2*#2^2))}%
-}
-\begin{axis}[domain=-3:12,samples=25,smooth,width=12cm,height=7cm]
+
+\def\verticalbar{2}
+\begin{axis}[domain=-5:8,samples=25,smooth,width=12cm,height=7cm]
 
 % Draw curves
-\addplot[name path=g3,thin] {dnorm(3,1.5)};
-\addplot[name path=g6,thin] {dnorm(6,1.5)};
+\addplot[name path=g0,thin] {exp(-x^2/4)};
+\addlegendentry{$\mathcal{N}(0)$}
+\addplot[name path=g2.5,thin] {exp(-(x-2.5)^2/4)};
+\addlegendentry{$\mathcal{N}(\frac52)$}
 
 % Draw vertical bar:
 \draw [name path=red,red,thick]
-	({rel axis cs:0,0}-|{axis cs:6,0}) -- ({rel axis cs:0,1}-|{axis cs:6,0});
+	(axis cs:\verticalbar,-1) -- (axis cs:\verticalbar,2);
 
 \path[name path=axis] (axis cs:-10,0) -- (axis cs:16,0);
 
-\addplot fill between[of=g3 and g6,
-	soft clip={domain=-6:6},
+\addplot[black!10] fill between[of=g0 and g2.5,
+	soft clip={domain=-6:\verticalbar},
 	split,
 	every segment no 0/.style={left color=blue,right color=white},
 	every segment no 1/.style={pattern=grid,pattern color=gray},
 ];
+\addlegendentry{fill}
 
+% compute + label the lower segment (but do not draw it):
 \path[name path=lower,
 	%draw=red,ultra thick,
-	intersection segments={of=g3 and g6,sequence=B0 -- A1}
+	intersection segments={of=g0 and g2.5,sequence=B0 -- A1}
 ];
 
-\tikzfillbetween[
+\addplot[pattern=north west lines, pattern color=orange]
+	fill between[
 	of=axis and lower,
-	soft clip={domain=-6:6}]
-	{pattern=north west lines, pattern color=orange}
+	soft clip={domain=-6:\verticalbar},
+];
+\addlegendentry{lower}
 
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
+This example has two plots, one with a Gauss peak at $x=0$ and one with a Gauss peak at $x=\frac52$. Both have standard legend entries. Then we have a red line drawn at $x=$|\verticalbar| which is defined as $x=2$. The third plot is a |fill between| with |split|ted segments where the left segment has a shading and the right one has a pattern -- and both a clipped to the part which is left of |\verticalbar|. The option list which comes directly after |\addplot|, i.e.\ the |[black!10]| will be remembered for the legend entry of this plot. The next |\path...| instruction has no visible effect (and does not increase the size of the document\footnote{Well, perhaps 8 byte for scopes.}). However, it contains the key |intersection segments| which computes a path consistent of intersection segments of the two functions. In our case, we connect the first ($0$th) segment of the path named |g2.5| (which is referred to as |B| in the context of |sequence|) and the second ($1$st) segment of the path named |g0| (which is referred to as |A| in the context of |sequence|). The result receives |name path=lower|. Finally, the last |\addplot| is a |fill between| which fills everything between the axis and this lower path segment, again clipped to the parts left of |\verticalbar|. Note that |axis| is no magic name; it has been defined in our example as well. This is explained in more detail in the following paragraphs.
 
 
 \begin{key}{/tikz/intersection segments=\marg{options with prefix \normalfont\texttt{/tikz/segments}}}
@@ -672,7 +745,22 @@ This method can also be applied to plain \tikzname\ paths to achieve interesting
 \end{codeexample}
 	The preceding example defines two input plots of different sampling density, one is a |sharp plot| and one is |smooth|. Afterwards, it draws a third path with a |saw| decoration -- and that path concatenates intersection segments. The entry |A0| means to take the $0$th intersection segment of the first input path. In this context, the first input path is always called `|A|', regardless of its actual name. The second item is |--| which means to connect the previous segment with the next one. Without this item, it would have moved to the next one, leaving a gap. The third item is |B1| which means to use the $1$st intersection segment of the second input path. Again, the second input path is always called `|B|', regardless of its actual name. The other items are straighforward until we arrive at |A3[reverse]|: it is possible to append an \emph{reversed} path segment this way.
 
-	The general syntax is to add an (arbitrary) sequence of \verb.[--] [A|B].\marg{index}\oarg{options} where \meta{options} is optional.
+	The general syntax is to add an (arbitrary) sequence of \verb.[--] [A|B].\marg{index}\oarg{options} where \meta{options} is optional. There is one special case: if \meta{index} is |*|, the \emph{entire} path will be used. If all encountered indices are |*|, the intersection will not be computed at all (in this case, |intersection segments| degenerates to ``path concatenation''). Consequently, the following example is a degenerate case in which we did ``path concatenation'' rather than intersection concatenation:
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\pgfsetlayers{pre main,main}
+	\draw[-stealth,thick,name path=A,red]  (0,0) -- (1,1);
+	\draw[-stealth,thick,name path=B,blue] (0,-1) -- (1,0);
+
+	\pgfonlayer{pre main}
+	\fill[
+		orange,
+		intersection segments={
+			of=A and B, 
+			sequence={A* -- B*[reverse]}}];
+	\endpgfonlayer
+\end{tikzpicture}
+\end{codeexample}
 
 	Note that segment indices start at $0$. They will be processed by means of \pgfname's math parser and may depend on |\pgfintersectionsolutions| (which is the number of intersections).
 
