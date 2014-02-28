@@ -82,6 +82,7 @@ DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 PGF_CVS_PATH=~/code/tex/pgf
 PGF_REFERENCE_PATH=$(PGF_CVS_PATH)
 #PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
+#PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
