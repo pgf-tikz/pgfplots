@@ -86,8 +86,10 @@
 	\immediate\write16{Package pgfplots: loading complementary 'name path' implementation for your pgf version...}
 	\let\tikz@key@name@path=\tikz@key@name@path@new
 \fi
+
 % ------------------------------------------------------------
 
+\newif\iftikzfillbetween@optimize@name@intersections
 
 \pgfkeys{%
 	/tikz/fill between/of/.code=\tikzlibraryfillbetween@parse#1\pgf@stop,
@@ -156,6 +158,11 @@
 		/pgf/fill between/result stream/end/.code=,%
 	},
 	/tikz/fill between/.search also={/pgf/fill between,/pgfplots},
+	/tikz/fill between/optimize name intersections/.is if=tikzfillbetween@optimize@name@intersections,
+	% 
+	% FIXME : this optimization needs much more work... I believe it
+	% would be stable enough, but it covers too few cases.
+	%/tikz/fill between/optimize name intersections=true,
 	%
 	%
 	%
@@ -273,6 +280,12 @@
 		\csname tikz@intersect@path@name@\tikz@fillbetween@a\endcsname
 	\expandafter\let\expandafter\tikz@fillbetween@b@path
 		\csname tikz@intersect@path@name@\tikz@fillbetween@b\endcsname
+	%
+	\iftikzfillbetween@optimize@name@intersections
+		\ifpgfpathfillbetween@split
+			\tikzfillbetween@optimize@name@intersections\tikz@fillbetween@a\tikz@fillbetween@b
+		\fi
+	\fi
 	%
 	\pgfpathfillbetween{\tikz@fillbetween@a@path}{\tikz@fillbetween@b@path}%
 }%
@@ -461,4 +474,41 @@
 	\tikzpathintersectionsegments@parse@loop
 }%
 
+\def\tikzfillbetween@optimize@name@intersections#1#2{%
+	\edef\tikzfillbetween@precached@intersectionofpaths@A{#1}%
+	\edef\tikzfillbetween@precached@intersectionofpaths@B{#2}%
+	\pgfkeys{%
+		/tikz/name intersections/.add code={%
+			\let\pgfintersectionofpaths=\tikzfillbetween@precached@intersectionofpaths
+		}{%
+			\let\pgfintersectionofpaths=\pgfintersectionofpaths@orig
+		}
+	}%
+}%
+
+\let\pgfintersectionofpaths@orig=\pgfintersectionofpaths
+
+\def\tikzfillbetween@precached@intersectionofpaths@log{%
+	\immediate\write-1{fill between: outcome of 'name intersections={of=\tikz@intersect@path@a\space and \tikz@intersect@path@b}' has been computed from available information of fill between}%
+}
+\def\tikzfillbetween@precached@intersectionofpaths#1#2{%
+	\def\pgf@loc@TMPa{0}%
+	\ifx\tikz@intersect@path@a\tikzfillbetween@precached@intersectionofpaths@A
+		\ifx\tikz@intersect@path@b\tikzfillbetween@precached@intersectionofpaths@B
+			\def\pgf@loc@TMPa{1}%
+		\fi
+	\fi
+	\ifx\tikz@intersect@path@b\tikzfillbetween@precached@intersectionofpaths@A
+		\ifx\tikz@intersect@path@a\tikzfillbetween@precached@intersectionofpaths@B
+			\def\pgf@loc@TMPa{1}%
+		\fi
+	\fi
+	%
+	\if1\pgf@loc@TMPa
+		\tikzfillbetween@precached@intersectionofpaths@log
+		\relax
+	\else
+		\pgfintersectionofpaths@orig{#1}{#2}%
+	\fi
+}%
 \endinput
