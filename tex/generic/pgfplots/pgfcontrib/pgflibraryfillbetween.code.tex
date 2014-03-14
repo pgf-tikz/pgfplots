@@ -132,17 +132,82 @@
 % 'lineto'. This excludes the first moveto.
 %
 % The motivation is that fillbetween should ignore inner movetos.
+%
+% UPDATE: it turned out that replacing inner movetos is necessary, but
+% not sufficient. Now, this macro does more:
+% - it replaces isolated inner movetos by lineto
+% - if two successive inner movetos occur, it throws away the first
+%   one replaces the second by lineto
+% - if one or more trailing movetos occur in a path, these will be
+%   thrown away.
 \def\pgfpathfillbetween@connect@inner@movetos#1{%
 	\expandafter\pgfpathfillbetween@connect@inner@movetos@#1\pgf@stop%
 	\let#1=\pgfretval
 }
 \def\pgfpathfillbetween@connect@inner@movetos@#1#2\pgf@stop{%
 	\ifx#1\pgfsyssoftpath@movetotoken
-		\pgfutilstrreplace{\pgfsyssoftpath@movetotoken}{\pgfsyssoftpath@linetotoken}{#2}%
+		\pgfpathfillbetween@connect@inner@movetos@@{#2}%
 		\expandafter\def\expandafter\pgfretval\expandafter{\expandafter\pgfsyssoftpath@movetotoken\pgfretval}%
 	\else
-		\pgfutilstrreplace{\pgfsyssoftpath@movetotoken}{\pgfsyssoftpath@linetotoken}{#1#2}%
+		\pgfpathfillbetween@connect@inner@movetos@@{#1#2}%
 	\fi
+}%
+
+% Substitute all movetotokens by linetotokens.
+%
+% In addition, it should *deduplicate* movetos, i.e.
+% "moveto{<x>}{<y}moveto{<x2>}{<y2>}"
+% -> "moveto{<x2>}{<y2>}"
+%
+% and: trailing movetos should be discarded.
+\def\pgfpathfillbetween@connect@inner@movetos@@#1{%
+	% this implementation is derived from \pgfutilstrreplace - it does
+	% almost the same as
+	% s/\pgfsyssoftpath@movetotoken/pgfsyssoftpath@linetotoken/g
+	% -> but with the extra additions of deduplication and trailing
+	%  moveto removal.
+	\def\pgfretval{}%
+	\pgfpathfillbetween@search@and@replace@loop{#1}%
+}
+\def\pgfpathfillbetween@connect@inner@moveto@foundit@#1\pgfsyssoftpath@movetotoken#2#3#4{%
+	\ifx#4\pgf@EOI
+		% ah - a trailing moveto.
+		% In this case, we remember all until the moveto, but we omit
+		% the trailing moveto and its arguments.
+		\expandafter\def\expandafter\pgfretval\expandafter{\pgfretval #1}%
+		%
+		% ... and stop searching.
+		\let\pgf@loc@TMPa\relax
+	\else
+		\ifx#4\pgfsyssoftpath@movetotoken
+			% DEDUPLICATE: we have at least two successive movetos.
+			% silently skip the first moveto and its arguments and go on
+			% with the second moveto.
+			\def\pgf@loc@TMPa{\pgfpathfillbetween@connect@inner@moveto@foundit@#1\pgfsyssoftpath@movetotoken}%
+		\else
+			% substitute it by a lineto.
+			\expandafter\def\expandafter\pgfretval\expandafter{\pgfretval #1\pgfsyssoftpath@linetotoken{#2}{#3}}%
+			%
+			% ... continue the standard loop which skips over paths
+			% until the next moveto. Remember to re-insert '#4':
+			\def\pgf@loc@TMPa{\pgfpathfillbetween@connect@inner@moveto@foundit@@ #4}%
+		\fi
+	\fi
+	\pgf@loc@TMPa
+}%
+\def\pgfpathfillbetween@connect@inner@moveto@foundit@@#1\pgf@EOI{%
+	\pgfpathfillbetween@search@and@replace@loop{#1}%
+}%
+
+\def\pgfpathfillbetween@search@and@replace@loop#1{%
+	\pgfutil@in@{\pgfsyssoftpath@movetotoken}{#1}%
+	\ifpgfutil@in@
+		\def\pgf@loc@TMPa{\pgfpathfillbetween@connect@inner@moveto@foundit@ #1\pgf@EOI}%
+	\else
+		\expandafter\def\expandafter\pgfretval\expandafter{\pgfretval #1}%
+		\let\pgf@loc@TMPa=\relax
+	\fi
+	\pgf@loc@TMPa
 }%
 
 \def\pgfpathfillbetween@invoke#1{\pgfkeysvalueof{/pgf/fill between/#1/.@cmd}\pgfeov}
