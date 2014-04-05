@@ -912,6 +912,42 @@ La.
 \section{Bugs in PGFPlots}
 
 \begin{bugtracker}
+
+\begin{bug}
+	context + color mix produces spurious shifts
+\begin{verbatim}
+I'm using pgfplots to create some bar charts with error bars in ConTeXt,
+and I want to use custom colours for them.  This works, but if I mix a
+custom colour with another colour, it results in a gap between the
+error bar line and the error bar mark.  If two custom colours are
+mixed, the gap seems to be doubled.  Mixing with predefined colours
+works normally.  MWE:
+
+\usemodule[tikz]
+\usemodule[pgfplots]
+
+\definecolor	[Blue]	[h=3465a4]
+\definecolor	[White]	[h=ffffff]
+
+\pgfplotsset{compat=newest}
+
+\starttext
+\starttikzpicture
+	\startaxis[ybar, error bars/y dir=both, error bars/y explicit]
+		\addplot+[blue!50!white] coordinates {(1,5) +- (0,3)};
+		\addplot+[Blue] coordinates {(1,5) +- (0,3)};
+		\addplot+[Blue!50!white] coordinates {(1,5) +- (0,3)};
+		\addplot+[Blue!50!White] coordinates {(1,5) +- (0,3)};
+	\stopaxis
+\stoptikzpicture
+\stoptext
+
+Here you can see the result:
+http://666kb.com/i/cl86t0mfpin35tht7.png
+\end{verbatim}
+\end{bug}
+
+
 \begin{bug}
 	3d centered axis lines: tick lines are drawn incompletely
 
@@ -2795,6 +2831,285 @@ and you can remark that colour filling overlaps x- and y-axis ! So I suggest tha
 % FEATURES
 \section{Feature Proposals PGFPlots}
 \begin{bugtracker}
+
+\begin{feature}
+	bar plots: Introduce significance stars (see GROUP BARS on page~\pageref{GROUP:BARS})
+\end{feature}
+
+\begin{feature}
+	GROUP BARS\label{GROUP:BARS}
+
+   Bar plots: simplify grouped bars
+
+\begin{verbatim}
+Hi Joshua,
+
+as already mentioned, your old mails from January have slipped my discipline... I am sorry for not answering right away. I should have written "sorry, I am busy please also try tex.stackexchange" after there was no answer for some time.
+
+You asked for a simpler way to
+a) position groups of bars without having to compute 'bar shift' manually
+b) a simpler way to get "significance stars".
+
+First, grouped bar charts are an open feature request in pgfplots, and your input will eventually prove to be valueable as definition of requirements. I haven't thought much on significance stars so far; I fear your current solution which fixes the y location is the best at hand. There may be ways to write complicated styles which implement that feature, but that's clearly advanced.
+
+The first request is actually possible, assuming that you always provide them in the sequence as you did: I copied the default definition of 'bar shift' and adopted it.
+
+The default is
+    /pgfplots/ybar/.style={
+        /pgf/bar shift={%
+                % total width = n*w + (n-1)*skip
+                % -> subtract half for centering
+                -0.5*(\numplotsofactualtype*\pgfplotbarwidth + (\numplotsofactualtype-1)*#1)  +
+                % the '0.5*w' is for centering
+                (.5+\plotnumofactualtype)*\pgfplotbarwidth + \plotnumofactualtype*#1},%
+    }
+
+and my modification substitutes every index and 'n' by half of it:
+
+\pgfplotsset{
+    % #1 = separation between bars
+    bar shift for half number plots/.style={%
+        /pgf/bar shift={%
+            % total width = n*w + (n-1)*skip
+                % -> subtract half for centering
+                -0.5*(\numplotsofactualtype/2*\pgfplotbarwidth + (\numplotsofactualtype/2-1)*#1)  +
+                % the '0.5*w' is for centering
+                (.5+div(\plotnumofactualtype,2))*\pgfplotbarwidth + div(\plotnumofactualtype,2)*#1%
+        },%
+    },%
+    bar shift for half number plots/.default=2pt,
+}
+
+With this definition, you do not have to write 'bar shift' in your styles.
+
+The whole figure becomes
+
+
+\usemodule[pgfplots]
+\pgfplotsset{compat=newest}
+
+\pgfplotsset{HeartControl/.style=
+{
+    red, fill=red!33!white,
+    %bar shift=-0.1667
+}}
+\pgfplotsset{HeartDiabetes/.style=
+{
+    red!33!black, fill=red!66!white,
+    %bar shift=+0.1667
+}}
+\pgfplotsset{KidneyControl/.style=
+{
+    orange, fill=orange!33!white,
+    %bar shift=-0.1667
+}}
+\pgfplotsset{KidneyDiabetes/.style=
+{
+    orange!33!black, fill=orange!66!white,
+    %bar shift=+0.1667
+}}
+
+\pgfplotsset{/pgfplots/ybar legend/.style=
+{
+    /pgfplots/legend image code/.code={%
+        \draw[
+            ##1, /tikz/.cd,
+            bar width=0.25em,
+            yshift=-0.27em,
+            bar shift=0pt
+        ]
+        plot coordinates {(0pt,0.8em)};
+    }
+}}
+
+\pgfplotsset{
+    % #1 = separation between bars
+    bar shift for half number plots/.style={%
+        /pgf/bar shift={%
+            % total width = n*w + (n-1)*skip
+                % -> subtract half for centering
+                -0.5*(\numplotsofactualtype/2*\pgfplotbarwidth + (\numplotsofactualtype/2-1)*#1)  +
+                % the '0.5*w' is for centering
+                (.5+div(\plotnumofactualtype,2))*\pgfplotbarwidth + div(\plotnumofactualtype,2)*#1%
+        },%
+    },%
+    bar shift for half number plots/.default=2pt,
+}
+
+\starttext
+
+\starttikzpicture
+    \startaxis
+    [
+        bar width=0.3,
+        ybar,
+        bar shift for half number plots=5pt,
+        xtick=data,
+        ylabel={mRNA level},
+        ymin=0,
+        xmin=0.333, xmax=2.667,
+        xtick={1,2}, xticklabels={Heart,Kidney},
+        error bars/y dir=both,
+        error bars/y explicit,
+        legend columns=2,
+        legend pos=outer north east,
+        legend cell align=left
+    ]
+
+    \addplot+[HeartControl] coordinates {(1,1) +- (0,0.1)};
+    \addplot+[KidneyControl] coordinates {(2,1) +- (0,0.12)};
+    \addplot+[HeartDiabetes] coordinates {(1,1.1) +- (0,0.2)};
+    \addplot+[KidneyDiabetes] coordinates {(2,0.8) +- (0,0.05)};
+   
+    \draw (axis cs:2,1.15) +(-2.2em,0) -- +(2.2em,0);
+    \node[anchor=south, yshift=-1ex] at (axis cs:2,1.15) {*};
+
+    \legend{{\kern-0.1em}, Control, {\kern-0.1em}, Diabetes}
+
+    \stopaxis
+\stoptikzpicture
+
+\stoptext
+
+
+I suppose you could even simplify the styles by means of a cycle list or whatever.
+
+
+I also experimented with symbolic x coords, but how would you write "xmin=0.3333" or "bar width=0.3" (which are axis units)? I believe the solution with arbitrary constants is better (i.e. as you have it right now).
+
+You can use
+
+\def\heartUnit{1}
+\def\kidneyUnit{2}
+
+to introduce constants - this might make it more readable.
+
+
+I am aware of the fact that this solution comes way too late. Perhaps it proves to be useful for someone eventually.
+
+Kind regards
+
+Christian
+
+
+
+Am 21.01.2014 13:29, schrieb Joshua Krämer:
+> Dear pgfplots developers!
+>
+> First, thanks a lot for your great package.  I'm using it to create
+> diagrams in ConTeXt.  Please consider the following (M)WE.  I hope you
+> can run it, otherwise, you can see the output here:
+> http://666kb.com/i/cl5sdm34i4ig69mkk.png
+>
+> \usemodule[pgfplots]
+> \pgfplotsset{compat=newest}
+>
+> \pgfplotsset{HeartControl/.style=
+> {
+> 	red, fill=red!33!white,
+> 	bar shift=-0.1667
+> }}
+> \pgfplotsset{HeartDiabetes/.style=
+> {
+> 	red!33!black, fill=red!66!white,
+> 	bar shift=+0.1667
+> }}
+> \pgfplotsset{KidneyControl/.style=
+> {
+> 	orange, fill=orange!33!white,
+> 	bar shift=-0.1667
+> }}
+> \pgfplotsset{KidneyDiabetes/.style=
+> {
+> 	orange!33!black, fill=orange!66!white,
+> 	bar shift=+0.1667
+> }}
+>
+> \pgfplotsset{/pgfplots/ybar legend/.style=
+> {
+> 	/pgfplots/legend image code/.code={%
+> 		\draw[
+> 			##1, /tikz/.cd,
+> 			bar width=0.25em,
+> 			yshift=-0.27em,
+> 			bar shift=0pt
+> 		]
+> 		plot coordinates {(0pt,0.8em)};
+> 	}
+> }}
+>
+> \starttext
+>
+> \starttikzpicture
+> 	\startaxis
+> 	[
+> 		ybar,
+> 		xtick=data,
+> 		ylabel={mRNA level},
+> 		ymin=0,
+> 		xmin=0.333, xmax=2.667,
+> 		xtick={1,2}, xticklabels={Heart,Kidney},
+> 		error bars/y dir=both,
+> 		error bars/y explicit,
+> 		bar width=0.3,
+> 		legend columns=2,
+> 		legend pos=outer north east,
+> 		legend cell align=left
+> 	]
+>
+> 	\addplot+[HeartControl] coordinates {(1,1) +- (0,0.1)};
+> 	\addplot+[KidneyControl] coordinates {(2,1) +- (0,0.12)};
+> 	\addplot+[HeartDiabetes] coordinates {(1,1.1) +- (0,0.2)};
+> 	\addplot+[KidneyDiabetes] coordinates {(2,0.8) +- (0,0.05)};
+> 	
+> 	\draw (axis cs:2,1.15) +(-2.2em,0) -- +(2.2em,0);
+> 	\node[anchor=south, yshift=-1ex] at (axis cs:2,1.15) {*};
+>
+> 	\legend{{\kern-0.1em}, Control, {\kern-0.1em}, Diabetes}
+>
+> 	\stopaxis
+> \stoptikzpicture
+>
+> \stoptext
+>
+> As you can see, I have two groups (organs: hearts, kidneys), sometimes
+> more, and two conditions (control, Diabetes).  To make it easier to
+> compare the diagrams (there are many), I want to use consistent colours
+> for the same organs, and two brightnesses for the two conditions.  The
+> code above works, but automatic positioning would be much nicer, so I
+> could just set something like "bar width=..." and "bar seperation=..."
+> and let the bars be positioned automatically.  This would also allow me
+> to use symbolic coordinates, avoiding the pseudo coordinates (1 and
+> 2).  Is there a better way to get the desired result than what I've
+> done?
+>
+> I also hope there is a better way to create significance stars.  If two
+> values are significantly different, there is a horizontal line to be
+> added which spans the two bars, and a symbol above it.  The symbols
+> usually are one till three stars (depending on the degree of
+> significance), sometimes other symbols are used in the literature.  At
+> least it would be nice if I could define the coordinates for the
+> horizontal line with something like "max(errormark1, errormark2) +a",
+> ie, the higher of the two error marks involved plus some separation.
+>
+> Kind regards,
+> Joshua Krämer
+>
+>
+>
+> ------------------------------------------------------------------------------
+> CenturyLink Cloud: The Leader in Enterprise Cloud Services.
+> Learn Why More Businesses Are Choosing CenturyLink Cloud For
+> Critical Workloads, Development Environments & Everything In Between.
+> Get a Quote or Start a Free Trial Today. 
+> http://pubads.g.doubleclick.net/gampad/clk?id=119420431&iu=/4140/ostg.clktrk
+> _______________________________________________
+> Pgfplots-features mailing list
+> Pgfplots-features@lists.sourceforge.net
+> https://lists.sourceforge.net/lists/listinfo/pgfplots-features
+\end{verbatim}
+\end{feature}
+
 \begin{feature}
 	suppress tick-line cross in 3d for view directions in which the cross degenerates to a very thick line
 
