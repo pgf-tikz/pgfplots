@@ -1,0 +1,338 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for statistical plots (boxplots in the first version)
+%
+% Copyright 2007-2014 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%
+% Bullet graphs
+% http://www.perceptualedge.com/articles/misc/Bullet_Graph_Design_Spec.pdf
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
+
+\def\pgfplots@bullet@dir{%
+	\pgfkeysvalueof{/pgfplots/bullet graph/draw direction}%
+}
+\def\pgfplots@bullet@other@dir{%
+	\if\pgfplots@bullet@dir x%
+		y%
+	\else
+		x%
+	\fi
+}%
+
+\def\pgfplots@bullet@min@invisible{-0.5}
+\def\pgfplots@bullet@max@invisible{0.5}
+
+\pgfqkeys{/pgfplots/bullet graph}{
+	% The featured measure:
+	performance/.initial=,
+	%
+	% Accepts a comma-separated list of interval midpoints like
+	% range midpoints={200,250}. '<min>' and '<max>' are inserted
+	% automatically.
+	range midpoints/.initial=,
+	%
+	% any reference value(s):
+	reference/.initial=,
+	%
+	% Defines the direction of the bullet plot.
+	% Values are 'x' or 'y':
+	draw direction/.initial=x,
+	%
+	% the displayed minimum value:
+	min/.initial=0,
+	% the displayed max value:
+	max/.initial=,
+	%
+	% the width of the entire plot:
+	width/.initial=0.6cm,
+	%
+	% Style options for bullet plots with 'draw direction=x'
+	every bullet graph x dir/.style={
+		title style={
+			at={(0,0)},
+			anchor=east,
+			align=right,
+			%
+			text width=4cm,
+		},
+	},
+	% Style options for bullet plots with 'draw direction=y'
+	every bullet graph y dir/.style={
+		title style={
+			at={(0.5,1)},
+			anchor=south,
+			align=center,
+			text width=2cm,
+		},
+	},
+	%
+	% Style options for any bullet plot. FIXME : hard to use! Simplify
+	% this
+	every bullet graph/.style={
+		/pgfplots/every axis/.add style={
+			/pgfplots/bullet graph/every bullet graph \pgfplots@bullet@dir\space dir,
+			scale only axis,
+			axis \pgfplots@bullet@other@dir\space line=none,
+			enlarge \pgfplots@bullet@other@dir\space limits=false,
+			\pgfplots@bullet@dir\space axis line style={opacity=0},
+			\pgfplots@bullet@dir tick pos=left,
+			\pgfplots@bullet@dir tick align=outside,
+			\pgfplots@bullet@other@dir tick=\empty,
+			\pgfplots@bullet@other@dir min=\pgfplots@bullet@min@invisible,
+			\pgfplots@bullet@other@dir max=\pgfplots@bullet@max@invisible,
+			\pgfplots@bullet@other@dir =\pgfkeysvalueof{/pgfplots/bullet graph/width},
+		}{},
+	},
+	bullet graph style/.style={/pgfplots/bullet graph/every bullet graph/.append style={#1}},
+	%
+	% Style options for the featured measure:
+	every performance/.code={%
+		% The featured measure should typically be a bar graph.
+		% The only difference is when the minimum is > 0, in this case
+		% we want to show only a marker.
+		\pgfplotscoordmath{default}{parse}{\pgfkeysvalueof{/pgfplots/bullet graph/min}}%
+		\pgfplotscoordmath{default}{if is}{\pgfmathresult}{+}{%
+			% Ah: min > 0 . then: display a marker.
+			\pgfkeysalso{/pgfplots/performance using scatter}%
+		}{%
+			\pgfkeysalso{/pgfplots/performance using bar}%
+		}%
+	},
+	performance style/.style={/pgfplots/bullet graph/every performance/.append style={#1}},
+	%
+	% pack these into /pgfplots/ - that simplifies constructions like
+	% performance style={performance using projection}
+	/pgfplots/performance using projection/.style={
+		surf,
+		/tikz/line width={0.3333*(\pgfkeysvalueof{/pgfplots/bullet graph/width})},
+		%
+		shader=flat corner,
+		%colormap access=direct,
+		point meta=\pgfplots@bullet@dir,%
+	},
+	/pgfplots/performance using bar/.style={
+		/tikz/\pgfkeysvalueof{/pgfplots/bullet graph/draw direction}bar,
+		/tikz/bar width={0.3333*(\pgfkeysvalueof{/pgfplots/bullet graph/width})},
+		fill=black,
+		draw=none,
+	},
+	/pgfplots/performance using scatter/.style={
+		mark=x,
+		only marks,
+		mark size={0.3333*(\pgfkeysvalueof{/pgfplots/bullet graph/width})},
+		mark options={line width=1pt,},
+	},
+	%
+	%
+	% Style options for every reference measure:
+	every reference/.style={
+		% We want centered markers of type '|' .
+		%
+		% Typically, there is at most one reference. If there are two,
+		% the second one should be gray(0.25). To this end, I enabled
+		% 'scatter' with 'colormap access=direct':
+		/pgfplots/colormap={2 color references}{gray=(0) gray=(0.25)},
+		scatter,
+		colormap access=direct,
+		point meta=\coordindex,
+		%
+		only marks,
+		mark=\if x\pgfplots@bullet@dir|\else -\fi,
+		mark size={0.3*(\pgfkeysvalueof{/pgfplots/bullet graph/width})},
+		line width=1.5pt,
+	},
+	reference style/.style={/pgfplots/bullet graph/every reference/.append style={#1}},
+	%
+	% Style options for the ranges:
+	every ranges/.style={
+		% Ranges should be shaded areas behind the featured measures.
+		%
+		% We expect a line plot. If the ranges are 200,250,275, we
+		% expect a line plot with <min>,200,250,275,<max>
+		%
+		% Idea: use a mesh plot with directly mapped colors and
+		% colormaps as specified in the "Bullet Graph Design
+		% Specification"
+		surf,
+		line width=\pgfkeysvalueof{/pgfplots/bullet graph/width},
+		%
+		shader=flat corner,
+		colormap access=direct,
+		/pgfplots/bullet graph/num coords ranges colormap,
+		point meta=\coordindex,
+	},
+	ranges style/.style={/pgfplots/bullet graph/every ranges/.append style={#1}},
+	%
+	% These styles are supposed to define the color palettes for
+	% 'every ranges'. Note that the color maps are really used as
+	% 'palettes', i.e. there will be no interpolation between them.
+	2 ranges colormap/.style={/pgfplots/colormap={2 ranges colormap}{gray=(0.65) gray=(0.9)}},
+	3 ranges colormap/.style={/pgfplots/colormap={3 ranges colormap}{gray=(0.6) gray=(0.75) gray=(0.9)}},
+	4 ranges colormap/.style={/pgfplots/colormap={4 ranges colormap}{gray=(0.5) gray=(0.65) gray=(0.8) gray=(0.9)}},
+	5 ranges colormap/.style={/pgfplots/colormap={5 ranges colormap}{gray=(0.5) gray=(0.65) gray=(0.8) gray=(0.9) gray=(0.97)}},
+	%
+	% auto select one of the available colormaps depending on
+	% \numcoords.
+	% NOTE: \numcoords is always two bigger than the number of range
+	% midpoints!
+	num coords ranges colormap/.code={%
+		\pgfutil@ifundefined{numcoords}{%
+			% Ah - we are in the survey phase. Well, in this case we
+			% do not need a colormap anyway. Ignore this.
+		}{%
+			\c@pgf@countd=\numcoords\relax
+			\advance\c@pgf@countd by-1 %
+			\def\pgfplots@loc@TMPa{\the\c@pgf@countd}%
+			\ifnum\pgfplots@loc@TMPa>5 %
+				{%
+				\advance\c@pgf@countd by-1 %
+				\pgfplotswarning{too many range midpoints}{\the\c@pgf@countd}\pgfeov
+				}%
+				\def\pgfplots@loc@TMPa{5}%
+			\fi
+			\pgfplots@log4{Installing \pgfplots@loc@TMPa\space ranges colormap}%
+			\pgfplotsset{/pgfplots/bullet graph/\pgfplots@loc@TMPa\space ranges colormap}%
+		}%
+	},
+	%
+	% Internal only:
+	@set minmax/.style={%
+		\pgfkeysvalueof{/pgfplots/bullet graph/draw direction}min=\pgfkeysvalueof{/pgfplots/bullet graph/min},%
+		\pgfkeysvalueof{/pgfplots/bullet graph/draw direction}max=\pgfkeysvalueof{/pgfplots/bullet graph/max}%
+	},
+	/pgfplots/warning/too many range midpoints/.code={%
+		\pgfplotsthrow@warning{Found an unexpected number of range midpoints: expected at most 4, but got #1. All ranges after the 4th range midpoint are ignored}%
+	},
+	/pgfplots/bullet graph/.search also={/pgfplots},
+	%
+	% unused currently:
+	draw position/.initial=0,
+}
+
+
+% Usage:
+%
+% \tikz
+% \bulletgraph[
+% 	performance=275,
+% 	max=300,
+% 	reference=260,
+% 	range midpoints={200,250},
+% 	title={Revenue 2005 YTD\\[-5pt]\tiny (U.S. \$ in thousands)},
+% ];
+% 
+\def\bulletgraph{\pgfutil@ifnextchar[{\bulletgraph@opt}{\bulletgraph@opt[]}}
+\long\def\bulletgraph@opt[#1]#2;{%
+	\begingroup
+		\pgfqkeys{/pgfplots/bullet graph}{%
+			every bullet graph,%
+			#1,%
+			/pgfplots/bullet graph/@set minmax,%
+		}%
+		\begin{axis}
+
+		\pgfkeysgetvalue{/pgfplots/bullet graph/performance}\pgfplots@bullet@performance
+		\pgfkeysgetvalue{/pgfplots/bullet graph/range midpoints}\pgfplots@bullet@ranges
+		\pgfkeysgetvalue{/pgfplots/bullet graph/reference}\pgfplots@bullet@reference
+		\pgfkeysgetvalue{/pgfplots/bullet graph/draw direction}\pgfplots@loc@TMPa
+
+		\expandafter\let\expandafter\pgfplots@bulletgraph@scalar\csname pgfplots@bulletgraph@scalar@\pgfplots@loc@TMPa\endcsname
+		\expandafter\let\expandafter\pgfplots@bulletgraph@scalarab\csname pgfplots@bulletgraph@scalarab@\pgfplots@loc@TMPa\endcsname
+
+		\ifx\pgfplots@bullet@ranges\pgfutil@empty
+		\else
+			\pgfplots@bulletgraph@to@coordinates{\pgfkeysvalueof{/pgfplots/bullet graph/min},\pgfplots@bullet@ranges,\pgfkeysvalueof{/pgfplots/bullet graph/max}}%
+			\let\pgfplots@bullet@ranges=\pgfplotsretval
+			%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\addplot[/pgfplots/bullet graph/every ranges] coordinates {\pgfplots@bullet@ranges};
+			}%
+			\pgfplots@loc@TMPa
+		\fi
+
+		\ifx\pgfplots@bullet@performance\pgfutil@empty
+		\else
+			\pgfplots@bulletgraph@to@coordinates{\pgfplots@bullet@performance}%
+			\let\pgfplots@bullet@performance=\pgfplotsretval
+			%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\addplot[/pgfplots/bullet graph/every performance] coordinates {\pgfplots@bullet@performance}
+			}%
+			\pgfplots@loc@TMPa #2;
+		\fi
+
+		\ifx\pgfplots@bullet@reference\pgfutil@empty
+		\else
+			\pgfplots@bulletgraph@to@coordinates{\pgfplots@bullet@reference}%
+			\let\pgfplots@bullet@reference=\pgfplotsretval
+			%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\addplot[/pgfplots/bullet graph/every reference] coordinates {\pgfplots@bullet@reference};
+			}%
+			\pgfplots@loc@TMPa
+		\fi
+			
+		\end{axis}
+	\endgroup
+}
+
+\def\pgfplots@bulletgraph@scalar@x#1{(#1,\pgfkeysvalueof{/pgfplots/bullet graph/draw position})}
+\def\pgfplots@bulletgraph@scalar@y#1{(\pgfkeysvalueof{/pgfplots/bullet graph/draw position},#1)}
+
+\def\pgfplots@bulletgraph@scalarab@x#1#2{(#1,#2)}
+\def\pgfplots@bulletgraph@scalarab@y#1#2{(#2,#1)}
+
+% Takes a single element (or a comma-separated list of elements) and
+% transforms them into a sequence of (<x>,<y>) ...
+\def\pgfplots@bulletgraph@to@coordinates#1{%
+	\edef\pgfplotsretval{}%
+	\edef\pgfplots@loc@TMPc{#1}%
+	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \pgfplots@loc@TMPb in }%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPc}{%
+		\edef\pgfplotsretval{\pgfplotsretval \pgfplots@bulletgraph@scalar{\pgfplots@loc@TMPb}}%
+	}%
+}
+
+% Takes a single element (or a comma-separated list of elements) and
+% transforms them into a sequence of (<x>,<y>) ...
+% UNUSED - is this useful at all!?
+\def\pgfplots@bulletgraph@to@rectangles#1{%
+	\edef\pgfplotsretval{}%
+	\edef\pgfplots@loc@TMPc{\pgfkeysvalueof{/pgfplots/bullet graph/min},#1}%
+	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \pgfplots@loc@TMPb in }%
+	\let\pgfplots@last=\pgfutil@empty
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@loc@TMPc}{%
+		\ifx\pgfplots@last\pgfutil@empty
+		\else
+			\edef\pgfplotsretval{\pgfplotsretval 
+				\pgfplots@bulletgraph@scalarab{\pgfplots@last}{\pgfplots@bullet@min@invisible}%
+				\pgfplots@bulletgraph@scalarab{\pgfplots@loc@TMPb}{\pgfplots@bullet@min@invisible}%
+				\pgfplots@bulletgraph@scalarab{\pgfplots@loc@TMPb}{\pgfplots@bullet@max@invisible}%
+				\pgfplots@bulletgraph@scalarab{\pgfplots@last}{\pgfplots@bullet@max@invisible}%
+			}%
+		\fi
+		\let\pgfplots@last=\pgfplots@loc@TMPb
+	}%
+}
+
+
+\endinput
