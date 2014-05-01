@@ -8561,6 +8561,34 @@
 \tikzdeclarecoordinatesystem{axis}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface\pgfplots@loc@TMPa,\pgfplots@coord@end}
 \def\pgfplotspointaxisxy#1#2{\pgfplots@evalute@tikz@coord@system@interface{#1},{#2},\pgfplots@coord@end}%
 \def\pgfplotspointaxisxyz#1#2#3{\pgfplots@evalute@tikz@coord@system@interface{#1},{#2},{#3},\pgfplots@coord@end}%
+\def\pgfplotsqpointaxisxy#1#2{%
+	\edef\pgfplotspointaxis@restore{%
+		\ifpgfplots@plot@coords@mathparser
+			\noexpand\pgfplots@plot@coords@mathparsertrue
+		\else
+			\noexpand\pgfplots@plot@coords@mathparserfalse
+		\fi
+	}%
+	\pgfplots@plot@coords@mathparserfalse
+	%
+	\pgfplotspointaxisxy{#1}{#2}%
+	%
+	\pgfplotspointaxis@restore
+}
+\def\pgfplotsqpointaxisxyz#1#2#3{%
+	\edef\pgfplotspointaxis@restore{%
+		\ifpgfplots@plot@coords@mathparser
+			\noexpand\pgfplots@plot@coords@mathparsertrue
+		\else
+			\noexpand\pgfplots@plot@coords@mathparserfalse
+		\fi
+	}%
+	\pgfplots@plot@coords@mathparserfalse
+	%
+	\pgfplotspointaxisxyz{#1}{#2}{#3}%
+	%
+	\pgfplotspointaxis@restore
+}
 
 % definition of 'normalized axis cs':
 \tikzdeclarecoordinatesystem{normalized axis}{\edef\pgfplots@loc@TMPa{#1}\expandafter\pgfplots@evalute@tikz@coord@system@interface@normalized\pgfplots@loc@TMPa,\pgfplots@coord@end}
@@ -10623,6 +10651,10 @@
 			% NEW \pgfplots@stored@plotlist!
 			\pgfplots@stacked@finalize@stored@plots
 		\fi
+		%
+		% ensure that (1,2) is automatically converted to (axis cs:1,2) :
+		\pgfplots@change@pgfpoints@to@axiscs
+		%
 		% make it ungrouped: we must not destroy group nesting of tikz
 		% path instructions at this point.
 		\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
@@ -10648,6 +10680,8 @@
 			\fi
 			\pgfplots@stored@current@postcmd
 		}%
+		%
+		\pgfplots@restorepgfpoint
 		%
 		\pgfplots@END@init@and@draw@axis
 		%
@@ -10753,6 +10787,7 @@
 	\let\pgfsetxvec@orig=\pgfsetxvec
 	\let\pgfsetyvec@orig=\pgfsetyvec
 	\let\pgfsetzvec@orig=\pgfsetzvec
+	\let\tikz@checkunit@orig=\tikz@checkunit
 	%
 	\let\pgfsetxvec=\pgfplots@setxvec@restorepgfpoint
 	\let\pgfsetyvec=\pgfplots@setyvec@restorepgfpoint
@@ -10764,6 +10799,7 @@
 	\let\pgfqpointxy=\pgfqpointxy@orig
 	\let\pgfpointxyz=\pgfpointxyz@orig
 	\let\pgfqpointxyz=\pgfqpointxyz@orig
+	\let\tikz@checkunit=\tikz@checkunit@orig
 }%
 
 \def\pgfplots@setxvec@restorepgfpoint#1{%
@@ -10896,10 +10932,46 @@
 
 \def\pgfplots@visphase@markers{%
 	\begingroup
+	\pgfplots@change@pgfpoints@to@axiscs
 	\pgfplots@markers@install@plotmark@handler
 	\let\pgfplots@visphase@name=\pgfplotsaxis@visphase@name@markers
 	\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
 	\endgroup
+}%
+
+% Inside of an axis, the default coordinate system for any draw
+% command should be (axis cs:1,2) instead of (1,2). Install that here:
+%
+% see \pgfplots@restorepgfpoint
+\def\pgfplots@change@pgfpoints@to@axiscs{%
+	%
+	\let\pgfpointxy=\pgfplotspointaxisxy
+	\let\pgfpointxyz=\pgfplotspointaxisxyz
+	\let\pgfqpointxy=\pgfplotsqpointaxisxy
+	\let\pgfqpointxyz=\pgfplotsqpointaxisxyz
+	%
+	% tikz checks for units before it calls \pgfpointxy . This must
+	% not suffer from TeX's math restrictions, so we have to use the
+	% FPU for this task. Patch the command as well:
+	\let\tikz@checkunit=\pgfplots@checkunit@fpu
+}%
+
+\def\pgfplots@checkunit@fpu#1{%
+	\ifpgfplots@usefpu
+		\edef\pgfplots@checkunit@fpu@restore{%
+			\pgflibraryfpuifactive{%
+				% ok, leave it active
+			}{%
+				\noexpand\pgfkeys{/pgf/fpu=false}%
+			}%
+		}%
+		\pgfkeys{/pgf/fpu}%
+		\tikz@checkunit@orig{#1}%
+		\pgfmathfloattofixed{\pgfmathresult}%
+		\pgfplots@checkunit@fpu@restore
+	\else
+		\tikz@checkunit@orig{#1}%
+	\fi
 }%
 
 \def\pgfplots@execute@at@end@plot@visualization@internal{%
