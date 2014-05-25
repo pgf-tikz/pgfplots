@@ -375,8 +375,11 @@
 %
 % #1 a macro containing a softpath (i.e. something returned by
 % \pgfgetpath)
+%
+% SIDE--EFFECT: defines \pgfpointlastofsetpath  to be the last point of path #1
 \def\pgfsetpathandBB#1{%
-	\expandafter\pgfsetpath@protocolsizes@loop#1\pgf@stop
+	\let\pgfpointlastofsetpath=\pgfutil@empty
+	\expandafter\pgfsetpath@loop#1\pgf@stop
 	%
 	\pgfsetpath{#1}%
 }%
@@ -386,8 +389,10 @@
 %
 % #1 a macro containing a softpath (i.e. something returned by
 % \pgfgetpath)
+% SIDE--EFFECT: defines \pgfpointlastofsetpath  to be the last point of path #1
 \def\pgfaddpathandBB#1{%
-	\expandafter\pgfsetpath@protocolsizes@loop#1\pgf@stop
+	\let\pgfpointlastofsetpath=\pgfutil@empty
+	\expandafter\pgfsetpath@loop#1\pgf@stop
 	\pgfaddpath#1%
 }
 
@@ -478,12 +483,14 @@
 	}%
 }
 
-\def\pgfsetpath@protocolsizes@loop#1{%
+% Accumulates the path's bounding box, the last moveto, and the last
+% coord.
+\def\pgfsetpath@loop#1{%
 	\ifx#1\pgf@stop%
 		\let\pgfsetpathBB@protocolsizesnext=\relax%
 	\else%
 		\ifx#1\pgfsyssoftpath@movetotoken%
-			\let\pgfsetpathBB@protocolsizesnext=\pgfsetpathBB@protocolsizestoken@simple%
+			\let\pgfsetpathBB@protocolsizesnext=\pgfsetpathBB@protocolsizestoken@moveto%
 		\else%
 			\ifx#1\pgfsyssoftpath@linetotoken%
 				\let\pgfsetpathBB@protocolsizesnext=\pgfsetpathBB@protocolsizestoken@simple%
@@ -504,16 +511,23 @@
 	\fi%
 	\pgfsetpathBB@protocolsizesnext}
 
+\def\pgfsetpathBB@protocolsizestoken@moveto#1#2{%
+	% required for --cycle, among others:
+	\gdef\pgfsyssoftpath@lastmoveto{{#1}{#2}}%
+	\pgfsetpathBB@protocolsizestoken@simple{#1}{#2}%
+}
 \def\pgfsetpathBB@protocolsizestoken@simple#1#2{%
+	\def\pgfpointlastofsetpath{\pgfqpoint{#1}{#2}}%
 	\pgf@protocolsizes{#1}{#2}%
-	\pgfsetpath@protocolsizes@loop%
+	\pgfsetpath@loop%
 }
 
 \def\pgfsetpathBB@protocolsizestoken@curveto#1#2\pgfsyssoftpath@curvetosupportbtoken#3#4\pgfsyssoftpath@curvetotoken#5#6{%
+	\def\pgfpointlastofsetpath{\pgfqpoint{#5}{#6}}%
 	\pgf@protocolsizes{#1}{#2}%
 	\pgf@protocolsizes{#3}{#4}%
 	\pgf@protocolsizes{#5}{#6}%
-	\pgfsetpath@protocolsizes@loop
+	\pgfsetpath@loop
 }
 
 \def\pgfsetpathBB@protocolsizestoken@rect#1#2\pgfsyssoftpath@rectsizetoken#3#4{%
@@ -523,7 +537,7 @@
 	\pgf@ya=#2\relax%
 	\advance\pgf@ya by#4\relax%
 	\pgf@protocolsizes{\pgf@xa}{\pgf@ya}%
-	\pgfsetpath@protocolsizes@loop
+	\pgfsetpath@loop
 }%
 
 % Defines \pgfretval to be the reversed path of #1.
@@ -674,7 +688,7 @@
 % the current scope), this command computes the intersection segments
 % for one of the input arguments.
 %
-% On output, \pgfretval contains the number of computed segments. The
+% On output, both \pgfretval and \pgfintersectionsegments contain the number of computed segments. The
 % segments as such can be accessed via \pgfgetintersectionsegmentpath.
 %
 % #1 : should be '1' if the FIRST argument of
@@ -756,6 +770,7 @@
 		\expandafter\let\csname pgf@intersect@path@split@\pgf@insert@intersections@src @\c@pgf@path@result\endcsname=\pgf@loc@TMPa%
 		\pgfutil@advancestringcounter\c@pgf@path@result%
 		\let\pgfretval=\c@pgf@path@result%
+		\let\pgfintersectionsegments=\pgfretval
 	\fi
 }%
 
@@ -769,12 +784,14 @@
 % \pgfintersectionofpaths are requested or '2' if results for the
 % SECOND path are requested (compare \pgfcomputeintersectionsegments).
 % #2: the segment index (a number 0<= #2 < numbersegments).
-%  The number of segments is returned by
-%  \pgfcomputeintersectionsegments.
+%  The number of segments is \pgfintersectionsegments
 \def\pgfgetintersectionsegmentpath#1#2{%
 	\pgfcomputeintersectionsegments@set@src{#1}%
 	\afterassignment\pgfcomputeintersectionsegments@set@src@gobble
 	\c@pgf@countc=#2\relax%
+	\ifnum\c@pgf@countc<0
+		\advance\c@pgf@countc by \pgfintersectionsegments\relax
+	\fi
 	\expandafter\let\expandafter\pgfretval\csname pgf@intersect@path@split@\pgf@insert@intersections@src @\the\c@pgf@countc\endcsname
 	\ifx\pgfretval\relax
 		\pgferror{There is no intersection segment '#2' in path '#1'}%
