@@ -1,6 +1,10 @@
 local math=math
 local pgfplotsmath = pgfplotsmath
 local setmetatable = setmetatable
+local io=io
+local tostring=tostring
+local tonumber=tonumber
+local error=error
 
 do
 local _ENV = pgfplots
@@ -14,13 +18,14 @@ function Coord.new()
     self.x = { nil, nil, nil }
     self.unboundedDir = nil
     self.meta= nil
+    self.unfiltered = nil
     return self
 end
 
 function Coord:__tostring()
-    return '(' .. stringOrDefault(self.x[0], "--") .. 
-        ',' .. stringOrDefault(self.x[1], "--") .. 
+    return '(' .. stringOrDefault(self.x[1], "--") .. 
         ',' .. stringOrDefault(self.x[2], "--") .. 
+        ',' .. stringOrDefault(self.x[3], "--") .. 
         ') [' .. stringOrDefault(self.meta, "--") .. ']'
 end
 
@@ -40,6 +45,11 @@ function Plothandler:__tostring()
     return 'plot handler ' .. self.name
 end
 
+function Plothandler:surveyBeforeSetPointMeta()
+end
+
+function Plothandler:surveyAfterSetPointMeta()
+end
 
 function Plothandler:surveypoint(pt)
     -- FIXME : what about \pgfplots@set@perpointmeta@done !?
@@ -48,7 +58,7 @@ function Plothandler:surveypoint(pt)
     if prepared ~= nil then
         gca.updatelimitsforcoordinate(prepared)
     end
-    gca.datapointsurveyed(prepared)
+    gca.datapointsurveyed(prepared, self)
     
     self.coordindex = self.coordindex + 1;
 end
@@ -69,10 +79,90 @@ end
 
 -------------------------------------------------------
 
+PointMetaHandler = {}
+PointMetaHandler.__index =PointMetaHandler
+
+-- @param isSymbolic
+--    expands to either '1' or '0'
+-- 		A numeric source will be processed numerically in float
+-- 		arithmetics. Thus, the output of the @assign routine should be
+-- 		a macro \pgfplots@current@point@meta in float format.
+--
+--		The output of a numeric point meta source will result in meta
+--		limit updates and the final map to [0,1000] will be
+--		initialised automatically.
+--
+-- 		A symbolic input routine won't be processed.
+-- 	Default is '0'
+--
+-- @param explicitInput
+--   expands to either
+--   '1' or '0'. In case '1', it expects explicit input from the
+--   coordinate input routines. For example, 'plot file' will look for
+--   further input after the x,y,z coordinates.
+--   Default is '0'
+--
+function PointMetaHandler.new(isSymbolic, explicitInput)
+    local self = setmetatable({}, PointMetaHandler)
+    self.isSymbolic =isSymbolic
+    self.explicitInput = explicitInput
+    return self
+end
+
+-- 	During the survey phase, this macro is expected to assign
+-- 	\pgfplots@current@point@meta
+--	if it is a numeric input method, it should return a
+--	floating point number.
+--	It is allowed to return an empty string to say "there is no point
+--	meta".
+--	PRECONDITION for '@assign':
+--		- the coordinate input method has already assigned its
+--		'\pgfplots@current@point@meta' (probably as raw input string).
+--		- the other input coordinates are already read.
+--	POSTCONDITION for '@assign':
+--		- \pgfplots@current@point@meta is ready for use:
+--		- EITHER a parsed floating point number 
+--		- OR an empty string,
+--		- OR a symbolic string (if the issymbolic boolean is true)
+--	The default implementation is
+--	\let\pgfplots@current@point@meta=\pgfutil@empty
+--
+function PointMetaHandler.assign(pt)
+    error("This instance of PointMetaHandler is not implemented")
+end
+
+
+-- FIXME : THIS NONSENSE DOES NOT CALL THE SUPER CONSTRUCTOR!
+CoordAssignmentPointMetaHandler = inheritsFrom( PointMetaHandler,
+    function(self, dir) 
+        if not dir then error "nil argument for 'dir' is unsupported." end
+        self.dir=dir 
+    end
+ )
+
+function CoordAssignmentPointMetaHandler:assign(pt)
+    pt.meta = tonumber(pt.x[self.dir])
+end
+
+XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(1)
+YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(2)
+ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(3)
+
+ExplicitPointMetaHandler = inheritsFrom( PointMetaHandler,
+    function(self) end 
+ )
+
+function ExplicitPointMetaHandler:assign(pt)
+    if pt.unfiltered ~= nil and pt.unfiltered.meta ~= nil then
+        pt.meta = tonumber(pt.unfiltered.meta)
+    end
+end
+-------------------------------------------------------
+
 Axis = {}
 Axis.__index =Axis
 
-function Axis.new()
+function Axis.new(pointmetainputhandler)
     local self = setmetatable({}, Axis)
     self.is3d = false
     self.config = AxisConfig.new()
@@ -86,9 +176,15 @@ function Axis.new()
     self.max = { -math.huge, -math.huge, -math.huge }
     self.datamin = { math.huge, math.huge, math.huge }
     self.datamax = { -math.huge, -math.huge, -math.huge }
+    self.metamin = { math.huge, math.huge }
+    self.metamax = { -math.huge, -math.huge }
     -- FIXME : move this to the plot handler
     self.plotHasJumps = false
     return self
+end
+
+function Axis:haspointmeta()
+    return self.pointmetainputhandler ~=nil
 end
 
 function Axis:preparecoord(dir, value)
@@ -143,7 +239,7 @@ function Axis:parsecoordinate(pt)
     return result    
 end
 
-function Axis:preparecoordinate(dir, pt)
+function Axis:preparecoordinate(pt)
     -- the default "preparation" is to return it as is (no number parsing)
     return pt
 end
@@ -189,10 +285,29 @@ function Axis:updatelimitsforcoordinate(pt)
     end
 end
 
+function Axis:setperpointmeta(pt)
+    if pt.meta == nil then
+        self.pointmetainputhandler:assign(pt)
+        self:setperpointmetalimits(pt)
+    end
+end
+
+function Axis:setperpointmetalimits(pt)
+    if not self.pointmetainputhandler.isSymbolic then
+        if pt.meta ~= nil then
+            self.metamin = math.min(self.metamin, pt.meta )
+            self.metamax = math.max(self.metamax, pt.meta )
+        end
+    end
+end
+
 -- FIXME : it seems as if this here is more Plothandler:datapointsurveyed!
 --
-function Axis:datapointsurveyed(pt)
+function Axis:datapointsurveyed(pt, plothandler)
     if pt ~= nil then
+        plothandler:surveyBeforeSetPointMeta()
+        self:setperpointmeta(pt)
+        plothandler:surveyAfterSetPointMeta()
         -- FIXME : setpointmeta(pt)
         -- FIXME : error bars
         -- FIXME: collect first plot as tick
