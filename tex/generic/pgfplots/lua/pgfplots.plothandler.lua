@@ -1,6 +1,5 @@
 local math=math
 local pgfplotsmath = pgfplotsmath
-local setmetatable = setmetatable
 local io=io
 local tostring=tostring
 local tonumber=tonumber
@@ -10,11 +9,9 @@ do
 local _ENV = pgfplots
 -----------------------------------
 
-Coord = {}
-Coord.__index = Coord
+Coord = newClass()
 
-function Coord.new()
-    local self = setmetatable({}, Coord)
+function Coord:constructor()
     self.x = { nil, nil, nil }
     self.unboundedDir = nil
     self.meta= nil
@@ -31,11 +28,9 @@ end
 
 -------------------------------------------------------
 
-Plothandler = {}
-Plothandler.__index = Plothandler
+Plothandler = newClass()
 
-function Plothandler.new(name)
-    local self = setmetatable({}, Plothandler)
+function Plothandler:constructor(name)
     self.name = name
     self.coordindex = 0
     return self
@@ -67,11 +62,9 @@ end
 
 UnboundedCoords = { discard=0, jump=1 }
 
-AxisConfig = {}
-AxisConfig.__index = AxisConfig
+AxisConfig = newClass()
 
-function AxisConfig.new()
-    local self = setmetatable({}, AxisConfig)
+function AxisConfig:constructor()
     self.unboundedCoords = UnboundedCoords.discard
     self.warnForfilterDiscards=true
     return self
@@ -79,8 +72,7 @@ end
 
 -------------------------------------------------------
 
-PointMetaHandler = {}
-PointMetaHandler.__index =PointMetaHandler
+PointMetaHandler = newClass()
 
 -- @param isSymbolic
 --    expands to either '1' or '0'
@@ -102,8 +94,7 @@ PointMetaHandler.__index =PointMetaHandler
 --   further input after the x,y,z coordinates.
 --   Default is '0'
 --
-function PointMetaHandler.new(isSymbolic, explicitInput)
-    local self = setmetatable({}, PointMetaHandler)
+function PointMetaHandler:constructor(isSymbolic, explicitInput)
     self.isSymbolic =isSymbolic
     self.explicitInput = explicitInput
     return self
@@ -132,25 +123,25 @@ function PointMetaHandler.assign(pt)
 end
 
 
--- FIXME : THIS NONSENSE DOES NOT CALL THE SUPER CONSTRUCTOR!
-CoordAssignmentPointMetaHandler = inheritsFrom( PointMetaHandler,
-    function(self, dir) 
-        if not dir then error "nil argument for 'dir' is unsupported." end
-        self.dir=dir 
-    end
- )
+CoordAssignmentPointMetaHandler = newClassExtents( PointMetaHandler )
+function CoordAssignmentPointMetaHandler:constructor(dir)
+    PointMetaHandler:constructor(false,false)
+    if not dir then error "nil argument for 'dir' is unsupported." end
+    self.dir=dir 
+end
 
 function CoordAssignmentPointMetaHandler:assign(pt)
     pt.meta = tonumber(pt.x[self.dir])
 end
 
-XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(1)
-YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(2)
-ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(3)
+XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(1)
+YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(2)
+ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(3)
 
-ExplicitPointMetaHandler = inheritsFrom( PointMetaHandler,
-    function(self) end 
- )
+ExplicitPointMetaHandler = newClassExtents( PointMetaHandler )
+function ExplicitPointMetaHandler:constructor()
+    PointMetaHandler:constructor(false,true)
+end
 
 function ExplicitPointMetaHandler:assign(pt)
     if pt.unfiltered ~= nil and pt.unfiltered.meta ~= nil then
@@ -159,13 +150,11 @@ function ExplicitPointMetaHandler:assign(pt)
 end
 -------------------------------------------------------
 
-Axis = {}
-Axis.__index =Axis
+Axis = newClass()
 
-function Axis.new(pointmetainputhandler)
-    local self = setmetatable({}, Axis)
+function Axis:constructor(pointmetainputhandler)
     self.is3d = false
-    self.config = AxisConfig.new()
+    self.config = AxisConfig()
     self.filteredCoordsAway = false
     self.clipLimits = true
     self.autocomputeAllLimits = true -- FIXME : redundant!?
@@ -210,7 +199,7 @@ function Axis:parsecoordinate(pt)
         self.is3d = true
     end
     
-    local result = Coord.new()
+    local result = Coord()
     result.unfiltered = pt
 
     -- FIXME : self.prefilter(pt[i])

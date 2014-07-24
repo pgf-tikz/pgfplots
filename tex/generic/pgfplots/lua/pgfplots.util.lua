@@ -1,6 +1,7 @@
 local math=math
 local tostring = tostring
 local setmetatable = setmetatable
+local getmetatable = getmetatable
 local io=io
 local print=print
 local pairs = pairs
@@ -29,25 +30,39 @@ pgfplotsmath.infty = 1/0
 --------------------------------------- 
 --
 
--- Create a new class that inherits from a base class with a default constructor
+
+-- Creates and returns a new class object.
 --
-function inheritsFrom( baseClass, constructor )
-
-    -- The following lines are equivalent to the SimpleClass example:
-
-    -- Create the table and metatable representing the class.
-    local new_class = {}
-    local class_mt = { __index = new_class }
-
-    -- Note that this function uses class_mt as an upvalue, so every instance
-    -- of the class will share the same metatable.
-    --
-    function new_class.new(...)
-        local newinst = {}
-        setmetatable( newinst, class_mt )
-        constructor(newinst,...)
-        return newinst
+-- Usage:
+-- complexclass = newClass()
+-- function complexclass:constructor()
+--      self.re = 0
+--      self.im = 0
+-- end
+--
+-- instance = complexclass()
+--
+function newClass()
+    local result = {}
+    result.__index = result
+    local allocator= function (cls, ...)
+        local self = setmetatable({}, cls)
+        self:constructor(...)
+        return self
     end
+    setmetatable(result, { __call = allocator })
+    return result
+end
+
+
+
+-- Create a new class that inherits from a base class 
+--
+-- @see newClass
+function newClassExtents( baseClass )
+    if not baseClass then error "baseClass must not be nil" end
+
+    local new_class = newClass()
 
     -- The following is the key to implementing inheritance:
 
@@ -56,9 +71,9 @@ function inheritsFrom( baseClass, constructor )
     -- be exposed to the sub-class, and that the sub-class can override
     -- any of these methods.
     --
-    if baseClass then
-        setmetatable( new_class, { __index = baseClass } )
-    end
+    local mt = getmetatable(new_class)
+    mt.__index = baseClass
+    setmetatable(new_class,mt)
 
     return new_class
 end
