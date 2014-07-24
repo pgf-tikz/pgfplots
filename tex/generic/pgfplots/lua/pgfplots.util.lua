@@ -1,5 +1,8 @@
 local math=math
+local string=string
+local type=type
 local tostring = tostring
+local tonumber = tonumber
 local setmetatable = setmetatable
 local getmetatable = getmetatable
 local io=io
@@ -10,9 +13,10 @@ local table=table
 do
 local _ENV = pgfplots
 ---------------------------------------
+--
 
 function stringOrDefault(str, default)
-    if str == nil then
+    if str == nil or type(str) == 'string' and string.len(str) == 0 then
         return default
     end
     return tostring(str)
@@ -26,6 +30,44 @@ function pgfplotsmath.isnan(x)
 end
 
 pgfplotsmath.infty = 1/0
+
+pgfplotsmath.nan = math.sqrt(-1)
+
+function pgfplotsmath.tonumber(x)
+    if type(x) == 'number' then return x end
+    if not x then return x end
+    
+    local len = string.len(x)
+    local result = tonumber(x)
+    if not result then 
+        if x == 'nan' then 
+            result = pgfplotsmath.nan
+        elseif x == 'inf' or x == 'infty' then 
+            result = pgfplotsmath.infty
+        elseif x == '-inf' or x == '-infty' then 
+            result = -pgfplotsmath.infty 
+        elseif len >2 and string.sub(x,2,2) == 'Y' and string.sub(x,len,len) == ']' then
+            -- Ah - some TeX FPU input of the form 1Y1.0e3] . OK. transform it
+            local flag = string.sub(x,1,1)
+            if flag == '0' then
+                -- ah, 0.0
+                result = 0.0
+            elseif flag == '1' then
+                result = tonumber(string.sub(x,3, len-1))
+            elseif flag == '2' then
+                result = tonumber("-" .. string.sub(x,3, len-1))
+            elseif flag == '3' then
+                result = pgfplotsmath.nan
+            elseif flag == '4' then
+                result = pgfplotsmath.infty
+            elseif flag == '5' then
+                result = -pgfplotsmath.infty
+            end
+        end 
+    end    
+
+    return result
+end
 
 --------------------------------------- 
 --

@@ -2539,6 +2539,7 @@
 	\expandafter\def\csname pgfpmeta@#1@issymbolic\endcsname{0}%
 	\expandafter\def\csname pgfpmeta@#1@explicitinput\endcsname{0}%
 	\expandafter\def\csname pgfpmeta@#1@activate\endcsname{}%
+	\expandafter\def\csname pgfpmeta@#1@LUA class\endcsname{}%
 	\edef\pgfplotsdeclarepointmetasource@{#1}%
 	\pgfqkeys{/pgfplots/@declare point meta src}{#2}%
 }%
@@ -2605,6 +2606,11 @@
 	%
 	explicitinput/.code=
 		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @explicitinput\endcsname{#1}},%
+	%
+	% the associated LUA class name (if any). Use an empty string if
+	% there is none.
+	LUA class/.code=
+		{\expandafter\def\csname pgfpmeta@\pgfplotsdeclarepointmetasource@ @LUA class\endcsname{#1}},%
 }%
 
 % An empty one. This is simple to check with
@@ -2614,17 +2620,20 @@
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@x
 		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
 		\let\pgfplots@current@point@meta=\pgfmathresult
-		}}
+		},
+		LUA class=pgfplots.XcoordAssignmentPointMetaHandler}
 \pgfplotsdeclarepointmetasource{y}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@y
 		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
 		\let\pgfplots@current@point@meta=\pgfmathresult
-		}}
+		},
+		LUA class=pgfplots.YcoordAssignmentPointMetaHandler}
 \pgfplotsdeclarepointmetasource{z}{assign={%
 		\let\pgfplots@current@point@meta=\pgfplots@current@point@z
 		\pgfplotscoordmath{meta}{parsenumber}{\pgfplots@current@point@meta}%
 		\let\pgfplots@current@point@meta=\pgfmathresult
-	}}
+	},
+	LUA class=pgfplots.ZcoordAssignmentPointMetaHandler}
 
 \pgfplotsdeclarepointmetasource{explicit}{%
 	assign={%
@@ -2634,7 +2643,8 @@
 			\let\pgfplots@current@point@meta=\pgfmathresult
 		\fi
 	},
-	explicitinput=1%
+	explicitinput=1,%
+	LUA class=pgfplots.ExplicitPointMetaHandler(),
 }%
 \pgfplotsdeclarepointmetasource{explicit symbolic}{%
 	assign={},% no math, simply collect.
@@ -3220,7 +3230,11 @@
 	\let\pgfplots@coord@stream@start@=\pgfplots@PREPARE@COORD@STREAM@start@
 	\def\pgfplots@coord@stream@coord@{%
 		\def\pgfplots@set@perpointmeta@done{0}%
-		\pgfplotsplothandlersurveypoint
+		\ifpgfplots@LUA@backend@supported
+			\pgfplots@LUA@survey@point
+		\else
+			\pgfplotsplothandlersurveypoint
+		\fi
 	}%
 	\def\pgfplots@coord@stream@end@{\pgfplots@PREPARE@COORD@STREAM@end@{#1}}%
 }%
@@ -3239,6 +3253,9 @@
 	%
 	\edef\plotnumofactualtype{\numplotsofactualtype}%
 	\csname pgfpmeta@\pgfplotspointmetainputhandler @activate\endcsname
+	\ifpgfplots@LUA@backend@supported
+		\pgfplots@LUA@survey@start
+	\fi
 	\pgfplotsplothandlersurveystart
 	\pgfplotscoordstream@firstlast@init
 	%
@@ -3348,6 +3365,9 @@
 % #1,#2: see \pgfplots@PREPARE@COORD@STREAM
 \def\pgfplots@PREPARE@COORD@STREAM@end@#1{%
 	\pgfkeysvalueof{/pgfplots/execute at end survey}%
+	\ifpgfplots@LUA@backend@supported
+		\pgfplots@LUA@survey@end
+	\fi
 	% FIXME : move this the \pgfplotsplothandlersurveyend of mesh plot
 	% handler:
 	\pgfkeyssetvalue{/pgfplots/mesh/num points}{\pgfplots@current@point@coordindex}%
@@ -3517,6 +3537,45 @@
 	\else
 		\expandafter\pgfplots@rememberplotspec\expandafter{\pgfplots@addplot@survey@@optionlist}%
 	\fi
+}%
+
+\def\pgfplots@LUA@survey@start{%
+	\ifx\pgfplotsplothandlerLUAname\pgfutil@empty
+		\pgfplots@LUA@backend@supportedfalse
+	\fi
+	%
+	\def\pgfplots@loc@TMPa{%
+		\csname pgfpmeta@\pgfplotspointmetainputhandler @LUA class\endcsname}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfplots@LUA@backend@supportedfalse
+	\fi
+	% FIXME : deactivate LUA backend if some option is unsupported!
+	%
+	\ifpgfplots@LUA@backend@supported
+		\directlua{%
+			pgfplots.currentPlotHandler = \pgfplotsplothandlerLUAname(pgfplots.gca, \pgfplots@loc@TMPa)
+		}%
+	\fi
+}%
+
+\def\pgfplots@LUA@survey@point{%
+	\directlua{%
+		do^^J
+			local pt = pgfplots.Coord()^^J
+			pt.x[1] = "\pgfplots@current@point@x";^^J
+			pt.x[2] = "\pgfplots@current@point@y";^^J
+			pt.x[3] = "\pgfplots@current@point@z";^^J
+			pt.meta = "\pgfplots@current@point@meta";^^J
+			^^J
+			pgfplots.currentPlotHandler:surveypoint(pt)^^J
+		end
+	}%
+}%
+
+\def\pgfplots@LUA@survey@end{%
+	\directlua{
+		pgfplots.currentPlotHandler=nil
+	}%
 }%
 
 % Defines \pgfplotsretval to contain a comma-separated-list of

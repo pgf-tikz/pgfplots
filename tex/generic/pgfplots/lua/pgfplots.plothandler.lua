@@ -1,9 +1,10 @@
 local math=math
-local pgfplotsmath = pgfplotsmath
+local pgfplotsmath = pgfplots.pgfplotsmath
 local io=io
+local type=type
 local tostring=tostring
-local tonumber=tonumber
 local error=error
+local table=table
 
 do
 local _ENV = pgfplots
@@ -20,10 +21,15 @@ function Coord:constructor()
 end
 
 function Coord:__tostring()
-    return '(' .. stringOrDefault(self.x[1], "--") .. 
+    local result = '(' .. stringOrDefault(self.x[1], "--") .. 
         ',' .. stringOrDefault(self.x[2], "--") .. 
         ',' .. stringOrDefault(self.x[3], "--") .. 
         ') [' .. stringOrDefault(self.meta, "--") .. ']'
+    
+    if not self.x[1] and self.unfiltered then
+        result = result .. "(was " .. tostring(self.unfiltered) .. ")"
+    end
+    return result
 end
 
 -------------------------------------------------------
@@ -37,8 +43,8 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
     self.axis = axis
     self.name = name
     self.coordindex = 0
-    self.metamin = { math.huge, math.huge }
-    self.metamax = { -math.huge, -math.huge }
+    self.metamin = math.huge
+    self.metamax = -math.huge
     self.autocomputeMetaMin = true
     self.autocomputeMetaMax = true
     self.coords = {}
@@ -58,6 +64,7 @@ end
 
 function Plothandler:addSurveyedPoint(pt)
     table.insert(self.coords, pt)
+    io.write("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
 end
 
 function Plothandler:haspointmeta()
@@ -72,6 +79,7 @@ end
 
 function Plothandler:setperpointmetalimits(pt)
     if pt.meta ~= nil then
+        if not type(pt.meta) == 'number' then error("got unparsed input "..tostring(pt)) end
         if self.autocomputeMetaMin then
             self.metamin = math.min(self.metamin, pt.meta )
         end
@@ -91,14 +99,21 @@ function Plothandler:surveyend()
 end
 
 function Plothandler:surveypoint(pt)
-    parsed = axis.parsecoordinate(pt)
-    prepared = axis.preparecoordinate(parsed)
-    if prepared ~= nil then
-        axis.updatelimitsforcoordinate(prepared)
+    local current = self.axis:parsecoordinate(pt)
+    if current.x[1] ~= nil then
+        current = self.axis:preparecoordinate(current)
+        self.axis:updatelimitsforcoordinate(current)
     end
-    axis.datapointsurveyed(prepared, self)
+    self.axis:datapointsurveyed(current, self)
     
     self.coordindex = self.coordindex + 1;
+end
+
+
+MeshPlothandler = newClassExtents(Plothandler)
+
+function MeshPlothandler:constructor(axis, pointmetainputhandler)
+    Plothandler:constructor("mesh", axis, pointmetainputhandler)
 end
 
 -------------------------------------------------------
@@ -174,7 +189,7 @@ function CoordAssignmentPointMetaHandler:constructor(dir)
 end
 
 function CoordAssignmentPointMetaHandler:assign(pt)
-    pt.meta = tonumber(pt.x[self.dir])
+    pt.meta = pgfplotsmath.tonumber(pt.x[self.dir])
 end
 
 XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(1)
@@ -188,7 +203,7 @@ end
 
 function ExplicitPointMetaHandler:assign(pt)
     if pt.unfiltered ~= nil and pt.unfiltered.meta ~= nil then
-        pt.meta = tonumber(pt.unfiltered.meta)
+        pt.meta = pgfplotsmath.tonumber(pt.unfiltered.meta)
     end
 end
 -------------------------------------------------------
@@ -221,7 +236,8 @@ function Axis:preparecoord(dir, value)
 end
 
 function Axis:validatecoord(dir, point)
-    local result = tonumber(point.x[dir])
+    if not dir or not point then error("arguments must not be nil") end
+    local result = pgfplotsmath.tonumber(point.x[dir])
     
     if result == nil then
         result = nil
@@ -230,17 +246,23 @@ function Axis:validatecoord(dir, point)
         point.unboundedDir = dir
     end
 
-    return result
+    point.x[dir] = result
 end
 
 function Axis:parsecoordinate(pt)
+    -- replace empty strings by 'nil':
+    for i = 1,3,1 do
+        pt.x[i] = stringOrDefault(pt.x[i], nil)
+    end
+    pt.meta = stringOrDefault(pt.meta)
+
     if pt.x[3] ~= nil then
         self.is3d = true
     end
     
     local result = Coord()
     
-    local unfiltered = {}
+    local unfiltered = Coord()
     unfiltered.x = {}
     unfiltered.meta = pt.meta
     for i = 1,3,1 do
@@ -248,16 +270,16 @@ function Axis:parsecoordinate(pt)
     end
     result.unfiltered = unfiltered
 
-    -- FIXME : self.prefilter(pt[i])
+    -- FIXME : self:prefilter(pt[i])
     for i = 1,self:loopMax(),1 do
-        result.x[i] = self.preparecoord(i, pt.x[i])
+        result.x[i] = self:preparecoord(i, pt.x[i])
         -- FIXME : 
-        -- result.x[i] = self.filtercoord(i, result.x[i])
+        -- result.x[i] = self:filtercoord(i, result.x[i])
     end
-    -- FIXME : result.x = self.xyzfilter(result.x)
+    -- FIXME : result.x = self:xyzfilter(result.x)
 
     for i = 1,self:loopMax(),1 do
-        result = self.validatecoord(i, result)
+        self:validatecoord(i, result)
     end
     
     local resultIsBounded = true
@@ -268,7 +290,7 @@ function Axis:parsecoordinate(pt)
     end
 
     if not resultIsBounded then
-        result = nil
+        result.x = { nil, nil, nil}
     end
 
     return result    
@@ -327,7 +349,8 @@ function Axis:addVisualizationDependencies(pt)
 end
 
 function Axis:datapointsurveyed(pt, plothandler)
-    if pt ~= nil then
+    if not pt or not plothandler then error("arguments must not be nil") end
+    if pt.x[1] ~= nil then
         plothandler:surveyBeforeSetPointMeta()
         plothandler:setperpointmeta(pt)
         plothandler:setperpointmetalimits(pt)
@@ -350,14 +373,14 @@ function Axis:datapointsurveyed(pt, plothandler)
                 else
                     reason = "it is unbounding (in " .. tostring(pt.unboundedDir) .. ")."
                 end
-                io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason)
+                io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
             end
         elseif self.config.unboundedCoords == UnboundedCoords.jump then
             if pt.unboundedDir == nil then
                 self.filteredCoordsAway = true
                 if self.config.warnForfilterDiscards then
                     local reason = "of a coordinate filter."
-                    io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason)
+                    io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
                 end
             else
                 self.plotHasJumps = true
