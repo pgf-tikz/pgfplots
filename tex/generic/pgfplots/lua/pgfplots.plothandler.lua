@@ -30,7 +30,11 @@ end
 
 Plothandler = newClass()
 
-function Plothandler:constructor(name)
+function Plothandler:constructor(name, axis, pointmetainputhandler)
+    if not name or not pointmetainputhandler or not axis then
+        error("arguments must not be nil")
+    end
+    self.axis = axis
     self.name = name
     self.coordindex = 0
     self.metamin = { math.huge, math.huge }
@@ -38,6 +42,7 @@ function Plothandler:constructor(name)
     self.autocomputeMetaMin = true
     self.autocomputeMetaMax = true
     self.coords = {}
+    self.pointmetainputhandler = pointmetainputhandler
     return self
 end
 
@@ -53,6 +58,16 @@ end
 
 function Plothandler:addSurveyedPoint(pt)
     table.insert(self.coords, pt)
+end
+
+function Plothandler:haspointmeta()
+    return self.pointmetainputhandler ~=nil
+end
+
+function Plothandler:setperpointmeta(pt)
+    if pt.meta == nil and self.pointmetainputhandler ~= nil then
+        self.pointmetainputhandler:assign(pt)
+    end
 end
 
 function Plothandler:setperpointmetalimits(pt)
@@ -76,12 +91,12 @@ function Plothandler:surveyend()
 end
 
 function Plothandler:surveypoint(pt)
-    parsed = gca.parsecoordinate(pt)
-    prepared = gca.preparecoordinate(parsed)
+    parsed = axis.parsecoordinate(pt)
+    prepared = axis.preparecoordinate(parsed)
     if prepared ~= nil then
-        gca.updatelimitsforcoordinate(prepared)
+        axis.updatelimitsforcoordinate(prepared)
     end
-    gca.datapointsurveyed(prepared, self)
+    axis.datapointsurveyed(prepared, self)
     
     self.coordindex = self.coordindex + 1;
 end
@@ -180,7 +195,7 @@ end
 
 Axis = newClass()
 
-function Axis:constructor(pointmetainputhandler)
+function Axis:constructor()
     self.is3d = false
     self.config = AxisConfig()
     self.filteredCoordsAway = false
@@ -198,10 +213,6 @@ function Axis:constructor(pointmetainputhandler)
     -- FIXME : move this to the plot handler
     self.plotHasJumps = false
     return self
-end
-
-function Axis:haspointmeta()
-    return self.pointmetainputhandler ~=nil
 end
 
 function Axis:preparecoord(dir, value)
@@ -223,7 +234,7 @@ function Axis:validatecoord(dir, point)
 end
 
 function Axis:parsecoordinate(pt)
-    if pt.x[2] ~= nil then
+    if pt.x[3] ~= nil then
         self.is3d = true
     end
     
@@ -232,7 +243,7 @@ function Axis:parsecoordinate(pt)
     local unfiltered = {}
     unfiltered.x = {}
     unfiltered.meta = pt.meta
-    for i = 1:3 do
+    for i = 1,3,1 do
         unfiltered.x[i] = pt.x[i]
     end
     result.unfiltered = unfiltered
@@ -309,12 +320,6 @@ function Axis:updatelimitsforcoordinate(pt)
     end
 end
 
-function Axis:setperpointmeta(pt)
-    if pt.meta == nil and self.pointmetainputhandler ~= nil then
-        self.pointmetainputhandler:assign(pt)
-    end
-end
-
 function Axis:addVisualizationDependencies(pt)
     -- FIXME : 'visualization depends on' 
     -- FIXME : 'execute for finished point'
@@ -324,12 +329,8 @@ end
 function Axis:datapointsurveyed(pt, plothandler)
     if pt ~= nil then
         plothandler:surveyBeforeSetPointMeta()
-        self:setperpointmeta(pt)
-        if not self.pointmetainputhandler.isSymbolic then
-            -- update point meta limits _for this plot handler_.
-            -- Note that these values will contribute to axiswidemetamax/min eventually
-            plothandler:setperpointmetalimits(pt)
-        end
+        plothandler:setperpointmeta(pt)
+        plothandler:setperpointmetalimits(pt)
         plothandler:surveyAfterSetPointMeta()
 
         -- FIXME : error bars
