@@ -35,6 +35,8 @@ function Plothandler:constructor(name)
     self.coordindex = 0
     self.metamin = { math.huge, math.huge }
     self.metamax = { -math.huge, -math.huge }
+    self.autocomputeMetaMin = true
+    self.autocomputeMetaMax = true
     self.coords = {}
     return self
 end
@@ -55,9 +57,22 @@ end
 
 function Plothandler:setperpointmetalimits(pt)
     if pt.meta ~= nil then
-        self.metamin = math.min(self.metamin, pt.meta )
-        self.metamax = math.max(self.metamax, pt.meta )
+        if self.autocomputeMetaMin then
+            self.metamin = math.min(self.metamin, pt.meta )
+        end
+
+        if self.autocomputeMetaMax then
+            self.metamax = math.max(self.metamax, pt.meta )
+        end
     end
+end
+
+function Plothandler:surveystart()
+    -- empty by default.
+end
+
+function Plothandler:surveyend()
+    -- empty by default.
 end
 
 function Plothandler:surveypoint(pt)
@@ -213,7 +228,14 @@ function Axis:parsecoordinate(pt)
     end
     
     local result = Coord()
-    result.unfiltered = pt
+    
+    local unfiltered = {}
+    unfiltered.x = {}
+    unfiltered.meta = pt.meta
+    for i = 1:3 do
+        unfiltered.x[i] = pt.x[i]
+    end
+    result.unfiltered = unfiltered
 
     -- FIXME : self.prefilter(pt[i])
     for i = 1,self:loopMax(),1 do
