@@ -33,6 +33,9 @@ Plothandler = newClass()
 function Plothandler:constructor(name)
     self.name = name
     self.coordindex = 0
+    self.metamin = { math.huge, math.huge }
+    self.metamax = { -math.huge, -math.huge }
+    self.coords = {}
     return self
 end
 
@@ -46,8 +49,18 @@ end
 function Plothandler:surveyAfterSetPointMeta()
 end
 
+function Plothandler:addSurveyedPoint(pt)
+    table.insert(self.coords, pt)
+end
+
+function Plothandler:setperpointmetalimits(pt)
+    if pt.meta ~= nil then
+        self.metamin = math.min(self.metamin, pt.meta )
+        self.metamax = math.max(self.metamax, pt.meta )
+    end
+end
+
 function Plothandler:surveypoint(pt)
-    -- FIXME : what about \pgfplots@set@perpointmeta@done !?
     parsed = gca.parsecoordinate(pt)
     prepared = gca.preparecoordinate(parsed)
     if prepared ~= nil then
@@ -165,8 +178,8 @@ function Axis:constructor(pointmetainputhandler)
     self.max = { -math.huge, -math.huge, -math.huge }
     self.datamin = { math.huge, math.huge, math.huge }
     self.datamax = { -math.huge, -math.huge, -math.huge }
-    self.metamin = { math.huge, math.huge }
-    self.metamax = { -math.huge, -math.huge }
+    self.axiswidemetamin = { math.huge, math.huge }
+    self.axiswidemetamax = { -math.huge, -math.huge }
     -- FIXME : move this to the plot handler
     self.plotHasJumps = false
     return self
@@ -275,34 +288,34 @@ function Axis:updatelimitsforcoordinate(pt)
 end
 
 function Axis:setperpointmeta(pt)
-    if pt.meta == nil then
+    if pt.meta == nil and self.pointmetainputhandler ~= nil then
         self.pointmetainputhandler:assign(pt)
-        self:setperpointmetalimits(pt)
     end
 end
 
-function Axis:setperpointmetalimits(pt)
-    if not self.pointmetainputhandler.isSymbolic then
-        if pt.meta ~= nil then
-            self.metamin = math.min(self.metamin, pt.meta )
-            self.metamax = math.max(self.metamax, pt.meta )
-        end
-    end
+function Axis:addVisualizationDependencies(pt)
+    -- FIXME : 'visualization depends on' 
+    -- FIXME : 'execute for finished point'
+    return pt
 end
 
--- FIXME : it seems as if this here is more Plothandler:datapointsurveyed!
---
 function Axis:datapointsurveyed(pt, plothandler)
     if pt ~= nil then
         plothandler:surveyBeforeSetPointMeta()
         self:setperpointmeta(pt)
+        if not self.pointmetainputhandler.isSymbolic then
+            -- update point meta limits _for this plot handler_.
+            -- Note that these values will contribute to axiswidemetamax/min eventually
+            plothandler:setperpointmetalimits(pt)
+        end
         plothandler:surveyAfterSetPointMeta()
-        -- FIXME : setpointmeta(pt)
+
         -- FIXME : error bars
         -- FIXME: collect first plot as tick
         -- FIXME : collect first/last points in current stream
-        -- FIXME : serialize data point
-        --
+
+        local serialized = self:addVisualizationDependencies(pt)
+        plothandler:addSurveyedPoint(serialized)
     else
         -- COORDINATE HAS BEEN FILTERED AWAY
         if self.config.unboundedCoords == UnboundedCoords.discard then
@@ -325,7 +338,9 @@ function Axis:datapointsurveyed(pt, plothandler)
                 end
             else
                 self.plotHasJumps = true
-                -- FIXME : serialize data point
+
+                local serialized = self:addVisualizationDependencies(pt)
+                plothandler:addSurveyedPoint(serialized)
             end
         end
     end
