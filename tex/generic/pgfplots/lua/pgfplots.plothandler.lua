@@ -64,7 +64,7 @@ end
 
 function Plothandler:addSurveyedPoint(pt)
     table.insert(self.coords, pt)
-    io.write("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
+    -- io.write("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
 end
 
 function Plothandler:haspointmeta()
@@ -109,6 +109,25 @@ function Plothandler:surveypoint(pt)
     self.coordindex = self.coordindex + 1;
 end
 
+function Plothandler:surveyedCoordsToPgfplots(axis)
+    if not axis then error("arguments must not be nil") end
+    local result = {}
+    for i = 1,#self.coords,1 do
+        local pt = self.coords[i]
+        local ptstr = self:serializeCoordToPgfplots(pt)
+        local axisPrivate = axis:serializeCoordToPgfplotsPrivate(pt)
+        local serialized = "{" .. axisPrivate .. ";" .. ptstr .. "}"
+        table.insert(result, serialized)
+    end
+    return table.concat(result)
+end
+
+function Plothandler:serializeCoordToPgfplots(pt)
+    return 
+        pgfplotsmath.toTeXstring(pt.x[1]) .. "," ..
+        pgfplotsmath.toTeXstring(pt.x[2]) .. "," ..
+        pgfplotsmath.toTeXstring(pt.x[3])
+end
 
 MeshPlothandler = newClassExtents(Plothandler)
 
@@ -234,6 +253,11 @@ function Axis:preparecoord(dir, value)
     -- FIXME : user trafos, logs
     return value
 end
+
+function Axis:serializeCoordToPgfplotsPrivate(pt)
+    return pgfplotsmath.toTeXstring(pt.meta)
+end
+
 
 function Axis:validatecoord(dir, point)
     if not dir or not point then error("arguments must not be nil") end
@@ -395,7 +419,38 @@ function Axis:datapointsurveyed(pt, plothandler)
     -- We do it it surveypoint.
 end
 
-function Axis:syncwithtex()
+function Axis:surveyToPgfplots(plothandler, includeCoords)
+    local firstCoord = plothandler.coords[1]
+    local lastCoord = plothandler.coords[#plothandler.coords]
+    local hasJumps
+    local filteredCoordsAway
+    if self.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
+    if self.filteredCoordsAway then filteredCoordsAway = 1 else filteredCoordsAway = 0 end
+
+    local result = 
+        "@xmin=" .. pgfplotsmath.toTeXstring(self.min[1]) .. "," ..
+        "@ymin=" .. pgfplotsmath.toTeXstring(self.min[2]) .. "," ..
+        "@zmin=" .. pgfplotsmath.toTeXstring(self.min[3]) .. "," ..
+        "@xmax=" .. pgfplotsmath.toTeXstring(self.max[1]) .. "," ..
+        "@ymax=" .. pgfplotsmath.toTeXstring(self.max[2]) .. "," ..
+        "@zmax=" .. pgfplotsmath.toTeXstring(self.max[3]) .. "," ..
+        "point meta min=" .. pgfplotsmath.toTeXstring(plothandler.metamin) ..","..
+        "point meta max=" .. pgfplotsmath.toTeXstring(plothandler.metamax) ..","..
+        "@is3d=" .. tostring(self.is3d) .. "," ..
+        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord) .. "}," ..
+        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord) .. "}," ..
+        "@plot has jumps=" .. tostring(hasJumps) .. "," ..
+        "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
+        ""
+    
+    if includeCoords then
+        result = result .. 
+        "@surveyed coords={" .. plothandler:surveyedCoordsToPgfplots(self) .. "}," ..
+        "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..
+        "";
+    end
+    
+    return result
 end
 
 -- will be set by TeX code (in \begin{axis})
