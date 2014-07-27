@@ -29,4 +29,33 @@ function texVisualizationInit(plotNum)
     end
 end
 
+-- Expands to the resulting coordinates
+function texApplyZBufferReverseScanline(scanLineLength)
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("This function cannot be used in the current context") end
+    
+    currentPlotHandler:reverseScanline(scanLineLength)
+    
+    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+end 
+
+-- Expands to the resulting coordinates
+function texApplyZBufferReverseTransposed(scanLineLength)
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("This function cannot be used in the current context") end
+    
+    currentPlotHandler:reverseTransposed(scanLineLength)
+    
+    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+end 
+
+-- Expands to the resulting coordinates
+function texApplyZBufferReverseStream()
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("This function cannot be used in the current context") end
+    
+    currentPlotHandler:reverseStream(scanLineLength)
+    
+    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+end 
 end
