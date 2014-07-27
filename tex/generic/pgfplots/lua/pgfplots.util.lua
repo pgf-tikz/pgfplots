@@ -25,6 +25,13 @@ end
 
 pgfplotsmath = {}
 
+function pgfplotsmath.isfinite(x)
+    if pgfplotsmath.isnan(x) or x == pgfplotsmath.infty or x == -pgfplotsmath.infty then
+        return false
+    end
+    return true
+end
+
 function pgfplotsmath.isnan(x)
     return x ~= x
 end
@@ -71,6 +78,11 @@ function pgfplotsmath.tonumber(x)
     end    
 
     return result
+end
+
+-- a helper function which has no catcode issues when communicating with TeX:
+function pgfplotsmath.tostringfixed(x)
+    return string.format("%f", x)
 end
 
 function pgfplotsmath.toTeXstring(x)

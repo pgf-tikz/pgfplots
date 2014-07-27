@@ -3561,7 +3561,9 @@
 				pgfplots.pgfplotsmath.tonumber("\pgfplots@xmax"), ^^J%
 				pgfplots.pgfplotsmath.tonumber("\pgfplots@ymax"), ^^J%
 				pgfplots.pgfplotsmath.tonumber("\pgfplots@zmax")} ^^J%
-			pgfplots.currentPlotHandler = \pgfplotsplothandlerLUAname(pgfplots.gca, \pgfplots@loc@TMPa)
+			% FIXME : what about datamin/datamax!?
+			pgfplots.gca.plothandlers[\the\pgfplots@numplots] = \pgfplotsplothandlerLUAname(pgfplots.gca, \pgfplots@loc@TMPa)^^J%
+			pgfplots.currentPlotHandler = pgfplots.gca.plothandlers[\the\pgfplots@numplots]^^J%
 		}%
 	\fi
 }%
@@ -4142,6 +4144,12 @@
 \def\pgfplots@perpointmeta@preparetrafo{%
 	\def\pgfplotspointmetarangeexponent{1}% pre-fill
 	\pgfutil@ifundefined{pgfplots@perpointmeta@trafo}{%
+		\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
+		\ifnum\pgfplots@loc@TMPa=1000
+		\else
+			\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
+		\fi
+		%
 		\let\pgfplots@current@point@meta=\pgfutil@empty
 		\pgfutil@ifundefined{pgfplots@metamax}{\let\pgfplots@metamax=\pgfutil@empty}{}
 		\ifpgfplots@warn@for@filter@discards
@@ -4178,11 +4186,6 @@
 				% phi(m) = ( m- meta_min) * 1000/ (meta_max-meta_min).
 				%
 				% -> precompute the scaling factor!
-				\edef\pgfplots@loc@TMPa{\pgfplotscolormaprange}%
-				\ifnum\pgfplots@loc@TMPa=1000
-				\else
-					\pgfplots@error{LOGIC ERROR: sorry, I have hard-coded the assumption \string\pgfplotscolormaprange = 1000, but now it is \pgfplots@loc@TMPa.}%
-				\fi
 				\if\pgfplots@perpointmeta@rel@choice0%
 					% point meta rel=axis wide:
 					\pgfplots@perpointmeta@preparetrafo@initfrom{pgfplots@axiswide@}%
@@ -4216,25 +4219,35 @@
 	\edef\pgfplotspointmetarange{\csname #1metamin\endcsname:\csname #1metamax\endcsname}%
 	% Now, prepare the trafo as such.
 	% It assigns \pgfmathresult (in fixed point).
-	\def\pgfplots@perpointmeta@trafo##1{%
-		\pgfplotscoordmath{meta}{if is}{##1}{u}{%
-			\def\pgfmathresult{0}%
-			\pgfplots@perpointmeta@unboundedwarning{##1}%
-		}{%
-			\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\csname #1metamin\endcsname}}%
-			\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
-			\pgfplots@perpointmeta@trafo@clipresult
-			\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
+	\ifpgfplots@LUA@backend@supported
+		\def\pgfplots@perpointmeta@trafo##1{%
+			\edef\pgfmathresult{%
+				\directlua{%
+					pgfplots.texPerpointMetaTrafo("\pgfplots@current@point@meta")
+				}%
+			}%
 		}%
-	}%
-	\pgfplotscoordmath{meta}{op}{subtract}{{\csname #1metamax\endcsname}{\csname #1metamin\endcsname}}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfplotscoordmath{meta}{zero}%
-	\let\pgfplots@perpointmeta@lowerrange=\pgfmathresult
-	\pgfplotscoordmath{meta}{parsenumber}{1000}%
-	\let\pgfplots@perpointmeta@upperrange=\pgfmathresult
-	\pgfplotscoordmath{meta}{op}{divide}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
-	\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
+	\else
+		\def\pgfplots@perpointmeta@trafo##1{%
+			\pgfplotscoordmath{meta}{if is}{##1}{u}{%
+				\def\pgfmathresult{0}%
+				\pgfplots@perpointmeta@unboundedwarning{##1}%
+			}{%
+				\pgfplotscoordmath{meta}{op}{subtract}{{##1}{\csname #1metamin\endcsname}}%
+				\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@perpointmeta@trafo@factor}}%
+				\pgfplots@perpointmeta@trafo@clipresult
+				\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
+			}%
+		}%
+		\pgfplotscoordmath{meta}{op}{subtract}{{\csname #1metamax\endcsname}{\csname #1metamin\endcsname}}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{meta}{zero}%
+		\let\pgfplots@perpointmeta@lowerrange=\pgfmathresult
+		\pgfplotscoordmath{meta}{parsenumber}{1000}%
+		\let\pgfplots@perpointmeta@upperrange=\pgfmathresult
+		\pgfplotscoordmath{meta}{op}{divide}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+		\let\pgfplots@perpointmeta@trafo@factor=\pgfmathresult
+	\fi
 	%
 	% Expands to the transformation range as 'a:b':
 	\def\pgfplots@perpointmeta@traforange{0:1000}%
@@ -6797,6 +6810,17 @@
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
 	%
+	\if m\pgfplots@colormap@access
+	\else
+		\pgfplots@LUA@backend@supportedfalse
+	\fi
+	% FIXME : add further conditions under which LUA has to be
+	% switched off!
+	\ifpgfplots@LUA@backend@supported
+		\pgfplots@LUA@visualization@init
+		% SIDE-effect: \ifpgfplots@LUA@backend@supported might have
+		% been switched to false here.
+	\fi
 	%
 	\pgfplots@perpointmeta@preparetrafo
 	%
@@ -6880,6 +6904,15 @@
 		\fi
 	}%
 }
+
+\def\pgfplots@LUA@visualization@init{%
+	\edef\pgfplots@loc@TMPa{%
+		\directlua{pgfplots.texVisualizationInit(\plotnum)}%
+	}%
+	\if0\pgfplots@loc@TMPa
+		\pgfplots@LUA@backend@supportedfalse
+	\fi
+}%
 
 % Takes the current point (defined by a set of macros) as input and defines \pgf@x and \pgf@y 
 % as the output point. It also defines

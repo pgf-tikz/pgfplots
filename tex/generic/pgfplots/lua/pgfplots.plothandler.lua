@@ -27,6 +27,7 @@ function Coord:constructor()
     self.x = { nil, nil, nil }
     self.unboundedDir = nil
     self.meta= nil
+    self.metatransformed = nil -- assigned during vis phase only
     self.unfiltered = nil
     return self
 end
@@ -42,6 +43,49 @@ function Coord:__tostring()
     end
     return result
 end
+
+-------------------------------------------------------
+
+LinearMap = newClass()
+
+-- A map such that
+-- [inMin,inMax] is mapped linearly to [outMin,outMax]
+--
+function LinearMap:constructor(inMin, inMax, outMin, outMax)
+    if not inMin or not inMax or not outMin or not outMax then error("arguments must not be nil") end
+    if inMin >= inMax then error("invalid input domain " .. tostring(inMin) .. ":" .. tostring(inMax)) end
+    self.offset = outMin - (outMax-outMin)*inMin/(inMax-inMin)
+    self.scale = (outMax-outMin)/(inMax-inMin)
+end
+
+function LinearMap:map(x)
+    return x*self.scale + self.offset
+end
+
+PointMetaMap = newClass()
+
+function PointMetaMap:constructor(inMin,inMax, warnForfilterDiscards)
+    if not inMin or not inMax or not warnForfilterDiscards then error("arguments must not be nil") end
+    self._mapper = LinearMap(inMin,inMax, 0, 1000)
+    self.warnForfilterDiscards = warnForfilterDiscards
+end
+
+function PointMetaMap:map(meta)
+    if pgfplotsmath.isfinite(meta) then
+        local result = self._mapper:map(meta)
+        result = math.max(0, result)
+        result = math.min(1000, result)
+        return result
+    else
+        if self.warnForfilterDiscards then  
+            io.write("The per point meta data '" .. tostring(meta) .. " (and probably others as well) is unbounded - using the minimum value instead.\n")
+            self.warnForfilterDiscards=false
+        end
+        return 0
+    end
+end
+    
+    
 
 -------------------------------------------------------
 
@@ -67,6 +111,7 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
     self.autocomputeMetaMax = true
     self.coords = {}
     self.pointmetainputhandler = pointmetainputhandler
+    self.pointmetamap = nil -- will be set later
     return self
 end
 
@@ -163,6 +208,29 @@ function Plothandler:serializeCoordToPgfplots(pt)
         pgfplotsmath.toTeXstring(pt.x[3])
 end
 
+function Plothandler:visualizationPhaseInit()
+    local rangeMin
+    local rangeMax
+    if self.axis.config.pointmetarel == PointMetaRel.axiswide then
+        rangeMin = self.axis.axiswidemetamin
+        rangeMax = self.axis.axiswidemetamax
+    else
+        rangeMin = self.metamin
+        rangeMax = self.metamax
+    end
+    self.pointmetamap = PointMetaMap(rangeMin, rangeMax, self.axis.config.warnForfilterDiscards)
+end
+
+-- PRECONDITION: visualizationPhaseInit() has been called some time before.
+function Plothandler:visualizationTransformMeta(meta)
+    if meta == nil then
+        io.write("could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\\addplot[point meta=y]' or something like that?\n")
+        return 1
+    else
+        return self.pointmetamap:map(meta)
+    end
+end
+
 
 -- Replicates \pgfplotsplothandlermesh (to some extend)
 MeshPlothandler = newClassExtents(Plothandler)
@@ -175,12 +243,16 @@ end
 
 UnboundedCoords = { discard=0, jump=1 }
 
+PointMetaRel = { axiswide = 0, perplot =1 }
+
+
 -- contains static axis configuration entities.
 AxisConfig = newClass()
 
 function AxisConfig:constructor()
     self.unboundedCoords = UnboundedCoords.discard
     self.warnForfilterDiscards=true
+    self.pointmetarel = PointMetaRel.axiswide
     return self
 end
 
@@ -248,6 +320,7 @@ function CoordAssignmentPointMetaHandler:constructor(dir)
 end
 
 function CoordAssignmentPointMetaHandler:assign(pt)
+    if not pt then error("arguments must not be nil") end
     pt.meta = pgfplotsmath.tonumber(pt.x[self.dir])
 end
 
@@ -288,6 +361,8 @@ function Axis:constructor()
     self.axiswidemetamax = { -math.huge, -math.huge }
     -- FIXME : move this to the plot handler
     self.plotHasJumps = false
+    -- will be populated by the TeX code:
+    self.plothandlers = {}
     return self
 end
 
@@ -515,6 +590,7 @@ function Axis:surveyToPgfplots(plothandler, includeCoords)
         "@xmax=" .. pgfplotsmath.toTeXstring(self.max[1]) .. "," ..
         "@ymax=" .. pgfplotsmath.toTeXstring(self.max[2]) .. "," ..
         "@zmax=" .. pgfplotsmath.toTeXstring(self.max[3]) .. "," ..
+    -- FIXME : what about datamin/datamx!?
         "point meta min=" .. pgfplotsmath.toTeXstring(plothandler.metamin) ..","..
         "point meta max=" .. pgfplotsmath.toTeXstring(plothandler.metamax) ..","..
         "@is3d=" .. tostring(self.is3d) .. "," ..
