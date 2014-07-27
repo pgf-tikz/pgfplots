@@ -1,3 +1,14 @@
+--
+-- This file contains parts of pgfplotscoordprocessing.code.tex and pgfplotsplothandlers.code.tex .
+--
+-- It contains
+--
+-- pgfplots.Axis
+-- pgfplots.Coord
+-- pgfplots.Plothandler
+-- 
+-- and some related classes.
+
 local math=math
 local pgfplotsmath = pgfplots.pgfplotsmath
 local io=io
@@ -34,8 +45,15 @@ end
 
 -------------------------------------------------------
 
+-- Abstract base class of all plot handlers.
+-- It offers basic functionality for the survey phase.
+--
+-- It has cyclic dependencies to its axis (FIXME : break it)
 Plothandler = newClass()
 
+-- @param name the plot handler's name (a string)
+-- @param axis the parent axis
+-- @param pointmetainputhandler an instance of PointMetaHandler
 function Plothandler:constructor(name, axis, pointmetainputhandler)
     if not name or not pointmetainputhandler or not axis then
         error("arguments must not be nil")
@@ -56,27 +74,34 @@ function Plothandler:__tostring()
     return 'plot handler ' .. self.name
 end
 
+-- @see \pgfplotsplothandlersurveybeforesetpointmeta
 function Plothandler:surveyBeforeSetPointMeta()
 end
 
+-- @see \pgfplotsplothandlersurveyaftersetpointmeta
 function Plothandler:surveyAfterSetPointMeta()
 end
 
+-- PRIVATE
+--
+-- appends a fully surveyed point
 function Plothandler:addSurveyedPoint(pt)
     table.insert(self.coords, pt)
     -- io.write("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
 end
 
-function Plothandler:haspointmeta()
-    return self.pointmetainputhandler ~=nil
-end
-
+-- PRIVATE
+--
+-- assigns the point meta value by means of the PointMetaHandler
 function Plothandler:setperpointmeta(pt)
     if pt.meta == nil and self.pointmetainputhandler ~= nil then
         self.pointmetainputhandler:assign(pt)
     end
 end
 
+-- PRIVATE
+--
+-- updates point meta limits
 function Plothandler:setperpointmetalimits(pt)
     if pt.meta ~= nil then
         if not type(pt.meta) == 'number' then error("got unparsed input "..tostring(pt)) end
@@ -90,14 +115,17 @@ function Plothandler:setperpointmetalimits(pt)
     end
 end
 
+-- @see \pgfplotsplothandlersurveystart
 function Plothandler:surveystart()
     -- empty by default.
 end
 
+-- @see \pgfplotsplothandlersurveyend
 function Plothandler:surveyend()
     -- empty by default.
 end
 
+-- @see \pgfplotsplothandlersurveypoint
 function Plothandler:surveypoint(pt)
     local current = self.axis:parsecoordinate(pt)
     if current.x[1] ~= nil then
@@ -109,6 +137,9 @@ function Plothandler:surveypoint(pt)
     self.coordindex = self.coordindex + 1;
 end
 
+-- PRIVATE
+--
+-- @return a string containing all surveyed coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
 function Plothandler:surveyedCoordsToPgfplots(axis)
     if not axis then error("arguments must not be nil") end
     local result = {}
@@ -122,6 +153,9 @@ function Plothandler:surveyedCoordsToPgfplots(axis)
     return table.concat(result)
 end
 
+-- PRIVATE 
+--
+-- does the same as \pgfplotsplothandlerserializepointto
 function Plothandler:serializeCoordToPgfplots(pt)
     return 
         pgfplotsmath.toTeXstring(pt.x[1]) .. "," ..
@@ -129,6 +163,8 @@ function Plothandler:serializeCoordToPgfplots(pt)
         pgfplotsmath.toTeXstring(pt.x[3])
 end
 
+
+-- Replicates \pgfplotsplothandlermesh (to some extend)
 MeshPlothandler = newClassExtents(Plothandler)
 
 function MeshPlothandler:constructor(axis, pointmetainputhandler)
@@ -139,6 +175,7 @@ end
 
 UnboundedCoords = { discard=0, jump=1 }
 
+-- contains static axis configuration entities.
 AxisConfig = newClass()
 
 function AxisConfig:constructor()
@@ -149,6 +186,8 @@ end
 
 -------------------------------------------------------
 
+-- An abstract base class for a handler of point meta.
+-- @see \pgfplotsdeclarepointmetasource
 PointMetaHandler = newClass()
 
 -- @param isSymbolic
@@ -200,6 +239,7 @@ function PointMetaHandler.assign(pt)
 end
 
 
+-- A PointMetaHandler which merely acquires values of either x,y, or z.
 CoordAssignmentPointMetaHandler = newClassExtents( PointMetaHandler )
 function CoordAssignmentPointMetaHandler:constructor(dir)
     PointMetaHandler:constructor(false,false)
@@ -215,6 +255,7 @@ XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(1)
 YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(2)
 ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(3)
 
+-- A class of PointMetaHandler which takes the 'Coord.meta' as input
 ExplicitPointMetaHandler = newClassExtents( PointMetaHandler )
 function ExplicitPointMetaHandler:constructor()
     PointMetaHandler:constructor(false,true)
@@ -227,6 +268,7 @@ function ExplicitPointMetaHandler:assign(pt)
 end
 -------------------------------------------------------
 
+-- An axis. 
 Axis = newClass()
 
 function Axis:constructor()
@@ -249,16 +291,25 @@ function Axis:constructor()
     return self
 end
 
+-- PRIVATE
+--
+-- applies user transformations and logs
+--
+-- @see \pgfplots@prepared@xcoord
 function Axis:preparecoord(dir, value)
     -- FIXME : user trafos, logs
     return value
 end
 
+-- PRIVATE
+-- @see \pgfplotsaxisserializedatapoint@private
 function Axis:serializeCoordToPgfplotsPrivate(pt)
     return pgfplotsmath.toTeXstring(pt.meta)
 end
 
 
+-- PRIVATE
+--
 function Axis:validatecoord(dir, point)
     if not dir or not point then error("arguments must not be nil") end
     local result = pgfplotsmath.tonumber(point.x[dir])
@@ -273,6 +324,9 @@ function Axis:validatecoord(dir, point)
     point.x[dir] = result
 end
 
+-- PRIVATE
+--
+-- @see \pgfplotsaxisparsecoordinate
 function Axis:parsecoordinate(pt)
     -- replace empty strings by 'nil':
     for i = 1,3,1 do
@@ -320,15 +374,27 @@ function Axis:parsecoordinate(pt)
     return result    
 end
 
+-- PROTECTED
+--
+-- @see \pgfplotsaxispreparecoordinate
 function Axis:preparecoordinate(pt)
     -- the default "preparation" is to return it as is (no number parsing)
     return pt
 end
 
+-- PRIVATE
+--
+-- returns either 2 if this axis is 2d or 3 otherwise
+--
+-- FIXME : shouldn't this depend on the current plot handler!?
 function Axis:loopMax()
     if self.is3d then return 3 else return 2 end
 end
 
+-- PRIVATE:
+--
+-- updates axis limits for pt
+-- @param pt an instance of Coord
 function Axis:updatelimitsforcoordinate(pt)
     local isClipped = false
     if self.clipLimits then
@@ -366,12 +432,18 @@ function Axis:updatelimitsforcoordinate(pt)
     end
 end
 
+-- PRIVATE
+--
+-- unfinished, see its fixmes
 function Axis:addVisualizationDependencies(pt)
     -- FIXME : 'visualization depends on' 
     -- FIXME : 'execute for finished point'
     return pt
 end
 
+-- PROTECTED
+--
+-- indicates that a data point has been surveyed by the axis and that it can be consumed 
 function Axis:datapointsurveyed(pt, plothandler)
     if not pt or not plothandler then error("arguments must not be nil") end
     if pt.x[1] ~= nil then
@@ -382,7 +454,9 @@ function Axis:datapointsurveyed(pt, plothandler)
 
         -- FIXME : error bars
         -- FIXME: collect first plot as tick
-        -- FIXME : collect first/last points in current stream
+
+        -- note that that TeX code would also remember the first/last coordinate in a stream.
+        -- This is unnecessary here.
 
         local serialized = self:addVisualizationDependencies(pt)
         plothandler:addSurveyedPoint(serialized)
@@ -419,6 +493,13 @@ function Axis:datapointsurveyed(pt, plothandler)
     -- We do it it surveypoint.
 end
 
+-- PUBLIC
+--
+-- @return a set of (private) key-value pairs such that the TeX code of pgfplots can
+-- access survey results of the provided plot handler
+--
+-- @param plothandler an instance of Plothandler
+-- @param includeCoords true or false, depending on whether the plot coordinates should be returned
 function Axis:surveyToPgfplots(plothandler, includeCoords)
     local firstCoord = plothandler.coords[1]
     local lastCoord = plothandler.coords[#plothandler.coords]
