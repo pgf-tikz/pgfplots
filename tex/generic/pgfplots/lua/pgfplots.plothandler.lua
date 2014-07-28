@@ -303,6 +303,7 @@ PointMetaRel = { axiswide = 0, perplot =1 }
 AxisConfig = newClass()
 
 function AxisConfig:constructor()
+    -- FIXME : it seems as if this is actually a config of the plot handler!?
     self.unboundedCoords = UnboundedCoords.discard
     self.warnForfilterDiscards=true
     self.pointmetarel = PointMetaRel.axiswide
