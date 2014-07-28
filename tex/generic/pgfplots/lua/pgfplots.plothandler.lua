@@ -424,7 +424,7 @@ end
 --
 -- @see \pgfplots@prepared@xcoord
 function Axis:preparecoord(dir, value)
-    -- FIXME : user trafos, logs
+    -- FIXME : user trafos, logs (switches off LUA backend)
     return value
 end
 
