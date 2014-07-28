@@ -92,8 +92,6 @@ end
 
 -- Abstract base class of all plot handlers.
 -- It offers basic functionality for the survey phase.
---
--- It has cyclic dependencies to its axis (FIXME : break it)
 Plothandler = newClass()
 
 -- @param name the plot handler's name (a string)
@@ -192,8 +190,9 @@ end
 function Plothandler:surveyedCoordsToPgfplots(axis)
     if not axis then error("arguments must not be nil") end
     local result = {}
-    for i = 1,#self.coords,1 do
-        local pt = self.coords[i]
+	local coords = self.coords
+    for i = 1,#coords,1 do
+        local pt = coords[i]
         local ptstr = self:serializeCoordToPgfplots(pt)
         local axisPrivate = axis:serializeCoordToPgfplotsPrivate(pt)
         local serialized = "{" .. axisPrivate .. ";" .. ptstr .. "}"
@@ -240,7 +239,7 @@ end
 MeshPlothandler = newClassExtents(Plothandler)
 
 function MeshPlothandler:constructor(axis, pointmetainputhandler)
-    Plothandler:constructor("mesh", axis, pointmetainputhandler)
+    Plothandler.constructor(self,"mesh", axis, pointmetainputhandler)
 end
 
 -- see \pgfplot@apply@zbuffer
@@ -371,7 +370,7 @@ end
 -- A PointMetaHandler which merely acquires values of either x,y, or z.
 CoordAssignmentPointMetaHandler = newClassExtents( PointMetaHandler )
 function CoordAssignmentPointMetaHandler:constructor(dir)
-    PointMetaHandler:constructor(false,false)
+    PointMetaHandler.constructor(self, false,false)
     if not dir then error "nil argument for 'dir' is unsupported." end
     self.dir=dir 
 end
@@ -388,7 +387,7 @@ ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(3)
 -- A class of PointMetaHandler which takes the 'Coord.meta' as input
 ExplicitPointMetaHandler = newClassExtents( PointMetaHandler )
 function ExplicitPointMetaHandler:constructor()
-    PointMetaHandler:constructor(false,true)
+    PointMetaHandler.constructor(self, false,true)
 end
 
 function ExplicitPointMetaHandler:assign(pt)

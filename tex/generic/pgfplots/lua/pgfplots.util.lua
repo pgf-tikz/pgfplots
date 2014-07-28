@@ -123,9 +123,13 @@ end
 --
 function newClass()
     local result = {}
+
+	-- we need this such that *instances* (which will have 'result' as meta table)
+	-- will "inherit" the class'es methods.
     result.__index = result
-    local allocator= function (cls, ...)
-        local self = setmetatable({}, cls)
+    local allocator= function (class, ...)
+		-- class == result in all cases
+        local self = setmetatable({}, result)
         self:constructor(...)
         return self
     end
@@ -136,6 +140,22 @@ end
 
 
 -- Create a new class that inherits from a base class 
+--
+-- base = pgfplots.newClass()
+-- function base:constructor()
+-- 	self.variable= 'a'
+-- 	end
+--
+-- 	sub = pgfplots.newClassExtents(base)
+-- 	function sub:constructor()
+-- 		-- call super constructor.
+-- 		-- it is ABSOLUTELY CRUCIAL to use <baseclass>.constructor here - not :constructor!
+-- 		base.constructor(self)
+-- 	end
+--
+-- 	instance = base()
+--
+-- 	instance2 = sub()
 --
 -- @see newClass
 function newClassExtents( baseClass )

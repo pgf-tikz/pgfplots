@@ -11,7 +11,15 @@ local error=error
 local table=table
 
 do
+-- all globals will be read from/defined in pgfplots:
 local _ENV = pgfplots
+
+-- expands to the survey results 
+-- @see \pgfplots@LUA@survey@end
+function texSurveyEnd()
+	tex.print(gca:surveyToPgfplots(gca.currentPlotHandler, true));
+	gca.currentPlotHandler=nil
+end
 
 -- expands to the transformed point meta
 function texPerpointMetaTrafo(metaStr)
