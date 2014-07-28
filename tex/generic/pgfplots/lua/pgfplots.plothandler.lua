@@ -297,7 +297,7 @@ end
 
 -------------------------------------------------------
 
-UnboundedCoords = { discard=0, jump=1 }
+UnboundedCoords = { discard="d", jump="j" }
 
 PointMetaRel = { axiswide = 0, perplot =1 }
 

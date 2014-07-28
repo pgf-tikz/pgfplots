@@ -3563,26 +3563,47 @@
 		\pgfkeysgetvalue{/pgfplots/z filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
 		\pgfkeysgetvalue{/pgfplots/filter point/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
 		%
-		\pgfkeysgetvalue{/pgfplots/execute for finished point/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse\fi
+		\pgfkeysgetvalue{/pgfplots/execute for finished point}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse\fi
 		%
-		\pgfkeysgetvalue{/pgfplots/visualization depends on/list}\pgfplots@loc@TMPa	\ifx\pgfplots@loc@TMPa\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse \fi
-		%
-		% FIXME : deactivate LUA backend if some option is unsupported!
+		\pgfkeysgetvalue{/pgfplots/visualization depends on/list}\pgfplots@loc@TMPc	\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse \fi
 		%
 		\ifpgfplots@LUA@backend@supported
+			\begingroup
+			\pgfkeysgetvalue{/pgfplots/point meta min}\pgfplots@loc@metamin
+			\pgfkeysgetvalue{/pgfplots/point meta max}\pgfplots@loc@metamax
+			\pgfplots@log3{Activating LUA backend for plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername').}%
 			\directlua{%
-				pgfplots.gca.min = {^^J%
+			do^^J%
+				local gca = pgfplots.gca;^^J%
+				gca.min = {^^J%
 					pgfplots.pgfplotsmath.tonumber("\pgfplots@xmin"), ^^J%
 					pgfplots.pgfplotsmath.tonumber("\pgfplots@ymin"), ^^J%
-					pgfplots.pgfplotsmath.tonumber("\pgfplots@zmin")} ^^J%
-				pgfplots.gca.max = {^^J%
+					pgfplots.pgfplotsmath.tonumber("\pgfplots@zmin")}; ^^J%
+				gca.max = {^^J%
 					pgfplots.pgfplotsmath.tonumber("\pgfplots@xmax"), ^^J%
 					pgfplots.pgfplotsmath.tonumber("\pgfplots@ymax"), ^^J%
-					pgfplots.pgfplotsmath.tonumber("\pgfplots@zmax")} ^^J%
+					pgfplots.pgfplotsmath.tonumber("\pgfplots@zmax")}; ^^J%
 				% FIXME : what about datamin/datamax!?
-				pgfplots.gca.plothandlers[\the\pgfplots@numplots] = \pgfplotsplothandlerLUAname(pgfplots.gca, \pgfplots@loc@TMPa)^^J%
-				pgfplots.currentPlotHandler = pgfplots.gca.plothandlers[\the\pgfplots@numplots]^^J%
+				local plothandler = \pgfplotsplothandlerLUAname(gca, \pgfplots@loc@TMPa);^^J%
+				\ifx\pgfplots@loc@metamin\pgfutil@empty
+				\else
+					plothandler.autocomputeMetaMin = false;^^J%
+					plothandler.metamin = pgfplots.pgfplotsmath.tonumber("\pgfplots@loc@metamin");^^J%
+				\fi
+				\ifx\pgfplots@loc@metamax\pgfutil@empty
+				\else
+					plothandler.autocomputeMetaMax = false;^^J%
+					plothandler.metamax = pgfplots.pgfplotsmath.tonumber("\pgfplots@loc@metamax");^^J%
+				\fi
+				local config = plothandler.config;^^J%
+				config.unboundedCoords = "\pgfplots@unbounded@handler";^^J%
+				config.warnForfilterDiscards = \pgfplots@boolval{pgfplots@warn@for@filter@discards};^^J%
+				config.pointmetarel = \pgfplots@perpointmeta@rel@choice;^^J%
+				gca.plothandlers[\the\pgfplots@numplots] = plothandler;^^J%
+				gca.currentPlotHandler = plothandler;^^J%
+			end^^J%
 			}%
+			\endgroup
 		\fi
 	\fi
 }%
@@ -3596,7 +3617,7 @@
 			pt.x[3] = "\pgfplots@current@point@z";^^J
 			pt.meta = "\pgfplots@current@point@meta";^^J
 			^^J
-			pgfplots.currentPlotHandler:surveypoint(pt)^^J
+			pgfplots.gca.currentPlotHandler:surveypoint(pt)^^J
 		end
 	}%
 }%
@@ -3604,7 +3625,8 @@
 \def\pgfplots@LUA@survey@end{%
 	\edef\pgfplots@loc@TMPa{%
 		\directlua{
-			tex.print(pgfplots.gca:surveyToPgfplots(pgfplots.currentPlotHandler, true))				pgfplots.currentPlotHandler=nil
+			tex.print(pgfplots.gca:surveyToPgfplots(pgfplots.gca.currentPlotHandler, true));
+			pgfplots.gca.currentPlotHandler=nil
 		}%
 	}%
 % \message{LUA backend: got \pgfplots@loc@TMPa^^J}%
@@ -6925,7 +6947,9 @@
 			\edef\pgfplots@loc@TMPa{%
 				\directlua{pgfplots.texVisualizationInit(\plotnum)}%
 			}%
-			\if0\pgfplots@loc@TMPa
+			\if1\pgfplots@loc@TMPa
+				\pgfplots@log3{Activating partial LUA backend for visualization of plot \plotnum.}%
+			\else
 				\pgfplots@LUA@backend@supportedfalse
 			\fi
 		\fi
