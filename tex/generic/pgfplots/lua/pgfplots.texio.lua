@@ -1,3 +1,7 @@
+-- This file has dependencies to BOTH, the TeX part of pgfplots and the LUA part.
+-- It is the only LUA component with this property.
+--
+-- Its purpose is to encapsulate the communication between TeX and LUA in a central LUA file
 
 local pgfplotsmath = pgfplots.pgfplotsmath
 local io=io
@@ -18,7 +22,7 @@ end
 
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
 function texVisualizationInit(plotNum)
-    local currentPlotHandler = gca.plothandlers[plotNum]
+    local currentPlotHandler = gca.plothandlers[plotNum+1]
     gca.currentPlotHandler = currentPlotHandler; 
     if currentPlotHandler then
         currentPlotHandler:visualizationPhaseInit();

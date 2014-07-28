@@ -18,6 +18,7 @@ local error=error
 local table=table
 
 do
+-- all globals will be read from/defined in pgfplots:
 local _ENV = pgfplots
 -----------------------------------
 
