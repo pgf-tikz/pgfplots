@@ -103,6 +103,7 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
         error("arguments must not be nil")
     end
     self.axis = axis
+    self.config = PlothandlerConfig()
     self.name = name
     self.coordindex = 0
     self.metamin = math.huge
@@ -112,6 +113,8 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
     self.coords = {}
     self.pointmetainputhandler = pointmetainputhandler
     self.pointmetamap = nil -- will be set later
+    self.filteredCoordsAway = false
+    self.plotHasJumps = false
     return self
 end
 
@@ -211,14 +214,14 @@ end
 function Plothandler:visualizationPhaseInit()
     local rangeMin
     local rangeMax
-    if self.axis.config.pointmetarel == PointMetaRel.axiswide then
+    if self.config.pointmetarel == PointMetaRel.axiswide then
         rangeMin = self.axis.axiswidemetamin
         rangeMax = self.axis.axiswidemetamax
     else
         rangeMin = self.metamin
         rangeMax = self.metamax
     end
-    self.pointmetamap = PointMetaMap(rangeMin, rangeMax, self.axis.config.warnForfilterDiscards)
+    self.pointmetamap = PointMetaMap(rangeMin, rangeMax, self.config.warnForfilterDiscards)
 end
 
 -- PRECONDITION: visualizationPhaseInit() has been called some time before.
@@ -299,11 +302,10 @@ UnboundedCoords = { discard=0, jump=1 }
 PointMetaRel = { axiswide = 0, perplot =1 }
 
 
--- contains static axis configuration entities.
-AxisConfig = newClass()
+-- contains static configuration entities.
+PlothandlerConfig = newClass()
 
-function AxisConfig:constructor()
-    -- FIXME : it seems as if this is actually a config of the plot handler!?
+function PlothandlerConfig:constructor()
     self.unboundedCoords = UnboundedCoords.discard
     self.warnForfilterDiscards=true
     self.pointmetarel = PointMetaRel.axiswide
@@ -400,8 +402,6 @@ Axis = newClass()
 
 function Axis:constructor()
     self.is3d = false
-    self.config = AxisConfig()
-    self.filteredCoordsAway = false
     self.clipLimits = true
     self.autocomputeAllLimits = true -- FIXME : redundant!?
     self.autocomputeMin = { true, true, true }
@@ -413,8 +413,6 @@ function Axis:constructor()
     self.datamax = { -math.huge, -math.huge, -math.huge }
     self.axiswidemetamin = { math.huge, math.huge }
     self.axiswidemetamax = { -math.huge, -math.huge }
-    -- FIXME : move this to the plot handler
-    self.plotHasJumps = false
     -- will be populated by the TeX code:
     self.plothandlers = {}
     return self
@@ -591,9 +589,9 @@ function Axis:datapointsurveyed(pt, plothandler)
         plothandler:addSurveyedPoint(serialized)
     else
         -- COORDINATE HAS BEEN FILTERED AWAY
-        if self.config.unboundedCoords == UnboundedCoords.discard then
-            self.filteredCoordsAway = true
-            if self.config.warnForfilterDiscards then
+        if plothandler.config.unboundedCoords == UnboundedCoords.discard then
+            plothandler.filteredCoordsAway = true
+            if plothandler.config.warnForfilterDiscards then
                 local reason
                 if pt.unboundedDir == nil then
                     reason = "of a coordinate filter."
@@ -602,15 +600,15 @@ function Axis:datapointsurveyed(pt, plothandler)
                 end
                 io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
             end
-        elseif self.config.unboundedCoords == UnboundedCoords.jump then
+        elseif plothandler.config.unboundedCoords == UnboundedCoords.jump then
             if pt.unboundedDir == nil then
-                self.filteredCoordsAway = true
-                if self.config.warnForfilterDiscards then
+                plothandler.filteredCoordsAway = true
+                if plothandler.config.warnForfilterDiscards then
                     local reason = "of a coordinate filter."
                     io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
                 end
             else
-                self.plotHasJumps = true
+                plothandler.plotHasJumps = true
 
                 local serialized = self:addVisualizationDependencies(pt)
                 plothandler:addSurveyedPoint(serialized)
@@ -634,8 +632,8 @@ function Axis:surveyToPgfplots(plothandler, includeCoords)
     local lastCoord = plothandler.coords[#plothandler.coords]
     local hasJumps
     local filteredCoordsAway
-    if self.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
-    if self.filteredCoordsAway then filteredCoordsAway = 1 else filteredCoordsAway = 0 end
+    if plothandler.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
+    if plothandler.filteredCoordsAway then filteredCoordsAway = 1 else filteredCoordsAway = 0 end
 
     local result = 
         "@xmin=" .. pgfplotsmath.toTeXstring(self.min[1]) .. "," ..
