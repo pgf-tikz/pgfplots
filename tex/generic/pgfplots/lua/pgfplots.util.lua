@@ -119,7 +119,7 @@ end
 --      self.im = 0
 -- end
 --
--- instance = complexclass()
+-- instance = complexclass.new()
 --
 function newClass()
     local result = {}
@@ -127,13 +127,12 @@ function newClass()
 	-- we need this such that *instances* (which will have 'result' as meta table)
 	-- will "inherit" the class'es methods.
     result.__index = result
-    local allocator= function (class, ...)
-		-- class == result in all cases
+    local allocator= function (...)
         local self = setmetatable({}, result)
         self:constructor(...)
         return self
     end
-    setmetatable(result, { __call = allocator })
+	result.new = allocator
     return result
 end
 
@@ -153,9 +152,9 @@ end
 -- 		base.constructor(self)
 -- 	end
 --
--- 	instance = base()
+-- 	instance = base.new()
 --
--- 	instance2 = sub()
+-- 	instance2 = sub.new()
 --
 -- @see newClass
 function newClassExtents( baseClass )
@@ -170,7 +169,7 @@ function newClassExtents( baseClass )
     -- be exposed to the sub-class, and that the sub-class can override
     -- any of these methods.
     --
-    local mt = getmetatable(new_class)
+    local mt = {} -- getmetatable(new_class)
     mt.__index = baseClass
     setmetatable(new_class,mt)
 

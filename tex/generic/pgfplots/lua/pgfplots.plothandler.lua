@@ -67,7 +67,7 @@ PointMetaMap = newClass()
 
 function PointMetaMap:constructor(inMin,inMax, warnForfilterDiscards)
     if not inMin or not inMax or not warnForfilterDiscards then error("arguments must not be nil") end
-    self._mapper = LinearMap(inMin,inMax, 0, 1000)
+    self._mapper = LinearMap.new(inMin,inMax, 0, 1000)
     self.warnForfilterDiscards = warnForfilterDiscards
 end
 
@@ -102,7 +102,7 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
         error("arguments must not be nil")
     end
     self.axis = axis
-    self.config = PlothandlerConfig()
+    self.config = PlothandlerConfig.new()
     self.name = name
     self.coordindex = 0
     self.metamin = math.huge
@@ -221,7 +221,7 @@ function Plothandler:visualizationPhaseInit()
         rangeMin = self.metamin
         rangeMax = self.metamax
     end
-    self.pointmetamap = PointMetaMap(rangeMin, rangeMax, self.config.warnForfilterDiscards)
+    self.pointmetamap = PointMetaMap.new(rangeMin, rangeMax, self.config.warnForfilterDiscards)
 end
 
 -- PRECONDITION: visualizationPhaseInit() has been called some time before.
@@ -380,9 +380,9 @@ function CoordAssignmentPointMetaHandler:assign(pt)
     pt.meta = pgfplotsmath.tonumber(pt.x[self.dir])
 end
 
-XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(1)
-YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(2)
-ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler(3)
+XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(1)
+YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(2)
+ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(3)
 
 -- A class of PointMetaHandler which takes the 'Coord.meta' as input
 ExplicitPointMetaHandler = newClassExtents( PointMetaHandler )
@@ -465,9 +465,9 @@ function Axis:parsecoordinate(pt)
         self.is3d = true
     end
     
-    local result = Coord()
+    local result = Coord.new()
     
-    local unfiltered = Coord()
+    local unfiltered = Coord.new()
     unfiltered.x = {}
     unfiltered.meta = pt.meta
     for i = 1,3,1 do
