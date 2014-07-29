@@ -84,7 +84,8 @@
 	\endpgfplotscolornormalizesequence%
 	\expandafter\let\csname\pgfplots@createcolormap@name @colspace\endcsname=\pgfplotsretval
 	\expandafter\let\csname\pgfplots@createcolormap@name @col@comps\endcsname=\pgfplotsretvalb
-%\pgfplots@colormap@showdebuginfofor{#1}%
+\pgfplots@colormap@showdebuginfofor{#1}%
+	\pgfplots@colormap@LUA@new{#1}%
 }
 
 
@@ -345,6 +346,23 @@
 	\fi
 }%
 
+\def\pgfplots@colormap@LUA@new#1{%
+	\ifpgfplots@LUA@supported
+		\pgfplotscolormapserializecomponentstomacro{#1}\pgfplots@loc@TMPa
+		\directlua{%
+			local colorspace =^^J%
+				pgfplots.\csname pgfpl@cm@#1@colspace\endcsname;^^J%
+			if colorspace then^^J%
+				pgfplots.ColorMaps["#1"] = pgfplots.ColorMap.new(^^J%
+					\csname pgfpl@cm@#1@h\endcsname,^^J%
+					colorspace,^^J%
+					{ \pgfplots@loc@TMPa });^^J%
+			else^^J%
+				io.write("There is no LUA colorspace for '\csname pgfpl@cm@#1@colspace\endcsname' - skipping LUA color map definition of #1\string\n");^^J%
+			end^^J%
+		}%
+	\fi
+}%
 % Shows debug info about colormap #1 into the console.
 \def\pgfplots@colormap@showdebuginfofor#1{%
 	\message{Debug info for color map '#1':^^J}%
@@ -604,6 +622,30 @@
 	}%
 }%
 \def\pgfplotscolormapfind@precomputed[#1:#2][#3]#4#5{%
+	\ifpgfplots@LUA@supported
+		\edef\pgfmathresult{%
+			\directlua{%
+				pgfplots.texColorMapPrecomputed("#5", #1,#2,#4)
+			}%
+		}%
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfplotscolormapfind@precomputed@warn@LUA{#5}%
+			\pgfplotscolormapfind@precomputed@[#1:#2][#3]{#4}{#5}%
+		\else
+			%\message{LUA colormapfind[#1:#2](#4)(#5) = \pgfmathresult^^J}%
+		\fi
+	\else
+		\pgfplotscolormapfind@precomputed@[#1:#2][#3]{#4}{#5}%
+	\fi
+}
+
+\def\pgfplotscolormapfind@precomputed@warn@LUA#1{%
+	\expandafter\ifx\csname pgfplotscolormapfind@precomputed@warn@LUA@#1\endcsname\relax
+		\pgfplotswarning{lua colormap unavailable}{#1}\pgfeov%
+		\expandafter\gdef\csname pgfplotscolormapfind@precomputed@warn@LUA@#1\endcsname{1}%
+	\fi
+}%
+\def\pgfplotscolormapfind@precomputed@[#1:#2][#3]#4#5{%
 	\pgfplotscolormapassertexists{#5}%
 	\begingroup
 	% Step 0: compute #3 if it is missing and write it into

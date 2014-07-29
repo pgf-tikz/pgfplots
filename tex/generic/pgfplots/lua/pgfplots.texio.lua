@@ -9,6 +9,7 @@ local tex=tex
 local tostring=tostring
 local error=error
 local table=table
+local pairs=pairs
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -70,4 +71,22 @@ function texApplyZBufferReverseStream()
     
     tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
+
+function texColorMapPrecomputed(mapName, inMin, inMax, x)
+	local colormap = ColorMaps[mapName];
+	if colormap then
+		local result = colormap:findPrecomputed(
+			pgfplotsmath.tonumber(inMin),
+			pgfplotsmath.tonumber(inMax),
+			pgfplotsmath.tonumber(x))
+
+		local str = ""
+		for i = 1,#result do
+			if i>1 then str = str .. "," end
+			str = str .. tostring(result[i])
+		end
+		tex.print(str)
+	end
+end
+
 end
