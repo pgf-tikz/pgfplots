@@ -66,7 +66,7 @@ function pgfplotsmath.tonumber(x)
                 result = -pgfplotsmath.infty
             end
         else
-            local lower = x:tolower()
+            local lower = x:lower()
             if lower == 'nan' then 
                 result = pgfplotsmath.nan
             elseif lower == 'inf' or lower == 'infty' then 

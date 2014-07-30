@@ -12,6 +12,19 @@
 
 local pgfluamathfunctions = pgfluamathfunctions or {}
 
+pgfluamathfunctions.stringToFunctionMap = {}
+
+local newFunctionAllocatedCallback = function(table,key,value)
+	if type(value) == 'function' then
+		-- remember it, and strip PGF suffix (i.e. remember 'not' instead of 'notPGF')
+		local keyName = tostring(key):gsub("PGF","")
+		pgfluamathfunctions.stringToFunctionMap[keyName] = value
+	end
+	rawset(table,key,value)
+end
+
+setmetatable(pgfluamathfunctions, { __newindex = newFunctionAllocatedCallback })
+
 local mathabs, mathacos, mathasin = math.abs, math.acos, math.asin
 local mathatan, mathatan2, mathceil = math.atan, math.atan2, math.ceil
 local mathcos, mathcosh, mathdeg = math.cos, math.cosh, math.deg
@@ -268,30 +281,37 @@ end
 function pgfluamathfunctions.Sin(x)
    return mathsin(mathrad(x))
 end
+pgfluamathfunctions.sin=pgfluamathfunctions.Sin
 
 function pgfluamathfunctions.Cos(x)
    return mathcos(mathrad(x))
 end
+pgfluamathfunctions.cos=pgfluamathfunctions.Cos
 
 function pgfluamathfunctions.Tan(x)
    return mathtan(mathrad(x))
 end
+pgfluamathfunctions.tan=pgfluamathfunctions.Tan
 
 function pgfluamathfunctions.aSin(x)
    return mathdeg(mathasin(x))
 end
+pgfluamathfunctions.asin=pgfluamathfunctions.aSin
 
 function pgfluamathfunctions.aCos(x)
    return mathdeg(mathacos(x))
 end
+pgfluamathfunctions.acos=pgfluamathfunctions.aCos
 
 function pgfluamathfunctions.aTan(x)
    return mathdeg(mathatan(x))
 end
+pgfluamathfunctions.atan=pgfluamathfunctions.aTan
 
 function pgfluamathfunctions.aTan2(y,x)
    return mathdeg(mathatan2(y,x))
 end
+pgfluamathfunctions.atan2=pgfluamathfunctions.aTan2
 
 function pgfluamathfunctions.pointnormalised (pgfx, pgfy)
    local pgfx_normalised, pgfy_normalised
@@ -310,4 +330,7 @@ function pgfluamathfunctions.pointnormalised (pgfx, pgfy)
    return nil
 end
 
+for k,v in pairs(pgfluamathfunctions.stringToFunctionMap) do
+	print(" Key = " .. k .. " value = " .. tostring(v) )
+end
 return pgfluamathfunctions

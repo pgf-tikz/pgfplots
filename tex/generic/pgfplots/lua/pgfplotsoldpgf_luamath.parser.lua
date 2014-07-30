@@ -11,7 +11,7 @@
 
 local pgfluamathparser = pgfluamathparser or {}
 
-require("pgfplotsoldpgf_luamath.functions")
+pgfluamathfunctions = require("pgfplotsoldpgf_luamath.functions")
 
 -- lpeg is always present in luatex
 local lpeg = require("lpeg")
@@ -27,29 +27,35 @@ local exponent_pattern = S("eE")
 
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
-local integer_pattern = P("-")^-1 * positive_integer_pattern
+local integer_pattern = S("+-")^-1 * positive_integer_pattern 
 -- Valid positive decimals are |xxx.xxx|, |.xxx| and |xxx.|
-local positive_decimal_pattern = (one_digit_pattern^1 * P(".") * 
-                                  one_digit_pattern^1) + 
+local positive_decimal_pattern = (one_digit_pattern^1 * P(".") * one_digit_pattern^1) + 
                                  (P(".") * one_digit_pattern^1) +
-			         (one_digit_pattern^1 * P("."))
-local decimal_pattern = P("-")^-1 * positive_decimal_pattern
-local float_pattern = decimal_pattern * exponent_pattern * integer_pattern
-local number_pattern = float_pattern + decimal_pattern + integer_pattern
+								 (one_digit_pattern^1 * P("."))
+local decimal_pattern = S("+-")^-1 * positive_decimal_pattern
+local integer_or_decimal_pattern = decimal_pattern + integer_pattern
+local positive_integer_or_decimal_pattern = positive_decimal_pattern + positive_integer_pattern
+local float_pattern = integer_or_decimal_pattern * exponent_pattern * integer_pattern
+local fpu_pattern = R"15" * P"Y" * positive_integer_or_decimal_pattern * P"e" * P("-")^-1 * R("09")^1 * P"]"
+local unbounded_pattern = P"inf" + P"INF" + P"nan" + P"NaN" + P"Inf"
+local number_pattern = unbounded_pattern*space_pattern + fpu_pattern*space_pattern + float_pattern*space_pattern + decimal_pattern*space_pattern + integer_pattern*space_pattern
 
 local at_pattern = P("@")
 
 local underscore_pattern = P("_")
 
+local exponent_pattern = P"^"
+
 local lower_letter_pattern = R("az")
 local upper_letter_pattern = R("AZ")
-local letter_pattern = lower_letter_pattern + upper_letter_pattern
-local alphanum_pattern = letter_pattern + one_digit_pattern
-local alphanum__pattern = alphanum_pattern + underscore_pattern
+local letter_pattern = R("az","AZ")
+local alphanum__pattern = letter_pattern + one_digit_pattern + underscore_pattern
 local alpha__pattern = letter_pattern + underscore_pattern
 
-local openparen_pattern = P("(")
-local closeparen_pattern = P(")")
+local identifier_pattern = letter_pattern^1 * alphanum__pattern^0 
+
+local openparen_pattern = P("(") * space_pattern
+local closeparen_pattern = P(")") * space_pattern
 local opencurlybrace_pattern = P("{")
 local closecurlybrace_pattern = P("}")
 local openbrace_pattern = P("[")
@@ -68,7 +74,103 @@ local factorial_pattern = P("!")
 local not_mark_pattern = P("!")
 local radians_pattern = P("r")
 
-local comma_pattern = P(",")
+local comma_pattern = P(",") * space_pattern
+
+
+----------------
+local Space = lpeg.S(" \n\t")^0
+local TermOp = lpeg.C(lpeg.S("+-")) * Space
+local FactorOp = lpeg.C(lpeg.S("*/")) * Space
+
+-- Grammar
+local Exp, Term, Factor = lpeg.V"Exp", lpeg.V"Term", lpeg.V"Factor"
+
+
+
+function eval (v1, op, v2)
+  if (op == "+") then return v1 + v2
+  elseif (op == "-") then return v1 - v2
+  elseif (op == "*") then return v1 * v2
+  elseif (op == "/") then return v1 / v2
+  else
+	return 42
+  end
+end
+
+function function_eval(name, ... )
+	local f = pgfluamathfunctions.stringToFunctionMap[name]
+	if not f then
+		error("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name ..")")
+	end
+	-- FIXME: validate signature
+	return f(...)
+end
+
+
+local func = 
+       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(C(V("Exp")) * (comma_pattern * C(V("Exp")))^0 )* closeparen_pattern, function_eval);
+
+local functionWithoutArg = identifier_pattern
+
+-- Grammar
+G = P{ "Exp",
+  Exp = Cf(V"Term" * Cg(TermOp * V"Term")^0, eval);
+  Term = Cf(V"Factor" * Cg(FactorOp * V"Factor")^0, eval);
+  Factor = number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
+       + func
+		+ functionWithoutArg / function_eval
+		+ openparen_pattern * V"Exp" * closeparen_pattern;
+}
+
+-- small example
+function parsertest(input, expected)
+	local actual = lpeg.match(G, input)
+
+	local success
+	if not actual or type(actual) ~= "number" or math.abs(actual - expected ) > 1e-7 then
+		io.write("FAILURE for " .. input .. " expected " .. expected .. " but was " .. tostring(actual) .. "\n")
+		success = "FAILURE"
+	else
+		success = "OK"
+	end
+	io.write(input .. " = " .. tostring(actual) .. "  " .. success .. "\n")
+end
+print(" ---------------- TESt\n\n")
+parsertest("1", 1)
+parsertest("-123", -123)
+parsertest("+123", 123)
+parsertest("+1.23", 1.23)
+parsertest("+.123", 0.123)
+parsertest("1.23", 1.23)
+parsertest("1.", 1)
+parsertest("0.123", 0.123)
+parsertest(".123", 0.123)
+parsertest("1e4", 1e4)
+parsertest("1e-4", 1e-4)
+parsertest("1e+4", 1e4)
+parsertest("1Y1.23e4]", 1.23e4)
+parsertest("1.23e-004.", 1.23e-4)
+parsertest("004", 4)
+parsertest("1 + 10", 11)
+parsertest("1 - 10", -9)
+parsertest("(1)", 1)
+parsertest("3 + 5*9 / (1+1) - 12", 13.5)
+parsertest("pi", math.pi)
+parsertest("sin(0)", 0)
+parsertest("sin(90)", 1)
+parsertest("cos(90)", 0)
+parsertest("inf", pgfplots.pgfplotsmath.infty)
+parsertest("INF", pgfplots.pgfplotsmath.infty)
+parsertest("not(100)", 0) -- non-trivial since the function is pgfluamathfunctions.notPGF
+
+do
+	function pgfluamathfunctions.N1(x,m,n)
+		print("got x = " .. tostring(x) .. "," ..tostring(m) .. "," .. tostring(n) .."")
+		return x+m+n
+	end
+	parsertest("N1(1,2,3)", 6)
+end
+
 
 --[[
 local grammar = P {
