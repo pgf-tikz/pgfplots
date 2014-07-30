@@ -145,7 +145,7 @@ end
 -- 	self.variable= 'a'
 -- 	end
 --
--- 	sub = pgfplots.newClassExtents(base)
+-- 	sub = pgfplots.newClassExtends(base)
 -- 	function sub:constructor()
 -- 		-- call super constructor.
 -- 		-- it is ABSOLUTELY CRUCIAL to use <baseclass>.constructor here - not :constructor!
@@ -157,7 +157,7 @@ end
 -- 	instance2 = sub.new()
 --
 -- @see newClass
-function newClassExtents( baseClass )
+function newClassExtends( baseClass )
     if not baseClass then error "baseClass must not be nil" end
 
     local new_class = newClass()

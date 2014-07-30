@@ -96,9 +96,9 @@ Plothandler = newClass()
 
 -- @param name the plot handler's name (a string)
 -- @param axis the parent axis
--- @param pointmetainputhandler an instance of PointMetaHandler
+-- @param pointmetainputhandler an instance of PointMetaHandler or nil if there is none
 function Plothandler:constructor(name, axis, pointmetainputhandler)
-    if not name or not pointmetainputhandler or not axis then
+    if not name or not axis then
         error("arguments must not be nil")
     end
     self.axis = axis
@@ -212,16 +212,18 @@ function Plothandler:serializeCoordToPgfplots(pt)
 end
 
 function Plothandler:visualizationPhaseInit()
-    local rangeMin
-    local rangeMax
-    if self.config.pointmetarel == PointMetaRel.axiswide then
-        rangeMin = self.axis.axiswidemetamin
-        rangeMax = self.axis.axiswidemetamax
-    else
-        rangeMin = self.metamin
-        rangeMax = self.metamax
-    end
-    self.pointmetamap = PointMetaMap.new(rangeMin, rangeMax, self.config.warnForfilterDiscards)
+	if self.pointmetainputhandler ~=nil then
+		local rangeMin
+		local rangeMax
+		if self.config.pointmetarel == PointMetaRel.axiswide then
+			rangeMin = self.axis.axiswidemetamin
+			rangeMax = self.axis.axiswidemetamax
+		else
+			rangeMin = self.metamin
+			rangeMax = self.metamax
+		end
+		self.pointmetamap = PointMetaMap.new(rangeMin, rangeMax, self.config.warnForfilterDiscards)
+	end
 end
 
 -- PRECONDITION: visualizationPhaseInit() has been called some time before.
@@ -235,8 +237,19 @@ function Plothandler:visualizationTransformMeta(meta)
 end
 
 -------------------------------------------------------
+-- Generic plot handler: one which has the default survey phase
+-- It is actually the same as Plothandler...
+
+GenericPlothandler = newClassExtends(Plothandler)
+
+function GenericPlothandler:constructor(name, axis, pointmetainputhandler)
+    Plothandler.constructor(self,name, axis, pointmetainputhandler)
+end
+
+
+-------------------------------------------------------
 -- Replicates \pgfplotsplothandlermesh (to some extend)
-MeshPlothandler = newClassExtents(Plothandler)
+MeshPlothandler = newClassExtends(Plothandler)
 
 function MeshPlothandler:constructor(axis, pointmetainputhandler)
     Plothandler.constructor(self,"mesh", axis, pointmetainputhandler)
@@ -368,7 +381,7 @@ end
 
 
 -- A PointMetaHandler which merely acquires values of either x,y, or z.
-CoordAssignmentPointMetaHandler = newClassExtents( PointMetaHandler )
+CoordAssignmentPointMetaHandler = newClassExtends( PointMetaHandler )
 function CoordAssignmentPointMetaHandler:constructor(dir)
     PointMetaHandler.constructor(self, false,false)
     if not dir then error "nil argument for 'dir' is unsupported." end
@@ -385,7 +398,7 @@ YcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(2)
 ZcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(3)
 
 -- A class of PointMetaHandler which takes the 'Coord.meta' as input
-ExplicitPointMetaHandler = newClassExtents( PointMetaHandler )
+ExplicitPointMetaHandler = newClassExtends( PointMetaHandler )
 function ExplicitPointMetaHandler:constructor()
     PointMetaHandler.constructor(self, false,true)
 end
