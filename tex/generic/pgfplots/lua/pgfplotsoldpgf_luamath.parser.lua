@@ -101,10 +101,14 @@ local function eval (v1, op, v2)
   end
 end
 
+function pgfluamathparser.callbackError(msg)
+	error(msg)
+end
+
 local function function_eval(name, ... )
 	local f = pgfluamathfunctions.stringToFunctionMap[name]
 	if not f then
-		error("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name ..")")
+		pgfluamathparser.callbackError("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name ..")")
 	end
 	-- FIXME: validate signature
 	return f(...)
@@ -154,7 +158,7 @@ local factorial_operator_pattern = ( Cg(Factor) * P"!" * space_pattern) / factor
 local initialRule = V"initial"
 
 -- Grammar
-G = P{ "initialRule",
+local G = P{ "initialRule",
   initialRule = Exp * -1;
   Exp = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
@@ -169,10 +173,19 @@ G = P{ "initialRule",
 	;
 }
 
+-- This is the (only fully functional) math parser function in this module.
+-- FIXME: cleanup the rest
+--
+-- @param str a string like "1+1" which is accepted by the PGF math language
+-- @return either nil if the string is illegal or the resulting number (or string)
+function pgfluamathparser.pgfmathparse(str)
+	return lpeg.match(G,str)
+end
+
 -- small example
 local num_errors = 0
 function parsertest(input, expected)
-	local actual = lpeg.match(G, input)
+	local actual = pgfluamathparser.pgfmathparse(input)
 
 	local success
 	if not actual or type(actual) ~= "number" or math.abs(actual - expected ) > 1e-7 then
