@@ -151,8 +151,11 @@ local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Prefix) ) / neg_e
 
 local factorial_operator_pattern = ( Cg(Factor) * P"!" * space_pattern) / factorial_eval
 
+local initialRule = V"initial"
+
 -- Grammar
-G = P{ "Exp",
+G = P{ "initialRule",
+  initialRule = Exp * -1;
   Exp = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
   Prefix = neg_prefix_operator_pattern + Postfix;
@@ -195,7 +198,7 @@ parsertest("1e4", 1e4)
 parsertest("1e-4", 1e-4)
 parsertest("1e+4", 1e4)
 parsertest("1Y1.23e4]", 1.23e4)
-parsertest("1.23e-004.", 1.23e-4)
+parsertest("1.23e-004", 1.23e-4)
 parsertest("004", 4)
 parsertest("1 + 10", 11)
 parsertest("1 - 10", -9)
