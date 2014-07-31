@@ -246,6 +246,38 @@ parsertest("-x + 4", 0)
 parsertest("-x * 4", -16)
 parsertest("-x * - 4", 16)
 
+if false then
+parsertest("360r", 2*math.pi)
+parsertest("360 r", 2*math.pi)
+parsertest("sin(360 r)", 0)
+parsertest("90r + 90r", math.pi)
+parsertest("1 ? 42 : 0", 42)
+parsertest("1 + 1 ? 42 : 0", nil) -- ??
+parsertest("1 + (1 ? 42 : 0)", 43)
+parsertest("43 == 43", 1)
+parsertest("43 == 42", 0)
+parsertest("43 != 43", 0)
+parsertest("43 != 42", 1)
+parsertest("43 > 42", 1)
+parsertest("43 > 44", 0)
+parsertest("43 < 42", 0)
+parsertest("43 < 44", 1)
+-- <=
+-- >=
+-- !
+-- &&
+-- ||
+-- arrays created via '{}' and indexed with '[]'
+-- strings with "<str>"
+-- units
+-- 'scalar' function
+-- trig format
+-- hex/octal/binary input
+-- tex registers 
+-- What happens for undefined functions!? --> return nil and let TeX invoke its parser (no warning!?)
+-- width/height/depth
+end
+
 if num_errors>0 then 
 	error("Has " .. num_errors .." FAILURES") 
 else
