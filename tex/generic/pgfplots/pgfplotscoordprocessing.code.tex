@@ -5182,6 +5182,10 @@
 		\pgfmathparse{#1}%
 		\let\pgfplots@current@point@x=\pgfmathresult
 	}%
+	\def\pgfplots@addplotimpl@expression@prepare@y{%
+		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
+		\let\pgfplots@current@point@y=\pgfmathresult
+	}%
 	\def\pgfplots@addplotimpl@expression@hasuniform@x{0}%
 	\def\pgfplots@loc@TMPa{#1}%
 	% do we have '\x' as x coordinate?
@@ -5189,7 +5193,7 @@
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 		\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
 	\else
-		\def\pgfplots@loc@TMPb{x}%
+		\edef\pgfplots@loc@TMPb{\pgfplots@plot@var@nonmacro}%
 		% do we have 'x' as x coordinate?
 		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
 			\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
@@ -5334,14 +5338,91 @@
 		\fi
 		\expandafter\def\pgfplots@plot@var@y{0}%
 		\def\pgfplots@addplotimpl@expression@yEXPR{#2}%
+		\def\pgfplots@addplotimpl@expression@zEXPR{}%
 		\def\pgfplots@current@point@z{}%
 	\fi
 	%
+	\ifpgfplots@LUA@backend@supported
+		\ifpgfplotsplothandlermesh@patch@type@sampling
+			\pgfplots@LUA@backend@supportedfalse
+		\fi
+	\fi
+	%
+	\edef\pgfplots@loc@TMPb{\pgfplots@plot@var@y@nonmacro}%
+	% do we have 'y' as y coordinate?
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\def\pgfplots@addplotimpl@expression@prepare@y{%
+			\edef\pgfplots@current@point@y{\pgfplots@plot@var@y}%
+		}%
+	\fi
+
 	% START:
 	%  (NOTE: this does also define 'x', 'y', and 'z' math
 	%  expressions!)
 	\pgfplots@coord@stream@start
 	%
+	\ifpgfplots@LUA@backend@supported
+		\pgfplots@log3{luabackend=true: Activating LUA version of plot expression for plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername').}%
+		\expandafter\def\tikz@plot@var{\pgfplots@plot@var@nonmacro}%
+		\expandafter\def\pgfplots@plot@var@y{\pgfplots@plot@var@y@nonmacro}%
+		\expandafter\pgfplots@parse@domain\pgfplots@plot@domain\relax{pgfplots@plot@domain}%
+		%
+		\pgfmathparse{\pgfplots@plot@samples}%
+		\let\pgfplots@plot@samples=\pgfmathresult
+		%
+		\if0\b@pgfplots@should@sample@LINE
+			\expandafter\pgfplots@parse@domain\pgfplots@plot@ydomain\relax{pgfplots@plot@ydomain}%
+			\pgfmathparse{\pgfplots@plot@samples@y}%
+			\let\pgfplots@plot@samples@y=\pgfmathresult
+		\else
+			\def\pgfplots@plot@ydomain@min{0}%
+			\def\pgfplots@plot@ydomain@max{0}%
+			\def\pgfplots@plot@samples@y{1}%
+		\fi
+		%
+		% FIXME : there are some cases in which this here might be a
+		% bad idea:
+		% - if someone has redefined math functions on TeX
+		% - if someone has defined his own math functions (only in
+		%   TeX)
+		% - if a plot expression contains directlua -- the expansion will play
+		%   funny tricks in this case
+		\edef\pgfplotsretval{%
+			% FIXME : MASK '"" in input!
+			\directlua{%
+				pgfplots.texAddplotExpressionCoordinateGenerator(^^J%
+					\ifpgfplots@curplot@threedim true \else false\fi,^^J%
+					"#1", ^^J%
+					"\pgfplots@addplotimpl@expression@yEXPR",^^J%
+					"\pgfplots@addplotimpl@expression@zEXPR",^^J%
+					\b@pgfplots@should@sample@LINE,^^J%
+					"\pgfplots@plot@domain@min", "\pgfplots@plot@domain@max",^^J%
+					"\pgfplots@plot@ydomain@min", "\pgfplots@plot@ydomain@max",^^J%
+					"\pgfplots@plot@samples",^^J%
+					"\pgfplots@plot@samples@y",^^J%
+					"\pgfplots@plot@var@nonmacro",^^J%
+					"\pgfplots@plot@var@y@nonmacro")^^J%
+			}%
+		}%
+		\if0\pgfplotsretval
+			\pgfplots@log3{luabackend=true: LUA version of plot expression failed. Using TeX version. (plot \the\pgfplots@numplots).}%
+			\pgfplots@addplotimpl@expression@streamall
+		\else
+		\fi
+	\else
+		\pgfplots@addplotimpl@expression@streamall
+	\fi
+	%
+	\pgfplots@coord@stream@end
+}%
+
+\def\pgfplots@parse@domain#1:#2\relax#3{%
+	\pgfmathparse{#1}%
+	\expandafter\let\csname #3@min\endcsname=\pgfmathresult%
+	\pgfmathparse{#2}%
+	\expandafter\let\csname #3@max\endcsname=\pgfmathresult%
+}%
+\def\pgfplots@addplotimpl@expression@streamall{%
 	% create a backup of the 'x' and 'y' math expressions which 
 	% have been defined in \pgfplots@coord@stream@start:
 	\let\pgfplots@addplotimpl@expression@pseudoconst@old@x=\pgfmathx@
@@ -5382,8 +5463,7 @@
 		\let\pgfmathy@=\pgfplots@addplotimpl@expression@pseudoconst@y
 		% eval expressions:
 		\pgfplots@addplotimpl@expression@prepare@x%
-		\pgfmathparse{\pgfplots@addplotimpl@expression@yEXPR}%
-		\let\pgfplots@current@point@y=\pgfmathresult
+		\pgfplots@addplotimpl@expression@prepare@y%
 		\ifpgfplots@curplot@threedim
 			\pgfmathparse{\pgfplots@addplotimpl@expression@zEXPR}%
 			\let\pgfplots@current@point@z=\pgfmathresult
@@ -5397,8 +5477,7 @@
 		% process coords as usual:
 		\pgfplots@coord@stream@coord
 	}%
-	\pgfplots@coord@stream@end
-}%
+}
 
 % Typically, the FPU will generate stuff like '1Y1.0e5'. Since such
 % internal representations will be available to API users (especially

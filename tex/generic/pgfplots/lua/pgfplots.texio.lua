@@ -89,4 +89,57 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 	end
 end
 
+-- generates TeX output '1' on success and '0' on failure
+function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, sampleLine, domainxmin, domainxmax, domainymin, domainymax, samplesx, samplesy, variablex, variabley)
+	local plothandler = gca.currentPlotHandler
+	local coordoutputstream = SurveyCoordOutputStream.new(plothandler)
+	
+	local domainxmin = pgfplotsmath.tonumber(domainxmin)
+	local domainxmax = pgfplotsmath.tonumber(domainxmax)
+	local samplesx = pgfplotsmath.tonumber(samplesx)
+
+	local expressions
+	local domainMin
+	local domainMax
+	local samples
+	local variableNames
+
+	-- allow both, even if sampleLine=1. We may want to assign a dummy value to y.
+	variableNames = { variablex, variabley }
+
+	if sampleLine==1 then
+		domainMin = { domainxmin }
+		domainMax = { domainxmax }
+		samples = { samplesx }
+	else
+		local domainymin = pgfplotsmath.tonumber(domainymin)
+		local domainymax = pgfplotsmath.tonumber(domainymax)
+		local samplesy = pgfplotsmath.tonumber(samplesy)
+
+		domainMin = { domainxmin, domainymin }
+		domainMax = { domainxmax, domainymax }
+		samples = { samplesx, samplesy }
+	end
+	if is3d then
+		expressions = {xExpr, yExpr, zExpr}
+	else
+		expressions = {xExpr, yExpr}
+	end
+
+	local generator = AddplotExpressionCoordinateGenerator.new(
+		coordoutputstream, 
+		expressions,
+		domainMin, domainMax,
+		samples,
+		variableNames)
+	
+	local success = generator:generateCoords()
+
+	if success then
+		tex.print("1")
+	else
+		tex.print("0")
+	end
+end
+
 end

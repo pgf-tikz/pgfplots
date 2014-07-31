@@ -1,12 +1,15 @@
 
-require("pgfplots.binary.lua")
+require("pgfplots.binary")
 
 -- all classes/globals will be added to this table:
 pgfplots = {}
-require("pgfplots.util.lua")
+require("pgfplots.util")
+pgfplots.pgfluamathparser = require("pgfplotsoldpgf_luamath.parser")
+pgfplots.pgfluamathfunctions = require("pgfplotsoldpgf_luamath.functions")
 
-require("pgfplots.plothandler.lua")
-require("pgfplots.colormap.lua")
+require("pgfplots.plothandler")
+require("pgfplots.colormap")
+require("pgfplots.streamer")
 
 -- hm. perhaps this here should become a separate module:
-require("pgfplots.texio.lua")
+require("pgfplots.texio")
