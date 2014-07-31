@@ -24,6 +24,7 @@ local V = lpeg.V
 local space_pattern = S(" \n\r\t")^0
 
 local exponent_pattern = S("eE")
+local pow_operator = P"^"
 
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
@@ -87,7 +88,7 @@ local Exp, Term, Factor = lpeg.V"Exp", lpeg.V"Term", lpeg.V"Factor"
 
 
 
-function eval (v1, op, v2)
+local function eval (v1, op, v2)
   if (op == "+") then return v1 + v2
   elseif (op == "-") then return v1 - v2
   elseif (op == "*") then return v1 * v2
@@ -97,7 +98,7 @@ function eval (v1, op, v2)
   end
 end
 
-function function_eval(name, ... )
+local function function_eval(name, ... )
 	local f = pgfluamathfunctions.stringToFunctionMap[name]
 	if not f then
 		error("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name ..")")
@@ -106,19 +107,45 @@ function function_eval(name, ... )
 	return f(...)
 end
 
+local function pow_eval(base, exponent)
+	return pgfluamathfunctions.pow(base,exponent)
+end
 
 local func = 
-       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(C(V("Exp")) * (comma_pattern * C(V("Exp")))^0 )* closeparen_pattern, function_eval);
+       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(V("Exp") * (comma_pattern * V("Exp"))^0 )* closeparen_pattern, function_eval);
 
-local functionWithoutArg = identifier_pattern
+local functionWithoutArg = identifier_pattern / function_eval
+
+-- this is what can occur as exponent after '^'.
+-- I have the impression that the priorities could be implemented in a better way than this... but it seems to work.
+local pow_exponent = 
+				-- allows 2^-4,  2^1e4, 2^2
+				Cg(C(integer_or_decimal_pattern) 
+				-- 2^pi, 2^multiply(2,2)
+				+ Cg(func+functionWithoutArg)
+				-- 2^(2+2)
+				+ openparen_pattern * V"Exp" * closeparen_pattern )
+
+-- a pattern of sorts 2^2 .
+local pow_pattern = 
+			-- 2^2, 2^pi, 1.23^3
+			Cf( C(positive_integer_or_decimal_pattern) * pow_operator * pow_exponent, pow_eval)
+			-- (2+2)^2
+			+ Cf( openparen_pattern * V"Exp" * closeparen_pattern * pow_operator * pow_exponent, pow_eval)
+			-- pi^2, sin(90)^2
+			+ Cf( Cg(func+functionWithoutArg) * pow_operator * pow_exponent, pow_eval )
+			
+
 
 -- Grammar
 G = P{ "Exp",
   Exp = Cf(V"Term" * Cg(TermOp * V"Term")^0, eval);
   Term = Cf(V"Factor" * Cg(FactorOp * V"Factor")^0, eval);
-  Factor = number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
-       + func
-		+ functionWithoutArg / function_eval
+  Factor = 
+		 pow_pattern
+		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
+        + func
+		+ functionWithoutArg
 		+ openparen_pattern * V"Exp" * closeparen_pattern;
 }
 
@@ -159,15 +186,30 @@ parsertest("pi", math.pi)
 parsertest("sin(0)", 0)
 parsertest("sin(90)", 1)
 parsertest("cos(90)", 0)
+parsertest("pow(2,3)", 8)
 parsertest("inf", pgfplots.pgfplotsmath.infty)
 parsertest("INF", pgfplots.pgfplotsmath.infty)
 parsertest("not(100)", 0) -- non-trivial since the function is pgfluamathfunctions.notPGF
+parsertest("2^2", 4)
+parsertest("0-2^2", -4)
+parsertest("-2^2", -4)
+parsertest("pi^2", math.pi*math.pi)
+parsertest("2^2+2", 6)
+parsertest("2^2-1", 3)
+parsertest("2^2*5", 20)
+parsertest("2^(2+2)", 16)
+parsertest("multiply(2,3)^2", 36)
+parsertest("(2+3)^2", 25)
+parsertest("2^add(1,1)", 4)
 
 do
+	function pgfluamathfunctions.x()
+		return 4
+	end
 	function pgfluamathfunctions.N1(x,m,n)
-		print("got x = " .. tostring(x) .. "," ..tostring(m) .. "," .. tostring(n) .."")
 		return x+m+n
 	end
+	parsertest("2^x", 16)
 	parsertest("N1(1,2,3)", 6)
 end
 

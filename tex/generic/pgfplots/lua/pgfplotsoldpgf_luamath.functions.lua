@@ -15,9 +15,11 @@ local pgfluamathfunctions = pgfluamathfunctions or {}
 pgfluamathfunctions.stringToFunctionMap = {}
 
 local newFunctionAllocatedCallback = function(table,key,value)
-	if type(value) == 'function' then
+	local keyName = tostring(key):gsub("PGF","")
+	if not value then
+		stringToFunctionMap[keyName] = nil
+	elseif type(value) == 'function' then
 		-- remember it, and strip PGF suffix (i.e. remember 'not' instead of 'notPGF')
-		local keyName = tostring(key):gsub("PGF","")
 		pgfluamathfunctions.stringToFunctionMap[keyName] = value
 	end
 	rawset(table,key,value)
