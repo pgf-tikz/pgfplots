@@ -28,6 +28,8 @@ local pow_operator = P"^"
 
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
+-- FIXME : it might be a better idea to remove '-' from all number_patterns! Instead, rely on the prefix operator 'neg' to implement negative numbers.
+-- Is that wise? It is certainly less efficient...
 local integer_pattern = S("+-")^-1 * positive_integer_pattern 
 -- Valid positive decimals are |xxx.xxx|, |.xxx| and |xxx.|
 local positive_decimal_pattern = (one_digit_pattern^1 * P(".") * one_digit_pattern^1) + 
@@ -112,7 +114,7 @@ local function pow_eval(base, exponent)
 end
 
 local func = 
-       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(V("Exp") * (comma_pattern * V("Exp"))^0 )* closeparen_pattern, function_eval);
+       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(Exp * (comma_pattern * Exp)^0 )* closeparen_pattern, function_eval);
 
 local functionWithoutArg = identifier_pattern / function_eval
 
@@ -124,32 +126,40 @@ local pow_exponent =
 				-- 2^pi, 2^multiply(2,2)
 				+ Cg(func+functionWithoutArg)
 				-- 2^(2+2)
-				+ openparen_pattern * V"Exp" * closeparen_pattern )
+				+ openparen_pattern * Exp * closeparen_pattern )
 
 -- a pattern of sorts 2^2 .
 local pow_pattern = 
 			-- 2^2, 2^pi, 1.23^3
 			Cf( C(positive_integer_or_decimal_pattern) * pow_operator * pow_exponent, pow_eval)
 			-- (2+2)^2
-			+ Cf( openparen_pattern * V"Exp" * closeparen_pattern * pow_operator * pow_exponent, pow_eval)
+			+ Cf( openparen_pattern * Exp * closeparen_pattern * pow_operator * pow_exponent, pow_eval)
 			-- pi^2, sin(90)^2
 			+ Cf( Cg(func+functionWithoutArg) * pow_operator * pow_exponent, pow_eval )
-			
 
+
+local function neg_eval(x)
+	return pgfluamathfunctions.neg(x)
+end
+
+local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Exp) ) / neg_eval
 
 -- Grammar
 G = P{ "Exp",
-  Exp = Cf(V"Term" * Cg(TermOp * V"Term")^0, eval);
-  Term = Cf(V"Factor" * Cg(FactorOp * V"Factor")^0, eval);
+  Exp = Cf(Term * Cg(TermOp * Term)^0, eval);
+  Term = Cf(Factor * Cg(FactorOp * Factor)^0, eval);
   Factor = 
 		 pow_pattern
+		+ neg_prefix_operator_pattern
 		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
         + func
 		+ functionWithoutArg
-		+ openparen_pattern * V"Exp" * closeparen_pattern;
+		+ openparen_pattern * Exp * closeparen_pattern
+	;
 }
 
 -- small example
+local num_errors = 0
 function parsertest(input, expected)
 	local actual = lpeg.match(G, input)
 
@@ -157,6 +167,7 @@ function parsertest(input, expected)
 	if not actual or type(actual) ~= "number" or math.abs(actual - expected ) > 1e-7 then
 		io.write("FAILURE for " .. input .. " expected " .. expected .. " but was " .. tostring(actual) .. "\n")
 		success = "FAILURE"
+		num_errors = num_errors+1
 	else
 		success = "OK"
 	end
@@ -187,6 +198,8 @@ parsertest("sin(0)", 0)
 parsertest("sin(90)", 1)
 parsertest("cos(90)", 0)
 parsertest("pow(2,3)", 8)
+parsertest("-pow(2,3)", -8)
+parsertest("-pi", -math.pi)
 parsertest("inf", pgfplots.pgfplotsmath.infty)
 parsertest("INF", pgfplots.pgfplotsmath.infty)
 parsertest("not(100)", 0) -- non-trivial since the function is pgfluamathfunctions.notPGF
@@ -210,9 +223,15 @@ do
 		return x+m+n
 	end
 	parsertest("2^x", 16)
+	parsertest("exp(-x^2)", math.exp(-16))
 	parsertest("N1(1,2,3)", 6)
 end
 
+if num_errors>0 then 
+	error("Has " .. num_errors .." FAILURES") 
+else
+	print("All cases PASSED")
+end
 
 --[[
 local grammar = P {
