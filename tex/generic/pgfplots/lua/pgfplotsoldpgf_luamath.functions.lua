@@ -68,7 +68,7 @@ function pgfluamathfunctions.factorial(x)
    if x == 0 then
       return 1
    else
-      return x * factorial(x-1)
+      return x * pgfluamathfunctions.factorial(x-1)
    end
 end
 

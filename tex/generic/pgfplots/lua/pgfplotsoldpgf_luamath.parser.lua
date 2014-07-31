@@ -24,7 +24,7 @@ local V = lpeg.V
 local space_pattern = S(" \n\r\t")^0
 
 local exponent_pattern = S("eE")
-local pow_operator = P"^"
+local pow_operator = P"^" * space_pattern
 
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
@@ -41,7 +41,7 @@ local positive_integer_or_decimal_pattern = positive_decimal_pattern + positive_
 local float_pattern = integer_or_decimal_pattern * exponent_pattern * integer_pattern
 local fpu_pattern = R"15" * P"Y" * positive_integer_or_decimal_pattern * P"e" * P("-")^-1 * R("09")^1 * P"]"
 local unbounded_pattern = P"inf" + P"INF" + P"nan" + P"NaN" + P"Inf"
-local number_pattern = unbounded_pattern*space_pattern + fpu_pattern*space_pattern + float_pattern*space_pattern + decimal_pattern*space_pattern + integer_pattern*space_pattern
+local number_pattern = unbounded_pattern + fpu_pattern + float_pattern + decimal_pattern + integer_pattern
 
 local at_pattern = P("@")
 
@@ -81,12 +81,13 @@ local comma_pattern = P(",") * space_pattern
 
 
 ----------------
-local Space = lpeg.S(" \n\t")^0
-local TermOp = lpeg.C(lpeg.S("+-")) * Space
-local FactorOp = lpeg.C(lpeg.S("*/")) * Space
+local TermOp = lpeg.C(lpeg.S("+-")) * space_pattern
+local FactorOp = lpeg.C(lpeg.S("*/")) * space_pattern
 
 -- Grammar
 local Exp, Term, Factor = lpeg.V"Exp", lpeg.V"Term", lpeg.V"Factor"
+local Prefix = V"Prefix"
+local Postfix = V"Postfix"
 
 
 
@@ -122,39 +123,46 @@ local functionWithoutArg = identifier_pattern / function_eval
 -- I have the impression that the priorities could be implemented in a better way than this... but it seems to work.
 local pow_exponent = 
 				-- allows 2^-4,  2^1e4, 2^2
-				Cg(C(integer_or_decimal_pattern) 
+				Cg(C(integer_or_decimal_pattern) *space_pattern 
 				-- 2^pi, 2^multiply(2,2)
-				+ Cg(func+functionWithoutArg)
+				+ Cg(func+functionWithoutArg) * space_pattern
 				-- 2^(2+2)
 				+ openparen_pattern * Exp * closeparen_pattern )
 
 -- a pattern of sorts 2^2 .
 local pow_pattern = 
 			-- 2^2, 2^pi, 1.23^3
-			Cf( C(positive_integer_or_decimal_pattern) * pow_operator * pow_exponent, pow_eval)
+			Cf( Cg(positive_integer_or_decimal_pattern) * space_pattern * pow_operator * pow_exponent, pow_eval)
 			-- (2+2)^2
 			+ Cf( openparen_pattern * Exp * closeparen_pattern * pow_operator * pow_exponent, pow_eval)
 			-- pi^2, sin(90)^2
-			+ Cf( Cg(func+functionWithoutArg) * pow_operator * pow_exponent, pow_eval )
+			+ Cf( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent, pow_eval )
 
 
 local function neg_eval(x)
 	return pgfluamathfunctions.neg(x)
 end
 
-local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Exp) ) / neg_eval
+local function factorial_eval(x)
+	return pgfluamathfunctions.factorial(x)
+end
+
+local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Prefix) ) / neg_eval
+
+local factorial_operator_pattern = ( Cg(Factor) * P"!" * space_pattern) / factorial_eval
 
 -- Grammar
 G = P{ "Exp",
-  Exp = Cf(Term * Cg(TermOp * Term)^0, eval);
-  Term = Cf(Factor * Cg(FactorOp * Factor)^0, eval);
+  Exp = Cf(Term * Cg(TermOp * Term)^0, eval) ;
+  Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
+  Prefix = neg_prefix_operator_pattern + Postfix;
+  Postfix = factorial_operator_pattern + Factor;
   Factor = 
-		 pow_pattern
-		+ neg_prefix_operator_pattern
+		 (pow_pattern
 		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
         + func
 		+ functionWithoutArg
-		+ openparen_pattern * Exp * closeparen_pattern
+		+ openparen_pattern * Exp * closeparen_pattern) *space_pattern
 	;
 }
 
@@ -209,23 +217,31 @@ parsertest("-2^2", -4)
 parsertest("pi^2", math.pi*math.pi)
 parsertest("2^2+2", 6)
 parsertest("2^2-1", 3)
+parsertest("-1 + 4", 3)
 parsertest("2^2*5", 20)
 parsertest("2^(2+2)", 16)
 parsertest("multiply(2,3)^2", 36)
 parsertest("(2+3)^2", 25)
+parsertest("(2 + 3 ) ^ 2", 25)
 parsertest("2^add(1,1)", 4)
-
-do
-	function pgfluamathfunctions.x()
-		return 4
-	end
-	function pgfluamathfunctions.N1(x,m,n)
-		return x+m+n
-	end
-	parsertest("2^x", 16)
-	parsertest("exp(-x^2)", math.exp(-16))
-	parsertest("N1(1,2,3)", 6)
+parsertest("3!", 6)
+parsertest("1+3!", 7)
+parsertest("2*3!", 12)
+parsertest("3! + 1", 7)
+parsertest("3 !", 6)
+parsertest("3*2+4", 10)
+function pgfluamathfunctions.x()
+	return 4
 end
+function pgfluamathfunctions.N1(x,m,n)
+	return x+m+n
+end
+parsertest("2^x", 16)
+parsertest("exp(-x^2)", math.exp(-16))
+parsertest("N1(1,2,3)", 6)
+parsertest("-x + 4", 0)
+parsertest("-x * 4", -16)
+parsertest("-x * - 4", 16)
 
 if num_errors>0 then 
 	error("Has " .. num_errors .." FAILURES") 
