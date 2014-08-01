@@ -194,6 +194,8 @@ local initialRule = V"initial"
 
 local Summand = V"Summand"
 local Relational = V"Relational"
+local LogicalOr = V"LogicalOr"
+local LogicalAnd = V"LogicalAnd"
 
 -- Grammar
 local G = P{ "initialRule",
@@ -201,8 +203,9 @@ local G = P{ "initialRule",
   -- ternary operator (or chained ternary operators):
   Exp = Cf( Cg(Relational) * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
   -- FIXME : do we really allow something like " 1 == 1 != 2" ? I would prefer (1==1) != 2 !?
-  --Relational = Summand + Cf(Relational * Cg(RelationalOp * Relational), relational_eval);
-  Relational = Cf(Summand * Cg(RelationalOp * Summand)^0, relational_eval);
+  Relational = Cf(LogicalOr * Cg(RelationalOp * LogicalOr)^0, relational_eval);
+  LogicalOr = Cf(LogicalAnd * (P"||" * space_pattern * LogicalAnd)^0, pgfluamathfunctions.orPGF);
+  LogicalAnd = Cf(Summand * (P"&&" * space_pattern * Summand)^0, pgfluamathfunctions.andPGF);
   Summand = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
   Prefix = prefix_operator_pattern + Postfix;
@@ -335,12 +338,13 @@ parsertest("! -1", 0)
 parsertest("--1", 1)
 parsertest("! !1", 1)
 parsertest("3! - !0", 5)
-
-if false then
 parsertest("1 && 1 ", 1)
 parsertest("1 && 0 || 1 ", 1)
+parsertest("1 && 0 && 1 ", 0)
 parsertest("1 || 0 ", 1)
 parsertest("0 || 0 || 1 ", 1)
+
+if false then
 -- arrays created via '{}' and indexed with '[]'
 -- strings with "<str>"
 -- units
