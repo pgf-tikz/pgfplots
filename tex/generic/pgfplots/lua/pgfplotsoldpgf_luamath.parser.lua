@@ -160,14 +160,21 @@ local function radians_postfix_eval(x)
 	return result
 end
 
+local function ternary_eval(condition, truePart, falsePart)
+	return pgfluamathfunctions.ifthenelse(condition, truePart, falsePart)
+end
+
 local radians_postfix_pattern = Cg(Factor) * P"r" * space_pattern / radians_postfix_eval
 
 local initialRule = V"initial"
 
+local Level2 = V"Level2"
+
 -- Grammar
 local G = P{ "initialRule",
   initialRule = space_pattern* Exp * -1;
-  Exp = Cf(Term * Cg(TermOp * Term)^0, eval) ;
+  Exp = Cf( Cg(Level2) * Cg(P"?" * space_pattern * Level2 * P":" *space_pattern * Level2 )^0, ternary_eval) ;
+  Level2 = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
   Prefix = neg_prefix_operator_pattern + Postfix;
   Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
@@ -271,11 +278,13 @@ parsertest("2*pi r", 360)
 parsertest(2*math.pi .. " r", 360)
 parsertest("sin(2*pi r)", 0)
 parsertest(math.pi/2 .. "r + " .. math.pi/2 .. "r", 180)
+parsertest("1 ? 42 : 0", 42)
+parsertest("-1 + 1 ? 42 : 0", 0)
+parsertest("1 + (1 ? 42 : 0)", 43)
+parsertest("1 ? 42 : 0 ? 5 : 6", 5)
+parsertest("(1 ? 42 : 0) ? 5 : 6", 5)
 
 if false then
-parsertest("1 ? 42 : 0", 42)
-parsertest("1 + 1 ? 42 : 0", nil) -- ??
-parsertest("1 + (1 ? 42 : 0)", 43)
 parsertest("43 == 43", 1)
 parsertest("43 == 42", 0)
 parsertest("43 != 43", 0)
