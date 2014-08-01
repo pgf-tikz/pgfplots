@@ -105,14 +105,10 @@ local function eval (v1, op, v2)
   end
 end
 
-function pgfluamathparser.callbackError(msg)
-	error(msg)
-end
-
 local function function_eval(name, ... )
 	local f = pgfluamathfunctions.stringToFunctionMap[name]
 	if not f then
-		pgfluamathparser.callbackError("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name ..")")
+		error("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name .." (looked into pgfluamathfunctions.stringToFunctionMap))")
 	end
 	-- FIXME: validate signature
 	return f(...)
@@ -201,7 +197,7 @@ local function controlsequence_eval(cs, intSuffix)
 		elseif cs == "dimen" then
 			result= pgfluamathparser.get_tex_dimen(intSuffix)
 		else
-			pgfluamathparser.error = 'I do not know the TeX register "' .. cs .. '"'
+			error('I do not know the TeX register "' .. cs .. '"')
 		end
 	else
 		result = pgfluamathparser.get_tex_register(cs)
@@ -218,7 +214,7 @@ function pgfluamathparser.get_tex_register(register)
         pgfluamathparser.units_declared = true
         return tex.dimen[register] / 65536 -- return in points.
     else
-        pgfluamathparser.error = 'I do not know the TeX register "' .. register '"'
+        error('I do not know the TeX register "' .. register .. '"')
         return nil
     end
     
