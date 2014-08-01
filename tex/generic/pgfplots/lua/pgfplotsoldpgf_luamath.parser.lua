@@ -64,6 +64,9 @@ local closecurlybrace_pattern = P("}")
 local openbrace_pattern = P("[")
 local closebrace_pattern = P("]")
 
+-- hm. what about '\\' or '\%' ?
+local controlsequence_pattern = P"\\" * C( (R("az","AZ") + P"@")^1)
+
 -- local string = P('"') * C((1 - P('"'))^0) * P('"')
 
 local orop_pattern = P("||")
@@ -190,6 +193,56 @@ local function relational_eval(v1, op, v2)
 	return fct(v1,v2)
 end
 
+local function controlsequence_eval(cs, intSuffix)
+	local result
+	if intSuffix and #intSuffix >0 then
+		if cs == "count" then
+			result= pgfluamathparser.get_tex_count(intSuffix)
+		elseif cs == "dimen" then
+			result= pgfluamathparser.get_tex_dimen(intSuffix)
+		else
+			pgfluamathparser.error = 'I do not know the TeX register "' .. cs .. '"'
+		end
+	else
+		result = pgfluamathparser.get_tex_register(cs)
+	end
+	return result
+end
+
+pgfluamathparser.units_declared = false
+function pgfluamathparser.get_tex_register(register)
+    -- register is a string which could be a count or a dimen.    
+    if pcall(tex.getcount, register) then
+        return tex.count[register]
+    elseif pcall(tex.getdimen, register) then
+        pgfluamathparser.units_declared = true
+        return tex.dimen[register] / 65536 -- return in points.
+    else
+        pgfluamathparser.error = 'I do not know the TeX register "' .. register '"'
+        return nil
+    end
+    
+end
+
+function pgfluamathparser.get_tex_count(count)
+    -- count is expected to be a number
+    return tex.count[tonumber(count)]
+end
+
+function pgfluamathparser.get_tex_dimen(dimen)
+    -- dimen is expected to be a number
+    pgfluamathparser.units_declared = true
+    return tex.dimen[tonumber(dimen)] / 65536
+end
+
+function pgfluamathparser.get_tex_sp(dimension)
+    -- dimension should be a string
+    pgfluamathparser.units_declared = true
+    return tex.sp(dimension) / 65536
+end
+
+
+
 local initialRule = V"initial"
 
 local Summand = V"Summand"
@@ -216,6 +269,7 @@ local G = P{ "initialRule",
         + func
 		+ functionWithoutArg
 		+ openparen_pattern * Exp * closeparen_pattern) *space_pattern
+		+ ( controlsequence_pattern * C( R"09"^0 ) * space_pattern ) / controlsequence_eval
 	;
 }
 
@@ -343,6 +397,11 @@ parsertest("1 && 0 || 1 ", 1)
 parsertest("1 && 0 && 1 ", 0)
 parsertest("1 || 0 ", 1)
 parsertest("0 || 0 || 1 ", 1)
+-- these TeX macros must be defined and set, of course!
+parsertest("\\count1", 43)
+parsertest("\\wd0", 1)
+parsertest("1*\\luamathparse@dimen", 42)
+parsertest("1*\\luamathparse@count", 42)
 
 if false then
 -- arrays created via '{}' and indexed with '[]'
@@ -396,7 +455,6 @@ local parser = space_pattern * grammar * -1
 pgfluamathparser.function_namespaces = {
    'pgfluamathfunctions', 'math', '_G'}
 
-pgfluamathparser.units_declared = false
 
 function pgfluamathparser.get_tex_box(box, dimension)
    -- assume get_tex_box is only called when a dimension is required.
@@ -409,38 +467,6 @@ function pgfluamathparser.get_tex_box(box, dimension)
       return tex.box[box].depth / 65536
    end        
 end
-
-function pgfluamathparser.get_tex_register(register)
-    -- register is a string which could be a count or a dimen.    
-    if pcall(tex.getcount, register) then
-        return tex.count[register]
-    elseif pcall(tex.getdimen, register) then
-        pgfluamathparser.units_declared = true
-        return tex.dimen[register] / 65536 -- return in points.
-    else
-        pgfluamathparser.error = 'I do not know the TeX register "' .. register '"'
-        return nil
-    end
-    
-end
-
-function pgfluamathparser.get_tex_count(count)
-    -- count is expected to be a number
-    return tex.count[tonumber(count)]
-end
-
-function pgfluamathparser.get_tex_dimen(dimen)
-    -- dimen is expected to be a number
-    pgfluamathparser.units_declared = true
-    return tex.dimen[tonumber(dimen)] / 65536
-end
-
-function pgfluamathparser.get_tex_sp(dimension)
-    -- dimension should be a string
-    pgfluamathparser.units_declared = true
-    return tex.sp(dimension) / 65536
-end
-
 
 
 -- transform named box specification 
