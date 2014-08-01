@@ -144,15 +144,22 @@ local pow_pattern =
 			+ Cf( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent, pow_eval )
 
 
-local function neg_eval(x)
-	return pgfluamathfunctions.neg(x)
+local function prefix_eval(op, x)
+	if op == "-" then
+		return pgfluamathfunctions.neg(x)
+	elseif op == "!" then
+		return pgfluamathfunctions.notPGF(x)
+	else
+		error("This function must not be invoked for operator "..op)
+	end
 end
 
 local function factorial_eval(x)
 	return pgfluamathfunctions.factorial(x)
 end
 
-local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Prefix) ) / neg_eval
+local prefix_operator = C( P"-" + P"!" )
+local prefix_operator_pattern = (prefix_operator * space_pattern * Cg(Prefix) ) / prefix_eval
 
 -- hm. Is there a better way to distinguish ! and != ?
 local factorial_operator = P"!" - P"!="
@@ -198,7 +205,7 @@ local G = P{ "initialRule",
   Relational = Cf(Summand * Cg(RelationalOp * Summand)^0, relational_eval);
   Summand = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
-  Prefix = neg_prefix_operator_pattern + Postfix;
+  Prefix = prefix_operator_pattern + Postfix;
   Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
   Factor = 
 		 (pow_pattern
@@ -322,10 +329,14 @@ parsertest("43 < 44", 1)
 parsertest("43 <= 44", 1)
 parsertest("43 >= 44", 0)
 parsertest("43 >= 44 == 1", 0)
+parsertest("!1", 0)
+parsertest("! 1", 0)
+parsertest("! -1", 0)
+parsertest("--1", 1)
+parsertest("! !1", 1)
+parsertest("3! - !0", 5)
 
 if false then
-parsertest("! 1", 0)
-parsertest("! 1", 1)
 parsertest("1 && 1 ", 1)
 parsertest("1 && 0 || 1 ", 1)
 parsertest("1 || 0 ", 1)
