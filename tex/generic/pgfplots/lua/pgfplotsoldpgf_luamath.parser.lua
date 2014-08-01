@@ -82,6 +82,7 @@ local comma_pattern = P(",") * space_pattern
 
 ----------------
 local TermOp = lpeg.C(lpeg.S("+-")) * space_pattern
+local RelationalOp = C( P"==" + P"!=" + P"<=" + P">=" + P"<" + P">" ) * space_pattern
 local FactorOp = lpeg.C(lpeg.S("*/")) * space_pattern
 
 -- Grammar
@@ -97,7 +98,7 @@ local function eval (v1, op, v2)
   elseif (op == "*") then return v1 * v2
   elseif (op == "/") then return v1 / v2
   else
-	return 42
+	error("This function must not be invoked for operator "..op)
   end
 end
 
@@ -153,7 +154,9 @@ end
 
 local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Prefix) ) / neg_eval
 
-local factorial_operator_pattern = ( Cg(Factor) * P"!" * space_pattern) / factorial_eval
+-- hm. Is there a better way to distinguish ! and != ?
+local factorial_operator = P"!" - P"!="
+local factorial_operator_pattern = ( Cg(Factor) * factorial_operator * space_pattern) / factorial_eval
 
 local function radians_postfix_eval(x)
 	local result = pgfluamathfunctions.deg(x)
@@ -166,15 +169,34 @@ end
 
 local radians_postfix_pattern = Cg(Factor) * P"r" * space_pattern / radians_postfix_eval
 
+local function relational_eval(v1, op, v2)
+	local fct
+	if (op == "==") then fct = pgfluamathfunctions.equal
+	elseif (op == "!=") then fct = pgfluamathfunctions.notequal
+	elseif (op == "<") then fct = pgfluamathfunctions.less
+	elseif (op == ">") then fct = pgfluamathfunctions.greater
+	elseif (op == ">=") then fct = pgfluamathfunctions.notless
+	elseif (op == "<=") then fct = pgfluamathfunctions.notgreater
+	else
+		error("This function must not be invoked for operator "..op)
+	end
+	return fct(v1,v2)
+end
+
 local initialRule = V"initial"
 
-local Level2 = V"Level2"
+local Summand = V"Summand"
+local Relational = V"Relational"
 
 -- Grammar
 local G = P{ "initialRule",
   initialRule = space_pattern* Exp * -1;
-  Exp = Cf( Cg(Level2) * Cg(P"?" * space_pattern * Level2 * P":" *space_pattern * Level2 )^0, ternary_eval) ;
-  Level2 = Cf(Term * Cg(TermOp * Term)^0, eval) ;
+  -- ternary operator (or chained ternary operators):
+  Exp = Cf( Cg(Relational) * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
+  -- FIXME : do we really allow something like " 1 == 1 != 2" ? I would prefer (1==1) != 2 !?
+  --Relational = Summand + Cf(Relational * Cg(RelationalOp * Relational), relational_eval);
+  Relational = Cf(Summand * Cg(RelationalOp * Summand)^0, relational_eval);
+  Summand = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
   Prefix = neg_prefix_operator_pattern + Postfix;
   Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
@@ -202,8 +224,14 @@ function parsertest(input, expected)
 	local actual = pgfluamathparser.pgfmathparse(input)
 
 	local success
-	if not actual or type(actual) ~= "number" or math.abs(actual - expected ) > 1e-7 then
-		io.write("FAILURE for " .. input .. " expected " .. expected .. " but was " .. tostring(actual) .. "\n")
+	if expected == nil and actual ~= nil or 
+		expected ~= nil and (
+			not actual or 
+			type(actual) ~= "number" or 
+			math.abs(actual - expected ) > 1e-7 
+		)
+	then
+		io.write("FAILURE for " .. input .. " expected " .. tostring(expected) .. " but was " .. tostring(actual) .. "\n")
 		success = "FAILURE"
 		num_errors = num_errors+1
 	else
@@ -283,8 +311,6 @@ parsertest("-1 + 1 ? 42 : 0", 0)
 parsertest("1 + (1 ? 42 : 0)", 43)
 parsertest("1 ? 42 : 0 ? 5 : 6", 5)
 parsertest("(1 ? 42 : 0) ? 5 : 6", 5)
-
-if false then
 parsertest("43 == 43", 1)
 parsertest("43 == 42", 0)
 parsertest("43 != 43", 0)
@@ -295,6 +321,9 @@ parsertest("43 < 42", 0)
 parsertest("43 < 44", 1)
 parsertest("43 <= 44", 1)
 parsertest("43 >= 44", 0)
+parsertest("43 >= 44 == 1", 0)
+
+if false then
 parsertest("! 1", 0)
 parsertest("! 1", 1)
 parsertest("1 && 1 ", 1)
