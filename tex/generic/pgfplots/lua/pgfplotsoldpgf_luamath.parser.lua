@@ -155,15 +155,22 @@ local neg_prefix_operator_pattern = (P"-" * space_pattern * Cg(Prefix) ) / neg_e
 
 local factorial_operator_pattern = ( Cg(Factor) * P"!" * space_pattern) / factorial_eval
 
+local function radians_postfix_eval(x)
+	local result = pgfluamathfunctions.deg(x)
+	return result
+end
+
+local radians_postfix_pattern = Cg(Factor) * P"r" * space_pattern / radians_postfix_eval
+
 local initialRule = V"initial"
 
 -- Grammar
 local G = P{ "initialRule",
-  initialRule = Exp * -1;
+  initialRule = space_pattern* Exp * -1;
   Exp = Cf(Term * Cg(TermOp * Term)^0, eval) ;
   Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
   Prefix = neg_prefix_operator_pattern + Postfix;
-  Postfix = factorial_operator_pattern + Factor;
+  Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
   Factor = 
 		 (pow_pattern
 		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
@@ -199,6 +206,7 @@ function parsertest(input, expected)
 end
 print(" ---------------- TESt\n\n")
 parsertest("1", 1)
+parsertest("  1", 1)
 parsertest("-123", -123)
 parsertest("+123", 123)
 parsertest("+1.23", 1.23)
@@ -255,15 +263,16 @@ end
 parsertest("2^x", 16)
 parsertest("exp(-x^2)", math.exp(-16))
 parsertest("N1(1,2,3)", 6)
+parsertest(" 1 + 2 * 4 ^ 2 ", 33)
 parsertest("-x + 4", 0)
 parsertest("-x * 4", -16)
 parsertest("-x * - 4", 16)
+parsertest("2*pi r", 360)
+parsertest(2*math.pi .. " r", 360)
+parsertest("sin(2*pi r)", 0)
+parsertest(math.pi/2 .. "r + " .. math.pi/2 .. "r", 180)
 
 if false then
-parsertest("360r", 2*math.pi)
-parsertest("360 r", 2*math.pi)
-parsertest("sin(360 r)", 0)
-parsertest("90r + 90r", math.pi)
 parsertest("1 ? 42 : 0", 42)
 parsertest("1 + 1 ? 42 : 0", nil) -- ??
 parsertest("1 + (1 ? 42 : 0)", 43)
@@ -275,11 +284,14 @@ parsertest("43 > 42", 1)
 parsertest("43 > 44", 0)
 parsertest("43 < 42", 0)
 parsertest("43 < 44", 1)
--- <=
--- >=
--- !
--- &&
--- ||
+parsertest("43 <= 44", 1)
+parsertest("43 >= 44", 0)
+parsertest("! 1", 0)
+parsertest("! 1", 1)
+parsertest("1 && 1 ", 1)
+parsertest("1 && 0 || 1 ", 1)
+parsertest("1 || 0 ", 1)
+parsertest("0 || 0 || 1 ", 1)
 -- arrays created via '{}' and indexed with '[]'
 -- strings with "<str>"
 -- units
