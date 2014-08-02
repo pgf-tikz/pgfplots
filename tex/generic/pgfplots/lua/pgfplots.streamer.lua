@@ -56,7 +56,7 @@ function AddplotExpressionCoordinateGenerator:constructor(coordoutputstream, exp
 	self.samples = samples
 	self.variableNames = variableNames
 	
-	io.write("initialized " .. tostring(self) )
+	io.write("initialized " .. tostring(self) .. "\n")
 end
 
 -- @return true on success or false if the operation cannot be carried out.
@@ -98,18 +98,19 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	pgfluamathfunctions.stringToFunctionMap[variableNames[1]] = pseudoconstantx
 	pgfluamathfunctions.stringToFunctionMap[variableNames[2]] = pseudoconstanty
 
+	local pgfmathparse = pgfluamathparser.pgfmathparse
 	local prepareX
 	if xExpr == variableNames[1] then
 		prepareX = function() return x end
 	else
-		prepareX = function() return pgfluamathparser.pgfmathparse(xExpr) end
+		prepareX = function() return pgfmathparse(xExpr) end
 	end
 
 	local prepareY
 	if not sampleLine and yExpr == variableNames[2] then
 		prepareY = function() return y end
 	else
-		prepareY = function() return pgfluamathparser.pgfmathparse(yExpr) end
+		prepareY = function() return pgfmathparse(yExpr) end
 	end
 
 	local function computeXYZ()
@@ -117,7 +118,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		local Y = prepareY()
 		local Z = nil
 		if is3d then
-			Z = pgfluamathparser.pgfmathparse(zExpr)
+			Z = pgfmathparse(zExpr)
 		end
 		
 		local pt = Coord.new()
@@ -132,11 +133,14 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 			local ymin = domainMin[2]
 			local hx = h[1]
 			local hy = h[2]
+			local samplesx = samples[1]
+			local samplesy = samples[2]
 			-- samples twodimensionally (a lattice):
-			for j = 1,samples[2] do
+			for j = 1,samplesy do
 				-- FIXME : pgfplots@plot@data@notify@next@y
 				y = ymin + j*hy
-				for i = 1,samples[1] do
+				io.write("" .. j .. "\n")
+				for i = 1,samplesx do
 					-- FIXME : pgfplots@plot@data@notify@next@x
 					x = xmin + i*hx
 					computeXYZ()
@@ -168,7 +172,7 @@ function AddplotExpressionCoordinateGenerator:__tostring()
 	result = result .. "\n  samples=" .. self.samples[1] 
 	if #self.domainMin == 2 then
 		result = result .. "\n  domain y=" .. self.domainMin[2] .. ":" .. self.domainMax[2]
-	result = result .. "\n  samples y=" .. self.samples[2] 
+		result = result .. "\n  samples y=" .. self.samples[2] 
 	end
 	result = result .. "]"
 	return result

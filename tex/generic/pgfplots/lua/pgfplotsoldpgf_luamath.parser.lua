@@ -20,6 +20,7 @@ local S, P, R = lpeg.S, lpeg.P, lpeg.R
 local C, Cc, Ct = lpeg.C, lpeg.Cc, lpeg.Ct
 local Cf, Cg, Cs = lpeg.Cf, lpeg.Cg, lpeg.Cs
 local V = lpeg.V
+local match = lpeg.match
 
 local space_pattern = S(" \n\r\t")^0
 
@@ -65,7 +66,8 @@ local openbrace_pattern = P("[")
 local closebrace_pattern = P("]")
 
 -- hm. what about '\\' or '\%' ?
-local controlsequence_pattern = P"\\" * C( (R("az","AZ") + P"@")^1)
+-- accept \pgf@x, \count0, \dimen42, \c@pgf@counta
+local controlsequence_pattern = P"\\" * C( (R("az","AZ") + P"@")^1) * C( R"09"^0 )
 
 -- local string = P('"') * C((1 - P('"'))^0) * P('"')
 
@@ -105,8 +107,9 @@ local function eval (v1, op, v2)
   end
 end
 
+local pgfStringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
 local function function_eval(name, ... )
-	local f = pgfluamathfunctions.stringToFunctionMap[name]
+	local f = pgfStringToFunctionMap[name]
 	if not f then
 		error("Function '" .. name .. "' is undefined (did not find pgfluamathfunctions."..name .." (looked into pgfluamathfunctions.stringToFunctionMap))")
 	end
@@ -127,9 +130,9 @@ local functionWithoutArg = identifier_pattern / function_eval
 -- I have the impression that the priorities could be implemented in a better way than this... but it seems to work.
 local pow_exponent = 
 				-- allows 2^-4,  2^1e4, 2^2
-				Cg(C(integer_or_decimal_pattern) *space_pattern 
+				Cg(C(integer_or_decimal_pattern) 
 				-- 2^pi, 2^multiply(2,2)
-				+ Cg(func+functionWithoutArg) * space_pattern
+				+ Cg(func+functionWithoutArg) 
 				-- 2^(2+2)
 				+ openparen_pattern * Exp * closeparen_pattern )
 
@@ -260,12 +263,14 @@ local G = P{ "initialRule",
   Prefix = prefix_operator_pattern + Postfix;
   Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
   Factor = 
-		 (pow_pattern
+		 (
+		 pow_pattern
 		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
         + func
 		+ functionWithoutArg
-		+ openparen_pattern * Exp * closeparen_pattern) *space_pattern
-		+ ( controlsequence_pattern * C( R"09"^0 ) * space_pattern ) / controlsequence_eval
+		+ openparen_pattern * Exp * closeparen_pattern
+		+ controlsequence_pattern / controlsequence_eval
+		) *space_pattern
 	;
 }
 
@@ -275,7 +280,7 @@ local G = P{ "initialRule",
 -- @param str a string like "1+1" which is accepted by the PGF math language
 -- @return either nil if the string is illegal or the resulting number (or string)
 function pgfluamathparser.pgfmathparse(str)
-	return lpeg.match(G,str)
+	return match(G,str)
 end
 
 -- small example
@@ -352,9 +357,18 @@ parsertest("3*2+4", 10)
 function pgfluamathfunctions.x()
 	return 4
 end
+function pgfluamathfunctions.xx()
+	return 60
+end
+function pgfluamathfunctions.y()
+	return 60
+end
 function pgfluamathfunctions.N1(x,m,n)
 	return x+m+n
 end
+-- parsertest("(6+(sin(3*(xx+3*y))+1.25)*cos(xx))*cos(y)",42)
+-- parsertest("(6+(sin(3*(xx+3*y))+1.25)*cos(xx))*sin(y)",42)
+-- parsertest("((sin(3*(xx+3*y))+1.25)*sin(xx))",42)
 parsertest("2^x", 16)
 parsertest("exp(-x^2)", math.exp(-16))
 parsertest("N1(1,2,3)", 6)
