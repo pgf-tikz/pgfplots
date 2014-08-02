@@ -393,13 +393,15 @@ parsertest("1 && 0 || 1 ", 1)
 parsertest("1 && 0 && 1 ", 0)
 parsertest("1 || 0 ", 1)
 parsertest("0 || 0 || 1 ", 1)
+if false then
 -- these TeX macros must be defined and set, of course!
 parsertest("\\count1", 43)
-parsertest("\\wd0", 1)
 parsertest("1*\\luamathparse@dimen", 42)
 parsertest("1*\\luamathparse@count", 42)
+end
 
 if false then
+  parsertest("\\wd0", 1)
 -- arrays created via '{}' and indexed with '[]'
 -- strings with "<str>"
 -- units
