@@ -73,7 +73,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	local samples = self.samples
 	local h = {}
 	for i = 1,#domainMin do
-		h[i] = (domainMax[i] - domainMin[i]) / samples[i]
+		h[i] = (domainMax[i] - domainMin[i]) / (samples[i]-1)
 	end
 
 	local variableNames = self.variableNames
@@ -133,14 +133,14 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 			local ymin = domainMin[2]
 			local hx = h[1]
 			local hy = h[2]
-			local samplesx = samples[1]
-			local samplesy = samples[2]
+			local max_i = samples[1]-1
+			local max_j = samples[2]-1
 			-- samples twodimensionally (a lattice):
-			for j = 1,samplesy do
+			for j = 0,max_j do
 				-- FIXME : pgfplots@plot@data@notify@next@y
 				y = ymin + j*hy
-				io.write("" .. j .. "\n")
-				for i = 1,samplesx do
+				-- io.write("" .. j .. "\n")
+				for i = 0,max_i do
 					-- FIXME : pgfplots@plot@data@notify@next@x
 					x = xmin + i*hx
 					computeXYZ()
