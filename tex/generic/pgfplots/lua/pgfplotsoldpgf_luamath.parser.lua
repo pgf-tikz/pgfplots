@@ -59,7 +59,7 @@ local alpha__pattern = letter_pattern + underscore_pattern
 local identifier_pattern = letter_pattern^1 * alphanum__pattern^0 
 
 local openparen_pattern = P("(") * space_pattern
-local closeparen_pattern = P(")") * space_pattern
+local closeparen_pattern = P(")")
 local opencurlybrace_pattern = P("{")
 local closecurlybrace_pattern = P("}")
 local openbrace_pattern = P("[")
@@ -86,12 +86,12 @@ local comma_pattern = P(",") * space_pattern
 
 
 ----------------
-local TermOp = lpeg.C(lpeg.S("+-")) * space_pattern
+local TermOp = C(S("+-")) * space_pattern
 local RelationalOp = C( P"==" + P"!=" + P"<=" + P">=" + P"<" + P">" ) * space_pattern
-local FactorOp = lpeg.C(lpeg.S("*/")) * space_pattern
+local FactorOp = C(S("*/")) * space_pattern
 
 -- Grammar
-local Exp, Term, Factor = lpeg.V"Exp", lpeg.V"Term", lpeg.V"Factor"
+local Exp, Term, Factor = V"Exp", V"Term", V"Factor"
 local Prefix = V"Prefix"
 local Postfix = V"Postfix"
 
@@ -141,7 +141,7 @@ local pow_pattern =
 			-- 2^2, 2^pi, 1.23^3
 			Cf( Cg(positive_integer_or_decimal_pattern) * space_pattern * pow_operator * pow_exponent, pow_eval)
 			-- (2+2)^2
-			+ Cf( openparen_pattern * Exp * closeparen_pattern * pow_operator * pow_exponent, pow_eval)
+			+ Cf( openparen_pattern * Exp * closeparen_pattern * space_pattern* pow_operator * pow_exponent, pow_eval)
 			-- pi^2, sin(90)^2
 			+ Cf( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent, pow_eval )
 
