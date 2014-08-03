@@ -117,7 +117,6 @@ local function function_eval(name, ... )
 	return f(...)
 end
 
-local pow_eval = pgfluamathfunctions.pow
 
 local func = 
        (C(identifier_pattern) * space_pattern * openparen_pattern * Exp * (comma_pattern * Exp)^0 * closeparen_pattern) / function_eval;
@@ -134,16 +133,6 @@ local pow_exponent =
 				-- 2^(2+2)
 				+ openparen_pattern * Exp * closeparen_pattern )
 
--- a pattern of sorts 2^2 .
-local pow_pattern = 
-			-- 2^2, 2^pi, 1.23^3
-			( C(positive_integer_or_decimal_pattern) * space_pattern * pow_operator * pow_exponent ) / pow_eval
-			-- (2+2)^2
-			+ ( openparen_pattern * Exp * closeparen_pattern * space_pattern* pow_operator * pow_exponent ) / pow_eval
-			-- pi^2, sin(90)^2
-			+ ( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent ) / pow_eval 
-
-
 local function prefix_eval(op, x)
 	if op == "-" then
 		return pgfluamathfunctions.neg(x)
@@ -154,19 +143,41 @@ local function prefix_eval(op, x)
 	end
 end
 
-local factorial_eval = pgfluamathfunctions.factorial
 
-local prefix_operator = C( P"-" + P"!" )
+local prefix_operator = C( S"-!" )
 local prefix_operator_pattern = (prefix_operator * space_pattern * Cg(Prefix) ) / prefix_eval
 
--- hm. Is there a better way to distinguish ! and != ?
-local factorial_operator = P"!" - P"!="
-local factorial_operator_pattern = Factor * factorial_operator * space_pattern / factorial_eval
+-- apparently, we need to distinghuish between <expr> ! and  <expr> != <expr2>:
+local postfix_operator = C( S"r!" - P"!=" )  + C(P"^") * space_pattern * pow_exponent
+
 
 local ternary_eval = pgfluamathfunctions.ifthenelse
 
+local factorial_eval = pgfluamathfunctions.factorial
 local deg = pgfluamathfunctions.deg
-local radians_postfix_pattern = Factor * P"r" * space_pattern / deg
+local pow_eval = pgfluamathfunctions.pow
+
+-- @param prefix the argument before the postfix operator.
+-- @param op either nil or the postfix operator
+-- @param arg either nil or the (mandatory) argument for 'op'
+local function postfix_eval(prefix, op, arg)
+	local result
+	if op == nil then
+		result = prefix
+	elseif op == "r" then
+		if arg then error("parser setup error: expected nil argument") end
+		result = deg(prefix)
+	elseif op == "!" then
+		if arg then error("parser setup error: expected nil argument") end
+		result = factorial_eval(prefix)
+	elseif op == "^" then
+		if not arg then error("parser setup error: ^ with its argument") end
+		result = pow_eval(prefix, arg)
+	else
+		error("Parser setup error: " .. tostring(op) .. " unexpected in this context")
+	end
+	return result
+end
 
 local function relational_eval(v1, op, v2)
 	local fct
@@ -231,7 +242,6 @@ function pgfluamathparser.get_tex_sp(dimension)
 end
 
 
-
 local initialRule = V"initial"
 
 local Summand = V"Summand"
@@ -245,23 +255,23 @@ local LogicalAnd = V"LogicalAnd"
 -- - use '/' to evaluate all expressions which contain a _constant_ number of captures.
 -- - use Cf to evaluate expressions which contain a _dynamic_ number of captures
 local G = P{ "initialRule",
-  initialRule = space_pattern* Exp * -1;
-  -- ternary operator (or chained ternary operators):
-  -- FIXME : is this chaining a good idea!?
-  Exp = Cf( Relational * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
-  -- FIXME : do we really allow something like " 1 == 1 != 2" ? I would prefer (1==1) != 2 !?
-  Relational = Cf(LogicalOr * Cg(RelationalOp * LogicalOr)^0, relational_eval);
-  LogicalOr = Cf(LogicalAnd * (P"||" * space_pattern * LogicalAnd)^0, pgfluamathfunctions.orPGF);
-  LogicalAnd = Cf(Summand * (P"&&" * space_pattern * Summand)^0, pgfluamathfunctions.andPGF);
-  Summand = Cf(Term * Cg(TermOp * Term)^0, eval) ;
-  Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
-  Prefix = prefix_operator_pattern + Postfix;
-  Postfix = factorial_operator_pattern + radians_postfix_pattern + Factor;
-  Factor = 
+	initialRule = space_pattern* Exp * -1;
+	-- ternary operator (or chained ternary operators):
+	-- FIXME : is this chaining a good idea!?
+	Exp = Cf( Relational * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
+	-- FIXME : do we really allow something like " 1 == 1 != 2" ? I would prefer (1==1) != 2 !?
+	Relational = Cf(LogicalOr * Cg(RelationalOp * LogicalOr)^0, relational_eval);
+	LogicalOr = Cf(LogicalAnd * (P"||" * space_pattern * LogicalAnd)^0, pgfluamathfunctions.orPGF);
+	LogicalAnd = Cf(Summand * (P"&&" * space_pattern * Summand)^0, pgfluamathfunctions.andPGF);
+	Summand = Cf(Term * Cg(TermOp * Term)^0, eval) ;
+	Term = Cf(Prefix * Cg(FactorOp * Prefix)^0, eval);
+	Prefix = prefix_operator_pattern + Postfix;
+	-- this calls 'postfix_eval' with nil arguments if it is no postfix operation.. but that does not hurt (right?)
+	Postfix = Factor * (postfix_operator * space_pattern)^-1 / postfix_eval;
+	Factor = 
 		 (
-		 pow_pattern
-		+ number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
-        + func
+		number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
+		+ func
 		+ functionWithoutArg
 		+ openparen_pattern * Exp * closeparen_pattern
 		+ controlsequence_pattern / controlsequence_eval
@@ -331,6 +341,7 @@ parsertest("inf", pgfplots.pgfplotsmath.infty)
 parsertest("INF", pgfplots.pgfplotsmath.infty)
 parsertest("not(100)", 0) -- non-trivial since the function is pgfluamathfunctions.notPGF
 parsertest("2^2", 4)
+parsertest("1Y2.0e0]^2", 4)
 parsertest("0-2^2", -4)
 parsertest("-2^2", -4)
 parsertest("pi^2", math.pi*math.pi)
