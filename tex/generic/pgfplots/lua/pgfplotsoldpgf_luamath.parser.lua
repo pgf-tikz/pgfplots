@@ -117,12 +117,10 @@ local function function_eval(name, ... )
 	return f(...)
 end
 
-local function pow_eval(base, exponent)
-	return pgfluamathfunctions.pow(base,exponent)
-end
+local pow_eval = pgfluamathfunctions.pow
 
 local func = 
-       Cf(C(identifier_pattern) * space_pattern * openparen_pattern * Cg(Exp * (comma_pattern * Exp)^0 )* closeparen_pattern, function_eval);
+       (C(identifier_pattern) * space_pattern * openparen_pattern * Exp * (comma_pattern * Exp)^0 * closeparen_pattern) / function_eval;
 
 local functionWithoutArg = identifier_pattern / function_eval
 
@@ -139,11 +137,11 @@ local pow_exponent =
 -- a pattern of sorts 2^2 .
 local pow_pattern = 
 			-- 2^2, 2^pi, 1.23^3
-			Cf( Cg(positive_integer_or_decimal_pattern) * space_pattern * pow_operator * pow_exponent, pow_eval)
+			( C(positive_integer_or_decimal_pattern) * space_pattern * pow_operator * pow_exponent ) / pow_eval
 			-- (2+2)^2
-			+ Cf( openparen_pattern * Exp * closeparen_pattern * space_pattern* pow_operator * pow_exponent, pow_eval)
+			+ ( openparen_pattern * Exp * closeparen_pattern * space_pattern* pow_operator * pow_exponent ) / pow_eval
 			-- pi^2, sin(90)^2
-			+ Cf( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent, pow_eval )
+			+ ( Cg(func+functionWithoutArg)*space_pattern * pow_operator * pow_exponent ) / pow_eval 
 
 
 local function prefix_eval(op, x)
@@ -156,27 +154,19 @@ local function prefix_eval(op, x)
 	end
 end
 
-local function factorial_eval(x)
-	return pgfluamathfunctions.factorial(x)
-end
+local factorial_eval = pgfluamathfunctions.factorial
 
 local prefix_operator = C( P"-" + P"!" )
 local prefix_operator_pattern = (prefix_operator * space_pattern * Cg(Prefix) ) / prefix_eval
 
 -- hm. Is there a better way to distinguish ! and != ?
 local factorial_operator = P"!" - P"!="
-local factorial_operator_pattern = ( Cg(Factor) * factorial_operator * space_pattern) / factorial_eval
+local factorial_operator_pattern = Factor * factorial_operator * space_pattern / factorial_eval
 
-local function radians_postfix_eval(x)
-	local result = pgfluamathfunctions.deg(x)
-	return result
-end
+local ternary_eval = pgfluamathfunctions.ifthenelse
 
-local function ternary_eval(condition, truePart, falsePart)
-	return pgfluamathfunctions.ifthenelse(condition, truePart, falsePart)
-end
-
-local radians_postfix_pattern = Cg(Factor) * P"r" * space_pattern / radians_postfix_eval
+local deg = pgfluamathfunctions.deg
+local radians_postfix_pattern = Factor * P"r" * space_pattern / deg
 
 local function relational_eval(v1, op, v2)
 	local fct
@@ -250,10 +240,15 @@ local LogicalOr = V"LogicalOr"
 local LogicalAnd = V"LogicalAnd"
 
 -- Grammar
+--
+-- for me: 
+-- - use '/' to evaluate all expressions which contain a _constant_ number of captures.
+-- - use Cf to evaluate expressions which contain a _dynamic_ number of captures
 local G = P{ "initialRule",
   initialRule = space_pattern* Exp * -1;
   -- ternary operator (or chained ternary operators):
-  Exp = Cf( Cg(Relational) * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
+  -- FIXME : is this chaining a good idea!?
+  Exp = Cf( Relational * Cg(P"?" * space_pattern * Relational * P":" *space_pattern * Relational )^0, ternary_eval) ;
   -- FIXME : do we really allow something like " 1 == 1 != 2" ? I would prefer (1==1) != 2 !?
   Relational = Cf(LogicalOr * Cg(RelationalOp * LogicalOr)^0, relational_eval);
   LogicalOr = Cf(LogicalAnd * (P"||" * space_pattern * LogicalAnd)^0, pgfluamathfunctions.orPGF);
