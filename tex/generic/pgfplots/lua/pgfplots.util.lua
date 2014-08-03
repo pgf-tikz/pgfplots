@@ -32,32 +32,42 @@ function pgfplotsmath.isfinite(x)
     return true
 end
 
-function pgfplotsmath.isnan(x)
+local isnan = function(x)
     return x ~= x
 end
 
-pgfplotsmath.infty = 1/0
+pgfplotsmath.isnan = isnan
 
-pgfplotsmath.nan = math.sqrt(-1)
+local infty = 1/0
+pgfplotsmath.infty = infty
+
+local nan = math.sqrt(-1)
+pgfplotsmath.nan = nan
+
+local stringlen = string.len
+local globaltonumber = tonumber
+local stringsub=string.sub
+local stringformat = string.format
+local stringsub = string.sub
 
 -- like tonumber(x), but it also accepts nan, inf, infty, and the TeX FPU format
 function pgfplotsmath.tonumber(x)
     if type(x) == 'number' then return x end
     if not x then return x end
     
-    local len = string.len(x)
-    local result = tonumber(x)
+    local len = stringlen(x)
+    local result = globaltonumber(x)
     if not result then 
-        if len >2 and string.sub(x,2,2) == 'Y' and string.sub(x,len,len) == ']' then
+        if len >2 and stringsub(x,2,2) == 'Y' and stringsub(x,len,len) == ']' then
             -- Ah - some TeX FPU input of the form 1Y1.0e3] . OK. transform it
-            local flag = string.sub(x,1,1)
+            local flag = stringsub(x,1,1)
             if flag == '0' then
                 -- ah, 0.0
                 result = 0.0
             elseif flag == '1' then
-                result = tonumber(string.sub(x,3, len-1))
+                result = globaltonumber(stringsub(x,3, len-1))
             elseif flag == '2' then
-                result = tonumber("-" .. string.sub(x,3, len-1))
+                result = globaltonumber("-" .. stringsub(x,3, len-1))
             elseif flag == '3' then
                 result = pgfplotsmath.nan
             elseif flag == '4' then
@@ -82,24 +92,24 @@ end
 
 -- a helper function which has no catcode issues when communicating with TeX:
 function pgfplotsmath.tostringfixed(x)
-    return string.format("%f", x)
+    return stringformat("%f", x)
 end
 
 function pgfplotsmath.toTeXstring(x)
     local result = ""
     if x ~= nil then
-        if x == pgfplotsmath.infty then result = "4Y0.0e0]"
-        elseif x == -pgfplotsmath.infty then result = "5Y0.0e0]"
-        elseif pgfplotsmath.isnan(x) then result = "3Y0.0e0]"
+        if x == infty then result = "4Y0.0e0]"
+        elseif x == -infty then result = "5Y0.0e0]"
+        elseif isnan(x) then result = "3Y0.0e0]"
         elseif x == 0 then result = "0Y0.0e0]"
         else
             -- FIXME : this is too long. But I do NOT want to loose digits!
             -- -> get rid of trailing zeros...
-            result = string.format("%.10e", x)
+            result = stringformat("%.10e", x)
             if x > 0 then
                 result = "1Y" .. result .. "]"
             else
-                result = "2Y" .. result:sub(2) .. "]"
+                result = "2Y" .. stringsub(result,2) .. "]"
             end
         end
     end

@@ -249,6 +249,8 @@ local Relational = V"Relational"
 local LogicalOr = V"LogicalOr"
 local LogicalAnd = V"LogicalAnd"
 
+local pgftonumber = pgfluamathfunctions.tonumber
+
 -- Grammar
 --
 -- for me: 
@@ -270,7 +272,7 @@ local G = P{ "initialRule",
 	Postfix = Factor * (postfix_operator * space_pattern)^-1 / postfix_eval;
 	Factor = 
 		 (
-		number_pattern / pgfplots.pgfplotsmath.tonumber  -- FIXME : dependency!
+		number_pattern / pgftonumber
 		+ func
 		+ functionWithoutArg
 		+ openparen_pattern * Exp * closeparen_pattern
@@ -337,8 +339,8 @@ parsertest("cos(90)", 0)
 parsertest("pow(2,3)", 8)
 parsertest("-pow(2,3)", -8)
 parsertest("-pi", -math.pi)
-parsertest("inf", pgfplots.pgfplotsmath.infty)
-parsertest("INF", pgfplots.pgfplotsmath.infty)
+parsertest("inf", pgfluamathfunctions.infty)
+parsertest("INF", pgfluamathfunctions.infty)
 parsertest("not(100)", 0) -- non-trivial since the function is pgfluamathfunctions.notPGF
 parsertest("2^2", 4)
 parsertest("1Y2.0e0]^2", 4)
