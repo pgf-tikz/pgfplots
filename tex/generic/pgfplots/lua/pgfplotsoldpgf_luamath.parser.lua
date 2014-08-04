@@ -23,6 +23,10 @@ local V = lpeg.V
 local match = lpeg.match
 
 local space_pattern = S(" \n\r\t")^0
+local tex_unit = 
+        P('pt') + P('mm') + P('cm') + P('in') + 
+        P('ex') + P('em') + P('bp') + P('pc') + 
+        P('dd') + P('cc') + P('sp');
 
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
@@ -35,12 +39,7 @@ local positive_integer_or_decimal_pattern = positive_integer_pattern * ( P(".") 
 local integer_or_decimal_pattern = S("+-")^-1 * positive_integer_or_decimal_pattern 
 local fpu_pattern = R"15" * P"Y" * positive_integer_or_decimal_pattern * P"e" * P("-")^-1 * R("09")^1 * P"]"
 local unbounded_pattern = P"inf" + P"INF" + P"nan" + P"NaN" + P"Inf"
-local number_pattern = unbounded_pattern + fpu_pattern + integer_or_decimal_pattern * (S"eE" * integer_pattern)^-1
-
-local tex_unit = 
-        P('pt') + P('mm') + P('cm') + P('in') + 
-        P('ex') + P('em') + P('bp') + P('pc') + 
-        P('dd') + P('cc') + P('sp');
+local number_pattern = C(unbounded_pattern + fpu_pattern + integer_or_decimal_pattern * (S"eE" * integer_pattern + C(tex_unit))^-1)
 
 local underscore_pattern = P("_")
 
@@ -231,7 +230,13 @@ local LogicalOr = V"LogicalOr"
 local LogicalAnd = V"LogicalAnd"
 
 local pgftonumber = pgfluamathfunctions.tonumber
+local tonumber_withunit = pgfluamathparser.get_tex_sp
 local function number_optional_units_eval(x, unit)
+	if not unit then
+		return pgftonumber(x)
+	else
+		return tonumber_withunit(x)
+	end
 end
 
 -- Grammar
@@ -255,7 +260,7 @@ local G = P{ "initialRule",
 	Postfix = Factor * (postfix_operator * space_pattern)^-1 / postfix_eval;
 	Factor = 
 		 (
-		number_pattern / pgftonumber
+		number_pattern / number_optional_units_eval
 		+ func
 		+ functionWithoutArg
 		+ openparen_pattern * Exp * closeparen_pattern
@@ -270,12 +275,16 @@ local G = P{ "initialRule",
 -- @param str a string like "1+1" which is accepted by the PGF math language
 -- @return either nil if the string is illegal or the resulting number (or string)
 function pgfluamathparser.pgfmathparse(str)
+	pgfluamathparser.units_declared = false
+
 	return match(G,str)
 end
 
 -- small example
 local num_errors = 0
-function parsertest(input, expected)
+function parsertest(input, expected, expectedUnitsDeclared)
+	if not expectedUnitsDeclared then expectedUnitsDeclared=false end
+
 	local actual = pgfluamathparser.pgfmathparse(input)
 
 	local success
@@ -292,6 +301,15 @@ function parsertest(input, expected)
 	else
 		success = "OK"
 	end
+
+	if success == "OK" then
+		if expectedUnitsDeclared ~= pgfluamathparser.units_declared then
+			io.write("FAILURE for " .. input .. " expected units declared " .. tostring(expectedUnitsDeclared) .. " but was " .. tostring(pgfluamathparser.units_declared) .. "\n")
+			success = "FAILURE"
+			num_errors = num_errors+1
+		end
+	end
+
 	io.write(input .. " = " .. tostring(actual) .. "  " .. success .. "\n")
 end
 print(" ---------------- TESt\n\n")
@@ -398,18 +416,30 @@ parsertest("1 && 0 || 1 ", 1)
 parsertest("1 && 0 && 1 ", 0)
 parsertest("1 || 0 ", 1)
 parsertest("0 || 0 || 1 ", 1)
+
+
+parsertest("1pt", 1, true)
+parsertest("1mm", 2.8452606201172, true)
+parsertest("1cm", 28.452743530273, true)
+parsertest("1in", 72.269989013672, true)
+parsertest("1ex", 4.3055419921875, true)
+parsertest("1em", 10.000015258789, true)
+parsertest("1bp", 1.0037384033203, true)
+parsertest("1dd", 1.0700073242188, true)
+parsertest("1cc", 12.840103149414, true)
+parsertest("1sp", 1.52587890625e-05, true)
+parsertest("1pc", 12.0, true)
 if false then
 -- these TeX macros must be defined and set, of course!
-parsertest("\\count1", 43)
-parsertest("1*\\luamathparse@dimen", 42)
-parsertest("1*\\luamathparse@count", 42)
+parsertest("\\count1", 43, true)
+parsertest("1*\\luamathparse@dimen", 42, true)
+parsertest("1*\\luamathparse@count", 42, true)
 end
 
 if false then
   parsertest("\\wd0", 1)
 -- arrays created via '{}' and indexed with '[]'
 -- strings with "<str>"
--- units
 -- 'scalar' function
 -- trig format
 -- hex/octal/binary input
