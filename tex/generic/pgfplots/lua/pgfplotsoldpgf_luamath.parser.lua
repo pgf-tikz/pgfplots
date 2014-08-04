@@ -39,10 +39,14 @@ local positive_decimal_pattern = (one_digit_pattern^1 * P(".") * one_digit_patte
 local decimal_pattern = S("+-")^-1 * positive_decimal_pattern
 local integer_or_decimal_pattern = decimal_pattern + integer_pattern
 local positive_integer_or_decimal_pattern = positive_decimal_pattern + positive_integer_pattern
-local float_pattern = integer_or_decimal_pattern * exponent_pattern * integer_pattern
 local fpu_pattern = R"15" * P"Y" * positive_integer_or_decimal_pattern * P"e" * P("-")^-1 * R("09")^1 * P"]"
 local unbounded_pattern = P"inf" + P"INF" + P"nan" + P"NaN" + P"Inf"
-local number_pattern = unbounded_pattern + fpu_pattern + float_pattern + decimal_pattern + integer_pattern
+local number_pattern = unbounded_pattern + fpu_pattern + integer_or_decimal_pattern * (exponent_pattern * integer_pattern)^-1
+
+local tex_unit = 
+        P('pt') + P('mm') + P('cm') + P('in') + 
+        P('ex') + P('em') + P('bp') + P('pc') + 
+        P('dd') + P('cc') + P('sp');
 
 local at_pattern = P("@")
 
@@ -127,6 +131,7 @@ local functionWithoutArg = identifier_pattern / function_eval
 -- I have the impression that the priorities could be implemented in a better way than this... but it seems to work.
 local pow_exponent = 
 				-- allows 2^-4,  2^1e4, 2^2
+				-- FIXME : why not 2^1e2 ?
 				Cg(C(integer_or_decimal_pattern) 
 				-- 2^pi, 2^multiply(2,2)
 				+ Cg(func+functionWithoutArg) 
@@ -250,6 +255,8 @@ local LogicalOr = V"LogicalOr"
 local LogicalAnd = V"LogicalAnd"
 
 local pgftonumber = pgfluamathfunctions.tonumber
+local function number_optional_units_eval(x, unit)
+end
 
 -- Grammar
 --
