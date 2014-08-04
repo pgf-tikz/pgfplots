@@ -56,7 +56,7 @@ local openbrace_pattern = P("[")
 local closebrace_pattern = P("]")
 
 -- hm. what about '\\' or '\%' ?
--- accept \pgf@x, \count0, \dimen42, \c@pgf@counta
+-- accept \pgf@x, \count0, \dimen42, \c@pgf@counta, \wd0, \ht0, \dp0
 local controlsequence_pattern = P"\\" * C( (R("az","AZ") + P"@")^1) * C( R"09"^0 )
 
 -- local string = P('"') * C((1 - P('"'))^0) * P('"')
@@ -173,6 +173,28 @@ local function relational_eval(v1, op, v2)
 	return fct(v1,v2)
 end
 
+-- @return either the box property or nil
+-- @param cs "wd", "ht", or "dp"
+-- @param intSuffix some integer
+local function get_tex_box(cs, intSuffix)
+	-- assume get_tex_box is only called when a dimension is required.
+	local result
+	pgfluamathparser.units_declared = true
+	local box =tex.box[tonumber(intSuffix)]
+	if not box then error("There is no box " .. intSuffix) end
+	if cs == "wd" then
+		result = box.width / 65536
+	elseif cs == "ht" then
+		result = box.height / 65536
+	elseif cs == "dp" then
+		result = box.depth / 65536
+	else	
+		result = nil
+	end
+	return result
+end
+
+
 local function controlsequence_eval(cs, intSuffix)
 	local result
 	if intSuffix and #intSuffix >0 then
@@ -181,7 +203,12 @@ local function controlsequence_eval(cs, intSuffix)
 		elseif cs == "dimen" then
 			result= pgfluamathparser.get_tex_dimen(intSuffix)
 		else
-			error('I do not know the TeX register "' .. cs .. '"')
+			result = get_tex_box(cs,intSuffix)
+			if not result then
+				-- this can happen - we cannot expand \chardef'ed boxes here.
+				-- this will be done by the TeX part
+				error('I do not know/support the TeX register "\\' .. cs .. '"')
+			end
 		end
 	else
 		result = pgfluamathparser.get_tex_register(cs)
@@ -434,10 +461,12 @@ if false then
 parsertest("\\count1", 43, true)
 parsertest("1*\\luamathparse@dimen", 42, true)
 parsertest("1*\\luamathparse@count", 42, true)
+parsertest("\\wd0", 1)
+parsertest("\\ht0", 1)
+parsertest("\\dp0", 1)
 end
 
 if false then
-  parsertest("\\wd0", 1)
 -- arrays created via '{}' and indexed with '[]'
 -- strings with "<str>"
 -- 'scalar' function
@@ -805,7 +834,6 @@ end
 --[[
 namedbox_to_numberedbox('test')
 namedbox_to_numberedbox('\\test')
-namedbox_to_numberedbox('\\wd\\test')
 namedbox_to_numberedbox('\\wd\\test0')
 namedbox_to_numberedbox('\\wd\\test01')
 namedbox_to_numberedbox('\\wd\\test@t 012')
