@@ -4,8 +4,9 @@ require("pgfplots.binary")
 -- all classes/globals will be added to this table:
 pgfplots = {}
 require("pgfplots.util")
-pgfplots.pgfluamathparser = require("pgfplotsoldpgf_luamath.parser")
-pgfplots.pgfluamathfunctions = require("pgfplotsoldpgf_luamath.functions")
+-- FIXME : solve dependencies when releasing this pgfplots version...
+pgfplots.pgfluamathparser = require("pgfluamath.parser")
+pgfplots.pgfluamathfunctions = require("pgfluamath.functions")
 
 require("pgfplots.plothandler")
 require("pgfplots.colormap")
