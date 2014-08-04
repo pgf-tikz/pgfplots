@@ -24,41 +24,28 @@ local match = lpeg.match
 
 local space_pattern = S(" \n\r\t")^0
 
-local exponent_pattern = S("eE")
-local pow_operator = P"^" * space_pattern
-
 local one_digit_pattern = R("09")
 local positive_integer_pattern = one_digit_pattern^1
 -- FIXME : it might be a better idea to remove '-' from all number_patterns! Instead, rely on the prefix operator 'neg' to implement negative numbers.
 -- Is that wise? It is certainly less efficient...
 local integer_pattern = S("+-")^-1 * positive_integer_pattern 
 -- Valid positive decimals are |xxx.xxx|, |.xxx| and |xxx.|
-local positive_decimal_pattern = (one_digit_pattern^1 * P(".") * one_digit_pattern^1) + 
-                                 (P(".") * one_digit_pattern^1) +
-								 (one_digit_pattern^1 * P("."))
-local decimal_pattern = S("+-")^-1 * positive_decimal_pattern
-local integer_or_decimal_pattern = decimal_pattern + integer_pattern
-local positive_integer_or_decimal_pattern = positive_decimal_pattern + positive_integer_pattern
+local positive_integer_or_decimal_pattern = positive_integer_pattern * ( P(".") * one_digit_pattern^0)^-1 + 
+                                 (P(".") * one_digit_pattern^1) 
+local integer_or_decimal_pattern = S("+-")^-1 * positive_integer_or_decimal_pattern 
 local fpu_pattern = R"15" * P"Y" * positive_integer_or_decimal_pattern * P"e" * P("-")^-1 * R("09")^1 * P"]"
 local unbounded_pattern = P"inf" + P"INF" + P"nan" + P"NaN" + P"Inf"
-local number_pattern = unbounded_pattern + fpu_pattern + integer_or_decimal_pattern * (exponent_pattern * integer_pattern)^-1
+local number_pattern = unbounded_pattern + fpu_pattern + integer_or_decimal_pattern * (S"eE" * integer_pattern)^-1
 
 local tex_unit = 
         P('pt') + P('mm') + P('cm') + P('in') + 
         P('ex') + P('em') + P('bp') + P('pc') + 
         P('dd') + P('cc') + P('sp');
 
-local at_pattern = P("@")
-
 local underscore_pattern = P("_")
 
-local exponent_pattern = P"^"
-
-local lower_letter_pattern = R("az")
-local upper_letter_pattern = R("AZ")
 local letter_pattern = R("az","AZ")
 local alphanum__pattern = letter_pattern + one_digit_pattern + underscore_pattern
-local alpha__pattern = letter_pattern + underscore_pattern
 
 local identifier_pattern = letter_pattern^1 * alphanum__pattern^0 
 
@@ -74,17 +61,6 @@ local closebrace_pattern = P("]")
 local controlsequence_pattern = P"\\" * C( (R("az","AZ") + P"@")^1) * C( R"09"^0 )
 
 -- local string = P('"') * C((1 - P('"'))^0) * P('"')
-
-local orop_pattern = P("||")
-local andop_pattern = P("&&")
-
-local neqop_pattern = P("!=")
-
-local then_pattern = P("?")
-local else_pattern = P(":")
-local factorial_pattern = P("!")
-local not_mark_pattern = P("!")
-local radians_pattern = P("r")
 
 local comma_pattern = P(",") * space_pattern
 
