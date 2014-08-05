@@ -9,6 +9,7 @@ local tex=tex
 local tostring=tostring
 local error=error
 local table=table
+local string=string
 local pairs=pairs
 
 do
@@ -18,7 +19,7 @@ local _ENV = pgfplots
 -- expands to the survey results 
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
-	tex.print(gca:surveyToPgfplots(gca.currentPlotHandler, true));
+	tex.sprint(gca:surveyToPgfplots(gca.currentPlotHandler, true));
 	gca.currentPlotHandler=nil
 end
 
@@ -26,7 +27,7 @@ end
 function texPerpointMetaTrafo(metaStr)
     local meta = pgfplotsmath.tonumber(metaStr)
     local transformed = gca.currentPlotHandler:visualizationTransformMeta(meta);
-    tex.print(pgfplotsmath.tostringfixed(transformed));
+    tex.sprint(pgfplotsmath.tostringfixed(transformed));
 end
 
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
@@ -35,10 +36,10 @@ function texVisualizationInit(plotNum)
     gca.currentPlotHandler = currentPlotHandler; 
     if currentPlotHandler then
         currentPlotHandler:visualizationPhaseInit();
-        tex.print("1") 
+        tex.sprint("1") 
     else
         -- ok, this plot has no LUA support.
-        tex.print("0") 
+        tex.sprint("0") 
     end
 end
 
@@ -49,7 +50,7 @@ function texApplyZBufferReverseScanline(scanLineLength)
     
     currentPlotHandler:reverseScanline(scanLineLength)
     
-    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
 
 -- Expands to the resulting coordinates
@@ -59,7 +60,7 @@ function texApplyZBufferReverseTransposed(scanLineLength)
     
     currentPlotHandler:reverseTransposed(scanLineLength)
     
-    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
 
 -- Expands to the resulting coordinates
@@ -69,7 +70,7 @@ function texApplyZBufferReverseStream()
     
     currentPlotHandler:reverseStream(scanLineLength)
     
-    tex.print(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
 
 function texColorMapPrecomputed(mapName, inMin, inMax, x)
@@ -85,7 +86,37 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 			if i>1 then str = str .. "," end
 			str = str .. tostring(result[i])
 		end
-		tex.print(str)
+		tex.sprint(str)
+	end
+end
+
+local function isStripPrefixOrSuffixChar(char)
+	return char == ' ' or char == '{' or char == "}"
+end
+
+-- Expressions can be something like
+-- 	( {(6+(sin(3*(x+3*y))+1.25)*cos(x))*cos(y)},
+--    {(6+(sin(3*(x+3*y))+1.25)*cos(x))*sin(y)},
+--    {((sin(3*(x+3*y))+1.25)*sin(x))} );
+--
+-- These result in expressions = { " {...}", " {...}", " {...} " }
+-- -> this function removes the surrounding braces and the white spaces.
+local function removeSurroundingBraces(expressions)
+	for i=1,#expressions do
+		local expr = expressions[i]
+		local startIdx
+		local endIdx
+		startIdx=1
+		while startIdx<#expr and isStripPrefixOrSuffixChar(string.sub(expr,startIdx,startIdx)) do
+			startIdx = startIdx+1
+		end
+		endIdx = #expr
+		while endIdx > 0 and isStripPrefixOrSuffixChar(string.sub(expr,endIdx,endIdx)) do
+			endIdx = endIdx-1
+		end
+
+		expr = string.sub(expr, startIdx, endIdx )
+		expressions[i] = expr
 	end
 end
 
@@ -125,6 +156,7 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 	else
 		expressions = {xExpr, yExpr}
 	end
+	removeSurroundingBraces(expressions)
 
 	local generator = AddplotExpressionCoordinateGenerator.new(
 		coordoutputstream, 
@@ -136,9 +168,9 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 	local success = generator:generateCoords()
 
 	if success then
-		tex.print("1")
+		tex.sprint("1")
 	else
-		tex.print("0")
+		tex.sprint("0")
 	end
 end
 

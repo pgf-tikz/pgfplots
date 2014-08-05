@@ -633,6 +633,13 @@ function Axis:datapointsurveyed(pt, plothandler)
     -- We do it it surveypoint.
 end
 
+local function axisLimitToTeXString(name, value)
+	if value == math.huge or value == -math.huge then
+		return ""
+	end
+	return name .. "=" .. pgfplotsmath.toTeXstring(value) .. ","
+end
+
 -- PUBLIC
 --
 -- @return a set of (private) key-value pairs such that the TeX code of pgfplots can
@@ -641,20 +648,21 @@ end
 -- @param plothandler an instance of Plothandler
 -- @param includeCoords true or false, depending on whether the plot coordinates should be returned
 function Axis:surveyToPgfplots(plothandler, includeCoords)
-    local firstCoord = plothandler.coords[1]
-    local lastCoord = plothandler.coords[#plothandler.coords]
+    local firstCoord = plothandler.coords[1] or Coord.new()
+    local lastCoord = plothandler.coords[#plothandler.coords] or Coord.new()
     local hasJumps
     local filteredCoordsAway
     if plothandler.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
     if plothandler.filteredCoordsAway then filteredCoordsAway = 1 else filteredCoordsAway = 0 end
 
+	-- FIXME : this could be rewritten by means of tex.spring("\\def\\macro{<value>}")
     local result = 
-        "@xmin=" .. pgfplotsmath.toTeXstring(self.min[1]) .. "," ..
-        "@ymin=" .. pgfplotsmath.toTeXstring(self.min[2]) .. "," ..
-        "@zmin=" .. pgfplotsmath.toTeXstring(self.min[3]) .. "," ..
-        "@xmax=" .. pgfplotsmath.toTeXstring(self.max[1]) .. "," ..
-        "@ymax=" .. pgfplotsmath.toTeXstring(self.max[2]) .. "," ..
-        "@zmax=" .. pgfplotsmath.toTeXstring(self.max[3]) .. "," ..
+        axisLimitToTeXString("@xmin", self.min[1]) ..
+        axisLimitToTeXString("@ymin", self.min[2]) ..
+        axisLimitToTeXString("@zmin", self.min[3]) ..
+        axisLimitToTeXString("@xmax", self.max[1]) ..
+        axisLimitToTeXString("@ymax", self.max[2]) ..
+        axisLimitToTeXString("@zmax", self.max[3]) ..
     -- FIXME : what about datamin/datamx!?
         "point meta min=" .. pgfplotsmath.toTeXstring(plothandler.metamin) ..","..
         "point meta max=" .. pgfplotsmath.toTeXstring(plothandler.metamax) ..","..
