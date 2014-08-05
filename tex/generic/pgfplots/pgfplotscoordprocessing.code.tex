@@ -3452,6 +3452,7 @@
 		\pgfplotssurveyphase@set@visphase@names{#1}%
 		\let\pgfplots@visphase@names=\pgfplotsretval
 		%
+		\t@pgfplots@tokc={#1;}%
 		%
 		% SERIALIZE RESULT:
 		%
@@ -3514,6 +3515,7 @@
 				\noexpand\def\noexpand\pgfplotsaxisfilteredcoordsaway{\pgfplotsaxisfilteredcoordsaway}%
 				\noexpand\def\noexpand\pgfplotsaxisplothasjumps{\pgfplotsaxisplothasjumps}%
 				\noexpand\pgfkeyssetvalue{/pgfplots/on layer}{\pgfkeysvalueof{/pgfplots/on layer}}%
+				\noexpand\def\noexpand\pgfplots@serialized@afterpath{\the\t@pgfplots@tokc}%
 			}%
 			{% draw command:
 				\noexpand\path%
@@ -3522,14 +3524,14 @@
 		\pgfplotsapplistXXlet\pgfplots@coord@stream@recorded
 		\pgfplotsapplistXXclear
 		\t@pgfplots@tokc=\expandafter{\pgfplots@coord@stream@recorded}%
-		\t@pgfplots@tokb={#1;}%
 		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
 		\xdef\pgfplots@glob@TMPa{%
 			\the\t@pgfplots@toka
 			{% coordinates which need to be processed in \endaxis.
 			% See
 			% \pgfplots@coord@stream@finalize@storedcoords@START
-				normalized coordinates {\the\t@pgfplots@tokc}\the\t@pgfplots@tokb
+			% (will become available as \pgfplots@stored@current@data)
+				\the\t@pgfplots@tokc
 			}%
 		}%
 		%
@@ -3785,7 +3787,7 @@
 
 % This defines \pgfplots@visphase@default:
 \expandafter\def\csname pgfplots@visphase@\pgfplotsaxis@visphase@name@default\endcsname{%
-	\expandafter\pgfplots@coord@stream@finalize@storedcoords@START\pgfplots@stored@current@data\pgfplots@EOI
+	\pgfplots@coord@stream@finalize@storedcoords@START
 }%
 
 % A routine which transforms the current set of
@@ -6963,6 +6965,10 @@
 	\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
 	\pgfplots@gettikzinternal@keyval{mark}{tikz@plot@mark}{}%
 	%
+	\ifpgfplots@threedim
+		\pgfplots@apply@zbuffer
+	\fi
+	%
 	\pgfplots@perpointmeta@preparetrafo
 	%
 	\ifpgfplots@stackedmode
@@ -7595,19 +7601,12 @@
 % 	either floating point or fixed point coordinates (depending on the
 % 	state of the \ifpgfplots@apply@datatrafo boolean)
 %
-\long\def\pgfplots@coord@stream@finalize@storedcoords@START normalized coordinates #1#2;\pgfplots@EOI{%
+\long\def\pgfplots@coord@stream@finalize@storedcoords@START{%
 	% de-activate the FPU here! I fear its number
 	% format may cause errors when used in low-level
 	% routines.
 	\pgfkeys{/pgf/fpu=false}%
 	%
-	\ifpgfplots@threedim
-		\pgfplots@apply@zbuffer{#1}%
-		\let\pgfplots@coord@stream@finalize@storedcoords@START@coords=\pgfplotsglobalretval
-		\global\let\pgfplotsglobalretval=\relax
-	\else
-		\def\pgfplots@coord@stream@finalize@storedcoords@START@coords{#1}%
-	\fi
 	\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
 	%
 	\ifpgfplots@clip
@@ -7632,7 +7631,7 @@
 		\pgfplots@coord@stream@start
 		\pgfplots@coord@stream@end
 	\else
-		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@coord@stream@finalize@storedcoords@START@coords}%
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
 	\fi
 	%
 	% This here ensures that the LAST position of the path is the last plotted point.
@@ -7641,10 +7640,10 @@
 	\xdef\pgfplotlastpoint{\noexpand\pgfpointanchor{current plot end}{center}}%
 	\tikz@make@last@position{\pgfplotlastpoint}%
 	%
-	\let\pgfplots@plot@timer@args=\pgfplots@coord@stream@finalize@storedcoords@START@coords
+	\let\pgfplots@plot@timer@args=\pgfplots@stored@current@data
 	\pgfplotspointplotattimeclearcache
 	\let\tikz@timer=\pgfplots@plot@timer%
-	\pgfplotsaxisvisphase@get@afterpath{#2}%
+	\pgfplotsaxisvisphase@get@afterpath%
 	\expandafter
 	\endpgfextra
 	\pgfplotsretval
@@ -7658,7 +7657,7 @@
 % standard tikz instructions which are to be carried out after the
 % plot path. This depends on the current visualization phase and the
 % available visualization phases.
-\def\pgfplotsaxisvisphase@get@afterpath#1{%
+\def\pgfplotsaxisvisphase@get@afterpath{%
 	\ifx\pgfplots@visphase@name\pgfplotsaxis@visphase@name@default
 		% ah - we have the standard visualization phase. Draw them
 		% here.
@@ -7666,7 +7665,7 @@
 		% Note that the existance of (nontrivial) after path
 		% instructions ALWAYS implies the existance of a standard
 		% visualization phase (compare \pgfplotssurveyphase@set@visphase@names)
-		\def\pgfplotsretval{#1}%
+		\let\pgfplotsretval=\pgfplots@serialized@afterpath%
 	\else
 		\let\pgfplotsretval=\pgfutil@empty
 	\fi
@@ -8584,51 +8583,48 @@
 
 
 
-% #1: a normalized coordinate stream.
-%
-% Output: a normalized coordinate stream in \pgfplotsglobalretval.
-\def\pgfplots@apply@zbuffer#1{%
+% Input : \pgfplots@stored@current@data contains the coordinate stream
+% Output: \pgfplots@stored@current@data contains the (modified)
+% coordinate stream
+\def\pgfplots@apply@zbuffer{%
 	\ifcase\pgfplotsplothandlermesh@zbuffer@choice\relax
 		% none.
-		\gdef\pgfplotsglobalretval{#1}%
 	\or
 		% reverse x seq: only for 'mesh'
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse x seq' can only be used for mesh/surf plots.}%
-			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			\pgfplotsautocompletemeshkeys
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering = rowwise -> scanline is cols!
 				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
-				\pgfplots@apply@zbuffer@reversescanline{#1}%
+				\pgfplots@apply@zbuffer@reversescanline%
 			\else
 				% ordering = colwise: scanline is rows!
 				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
-				\pgfplots@apply@zbuffer@reversetransposed{#1}%
+				\pgfplots@apply@zbuffer@reversetransposed%
 			\fi
 		\fi
 	\or
 		% reverse y seq: only for 'mesh'
 		\if\pgfplots@meshmode n%
 			\pgfplots@error{Sorry, `/pgfplots/z buffer=reverse y seq' can only be used for mesh/surf plots.}%
-			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			\pgfplotsautocompletemeshkeys
 			\if\pgfplots@plot@mesh@ordering0%
 				% ordering = rowwise -> scanline is cols!
 				\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsscanlinelength
-				\pgfplots@apply@zbuffer@reversetransposed{#1}%
+				\pgfplots@apply@zbuffer@reversetransposed%
 			\else
 				% ordering = colwise: scanline is rows!
 				\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsscanlinelength
-				\pgfplots@apply@zbuffer@reversescanline{#1}%
+				\pgfplots@apply@zbuffer@reversescanline%
 			\fi
 		\fi
 	\or
 		% reverse xy seq:
 		\ifpgfplots@LUA@backend@supported
-			\expandafter\gdef\expandafter\pgfplotsglobalretval\expandafter{%
+			\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
 				\directlua{pgfplots.texApplyZBufferReverseStream()}%
 			}%
 		\else
@@ -8644,8 +8640,10 @@
 				\pgfplotsprependlistXnewempty{reversed}% clear it
 				\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 			}%
-			\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+			\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
 			\endgroup
+			\let\pgfplots@stored@current@data=\pgfplotsglobalretval
+			\global\let\pgfplotsglobalretval=\pgfutil@empty
 		\fi
 	\or
 		% sort.
@@ -8680,11 +8678,12 @@
 				\pgfkeysdef{/pgfplots/array/unscope post}{}%
 				\pgfplotsarraysort\pgfplots@zbuffer@local
 			}%
-			\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+			\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
 			\endgroup
+			\let\pgfplots@stored@current@data=\pgfplotsglobalretval
+			\global\let\pgfplotsglobalretval=\pgfutil@empty
 		\else
 			% meshmode handles sort separately!
-			\gdef\pgfplotsglobalretval{#1}%
 		\fi
 	\or
 		% z buffer=auto
@@ -8733,10 +8732,10 @@
 				\fi
 			\fi
 %\message{z buffer=auto mode chose  z buffer= \ifcase\pgfplotsplothandlermesh@zbuffer@choice NONE \or reverse x seq \or reverse y seq \or reverse xy seq \or sort\or default \fi. mesh ordering = \ifcase\pgfplots@plot@mesh@ordering x varies/rowwise\or y varies/colwise\fi}%
-		% 'z buffer' is no longer 'auto' now:
-			\pgfplots@apply@zbuffer{#1}%
 			\pgfmath@smuggleone\pgfplotsplothandlermesh@zbuffer@choice
 			\endgroup
+			% 'z buffer' is no longer 'auto' now:
+			\pgfplots@apply@zbuffer
 		\else
 			% mesh input=patches
 			\ifpgfplots@threedim
@@ -8747,17 +8746,15 @@
 			\else
 				\pgfkeys{/pgfplots/z buffer=none}%
 			\fi
-			\gdef\pgfplotsglobalretval{#1}%
 		\fi
 	\or
 		% z buffer=default.
 		\if\pgfplots@meshmode n%
 			% mesh mode deactivated!
-			\gdef\pgfplotsglobalretval{#1}%
 		\else
 			% mesh=true
 			\pgfkeysalso{/pgfplots/z buffer=auto}%
-			\pgfplots@apply@zbuffer{#1}%
+			\pgfplots@apply@zbuffer%
 		\fi
 	\fi
 }%
@@ -8776,9 +8773,9 @@
 % 	\pgfplotsscanlinelength contains the scanline length
 % POSTCONDITION:
 % 	\pgfplotsglobalretval contains the partial reversion.
-\def\pgfplots@apply@zbuffer@reversescanline#1{%
+\def\pgfplots@apply@zbuffer@reversescanline{%
 	\ifpgfplots@LUA@backend@supported
-		\expandafter\gdef\expandafter\pgfplotsglobalretval\expandafter{%
+		\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
 			\directlua{pgfplots.texApplyZBufferReverseScanline(\pgfplotsscanlinelength)}%
 		}%
 	\else
@@ -8807,8 +8804,10 @@
 			\pgfplotsapplistXlet\pgfplots@loc@TMPa={\resultlist}%
 			\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 		}%
-		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
 		\endgroup
+		\let\pgfplots@stored@current@data=\pgfplotsglobalretval
+		\global\let\pgfplotsglobalretval=\pgfutil@empty
 	\fi
 %\message{I have performed partial reversion of '#1' and got     '\pgfplotsglobalretval'!}%
 }%
@@ -8817,9 +8816,9 @@
 % but this one keeps everything inside of each scanline in the
 % original ordering, and reverses the ordering in which whole
 % scanlines occur.
-\def\pgfplots@apply@zbuffer@reversetransposed#1{%
+\def\pgfplots@apply@zbuffer@reversetransposed{%
 	\ifpgfplots@LUA@backend@supported
-		\expandafter\gdef\expandafter\pgfplotsglobalretval\expandafter{%
+		\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
 			\directlua{pgfplots.texApplyZBufferReverseTransposed(\pgfplotsscanlinelength)}%
 		}%
 	\else
@@ -8848,8 +8847,10 @@
 			\pgfplotsprependlistXlet\pgfplots@loc@TMPa={resultlist}%
 			\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
 		}%
-		\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+		\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
 		\endgroup
+		\let\pgfplots@stored@current@data=\pgfplotsglobalretval
+		\global\let\pgfplotsglobalretval=\pgfutil@empty
 	\fi
 %\message{I have performed partial reversion (reverse transposed) of '#1' and got     '\pgfplotsglobalretval'!}%
 }%

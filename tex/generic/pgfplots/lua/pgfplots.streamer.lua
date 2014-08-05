@@ -17,14 +17,8 @@ CoordOutputStream = newClass()
 function CoordOutputStream:constructor()
 end
 
-function CoordOutputStream:startStream()
-end
-
 -- @param pt an instance of Coord
 function CoordOutputStream:coord(pt)
-end
-
-function CoordOutputStream:endStream()
 end
 
 -----------------------------------
@@ -59,6 +53,7 @@ function AddplotExpressionCoordinateGenerator:constructor(coordoutputstream, exp
 end
 
 -- @return true on success or false if the operation cannot be carried out.
+-- this method is a replicate of \pgfplots@addplotimpl@expression@@
 function AddplotExpressionCoordinateGenerator:generateCoords()
 	local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
 	-- create a backup of the 'x' and 'y' math expressions which 
