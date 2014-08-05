@@ -5,15 +5,17 @@ local tostring = tostring
 local tonumber = tonumber
 local setmetatable = setmetatable
 local getmetatable = getmetatable
-local io=io
 local print=print
 local pairs = pairs
 local table=table
+local texio=texio
 
 do
 local _ENV = pgfplots
 ---------------------------------------
 --
+
+log=texio.write_nl
 
 function stringOrDefault(str, default)
     if str == nil or type(str) == 'string' and string.len(str) == 0 then

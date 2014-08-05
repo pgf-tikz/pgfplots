@@ -4,13 +4,13 @@
 -- Its purpose is to encapsulate the communication between TeX and LUA in a central LUA file
 
 local pgfplotsmath = pgfplots.pgfplotsmath
-local io=io
 local tex=tex
 local tostring=tostring
 local error=error
 local table=table
 local string=string
 local pairs=pairs
+local pcall=pcall
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -121,7 +121,7 @@ local function removeSurroundingBraces(expressions)
 end
 
 -- generates TeX output '1' on success and '0' on failure
-function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, sampleLine, domainxmin, domainxmax, domainymin, domainymax, samplesx, samplesy, variablex, variabley)
+function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, sampleLine, domainxmin, domainxmax, domainymin, domainymax, samplesx, samplesy, variablex, variabley, debugMode)
 	local plothandler = gca.currentPlotHandler
 	local coordoutputstream = SurveyCoordOutputStream.new(plothandler)
 	
@@ -165,7 +165,15 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 		samples,
 		variableNames)
 	
-	local success = generator:generateCoords()
+	local success
+	if debugMode then
+		success = generator:generateCoords()
+	else
+		success, errorMsg = pcall(generator.generateCoords, generator)
+		if not success then
+			log("log", "LUA survey failed:\n " .. errorMsg .. "\nFalling back to TeX survey. Use \\pgfplotsset{lua debug} to see more.\n")
+		end
+	end
 
 	if success then
 		tex.sprint("1")

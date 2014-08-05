@@ -2,7 +2,6 @@
 
 local math=math
 local pgfplotsmath = pgfplots.pgfplotsmath
-local io=io
 local type=type
 local tostring=tostring
 local error=error
@@ -56,7 +55,7 @@ function AddplotExpressionCoordinateGenerator:constructor(coordoutputstream, exp
 	self.samples = samples
 	self.variableNames = variableNames
 	
-	io.write("initialized " .. tostring(self) .. "\n")
+	log("initialized " .. tostring(self) .. "\n")
 end
 
 -- @return true on success or false if the operation cannot be carried out.
@@ -87,7 +86,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		local didWarn = false
 		pseudoconstanty = function()
 			if not didWarn then
-				io.write("Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain")
+				log("Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain\n")
 				didWarn = true
 			end
 			return 0
@@ -139,7 +138,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 			for j = 0,max_j do
 				-- FIXME : pgfplots@plot@data@notify@next@y
 				y = ymin + j*hy
-				-- io.write("" .. j .. "\n")
+				-- log("" .. j .. "\n")
 				for i = 0,max_i do
 					-- FIXME : pgfplots@plot@data@notify@next@x
 					x = xmin + i*hx

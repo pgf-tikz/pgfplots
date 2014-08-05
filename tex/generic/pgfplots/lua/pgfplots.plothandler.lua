@@ -11,7 +11,6 @@
 
 local math=math
 local pgfplotsmath = pgfplots.pgfplotsmath
-local io=io
 local type=type
 local tostring=tostring
 local error=error
@@ -79,7 +78,7 @@ function PointMetaMap:map(meta)
         return result
     else
         if self.warnForfilterDiscards then  
-            io.write("The per point meta data '" .. tostring(meta) .. " (and probably others as well) is unbounded - using the minimum value instead.\n")
+            log("The per point meta data '" .. tostring(meta) .. " (and probably others as well) is unbounded - using the minimum value instead.\n")
             self.warnForfilterDiscards=false
         end
         return 0
@@ -134,7 +133,7 @@ end
 -- appends a fully surveyed point
 function Plothandler:addSurveyedPoint(pt)
     table.insert(self.coords, pt)
-    -- io.write("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
+    -- log("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
 end
 
 -- PRIVATE
@@ -229,7 +228,7 @@ end
 -- PRECONDITION: visualizationPhaseInit() has been called some time before.
 function Plothandler:visualizationTransformMeta(meta)
     if meta == nil then
-        io.write("could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\\addplot[point meta=y]' or something like that?\n")
+        log("could not access the 'point meta' (used for example by scatter plots and color maps). Maybe you need to add '\\addplot[point meta=y]' or something like that?\n")
         return 1
     else
         return self.pointmetamap:map(meta)
@@ -611,14 +610,14 @@ function Axis:datapointsurveyed(pt, plothandler)
                 else
                     reason = "it is unbounding (in " .. tostring(pt.unboundedDir) .. ")."
                 end
-                io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
+                log("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
             end
         elseif plothandler.config.unboundedCoords == UnboundedCoords.jump then
             if pt.unboundedDir == nil then
                 plothandler.filteredCoordsAway = true
                 if plothandler.config.warnForfilterDiscards then
                     local reason = "of a coordinate filter."
-                    io.write("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
+                    log("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
                 end
             else
                 plothandler.plotHasJumps = true
