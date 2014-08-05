@@ -15,6 +15,7 @@ local type=type
 local tostring=tostring
 local error=error
 local table=table
+local pgfmathparse = pgfplots.pgfluamathparser.pgfmathparse
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -161,9 +162,30 @@ function Plothandler:setperpointmetalimits(pt)
     end
 end
 
+local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
+
+local pseudoconstant_pt = nil
+local function pseudoconstant_x() return pseudoconstant_pt.x[1] end
+local function pseudoconstant_y() return pseudoconstant_pt.x[2] end
+local function pseudoconstant_z() return pseudoconstant_pt.x[3] end
+local function pseudoconstant_rawx() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[1]) end
+local function pseudoconstant_rawy() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[2]) end
+local function pseudoconstant_rawz() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[3]) end
+local function pseudoconstant_meta() return pseudoconstant_pt.meta end
+
+local function updatePseudoConstants(pt)
+	pseudoconstant_pt = pt
+end
+
 -- @see \pgfplotsplothandlersurveystart
 function Plothandler:surveystart()
-    -- empty by default.
+	stringToFunctionMap["x"] = pseudoconstant_x
+	stringToFunctionMap["y"] = pseudoconstant_y
+	stringToFunctionMap["z"] = pseudoconstant_z
+	stringToFunctionMap["rawx"] = pseudoconstant_rawx
+	stringToFunctionMap["rawy"] = pseudoconstant_rawy
+	stringToFunctionMap["rawz"] = pseudoconstant_rawz
+	stringToFunctionMap["meta"] = pseudoconstant_meta
 end
 
 -- @see \pgfplotsplothandlersurveyend
@@ -173,6 +195,8 @@ end
 
 -- @see \pgfplotsplothandlersurveypoint
 function Plothandler:surveypoint(pt)
+	updatePseudoConstants(pt)
+
     local current = self.axis:parsecoordinate(pt)
     if current.x[1] ~= nil then
         current = self.axis:preparecoordinate(current)
@@ -407,6 +431,25 @@ function ExplicitPointMetaHandler:assign(pt)
         pt.meta = pgfplotsmath.tonumber(pt.unfiltered.meta)
     end
 end
+
+-- a point meta handler which evaluates a math expression.
+-- ATTENTION: the expression cannot depend on TeX macro values
+ExpressionPointMetaHandler = newClassExtends( PointMetaHandler )
+
+-- @param expression an expression. It can rely on functions which are only available in plot context (in plot expression, x and y are typically defined)
+function ExpressionPointMetaHandler:constructor(expression)
+	PointMetaHandler.constructor(self, false,false)
+	self.expression = expression
+end
+
+function ExpressionPointMetaHandler:assign(pt)
+	pt.meta = pgfmathparse(self.expression)
+	if not pt.meta then
+		error("point meta=" .. self.expression .. ": expression has been rejected.")
+    end
+end
+	
+
 -------------------------------------------------------
 
 -- An axis. 
@@ -647,6 +690,7 @@ end
 -- @param plothandler an instance of Plothandler
 -- @param includeCoords true or false, depending on whether the plot coordinates should be returned
 function Axis:surveyToPgfplots(plothandler, includeCoords)
+	plothandler:surveyend()
     local firstCoord = plothandler.coords[1] or Coord.new()
     local lastCoord = plothandler.coords[#plothandler.coords] or Coord.new()
     local hasJumps

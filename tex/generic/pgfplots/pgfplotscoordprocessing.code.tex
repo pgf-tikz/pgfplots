@@ -2674,7 +2674,23 @@
 		\ifx\pgfpmeta@expr@origchoice\pgfplots@loc@TMPa
 			\let\pgfpmeta@expr@origchoice\pgfutil@empty
 		\fi
+		%
+		\def\pgfplots@loc@TMPa{#1}%
+		\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPa
+		\edef\pgfplots@loc@TMPa{\noexpand\pgfutil@in@{\pgfplots@backslash@as@other}{\pgfplots@loc@TMPa}}%
+		\pgfplots@loc@TMPa
+		\ifpgfutil@in@
+			% oh. The point meta expression contains a backslash - it
+			% depends on a macro. This means: it depends on \thisrow
+			% or similar TeX stuff - which must be evaluated by TeX.
+			%
+			% LUA cannot be used for this point meta handler.
+			\let\pgfpmeta@expr@LUA@class\pgfutil@empty
+		\else
+			\def\pgfpmeta@expr@LUA@class{pgfplots.ExpressionPointMetaHandler.new("#1")}%
+		\fi
 	},
+	LUA class=\pgfpmeta@expr@LUA@class,
 }%
 \pgfkeyssetvalue{/pgfplots/point meta/expr}{}%
 
@@ -3276,6 +3292,7 @@
 	% Inside of math expressions, 'x', 'y' and 'z' expand to the
 	% current x,y and z coords respectively. Introduce these (and some
 	% more) shortcuts:
+	% FIXME : defining the resulting x/y coordinates as 'x' and 'y' constants was a really really bad idea in the first place :-(
 	\pgfplotsmathdeclarepseudoconstant{x}{\let\pgfmathresult=\pgfplots@current@point@x}%
 	\pgfplotsmathdeclarepseudoconstant{y}{\let\pgfmathresult=\pgfplots@current@point@y}%
 	\pgfplotsmathdeclarepseudoconstant{z}{\let\pgfmathresult=\pgfplots@current@point@z}%
@@ -3537,39 +3554,48 @@
 	\fi
 }%
 
+\def\pgfplots@LUA@survey@log@deactivation#1{%
+	\pgfplots@log3{Using 'lua backend=false' for plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername'): #1.}%
+}%
+
 \def\pgfplots@LUA@survey@start{%
 	\ifpgfplots@LUA@backend@supported
 		\ifx\pgfplotsplothandlerLUAfactory\pgfutil@empty
+			\pgfplots@LUA@survey@log@deactivation{plot handler does not support LUA}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
 		%
 		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
 			\def\pgfplots@loc@TMPa{nil}%
 		\else
-			\def\pgfplots@loc@TMPa{%
+			\edef\pgfplots@loc@TMPa{%
 				\csname pgfpmeta@\pgfplotspointmetainputhandler @LUA class\endcsname}%
 			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				\pgfplots@LUA@survey@log@deactivation{point meta choice does not support LUA}%
 				\pgfplots@LUA@backend@supportedfalse
 			\fi
 		\fi
 		\ifpgfplots@stackedmode
+			\pgfplots@LUA@survey@log@deactivation{LUA does not support stacked plots (yet)}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
 		\ifpgfplots@errorbars@enabled
+			\pgfplots@LUA@survey@log@deactivation{LUA does not support error bars (yet)}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
 		\ifpgfplots@collect@firstplot@astick
+			\pgfplots@LUA@survey@log@deactivation{LUA does not support xtick=data (yet)}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
-		\pgfkeysgetvalue{/pgfplots/pre filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
-		\pgfkeysgetvalue{/pgfplots/x filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
-		\pgfkeysgetvalue{/pgfplots/y filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
-		\pgfkeysgetvalue{/pgfplots/z filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
-		\pgfkeysgetvalue{/pgfplots/filter point/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\fi
+		\pgfkeysgetvalue{/pgfplots/pre filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support filter (yet)}\fi
+		\pgfkeysgetvalue{/pgfplots/x filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support filter (yet)}\fi
+		\pgfkeysgetvalue{/pgfplots/y filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support filter (yet)}\fi
+		\pgfkeysgetvalue{/pgfplots/z filter/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support filter (yet)}\fi
+		\pgfkeysgetvalue{/pgfplots/filter point/.@cmd}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support filter (yet)}\fi
 		%
 		\pgfkeysgetvalue{/pgfplots/execute for finished point}\pgfplots@loc@TMPc\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse\fi
 		%
-		\pgfkeysgetvalue{/pgfplots/visualization depends on/list}\pgfplots@loc@TMPc	\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse \fi
+		\pgfkeysgetvalue{/pgfplots/visualization depends on/list}\pgfplots@loc@TMPc	\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support 'visualization depends on' (yet)} \fi
 		%
 		\ifpgfplots@LUA@backend@supported
 			\begingroup
@@ -3588,7 +3614,7 @@
 					pgfplots.pgfplotsmath.tonumber("\pgfplots@zmax")}; ^^J%
 				% FIXME : what about datamin/datamax!?
 				local plothandlerFactory = \pgfplotsplothandlerLUAfactory; ^^J%
-				local plothandler = plothandlerFactory(gca, \pgfplots@loc@TMPa);^^J%
+				local plothandler = plothandlerFactory(gca, \csname pgfpmeta@\pgfplotspointmetainputhandler @LUA class\endcsname);^^J%
 				\ifx\pgfplots@loc@metamin\pgfutil@empty
 				\else
 					plothandler.autocomputeMetaMin = false;^^J%
@@ -3605,6 +3631,7 @@
 				config.pointmetarel = \pgfplots@perpointmeta@rel@choice;^^J%
 				gca.plothandlers[\the\pgfplots@numplots+1] = plothandler;^^J%
 				gca.currentPlotHandler = plothandler;^^J%
+				plothandler:surveystart();^^J%
 			}%
 %\message{Executing ^^J\pgfplots@loc@TMPa^^J^^J}%
 			\directlua{\pgfplots@loc@TMPa}%
@@ -3629,7 +3656,7 @@
 	\edef\pgfplots@loc@TMPa{%
 		\directlua{pgfplots.texSurveyEnd()}%
 	}%
-% \message{LUA backend: got \pgfplots@loc@TMPa^^J}%
+%\message{LUA backend: got \pgfplots@loc@TMPa^^J}%
 	%
 	\begingroup
 	\gdef\pgfplots@marshal{}%
@@ -5342,8 +5369,12 @@
 		\def\pgfplots@current@point@z{}%
 	\fi
 	%
+	\def\b@pgfplots@LUA@survey@expression{0}%
 	\ifpgfplots@LUA@backend@supported
+		\def\b@pgfplots@LUA@survey@expression{1}%
 		\ifpgfplotsplothandlermesh@patch@type@sampling
+			\def\b@pgfplots@LUA@survey@expression{0}%
+			\pgfplots@log3{Deactivating LUA version of plot expression for plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername'): patch type sampling unsupported (yet).}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
 	\fi
@@ -5361,7 +5392,7 @@
 	%  expressions!)
 	\pgfplots@coord@stream@start
 	%
-	\ifpgfplots@LUA@backend@supported
+	\if1\b@pgfplots@LUA@survey@expression
 		\pgfplots@log3{lua backend=true: Activating LUA version of plot expression for plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername').}%
 		\expandafter\def\tikz@plot@var{\pgfplots@plot@var@nonmacro}%
 		\expandafter\def\pgfplots@plot@var@y{\pgfplots@plot@var@y@nonmacro}%
@@ -7015,10 +7046,14 @@
 	}%
 }
 
+\def\pgfplots@LUA@visualizationlog@deactivation#1{%
+	\pgfplots@log3{Using 'lua backend=false' during visualization of plot \plotnum: #1.}%
+}%
 \def\pgfplots@LUA@visualization@init{%
 	\ifpgfplots@LUA@backend@supported
 		\if m\pgfplots@colormap@access
 		\else
+			\pgfplots@LUA@visualizationlog@deactivation{color map access=direct not supported (yet)}%
 			\pgfplots@LUA@backend@supportedfalse
 		\fi
 		% FIXME : add further conditions under which LUA has to be
@@ -7030,6 +7065,7 @@
 			\if1\pgfplots@loc@TMPa
 				\pgfplots@log3{lua backend=true: Activating partial LUA backend for visualization of plot \plotnum.}%
 			\else
+				\pgfplots@LUA@visualizationlog@deactivation{deactivated during survey phase}%
 				\pgfplots@LUA@backend@supportedfalse
 			\fi
 		\fi

@@ -55,11 +55,17 @@ function AddplotExpressionCoordinateGenerator:constructor(coordoutputstream, exp
 	self.samples = samples
 	self.variableNames = variableNames
 	
-	log("initialized " .. tostring(self) .. "\n")
+	-- log("initialized " .. tostring(self) .. "\n")
 end
 
 -- @return true on success or false if the operation cannot be carried out.
 function AddplotExpressionCoordinateGenerator:generateCoords()
+	local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
+	-- create a backup of the 'x' and 'y' math expressions which 
+	-- have been defined in \pgfplots@coord@stream@start:
+	local old_global_function_x = stringToFunctionMap["x"]
+	local old_global_function_y = stringToFunctionMap["y"]
+
 	local coordoutputstream = self.coordoutputstream
 	local is3d = self.is3d
 	local expressions = self.expressions
@@ -94,8 +100,6 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	else
 		pseudoconstanty = function() return y end
 	end
-	pgfluamathfunctions.stringToFunctionMap[variableNames[1]] = pseudoconstantx
-	pgfluamathfunctions.stringToFunctionMap[variableNames[2]] = pseudoconstanty
 
 	local pgfmathparse = pgfluamathparser.pgfmathparse
 	local prepareX
@@ -113,6 +117,8 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	end
 
 	local function computeXYZ()
+		stringToFunctionMap[variableNames[1]] = pseudoconstantx
+		stringToFunctionMap[variableNames[2]] = pseudoconstanty
 		local X = prepareX()
 		local Y = prepareY()
 		local Z = nil
@@ -122,6 +128,11 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		
 		local pt = Coord.new()
 		pt.x = { X, Y, Z}
+
+		-- restore 'x' and 'y'
+		-- FIXME : defining the resulting x/y coordinates as 'x' and 'y' constants was a really really bad idea in the first place :-(
+		stringToFunctionMap["x"] = old_global_function_x
+		stringToFunctionMap["y"] = old_global_function_y
 
 		coordoutputstream:coord(pt)
 	end
@@ -155,8 +166,8 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		return false
 	end
 	
-	pgfluamathfunctions.stringToFunctionMap[variableNames[1]] = nil
-	pgfluamathfunctions.stringToFunctionMap[variableNames[2]] = nil
+	stringToFunctionMap[variableNames[1]] = nil
+	stringToFunctionMap[variableNames[2]] = nil
 	return true
 end
 
