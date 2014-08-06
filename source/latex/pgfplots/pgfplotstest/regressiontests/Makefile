@@ -105,7 +105,7 @@ clean: cleanX
 
 # clean all except for references:
 cleanX:
-	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
+	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*-figure* unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
 
 %.diff.png: %.diff
 	@
