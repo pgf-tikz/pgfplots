@@ -259,6 +259,22 @@ function Plothandler:visualizationTransformMeta(meta)
     end
 end
 
+-- resembles \pgfplotstreamstart
+function Plothandler:visphasestart()
+end
+
+-- resembles \pgfplotstreampoint
+function Plothandler:visphasepoint(coordindex, pt)
+end
+
+-- resembles \pgfplotsplothandlervisualizejump
+function Plothandler:visualizeJump()
+end
+
+-- resembles \pgfplotstreamend
+function Plothandler:visphaseend()
+end
+
 -------------------------------------------------------
 -- Generic plot handler: one which has the default survey phase
 -- It is actually the same as Plothandler...
@@ -452,6 +468,21 @@ end
 
 -------------------------------------------------------
 
+DatascaleTrafo = newClass()
+
+function DatascaleTrafo.constructor(exponent, shift)
+	self.exponent=exponent
+	self.shift=shift
+	self.scale = math.pow(10, exponent)
+end
+
+function DatascaleTrafo:map(x)
+	return self.scale * x - self.shift
+end
+
+
+-------------------------------------------------------
+
 -- An axis. 
 Axis = newClass()
 
@@ -470,6 +501,8 @@ function Axis:constructor()
     self.axiswidemetamax = { -math.huge, -math.huge }
     -- will be populated by the TeX code:
     self.plothandlers = {}
+	-- needed during visualization phase:
+	self.datascaleTrafo={}
     return self
 end
 
@@ -724,6 +757,50 @@ function Axis:surveyToPgfplots(plothandler, includeCoords)
     end
     
     return result
+end
+
+function Axis:visphase(plothandler)
+	plothandler:visphasestart()
+	local coords = plothandler.coords
+
+	-- standard z buffer choices (not mesh + sort) is currently handled in TeX
+	-- as well as other preparations
+
+	-- FIXME : stacked plots?
+	-- FIXME : error bars?
+
+	for i = 1,#coords do
+		local pt = coords[i]
+		
+		if pt.x[1] == nil then
+			plothandler:visualizeJump()
+		else
+			self:visphasegetpoint(pt)
+			plothandler:visphasepoint(i, pt)
+		end
+	end
+	plothandler:visphaseend()
+end
+
+-- resembles \pgfplotsaxisvisphasetransformcoordinate
+function Axis:visphasetransformcoordinate(pt)
+	for i = 1,#pt.coords do
+		pt.x[i] = self.datascaleTrafo[i].map( pt.x[i] )
+	end
+end
+
+function Axis:visphasegetpoint(pt)
+	pt.untransformed = {}
+	for j = 1,#pt.x do
+		pt.untransformed[j] = pt.x[j]
+	end
+
+	self:visphasetransformcoordinate(pt)
+
+	-- FIXME : prepare data point (only for stacked)
+
+	-- FIXME : pgfplotsqpointxy(z)  : project to 2D tikz coordinates
+
 end
 
 -- will be set by TeX code (in \begin{axis})
