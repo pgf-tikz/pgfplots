@@ -33,6 +33,13 @@ function Coord:constructor()
     return self
 end
 
+function Coord:copy(other)
+	for i = 1,#other.x do self.x[i] = other.x[i] end
+	self.meta = other.meta
+	self.metatransformed = other.metatransformed
+	self.unfiltered = nil -- not needed
+end
+
 function Coord:__tostring()
     local result = '(' .. stringOrDefault(self.x[1], "--") .. 
         ',' .. stringOrDefault(self.x[2], "--") .. 
@@ -259,22 +266,6 @@ function Plothandler:visualizationTransformMeta(meta)
     end
 end
 
--- resembles \pgfplotstreamstart
-function Plothandler:visphasestart()
-end
-
--- resembles \pgfplotstreampoint
-function Plothandler:visphasepoint(coordindex, pt)
-end
-
--- resembles \pgfplotsplothandlervisualizejump
-function Plothandler:visualizeJump()
-end
-
--- resembles \pgfplotstreamend
-function Plothandler:visphaseend()
-end
-
 -------------------------------------------------------
 -- Generic plot handler: one which has the default survey phase
 -- It is actually the same as Plothandler...
@@ -363,6 +354,95 @@ function PlothandlerConfig:constructor()
     self.pointmetarel = PointMetaRel.axiswide
     return self
 end
+
+-------------------------------------------------------
+-- a PlotVisualizer takes an input Plothandler and visualizes its results.
+--
+-- "Visualize" can mean
+-- * apply the plot handler's default visualization phase
+-- * visualize just plot marks at each of the collected coordinates
+-- * visualize just error bars at each collected coordinate
+-- * ...
+-- 
+
+-- this class offers basic visualization support. "Basic" means that it will merely transform and finalize input coordinates.
+PlotVisualizer = newClass()
+function PlotVisualizer:constructor(sourcePlotHandler)
+	if not sourcePlotHandler then error("arguments must not be nil") end
+	self.axis = sourcePlotHandler.axis
+	self.sourcePlotHandler=sourcePlotHandler
+end
+
+-- resembles \pgfplotstreamstart
+-- This is an abstract function, called by getVisualizationOutput()
+function PlotVisualizer:visphasestart()
+end
+
+-- resembles \pgfplotstreampoint
+-- This is an abstract function, called by getVisualizationOutput()
+function PlotVisualizer:visphasepoint(coordindex, pt)
+end
+
+-- resembles \pgfplotsplothandlervisualizejump
+-- This is an abstract function, called by getVisualizationOutput()
+function PlotVisualizer:visualizeJump()
+end
+
+-- resembles \pgfplotstreamend
+-- This is an abstract function, called by getVisualizationOutput()
+function PlotVisualizer:visphaseend()
+end
+
+-- Visualizes the results.
+--
+-- @return any results. The format of the results is currently a list of Coord, but I am unsure of whether it will stay this way.
+--
+-- Note that a PlotVisualizer does _not_ modify self.sourcePlotHandler.coords 
+function PlotVisualizer:getVisualizationOutput()
+	self:visphasestart()
+	local result = {}
+	local coords = self.sourcePlotHandler.coords
+
+	-- standard z buffer choices (not mesh + sort) is currently handled in TeX
+	-- as well as other preparations
+
+	-- FIXME : stacked plots?
+	-- FIXME : error bars?
+
+	for i = 1,#coords do
+		local pt = Coord.new()
+		pt:copy(coords[i])
+		local result_i
+		
+		if pt.x[1] == nil then
+			result_i = self:visualizeJump()
+		else
+			self:visphasegetpoint(pt)
+			self:visphasepoint(i, pt)
+		end
+
+		result[i] = result_i
+	end
+	self:visphaseend()
+
+	return result
+end
+
+function PlotVisualizer:visphasegetpoint(pt)
+	pt.untransformed = {}
+	for j = 1,#pt.x do
+		pt.untransformed[j] = pt.x[j]
+	end
+
+	self.axis:visphasetransformcoordinate(pt)
+
+	-- FIXME : prepare data point (only for stacked)
+
+	-- FIXME : pgfplotsqpointxy(z)  : project to 2D tikz coordinates
+
+end
+
+
 
 -------------------------------------------------------
 
@@ -470,7 +550,7 @@ end
 
 DatascaleTrafo = newClass()
 
-function DatascaleTrafo.constructor(exponent, shift)
+function DatascaleTrafo:constructor(exponent, shift)
 	self.exponent=exponent
 	self.shift=shift
 	self.scale = math.pow(10, exponent)
@@ -759,48 +839,11 @@ function Axis:surveyToPgfplots(plothandler, includeCoords)
     return result
 end
 
-function Axis:visphase(plothandler)
-	plothandler:visphasestart()
-	local coords = plothandler.coords
-
-	-- standard z buffer choices (not mesh + sort) is currently handled in TeX
-	-- as well as other preparations
-
-	-- FIXME : stacked plots?
-	-- FIXME : error bars?
-
-	for i = 1,#coords do
-		local pt = coords[i]
-		
-		if pt.x[1] == nil then
-			plothandler:visualizeJump()
-		else
-			self:visphasegetpoint(pt)
-			plothandler:visphasepoint(i, pt)
-		end
-	end
-	plothandler:visphaseend()
-end
-
 -- resembles \pgfplotsaxisvisphasetransformcoordinate
 function Axis:visphasetransformcoordinate(pt)
-	for i = 1,#pt.coords do
-		pt.x[i] = self.datascaleTrafo[i].map( pt.x[i] )
+	for i = 1,#pt.x do
+		pt.x[i] = self.datascaleTrafo[i]:map( pt.x[i] )
 	end
-end
-
-function Axis:visphasegetpoint(pt)
-	pt.untransformed = {}
-	for j = 1,#pt.x do
-		pt.untransformed[j] = pt.x[j]
-	end
-
-	self:visphasetransformcoordinate(pt)
-
-	-- FIXME : prepare data point (only for stacked)
-
-	-- FIXME : pgfplotsqpointxy(z)  : project to 2D tikz coordinates
-
 end
 
 -- will be set by TeX code (in \begin{axis})

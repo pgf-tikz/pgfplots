@@ -11,6 +11,7 @@ local table=table
 local string=string
 local pairs=pairs
 local pcall=pcall
+local type=type
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -41,6 +42,20 @@ function texVisualizationInit(plotNum)
         -- ok, this plot has no LUA support.
         tex.sprint("0") 
     end
+end
+
+function texVisualizePlot(visualizerFactory)
+	if not visualizerFactory then error("arguments must not be nil") end
+	if type(visualizerFactory) ~= "function" then error("arguments must be a function (a factory)") end
+
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("Illegal state: The current plot has no LUA plot handler!") end
+
+	local visualizer = visualizerFactory(currentPlotHandler)
+
+	local result = visualizer:getVisualizationOutput()
+	
+    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end
 
 -- Expands to the resulting coordinates
@@ -169,11 +184,19 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 	if debugMode then
 		success = generator:generateCoords()
 	else
-		success, errorMsg = pcall(generator.generateCoords, generator)
-		if not success then
-			log("log", "LUA survey failed:\n " .. errorMsg .. "\nFalling back to TeX survey. Use \\pgfplotsset{lua debug} to see more.\n")
+		local resultOfGenerator
+		success, resultOfGenerator = pcall(generator.generateCoords, generator)
+		if success then
+			-- AH: "pcall" returned 'true'. In this case, 'success' is the boolean returned by generator
+			success = resultOfGenerator
+		end
+
+		if not success and type(resultOfGenerator) ~= "boolean" then
+			log("log", "LUA survey failed:\n " .. resultOfGenerator .. "\nFalling back to TeX survey. Use \\pgfplotsset{lua debug} to see more.\n")
 		end
 	end
+
+	if not type(success) == 'boolean' then error("Illegal state: expected boolean result") end
 
 	if success then
 		tex.sprint("1")
