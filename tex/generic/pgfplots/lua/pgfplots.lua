@@ -9,6 +9,7 @@ pgfplots.pgfluamathparser = require("pgfluamath.parser")
 pgfplots.pgfluamathfunctions = require("pgfluamath.functions")
 
 require("pgfplots.plothandler")
+require("pgfplots.meshplothandler")
 require("pgfplots.colormap")
 require("pgfplots.streamer")
 

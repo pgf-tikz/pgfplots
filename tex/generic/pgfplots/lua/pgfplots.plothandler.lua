@@ -284,67 +284,6 @@ end
 
 
 -------------------------------------------------------
--- Replicates \pgfplotsplothandlermesh (to some extend)
-MeshPlothandler = newClassExtends(Plothandler)
-
-function MeshPlothandler:constructor(axis, pointmetainputhandler)
-    Plothandler.constructor(self,"mesh", axis, pointmetainputhandler)
-end
-
--- see \pgfplot@apply@zbuffer
-function MeshPlothandler:reverseScanline(scanLineLength)
-    local coords = self.coords
-    local tmp
-    local scanlineOff
-    local numScanLines = #coords / scanLineLength
-    for scanline = 0,numScanLines-1,1 do
-        scanlineOff = scanline * scanLineLength
-        local reverseindex = scanlineOff + scanLineLength
-        for i = 0,scanLineLength/2-1,1 do
-            tmp = coords[1+scanlineOff+i]
-            coords[1+scanlineOff+i] = coords[reverseindex]
-            coords[reverseindex] = tmp
-            
-            reverseindex = reverseindex-1
-        end
-    end
-end
-
--- see \pgfplot@apply@zbuffer
-function MeshPlothandler:reverseTransposed(scanLineLength)
-    local coords = self.coords
-    local tmp
-    local scanlineOff
-    local numScanLines = #coords / scanLineLength
-    local reverseScanline = numScanLines-1
-    for scanline = 0,numScanLines/2-1,1 do
-        scanlineOff = 1+scanline * scanLineLength
-        reverseScanlineOff = 1+reverseScanline * scanLineLength
-        for i = 0,scanLineLength-1 do
-            tmp = coords[scanlineOff+i]
-            coords[scanlineOff+i] = coords[reverseScanlineOff+i]
-            coords[reverseScanlineOff+i] = tmp
-        end
-
-        reverseScanline = reverseScanline-1
-    end
-end
-
--- see \pgfplot@apply@zbuffer
-function MeshPlothandler:reverseStream()
-    local coords = self.coords
-    local tmp
-    local reverseindex = #coords
-    for i = 1,#coords/2 do
-        tmp = coords[i]
-        coords[i] = coords[reverseindex]
-        coords[reverseindex] = tmp
-        reverseindex = reverseindex-1
-    end
-end
-
-
--------------------------------------------------------
 
 UnboundedCoords = { discard="d", jump="j" }
 
@@ -379,33 +318,12 @@ function PlotVisualizer:constructor(sourcePlotHandler)
 	self.sourcePlotHandler=sourcePlotHandler
 end
 
--- resembles \pgfplotstreamstart
--- This is an abstract function, called by getVisualizationOutput()
-function PlotVisualizer:visphasestart()
-end
-
--- resembles \pgfplotstreampoint
--- This is an abstract function, called by getVisualizationOutput()
-function PlotVisualizer:visphasepoint(coordindex, pt)
-end
-
--- resembles \pgfplotsplothandlervisualizejump
--- This is an abstract function, called by getVisualizationOutput()
---function PlotVisualizer:visualizeJump()
---end
-
--- resembles \pgfplotstreamend
--- This is an abstract function, called by getVisualizationOutput()
-function PlotVisualizer:visphaseend()
-end
-
 -- Visualizes the results.
 --
 -- @return any results. The format of the results is currently a list of Coord, but I am unsure of whether it will stay this way.
 --
 -- Note that a PlotVisualizer does _not_ modify self.sourcePlotHandler.coords 
 function PlotVisualizer:getVisualizationOutput()
-	self:visphasestart()
 	local result = {}
 	local coords = self.sourcePlotHandler.coords
 
@@ -422,14 +340,19 @@ function PlotVisualizer:getVisualizationOutput()
 		
 		if result_i.x[1] ~= nil then
 			self:visphasegetpoint(result_i)
-			self:visphasepoint(i, result_i)
+		else
+			self:notifyJump(result_i)
 		end
 
 		result[i] = result_i
 	end
-	self:visphaseend()
 
 	return result
+end
+
+-- PROTECTED
+function PlotVisualizer:notifyJump(pt)
+	-- do nothing.
 end
 
 function PlotVisualizer:visphasegetpoint(pt)
