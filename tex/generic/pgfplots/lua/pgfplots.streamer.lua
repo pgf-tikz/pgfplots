@@ -84,13 +84,18 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	local function pseudoconstantx() return x end
 	local pseudoconstanty
 	if sampleLine then
-		local didWarn = false
-		pseudoconstanty = function()
-			if not didWarn then
-				log("Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain\n")
-				didWarn = true
+		if yExpr ~= variableNames[2] then
+			-- suppress the warning - we want to allow (x,y,x^2) in this case.
+			pseudoconstanty = function() return 0 end
+		else
+			local didWarn = false
+			pseudoconstanty = function()
+				if not didWarn then
+					log("Sorry, you can't use 'y' in this context. PGFPlots expected to sample a line, not a mesh. Please use the [mesh] option combined with [samples y>0] and [domain y!=0:0] to indicate a twodimensional input domain\n")
+					didWarn = true
+				end
+				return 0
 			end
-			return 0
 		end
 	else
 		pseudoconstanty = function() return y end
@@ -105,7 +110,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	end
 
 	local prepareY
-	if not sampleLine and yExpr == variableNames[2] then
+	if yExpr == variableNames[2] then
 		prepareY = function() return y end
 	else
 		prepareY = function() return pgfmathparse(yExpr) end
@@ -132,33 +137,34 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		coordoutputstream:coord(pt)
 	end
 	
-	if is3d then
-		if not sampleLine then
-			local xmin = domainMin[1]
-			local ymin = domainMin[2]
-			local hx = h[1]
-			local hy = h[2]
-			local max_i = samples[1]-1
-			local max_j = samples[2]-1
-			-- samples twodimensionally (a lattice):
-			for j = 0,max_j do
-				-- FIXME : pgfplots@plot@data@notify@next@y
-				y = ymin + j*hy
-				-- log("" .. j .. "\n")
-				for i = 0,max_i do
-					-- FIXME : pgfplots@plot@data@notify@next@x
-					x = xmin + i*hx
-					computeXYZ()
-				end
-				-- FIXME : \pgfplotsplothandlernotifyscanlinecomplete
+	if not sampleLine then
+		local xmin = domainMin[1]
+		local ymin = domainMin[2]
+		local hx = h[1]
+		local hy = h[2]
+		local max_i = samples[1]-1
+		local max_j = samples[2]-1
+		-- samples twodimensionally (a lattice):
+		for j = 0,max_j do
+			-- FIXME : pgfplots@plot@data@notify@next@y
+			y = ymin + j*hy
+			-- log("" .. j .. "\n")
+			for i = 0,max_i do
+				-- FIXME : pgfplots@plot@data@notify@next@x
+				x = xmin + i*hx
+				computeXYZ()
 			end
-		else
-			-- FIXME
-			return false
+			-- FIXME : \pgfplotsplothandlernotifyscanlinecomplete
 		end
 	else
-		-- FIXME
-		return false
+		local xmin = domainMin[1]
+		local hx = h[1]
+		local max_i = samples[1]-1
+		for i = 0,max_i do
+			-- FIXME : pgfplots@plot@data@notify@next@x
+			x = xmin + i*hx
+			computeXYZ()
+		end
 	end
 	
 	stringToFunctionMap[variableNames[1]] = nil
