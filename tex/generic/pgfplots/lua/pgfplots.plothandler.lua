@@ -218,12 +218,18 @@ end
 --
 -- @return a string containing all surveyed coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
 function Plothandler:surveyedCoordsToPgfplots(axis)
+	return self:getCoordsInTeXFormat(axis, self.coords,  pgfplotsmath.toTeXstring)
+end
+
+-- PUBLIC
+--
+-- @return a string containing all coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
+function Plothandler:getCoordsInTeXFormat(axis, coords, coordtoNumberFunction)
     if not axis then error("arguments must not be nil") end
     local result = {}
-	local coords = self.coords
     for i = 1,#coords,1 do
         local pt = coords[i]
-        local ptstr = self:serializeCoordToPgfplots(pt)
+        local ptstr = self:serializeCoordToPgfplots(pt, coordtoNumberFunction)
         local axisPrivate = axis:serializeCoordToPgfplotsPrivate(pt)
         local serialized = "{" .. axisPrivate .. ";" .. ptstr .. "}"
         table.insert(result, serialized)
@@ -234,11 +240,11 @@ end
 -- PRIVATE 
 --
 -- does the same as \pgfplotsplothandlerserializepointto
-function Plothandler:serializeCoordToPgfplots(pt)
+function Plothandler:serializeCoordToPgfplots(pt, coordtoNumberFunction)
     return 
-        pgfplotsmath.toTeXstring(pt.x[1]) .. "," ..
-        pgfplotsmath.toTeXstring(pt.x[2]) .. "," ..
-        pgfplotsmath.toTeXstring(pt.x[3])
+        coordtoNumberFunction(pt.x[1]) .. "," ..
+        coordtoNumberFunction(pt.x[2]) .. "," ..
+        coordtoNumberFunction(pt.x[3])
 end
 
 function Plothandler:visualizationPhaseInit()
@@ -385,8 +391,8 @@ end
 
 -- resembles \pgfplotsplothandlervisualizejump
 -- This is an abstract function, called by getVisualizationOutput()
-function PlotVisualizer:visualizeJump()
-end
+--function PlotVisualizer:visualizeJump()
+--end
 
 -- resembles \pgfplotstreamend
 -- This is an abstract function, called by getVisualizationOutput()
@@ -410,15 +416,13 @@ function PlotVisualizer:getVisualizationOutput()
 	-- FIXME : error bars?
 
 	for i = 1,#coords do
-		local pt = Coord.new()
-		pt:copy(coords[i])
 		local result_i
+		local result_i = Coord.new()
+		result_i:copy(coords[i])
 		
-		if pt.x[1] == nil then
-			result_i = self:visualizeJump()
-		else
-			self:visphasegetpoint(pt)
-			self:visphasepoint(i, pt)
+		if result_i.x[1] ~= nil then
+			self:visphasegetpoint(result_i)
+			self:visphasepoint(i, result_i)
 		end
 
 		result[i] = result_i
@@ -801,8 +805,7 @@ end
 -- access survey results of the provided plot handler
 --
 -- @param plothandler an instance of Plothandler
--- @param includeCoords true or false, depending on whether the plot coordinates should be returned
-function Axis:surveyToPgfplots(plothandler, includeCoords)
+function Axis:surveyToPgfplots(plothandler)
 	plothandler:surveyend()
     local firstCoord = plothandler.coords[1] or Coord.new()
     local lastCoord = plothandler.coords[#plothandler.coords] or Coord.new()
@@ -823,18 +826,12 @@ function Axis:surveyToPgfplots(plothandler, includeCoords)
         "point meta min=" .. pgfplotsmath.toTeXstring(plothandler.metamin) ..","..
         "point meta max=" .. pgfplotsmath.toTeXstring(plothandler.metamax) ..","..
         "@is3d=" .. tostring(self.is3d) .. "," ..
-        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord) .. "}," ..
-        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord) .. "}," ..
+        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord,pgfplotsmath.toTeXstring) .. "}," ..
+        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord,pgfplotsmath.toTeXstring) .. "}," ..
         "@plot has jumps=" .. tostring(hasJumps) .. "," ..
         "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
-        ""
-    
-    if includeCoords then
-        result = result .. 
-        "@surveyed coords={" .. plothandler:surveyedCoordsToPgfplots(self) .. "}," ..
         "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..
-        "";
-    end
+        ""
     
     return result
 end

@@ -3599,6 +3599,14 @@
 		%
 		\pgfkeysgetvalue{/pgfplots/visualization depends on/list}\pgfplots@loc@TMPc	\ifx\pgfplots@loc@TMPc\pgfutil@empty\else \pgfplots@LUA@backend@supportedfalse\pgfplots@LUA@survey@log@deactivation{LUA does not support 'visualization depends on' (yet)} \fi
 		%
+		% hm. There are various cases which are supported during a
+		% SURVEY -- but not during a visualization. Check that here:
+		\if m\pgfplots@colormap@access
+		\else
+			\pgfplots@LUA@survey@log@deactivation{color map access=direct not supported (yet)}%
+			\pgfplots@LUA@backend@supportedfalse
+		\fi
+		%
 		\ifpgfplots@LUA@backend@supported
 			\begingroup
 			\pgfkeysgetvalue{/pgfplots/point meta min}\pgfplots@loc@metamin
@@ -3691,12 +3699,6 @@
 		\gdef\pgfplots@currentplot@lastcoord@y{##2}%
 		\gdef\pgfplots@currentplot@lastcoord@z{##3}%
 	}%
-	\pgfkeysdef{/pgfplots/@surveyed coords}{%
-		\expandafter\gdef\expandafter\pgfplots@marshal\expandafter{%
-			\pgfplots@marshal
-			\pgfplotsapplistXXpushback{##1}%
-		}%
-	}%
 	\pgfkeysdef{/pgfplots/@surveyed coordindex}{%
 		\expandafter\gdef\expandafter\pgfplots@marshal\expandafter{%
 			\pgfplots@marshal
@@ -3727,23 +3729,30 @@
 	%
 	\pgfplots@marshal
 	%
+	\pgfplotsapplistXXpushback{--- acquire from LUA! --}%
+	%
 	%
 }%
 
 % PRECONDITION : \pgfplots@LUA@visualization@init has already been
 % executed.
 \def\pgfplots@LUA@visualization@of@current@plot{%
+	\def\b@pgfplots@LUA@visualization@enabled{0}%
 	\ifpgfplots@LUA@backend@supported
 		\ifx\pgfplotsplothandlerLUAvisualizerfactory\pgfutil@empty
+			% hm. This plot cannot be visualized in LUA - BUT it has a
+			% LUA survey! Ok, then: acquire the survey results.
+			% Otherwise we would have nothing here.
+			\pgfplots@log3{Using 'lua backend=false' for visualization of plot \the\pgfplots@numplots\space (type '\pgfplotsplothandlername'): it has no LUA visualizer.}%
+			\expandafter\def\expandafter\pgfplots@stored@current@data\expandafter{%
+				\directlua{pgfplots.texGetSurveyedCoordsToPgfplots()}%
+			}%
 		\else
-			% FIXME : there are currently >1 places where the coords are
-			% serialized to TeX.
-			%
-			% Ensure that this call is the ONLY one which does it and move
-			% this to some suitable place!
+			% visualize using LUA! ... and acquire the coordinates.
 			\expandafter\def\expandafter\pgfplots@stored@current@data\expandafter{%
 				\directlua{pgfplots.texVisualizePlot(\pgfplotsplothandlerLUAvisualizerfactory)}%
 			}%
+			\def\b@pgfplots@LUA@visualization@enabled{1}%
 		\fi
 	\fi
 }%
@@ -7010,6 +7019,9 @@
 	\pgfplotsresetplothandler
 	\pgfplots@basiclevel@plothandler
 	\expandafter\pgfplotsplothandlerdeserializestatefrom\expandafter{\pgfplots@serialized@state@plothandler}%
+	%
+	\pgfplots@LUA@visualization@of@current@plot
+	%
 	\pgfplotstreamstart
 	%
 	% Now, set up coordinate streams.
@@ -7058,44 +7070,39 @@
 %
 %\message{Prepared macro	\string \pgfplotsaxisvisphasetransformcoordinate {\meaning\pgfplotsaxisvisphasetransformcoordinate}}%
 %\message{Prepared macro	\string \pgfplots@coord@stream@finalize@currentpt {\meaning\pgfplots@coord@stream@finalize@currentpt}}%
-	\def\pgfplots@coord@stream@coord@{%
-		\ifpgfplots@stackedmode
-			\pgfplots@stacked@visphase@stream@coord@
-		\fi
-		\ifx\pgfplots@current@point@x\pgfutil@empty% this implements `unbounded coords=jump', for example
-			\pgfplotsplothandlervisualizejump
-		\else
-			\pgfplotsaxisvisphasegetpoint
-			\pgfplots@coord@stream@finalize@currentpt
-		\fi
-	}%
+	\if1\b@pgfplots@LUA@visualization@enabled
+		\def\pgfplots@coord@stream@coord@{%
+			\ifx\pgfplots@current@point@x\pgfutil@empty% this implements `unbounded coords=jump', for example
+				\pgfplotsplothandlervisualizejump
+			\else
+				\pgfplotsaxis@toPGF@coords
+				\pgfplots@coord@stream@finalize@currentpt
+			\fi
+		}%
+	\else
+		\def\pgfplots@coord@stream@coord@{%
+			\ifpgfplots@stackedmode
+				\pgfplots@stacked@visphase@stream@coord@
+			\fi
+			\ifx\pgfplots@current@point@x\pgfutil@empty% this implements `unbounded coords=jump', for example
+				\pgfplotsplothandlervisualizejump
+			\else
+				\pgfplotsaxisvisphasegetpoint
+				\pgfplots@coord@stream@finalize@currentpt
+			\fi
+		}%
+	\fi
 }
 
-\def\pgfplots@LUA@visualizationlog@deactivation#1{%
-	\pgfplots@log3{Using 'lua backend=false' during visualization of plot \plotnum: #1.}%
-}%
 \def\pgfplots@LUA@visualization@init{%
 	\ifpgfplots@LUA@backend@supported
-		% hm. There are various cases which are supported during a
-		% SURVEY -- but not during a visualization. Check that here:
-		\if m\pgfplots@colormap@access
+		\edef\pgfplots@loc@TMPa{%
+			\directlua{pgfplots.texVisualizationInit(\plotnum)}%
+		}%
+		\if1\pgfplots@loc@TMPa
+			\pgfplots@log3{lua backend=true: Activating partial LUA backend for visualization of plot \plotnum.}%
 		\else
-			\pgfplots@LUA@visualizationlog@deactivation{color map access=direct not supported (yet)}%
 			\pgfplots@LUA@backend@supportedfalse
-		\fi
-		% FIXME : add further conditions under which LUA has to be
-		% switched off!
-		%
-		\ifpgfplots@LUA@backend@supported
-			\edef\pgfplots@loc@TMPa{%
-				\directlua{pgfplots.texVisualizationInit(\plotnum)}%
-			}%
-			\if1\pgfplots@loc@TMPa
-				\pgfplots@log3{lua backend=true: Activating partial LUA backend for visualization of plot \plotnum.}%
-			\else
-				\pgfplots@LUA@visualizationlog@deactivation{deactivated during survey phase}%
-				\pgfplots@LUA@backend@supportedfalse
-			\fi
 		\fi
 	\fi
 }%
@@ -7114,6 +7121,10 @@
 	\pgfkeyslet{/data point/z untransformed}\pgfplots@current@point@z
 	\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
 	\pgfplotsaxisvisphasepreparedatapoint
+	\pgfplotsaxis@toPGF@coords
+}%
+
+\def\pgfplotsaxis@toPGF@coords{%
 	\ifpgfplots@curplot@threedim
 		\pgfplotsqpointxyz{\pgfplots@current@point@x}{\pgfplots@current@point@y}{\pgfplots@current@point@z}%
 	\else
@@ -7643,8 +7654,6 @@
 	\pgfextra
 	\tikzset{every plot/.try}%
 	\pgfplots@coord@stream@INIT@finalize@storedcoords%
-	%
-	\pgfplots@LUA@visualization@of@current@plot
 	%
 	\iffalse
 	%\ifx\pgfplots@basiclevel@plothandler\pgfplothandlerdiscard
@@ -8649,9 +8658,7 @@
 	\or
 		% reverse xy seq:
 		\ifpgfplots@LUA@backend@supported
-			\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
-				\directlua{pgfplots.texApplyZBufferReverseStream()}%
-			}%
+			\directlua{pgfplots.texApplyZBufferReverseStream()}%
 		\else
 			\begingroup
 			\def\pgfplots@coord@stream@start{%
@@ -8800,9 +8807,7 @@
 % 	\pgfplotsglobalretval contains the partial reversion.
 \def\pgfplots@apply@zbuffer@reversescanline{%
 	\ifpgfplots@LUA@backend@supported
-		\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
-			\directlua{pgfplots.texApplyZBufferReverseScanline(\pgfplotsscanlinelength)}%
-		}%
+		\directlua{pgfplots.texApplyZBufferReverseScanline(\pgfplotsscanlinelength)}%
 	\else
 		\begingroup
 		\def\pgfplots@coord@stream@start{%
@@ -8843,9 +8848,7 @@
 % scanlines occur.
 \def\pgfplots@apply@zbuffer@reversetransposed{%
 	\ifpgfplots@LUA@backend@supported
-		\expandafter\edef\expandafter\pgfplots@stored@current@data\expandafter{%
-			\directlua{pgfplots.texApplyZBufferReverseTransposed(\pgfplotsscanlinelength)}%
-		}%
+		\directlua{pgfplots.texApplyZBufferReverseTransposed(\pgfplotsscanlinelength)}%
 	\else
 		\begingroup
 		\def\pgfplots@coord@stream@start{%

@@ -44,6 +44,7 @@ function texVisualizationInit(plotNum)
     end
 end
 
+-- expands to the resulting coordinates. Note that these coordinates are already mapped somehow (typically: to fixed point)
 function texVisualizePlot(visualizerFactory)
 	if not visualizerFactory then error("arguments must not be nil") end
 	if type(visualizerFactory) ~= "function" then error("arguments must be a function (a factory)") end
@@ -54,39 +55,41 @@ function texVisualizePlot(visualizerFactory)
 	local visualizer = visualizerFactory(currentPlotHandler)
 
 	local result = visualizer:getVisualizationOutput()
-	
-    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfplotsmath.tostringfixed)
+    tex.sprint(result_str)
 end
 
--- Expands to the resulting coordinates
+-- Expands to nothing
 function texApplyZBufferReverseScanline(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
     
     currentPlotHandler:reverseScanline(scanLineLength)
-    
-    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
 
--- Expands to the resulting coordinates
+-- Expands to nothing
 function texApplyZBufferReverseTransposed(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
     
     currentPlotHandler:reverseTransposed(scanLineLength)
-    
-    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end 
 
--- Expands to the resulting coordinates
+-- Expands to nothing
 function texApplyZBufferReverseStream()
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
     
     currentPlotHandler:reverseStream(scanLineLength)
+end 
+
+-- Expands to the resulting coordinates
+function texGetSurveyedCoordsToPgfplots()
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("This function cannot be used in the current context") end
     
     tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
-end 
+end
 
 function texColorMapPrecomputed(mapName, inMin, inMax, x)
 	local colormap = ColorMaps[mapName];
@@ -203,6 +206,10 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 	else
 		tex.sprint("0")
 	end
+end
+
+function defaultPlotVisualizerFactory(plothandler)
+	return PlotVisualizer.new(plothandler)
 end
 
 end

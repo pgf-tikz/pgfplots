@@ -94,6 +94,10 @@ end
 
 -- a helper function which has no catcode issues when communicating with TeX:
 function pgfplotsmath.tostringfixed(x)
+	if x == nil then
+		return ""
+	end
+
     return stringformat("%f", x)
 end
 
