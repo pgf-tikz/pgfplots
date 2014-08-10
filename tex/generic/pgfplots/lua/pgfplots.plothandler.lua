@@ -364,6 +364,8 @@ function PlotVisualizer:getVisualizationOutput()
 end
 
 -- PROTECTED
+-- resembles \pgfplotsplothandlervisualizejump -- or at least that part which can be done in LUA.
+-- It does not visualize anything, but it can be used to modify the coordinate 
 function PlotVisualizer:notifyJump(pt)
 	-- do nothing.
 end
