@@ -180,23 +180,10 @@
 	\fi
 	%
 	% 
-	% Check if the current shader needs to be reset.
-	% Do this early as some processing steps depend on it:
-	\if\pgfplots@meshmode m% mesh
-		% this is processed by the 'shader=flat' code below.
-		\def\pgfplotsplothandlermesh@shader{0}% 'flat'
-	\fi
-	\ifnum\pgfplotsplothandlermesh@shader>1% 'shader=interp' and 'shader=faceted interp'
-		\pgflibrarysurfshadingifactive
-			{}%
-			{%
-				\pgfutil@ifundefined{pgfplotsplothandlermesh@shader@warning}{%
-					\pgfplots@error{Sorry, surface shading (shader=interp) is NOT available for the selected driver `\pgfsysdriver'. I will use 'shader=flat' if you continue now}%
-					\gdef\pgfplotsplothandlermesh@shader@warning{x}%
-				}{}%
-				\def\pgfplotsplothandlermesh@shader{0}%
-			}%
-	\fi
+	\def\pgfplotsplothandlerLUAfactory{pgfplots.MeshPlothandler.new}%
+	\pgfplotsifisvisualizationphase{%
+		\pgfplotsplothandlermesh@init@variables
+	}{}%
 	%
 	%
 	\def\pgf@plotstreamstart{%
@@ -205,93 +192,6 @@
 		% this shouldn't be necessary, but it doesn't hurt either.
 		\pgfplots@perpointmeta@preparetrafo
 		%
-		\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
-		\pgfplotsplothandlermesh@init@meshkeys
-		%
-		%
-		\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
-		\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsplothandlermesh@patchclass@input
-		\if0\pgfplotsplothandlermesh@triangulate
-		\else
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{triangulate class}%
-			\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsretval
-		\fi
-		%
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{init}%
-		\ifx\pgfplotsplothandlermesh@patchclass@input\pgfplotsplothandlermesh@patchclass@output
-		\else
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{init}%
-		\fi
-		%
-		% assign boolean:
-		\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{allow matrix}%
-		\if0\pgfplotsretval
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\ifnum\pgfkeysvalueof{/pgfplots/patch refines}>0
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\if1\pgfplotsaxisplothasjumps
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		%
-		\if2\pgfplotsplothandlermesh@shader
-			% shader=interp
-			%
-			\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPc
-			\ifx\pgfplots@loc@TMPc\pgfutil@empty
-			\else
-				\pgfplotswarning{interior colormap inefficient}\pgfeov%
-				\pgfplotsset{shader=faceted interp,faceted color=none}%
-			\fi
-		\fi
-		\if2\pgfplotsplothandlermesh@shader
-			% shader=interp
-			\if0\pgfplotsplothandlermesh@triangulate
-			 	% patch to triangles=false
-			\else
-				% no matrix output possible:
-				\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-			\fi
-		\else
-			% 'shader!=interp'
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get pdf shading type}%
-		\if5\pgfplotsretval
-		\else
-			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
-		\fi
-		%
-		% special handling: check if Type=5 shadings need to be
-		% converted to Type=4
-		\if0\b@pgfplotsplothandlermesh@matrixoutput
-			% no matrix output possible
-			\if5\pgfplotsretval
-				% pdf shading type=5 (matrix output)
-				\if2\pgfplotsplothandlermesh@shader
-					% shader=interp
-					%
-					% FIXME : I am unsure if this here is still
-					% necessary as of 3fc734d7ac3020600c06258b1bc80b22da53edf3
-					% -> perhaps the check can be skipped entirely.
-					%
-					% oh. shading type=5 is *essentially* the same as
-					% matrix output, but matrix output is forbidden. 
-					% In that case, triangulate the matrix and shade the
-					% triangles:
-					\def\pgfplotsplothandlermesh@triangulate{1}%
-					\def\pgfplotsplothandlermesh@patchclass@output{triangle}%
-					% Note shader=faceted interp  can be written as
-					% matrix -- it shades individual elements anyway;
-					% and one single patch can be written as matrix.
-				\fi
-			\fi
-		\fi
 		%
 		\pgfplotsplothandlermesh@init@DECODE
 		\pgfplotsplothandlermesh@init@REFINE
@@ -331,28 +231,130 @@
 	}%
 	%
 	\let\pgfplotsplothandlerifcurrentpointcanbefirstlast=\pgfplotsplothandlerifcurrentpointcanbefirstlast@mesh
+}%
+
+\def\pgfplotsplothandlermesh@init@variables{%
+	% Check if the current shader needs to be reset.
+	% Do this early as some processing steps depend on it:
+	\if\pgfplots@meshmode m% mesh
+		% this is processed by the 'shader=flat' code below.
+		\def\pgfplotsplothandlermesh@shader{0}% 'flat'
+	\fi
+	\ifnum\pgfplotsplothandlermesh@shader>1% 'shader=interp' and 'shader=faceted interp'
+		\pgflibrarysurfshadingifactive
+			{}%
+			{%
+				\pgfutil@ifundefined{pgfplotsplothandlermesh@shader@warning}{%
+					\pgfplots@error{Sorry, surface shading (shader=interp) is NOT available for the selected driver `\pgfsysdriver'. I will use 'shader=flat' if you continue now}%
+					\gdef\pgfplotsplothandlermesh@shader@warning{x}%
+				}{}%
+				\def\pgfplotsplothandlermesh@shader{0}%
+			}%
+	\fi
 	%
-	\def\pgfplotsplothandlerLUAfactory{pgfplots.MeshPlothandler.new}%
+	\def\pgfplotsplothandlermesh@ONEDIMMODE{0}%
+	\pgfplotsplothandlermesh@init@meshkeys
+	%
+	%
+	\let\pgfplotsplothandlermesh@patchclass@input=\pgfplotsplothandlermesh@patchclass
+	\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsplothandlermesh@patchclass@input
+	\if0\pgfplotsplothandlermesh@triangulate
+	\else
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{triangulate class}%
+		\let\pgfplotsplothandlermesh@patchclass@output=\pgfplotsretval
+	\fi
+	%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@input}{init}%
+	\ifx\pgfplotsplothandlermesh@patchclass@input\pgfplotsplothandlermesh@patchclass@output
+	\else
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{init}%
+	\fi
+	%
+	% assign boolean:
+	\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{allow matrix}%
+	\if0\pgfplotsretval
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	\ifnum\pgfkeysvalueof{/pgfplots/patch refines}>0
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	\if1\pgfplotsaxisplothasjumps
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	\if\pgfplotsplothandlermesh@zbuffer@choice4% 'z buffer=sort':
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	%
+	\if2\pgfplotsplothandlermesh@shader
+		% shader=interp
+		%
+		\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplots@loc@TMPc
+		\ifx\pgfplots@loc@TMPc\pgfutil@empty
+		\else
+			\pgfplotswarning{interior colormap inefficient}\pgfeov%
+			\pgfplotsset{shader=faceted interp,faceted color=none}%
+		\fi
+	\fi
+	\if2\pgfplotsplothandlermesh@shader
+		% shader=interp
+		\if0\pgfplotsplothandlermesh@triangulate
+			% patch to triangles=false
+		\else
+			% no matrix output possible:
+			\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+		\fi
+	\else
+		% 'shader!=interp'
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get pdf shading type}%
+	\if5\pgfplotsretval
+	\else
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	%
+	% special handling: check if Type=5 shadings need to be
+	% converted to Type=4
+	\if0\b@pgfplotsplothandlermesh@matrixoutput
+		% no matrix output possible
+		\if5\pgfplotsretval
+			% pdf shading type=5 (matrix output)
+			\if2\pgfplotsplothandlermesh@shader
+				% shader=interp
+				%
+				% FIXME : I am unsure if this here is still
+				% necessary as of 3fc734d7ac3020600c06258b1bc80b22da53edf3
+				% -> perhaps the check can be skipped entirely.
+				%
+				% oh. shading type=5 is *essentially* the same as
+				% matrix output, but matrix output is forbidden. 
+				% In that case, triangulate the matrix and shade the
+				% triangles:
+				\def\pgfplotsplothandlermesh@triangulate{1}%
+				\def\pgfplotsplothandlermesh@patchclass@output{triangle}%
+				% Note shader=faceted interp  can be written as
+				% matrix -- it shades individual elements anyway;
+				% and one single patch can be written as matrix.
+			\fi
+		\fi
+	\fi
+	%
+	%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{LUA class}%
 	\ifx\pgfplotsretval\pgfutil@empty
 		\let\pgfplotsplothandlerLUAvisualizerfactory=\pgfutil@empty
 	\else
-		\t@pgfplots@toka={%
-			% expands this late... and hope that it works!
-			%  FIXME : THIS NEEDS TO BE REWRITTEN SUCH THAT IT WORKS
-			%  EVEN IF THE VIS PHASE IS NOT STARTED!
-			pgfplots.pgfplotsmath.tonumber("\pgfkeysvalueof{/pgfplots/mesh/rows}"),
-			pgfplots.pgfplotsmath.tonumber("\pgfkeysvalueof{/pgfplots/mesh/cols}"),
-			\if0\pgfplots@plot@mesh@ordering true\else false\fi,
-			\if1\pgfplotsplothandlermesh@matrixinput true\else false\fi,
-			\if1\b@pgfplotsplothandlermesh@matrixoutput true\else false\fi,
-			\if4\pgfplotsplothandlermesh@zbuffer@choice true\else false\fi)% 'z buffer=sort'
-		}%
 		\edef\pgfplotsplothandlerLUAvisualizerfactory{
 			function(plothandler) return pgfplots.MeshVisualizer.new(
 				plothandler, 
 				\pgfplotsretval(),
-				\the\t@pgfplots@toka
+				pgfplots.pgfplotsmath.tonumber("\pgfkeysvalueof{/pgfplots/mesh/rows}"),
+				pgfplots.pgfplotsmath.tonumber("\pgfkeysvalueof{/pgfplots/mesh/cols}"),
+				\if0\pgfplots@plot@mesh@ordering true\else false\fi,
+				\if1\pgfplotsplothandlermesh@matrixinput true\else false\fi,
+				\if1\b@pgfplotsplothandlermesh@matrixoutput true\else false\fi,
+				\if4\pgfplotsplothandlermesh@zbuffer@choice true\else false\fi)% 'z buffer=sort'
 			end
 		}%
 	\fi
@@ -1846,16 +1848,21 @@
 		%
 		\if1\pgfplotsplothandlermesh@ONEDIMMODE
 %\message{initialised DECODE for 1d mode.^^J}%
+			% FIXME : needs LUA support...
 			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
 		\else
 			\if0\b@pgfplotsplothandlermesh@matrixoutput
-				% in fact, this does only remember the maximum capacity;
-				% it doesn't fill the memory.
-				\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-				\advance\c@pgfplots@scanlineindex by1
-				\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
-				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+				\if1\b@pgfplots@LUA@visualization@enabled
+%\message{initialised DECODE for patch output (from matrix which has already been decoded in LUA).^^J}%
+				\else
+					% in fact, this does only remember the maximum capacity;
+					% it doesn't fill the memory.
+					\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
+					\advance\c@pgfplots@scanlineindex by1
+					\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
 %\message{initialised DECODE for patch output (from matrix).^^J}%
+				\fi
 			\else
 				% SPECIAL HANDLING!
 				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader

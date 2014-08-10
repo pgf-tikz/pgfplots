@@ -3739,6 +3739,14 @@
 \def\pgfplots@LUA@visualization@of@current@plot{%
 	\def\b@pgfplots@LUA@visualization@enabled{0}%
 	\ifpgfplots@LUA@backend@supported
+		\pgfkeysgetvalue{/pgfplots/axis type}\pgfplots@loc@TMPa
+		\def\pgfplots@loc@TMPb{rectangle}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\else
+			% disable visualizer - we cannot do this right now.
+			\let\pgfplotsplothandlerLUAvisualizerfactory=\pgfutil@empty
+		\fi
+		%
 		\ifx\pgfplotsplothandlerLUAvisualizerfactory\pgfutil@empty
 			% hm. This plot cannot be visualized in LUA - BUT it has a
 			% LUA survey! Ok, then: acquire the survey results.
@@ -3752,6 +3760,22 @@
 			\expandafter\def\expandafter\pgfplots@stored@current@data\expandafter{%
 				\directlua{pgfplots.texVisualizePlot(\pgfplotsplothandlerLUAvisualizerfactory)}%
 			}%
+%\message{plot \plotnum: LUA backend returned \pgfplots@stored@current@data^^J}%
+			%
+			% ... and ensure that the resulting
+			% \pgfplots@stored@current@data can be deserialized. It
+			% contains the fully mapped X/Y coordinates as first item.
+			\let\pgfplotsaxisdeserializedatapointfrom@private@nonLUA=\pgfplotsaxisdeserializedatapointfrom@private
+			\def\pgfplotsaxisdeserializedatapointfrom@private##1{%
+				\pgfplotsaxisdeserializedatapointfrom@private@LUA##1%
+			}%
+			\def\pgfplotsaxisdeserializedatapointfrom@private@LUA##1##2##3{%
+				\global\pgf@x=##1pt %
+				\global\pgf@y=##2pt %
+				\pgfplotsaxisdeserializedatapointfrom@private@nonLUA{##3}%
+			}%
+			% FIXME : do I need to adopt the serializer as well!?
+			%
 			\def\b@pgfplots@LUA@visualization@enabled{1}%
 		\fi
 	\fi
@@ -7082,7 +7106,8 @@
 			\ifx\pgfplots@current@point@x\pgfutil@empty% this implements `unbounded coords=jump', for example
 				\pgfplotsplothandlervisualizejump
 			\else
-				\pgfplotsaxis@toPGF@coords
+				% no need to call this here -- we got them from LUA:
+				% \pgfplotsaxis@toPGF@coords
 				\pgfplots@coord@stream@finalize@currentpt
 			\fi
 		}%
@@ -7104,7 +7129,7 @@
 \def\pgfplots@LUA@visualization@init{%
 	\ifpgfplots@LUA@backend@supported
 		\edef\pgfplots@loc@TMPa{%
-			\directlua{pgfplots.texVisualizationInit(\plotnum)}%
+			\directlua{pgfplots.texVisualizationInit(\plotnum, \ifpgfplots@curplot@threedim true\else false\fi)}%
 		}%
 		\if1\pgfplots@loc@TMPa
 			\pgfplots@log3{lua backend=true: Activating partial LUA backend for visualization of plot \plotnum.}%
@@ -7659,6 +7684,10 @@
 	%
 	\pgfplots@stored@current@cmd%[current plot style] <--- options are already set
 	\pgfextra
+	% remember that stuff here... it may be modified by the LUA
+	% backend.
+	\let\pgfplots@plot@timer@args=\pgfplots@stored@current@data
+	%
 	\tikzset{every plot/.try}%
 	\pgfplots@coord@stream@INIT@finalize@storedcoords%
 	%
@@ -7681,7 +7710,6 @@
 	\xdef\pgfplotlastpoint{\noexpand\pgfpointanchor{current plot end}{center}}%
 	\tikz@make@last@position{\pgfplotlastpoint}%
 	%
-	\let\pgfplots@plot@timer@args=\pgfplots@stored@current@data
 	\pgfplotspointplotattimeclearcache
 	\let\tikz@timer=\pgfplots@plot@timer%
 	\pgfplotsaxisvisphase@get@afterpath%

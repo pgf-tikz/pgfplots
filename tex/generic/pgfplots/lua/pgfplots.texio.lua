@@ -32,16 +32,25 @@ function texPerpointMetaTrafo(metaStr)
 end
 
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
-function texVisualizationInit(plotNum)
+function texVisualizationInit(plotNum, plotIs3d)
+	if not plotNum or not plotIs3d then error("arguments must not be nil") end
+
     local currentPlotHandler = gca.plothandlers[plotNum+1]
     gca.currentPlotHandler = currentPlotHandler; 
     if currentPlotHandler then
+		currentPlotHandler.plotIs3d = plotIs3d
         currentPlotHandler:visualizationPhaseInit();
         tex.sprint("1") 
     else
         -- ok, this plot has no LUA support.
         tex.sprint("0") 
     end
+end
+
+local tostringfixed = pgfplotsmath.tostringfixed
+local pgfXyCoordSerializer = function(pt)
+	-- FIXME : it is unsure of whether this here really an improvement - or if it would be faster to compute that stuff in TeX...
+	return "{" .. tostringfixed(pt.pgfXY[1]) .. "}{" .. tostringfixed(pt.pgfXY[2]) .. "}"
 end
 
 -- expands to the resulting coordinates. Note that these coordinates are already mapped somehow (typically: to fixed point)
@@ -55,7 +64,7 @@ function texVisualizePlot(visualizerFactory)
 	local visualizer = visualizerFactory(currentPlotHandler)
 
 	local result = visualizer:getVisualizationOutput()
-	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfplotsmath.tostringfixed)
+	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfplotsmath.tostringfixed, pgfXyCoordSerializer)
     tex.sprint(result_str)
 end
 

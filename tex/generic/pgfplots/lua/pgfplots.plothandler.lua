@@ -30,6 +30,7 @@ function Coord:constructor()
     self.meta= nil
     self.metatransformed = nil -- assigned during vis phase only
     self.unfiltered = nil
+	self.pgfXY = nil -- assigned during visphase only
     return self
 end
 
@@ -121,6 +122,8 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
     self.pointmetamap = nil -- will be set later
     self.filteredCoordsAway = false
     self.plotHasJumps = false
+	-- will be set before the visualization phase starts. At least.
+	self.plotIs3d = false
     return self
 end
 
@@ -224,13 +227,17 @@ end
 -- PUBLIC
 --
 -- @return a string containing all coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
-function Plothandler:getCoordsInTeXFormat(axis, coords, coordtoNumberFunction)
+-- @param extraSerializer a function which takes an instance of Coord and returns a string. can be nil.
+function Plothandler:getCoordsInTeXFormat(axis, coords, coordtoNumberFunction, extraSerializer)
     if not axis then error("arguments must not be nil") end
     local result = {}
     for i = 1,#coords,1 do
         local pt = coords[i]
         local ptstr = self:serializeCoordToPgfplots(pt, coordtoNumberFunction)
         local axisPrivate = axis:serializeCoordToPgfplotsPrivate(pt)
+		if extraSerializer then
+			axisPrivate = extraSerializer(pt) .. "{" .. axisPrivate .. "}"
+		end
         local serialized = "{" .. axisPrivate .. ";" .. ptstr .. "}"
         table.insert(result, serialized)
     end
@@ -312,10 +319,16 @@ end
 
 -- this class offers basic visualization support. "Basic" means that it will merely transform and finalize input coordinates.
 PlotVisualizer = newClass()
+-- @param sourcePlotHandler an instance of Plothandler
 function PlotVisualizer:constructor(sourcePlotHandler)
 	if not sourcePlotHandler then error("arguments must not be nil") end
 	self.axis = sourcePlotHandler.axis
 	self.sourcePlotHandler=sourcePlotHandler
+	if sourcePlotHandler.plotIs3d then
+		self.qpointxyz = self.axis.qpointxyz
+	else
+		self.qpointxyz = self.axis.qpointxy
+	end
 end
 
 -- Visualizes the results.
@@ -365,8 +378,7 @@ function PlotVisualizer:visphasegetpoint(pt)
 
 	-- FIXME : prepare data point (only for stacked)
 
-	-- FIXME : pgfplotsqpointxy(z)  : project to 2D tikz coordinates
-
+	pt.pgfXY = self.qpointxyz(pt.x)
 end
 
 
@@ -510,7 +522,45 @@ function Axis:constructor()
     self.plothandlers = {}
 	-- needed during visualization phase:
 	self.datascaleTrafo={}
+	-- needed during visualization phase: a vector of 3 elements, each is a vector of 2 elements.
+	-- self.unitvectors[1] is (\pgf@xx,\pgf@xy)
+	self.unitvectors={}
     return self
+end
+
+function Axis:setunitvectors(unitvectors)
+	if not unitvectors or #unitvectors ~= 3 then error("got illegal arguments " .. tostring(unitvectors)) end
+	self.unitvectors = unitvectors
+
+	local pgfxx = unitvectors[1][1]
+	local pgfxy = unitvectors[1][2]
+	local pgfyx = unitvectors[2][1]
+	local pgfyy = unitvectors[2][2]
+	local pgfzx = unitvectors[3][1]
+	local pgfzy = unitvectors[3][2]
+
+	self.qpointxyz = function(xyz)
+		local result = {}
+		result[1] = xyz[1] * pgfxx + xyz[2] * pgfyx  + xyz[3] * pgfzx
+		result[2] = xyz[1] * pgfxy + xyz[2] * pgfyy  + xyz[3] * pgfzy
+		return result
+	end
+
+	if pgfxy==0 and pgfyx ==0 then
+		self.qpointxy = function(xy)
+			local result = {}
+			result[1] = xy[1] * pgfxx
+			result[2] = xy[2] * pgfyy
+			return result
+		end
+	else
+		self.qpointxy = function(xyz)
+			local result = {}
+			result[1] = xyz[1] * pgfxx + xyz[2] * pgfyx
+			result[2] = xyz[1] * pgfxy + xyz[2] * pgfyy
+			return result
+		end
+	end
 end
 
 -- PRIVATE
