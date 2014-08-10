@@ -527,6 +527,8 @@ function Axis:constructor()
 	-- needed during visualization phase: a vector of 3 elements, each is a vector of 2 elements.
 	-- self.unitvectors[1] is (\pgf@xx,\pgf@xy)
 	self.unitvectors={}
+	-- needed during visualization phase -- but only for 3d!
+	self.viewdir = {}
     return self
 end
 
