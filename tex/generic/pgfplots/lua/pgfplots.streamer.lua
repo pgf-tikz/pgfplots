@@ -35,6 +35,7 @@ function SurveyCoordOutputStream:coord(pt)
 end
 
 -------------
+-- This is a partial reimplementation of \addplot expression: it samples points -- but entirely in LUA. Only the results are serialized back to TeX.
 
 AddplotExpressionCoordinateGenerator = newClass()
 

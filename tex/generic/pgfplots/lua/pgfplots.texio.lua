@@ -12,6 +12,8 @@ local string=string
 local pairs=pairs
 local pcall=pcall
 local type=type
+local lpeg = require("lpeg")
+local math = math
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -33,7 +35,7 @@ end
 
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
 function texVisualizationInit(plotNum, plotIs3d)
-	if not plotNum or not plotIs3d then error("arguments must not be nil") end
+	if not plotNum or plotIs3d==nil then error("arguments must not be nil") end
 
     local currentPlotHandler = gca.plothandlers[plotNum+1]
     gca.currentPlotHandler = currentPlotHandler; 
@@ -147,14 +149,101 @@ local function removeSurroundingBraces(expressions)
 	end
 end
 
+-------------
+-- A parser for foreach statements - at least those which are supported in this LUA backend.
+--
+local samplesAtToDomain
+do
+	local P = lpeg.P
+	local C = lpeg.C
+	local V = lpeg.V
+	local match = lpeg.match
+	local space_pattern = P(" ")^0
+
+	local Exp = V"Exp"
+	local comma = P"," * space_pattern
+	-- this does not catch balanced braces. Ok for now... ?
+	local argument = C( ( 1- P"," )^1 ) * space_pattern
+	local grammar = P{ "initialRule",
+		initialRule = space_pattern * Exp * -1,
+		Exp = lpeg.Ct(argument * comma * argument * comma * P"..." * space_pattern * comma *argument )
+	}
+
+	-- Converts very simple "samples at" values to "domain=A:B, samples=N"
+	--
+	-- @param foreachString something like -5,-4,...,5
+	-- @return a table where
+	-- 	[0] = domain min
+	-- 	[1] = domain max
+	-- 	[2] = samples
+	-- 	It returns nil if foreachString is no "very simple value of 'samples at'"
+	samplesAtToDomain = function(foreachString)
+		local matches = match(grammar,foreachString)
+
+		if not matches or #matches ~= 3 then
+			return nil
+		else
+			local arg1 = matches[1]
+			local arg2 = matches[2]
+			local arg3 = matches[3]
+			arg1= pgfluamathparser.pgfmathparse(arg1)
+			arg2= pgfluamathparser.pgfmathparse(arg2)
+			arg3= pgfluamathparser.pgfmathparse(arg3)
+
+			if not arg1 or not arg2 or not arg3 then
+				return nil
+			end
+
+			if arg1 > arg2 then
+				return nil
+			end
+
+			local domainMin = arg1
+			local h = arg2-arg1
+			local domainMax = arg3
+			local samples = math.floor((domainMax - domainMin)/h) + 1
+
+			return domainMin, domainMax, samples
+		end
+	end
+end
+
 -- generates TeX output '1' on success and '0' on failure
-function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, sampleLine, domainxmin, domainxmax, domainymin, domainymax, samplesx, samplesy, variablex, variabley, debugMode)
+function texAddplotExpressionCoordinateGenerator(
+	is3d, 
+	xExpr, yExpr, zExpr, 
+	sampleLine, 
+	domainxmin, domainxmax, 
+	domainymin, domainymax, 
+	samplesx, samplesy, 
+	variablex, variabley, 
+	samplesAt,
+	debugMode
+)
 	local plothandler = gca.currentPlotHandler
 	local coordoutputstream = SurveyCoordOutputStream.new(plothandler)
 	
-	local domainxmin = pgfplotsmath.tonumber(domainxmin)
-	local domainxmax = pgfplotsmath.tonumber(domainxmax)
-	local samplesx = pgfplotsmath.tonumber(samplesx)
+	local domainxmin 
+	local domainxmax 
+	local samplesx 
+	if samplesAt then
+		-- "samples at" has higher priority than domain.
+		-- Use it!
+
+		domainxmin, domainxmax, samplesx = samplesAtToDomain(samplesAt)
+		if not domainxmin then
+			-- FAILURE: could not convert "samples at". 
+			-- Fall back to a TeX based survey.
+			log("log", "LUA survey failed: The value of 'samples at' is unsupported by the LUA backend.\n")
+			tex.sprint("0")
+			return
+		end
+			
+	else
+		domainxmin= pgfplotsmath.tonumber(domainxmin)
+		domainxmax= pgfplotsmath.tonumber(domainxmax)
+		samplesx= pgfplotsmath.tonumber(samplesx)
+	end
 
 	local expressions
 	local domainMin
@@ -204,7 +293,7 @@ function texAddplotExpressionCoordinateGenerator(is3d, xExpr, yExpr, zExpr, samp
 		end
 
 		if not success and type(resultOfGenerator) ~= "boolean" then
-			log("log", "LUA survey failed:\n " .. resultOfGenerator .. "\nFalling back to TeX survey. Use \\pgfplotsset{lua debug} to see more.\n")
+			log("log", "LUA survey failed: " .. resultOfGenerator .. ". Use \\pgfplotsset{lua debug} to see more.\n")
 		end
 	end
 
