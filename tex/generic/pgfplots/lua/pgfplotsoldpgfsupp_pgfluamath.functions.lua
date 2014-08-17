@@ -19,7 +19,7 @@
 -- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 -- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 ----------------------------------------------------------------------------------------------------
--- Date of this copy: So 17. Aug 16:15:40 CEST 2014 ---
+-- Date of this copy: So 17. Aug 20:16:04 CEST 2014 ---
 
 
 
@@ -32,7 +32,7 @@
 --
 -- See the file doc/generic/pgf/licenses/LICENSE for more details.
 --
--- $Id: pgfluamath.functions.lua,v 1.11 2014/08/16 14:48:20 cfeuersaenger Exp $
+-- $Id: pgfluamath.functions.lua,v 1.12 2014/08/17 18:15:46 cfeuersaenger Exp $
 --
 
 local pgfluamathfunctions = pgfluamathfunctions or {}
@@ -468,9 +468,58 @@ function pgfluamathfunctions.tonumber(x)
     return result
 end
 
+local stringlen = string.len
+local globaltonumber = tonumber
+local stringformat = string.format
+local stringsub = string.sub
+local stringfind = string.find
+local stringbyte = string.byte
+local NULL_CHAR = string.byte("0",1)
+
+local function discardTrailingZeros(x)
+	local result = x
+	-- printf is too stupid: I would like to have
+	-- 1. a fast method 
+	-- 2. a reliable method
+	-- 3. full precision of x
+	-- 4. a fixed point representation
+	-- the 'f' modifier has trailing zeros (stupid!)
+	-- the 'g' modified can switch to scientific notation (no-go!)
+	local periodOff = stringfind(result, '.',1,true)
+	if periodOff ~= nil then
+		-- strip trailing zeros
+		local chars = { stringbyte(result,1,#result) };
+		local lastNonZero = #chars
+		for i = #chars, periodOff, -1 do
+			if chars[i] ~= NULL_CHAR then lastNonZero=i; break; end
+		end
+		if lastNonZero ~= #chars then
+			-- Ah: we had at least one trailing zero.
+			-- discard all but the last.
+			lastNonZero = mathmax(periodOff+1,lastNonZero)
+		end
+		result = stringsub(result, 1, lastNonZero)
+	end
+	return result;
+end
+
+local function discardTrailingZerosFromMantissa(x)
+	local mantissaStart = stringfind(x, "e")
+
+	local mantissa = stringsub(x,1,mantissaStart-1)
+	local exponent = stringsub(x,mantissaStart)
+
+	return discardTrailingZeros(mantissa) .. exponent
+end
+
+
 -- a helper function which has no catcode issues when communicating with TeX:
 function pgfluamathfunctions.tostringfixed(x)
-    return stringformat("%f", x)
+	if x == nil then
+		return ""
+	end
+
+    return discardTrailingZeros(stringformat("%f", x))
 end
 
 -- converts an input number to a string which is accepted by the TeX FPU
@@ -482,9 +531,7 @@ function pgfluamathfunctions.toTeXstring(x)
         elseif isnan(x) then result = "3Y0.0e0]"
         elseif x == 0 then result = "0Y0.0e0]"
         else
-            -- FIXME : this is too long. But I do NOT want to loose digits!
-            -- -> get rid of trailing zeros...
-            result = stringformat("%.10e", x)
+            result = discardTrailingZerosFromMantissa(stringformat("%.10e", x))
             if x > 0 then
                 result = "1Y" .. result .. "]"
             else
