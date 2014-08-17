@@ -46,40 +46,6 @@ pgfplotsmath.infty = infty
 local nan = math.sqrt(-1)
 pgfplotsmath.nan = nan
 
-local stringlen = string.len
-local globaltonumber = tonumber
-local stringsub=string.sub
-local stringformat = string.format
-local stringsub = string.sub
-
--- this here is copied from the 'lua' experimental branch
--- +	self.tofixed = function(x)
--- +		local res = self.parsenumber(x)
--- +		-- printf is too stupid: I would like to have
--- +		-- 1. a fast method 
--- +		-- 2. a reliable method
--- +		-- 3. full precision of x
--- +		-- 4. a fixed point representation
--- +		-- the 'f' modifier has trailing zeros (stupid!)
--- +		-- the 'g' modified can switch to scientific notation (no-go!)
--- +		result = string.format("%.16f",res);
--- +		local periodOff = string.find(result, '.',1,true)
--- +		if periodOff ~= nil then
--- +			-- strip trailing zeros
--- +			local chars = { string.byte(result,1,#result) };
--- +			local lastNonZero = #chars
--- +			for i = #chars, periodOff, -1 do
--- +				if chars[i] ~= NULL_CHAR then lastNonZero=i; break; end
--- +			end
--- +			if lastNonZero == periodOff then
--- +				lastNonZero = lastNonZero-1
--- +			end
--- +			result = string.sub(result, 1, lastNonZero)
--- +		end
--- +		return result;
--- +	end
-
-
 --------------------------------------- 
 --
 

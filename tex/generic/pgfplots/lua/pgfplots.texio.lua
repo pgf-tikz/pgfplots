@@ -224,10 +224,7 @@ function texAddplotExpressionCoordinateGenerator(
 	local plothandler = gca.currentPlotHandler
 	local coordoutputstream = SurveyCoordOutputStream.new(plothandler)
 	
-	local domainxmin 
-	local domainxmax 
-	local samplesx 
-	if samplesAt then
+	if samplesAt and string.len(samplesAt) >0 then
 		-- "samples at" has higher priority than domain.
 		-- Use it!
 
@@ -235,7 +232,7 @@ function texAddplotExpressionCoordinateGenerator(
 		if not domainxmin then
 			-- FAILURE: could not convert "samples at". 
 			-- Fall back to a TeX based survey.
-			log("log", "LUA survey failed: The value of 'samples at' is unsupported by the LUA backend.\n")
+			log("log", "LUA survey failed: The value of 'samples at= " .. tostring(samplesAt) .. "' is unsupported by the LUA backend.\n")
 			tex.sprint("0")
 			return
 		end
