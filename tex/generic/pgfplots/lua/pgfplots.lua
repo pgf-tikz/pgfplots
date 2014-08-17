@@ -15,6 +15,10 @@ else
 	pgfplots.pgfluamathparser = require("pgfluamath.parser")
 	pgfplots.pgfluamathfunctions = require("pgfluamath.functions")
 end
+pgfplots.pgftonumber = pgfplots.pgfluamathfunctions.tonumber
+pgfplots.tostringfixed = pgfplots.pgfluamathfunctions.tostringfixed
+pgfplots.toTeXstring = pgfplots.pgfluamathfunctions.toTeXstring
+
 
 require("pgfplots.plothandler")
 require("pgfplots.meshplothandler")

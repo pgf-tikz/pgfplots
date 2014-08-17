@@ -22,6 +22,8 @@ do
 local _ENV = pgfplots
 -----------------------------------
 
+local pgftonumber =pgfluamathfunctions.tonumber
+
 Coord = newClass()
 
 function Coord:constructor()
@@ -178,9 +180,9 @@ local pseudoconstant_pt = nil
 local function pseudoconstant_x() return pseudoconstant_pt.x[1] end
 local function pseudoconstant_y() return pseudoconstant_pt.x[2] end
 local function pseudoconstant_z() return pseudoconstant_pt.x[3] end
-local function pseudoconstant_rawx() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[1]) end
-local function pseudoconstant_rawy() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[2]) end
-local function pseudoconstant_rawz() return pgfplotsmath.tonumber(pseudoconstant_pt.unfiltered.x[3]) end
+local function pseudoconstant_rawx() return pgftonumber(pseudoconstant_pt.unfiltered.x[1]) end
+local function pseudoconstant_rawy() return pgftonumber(pseudoconstant_pt.unfiltered.x[2]) end
+local function pseudoconstant_rawz() return pgftonumber(pseudoconstant_pt.unfiltered.x[3]) end
 local function pseudoconstant_meta() return pseudoconstant_pt.meta end
 
 local function updatePseudoConstants(pt)
@@ -221,7 +223,7 @@ end
 --
 -- @return a string containing all surveyed coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
 function Plothandler:surveyedCoordsToPgfplots(axis)
-	return self:getCoordsInTeXFormat(axis, self.coords,  pgfplotsmath.toTeXstring)
+	return self:getCoordsInTeXFormat(axis, self.coords,  toTeXstring)
 end
 
 -- PUBLIC
@@ -450,7 +452,7 @@ end
 
 function CoordAssignmentPointMetaHandler:assign(pt)
     if not pt then error("arguments must not be nil") end
-    pt.meta = pgfplotsmath.tonumber(pt.x[self.dir])
+    pt.meta = pgftonumber(pt.x[self.dir])
 end
 
 XcoordAssignmentPointMetaHandler = CoordAssignmentPointMetaHandler.new(1)
@@ -465,7 +467,7 @@ end
 
 function ExplicitPointMetaHandler:assign(pt)
     if pt.unfiltered ~= nil and pt.unfiltered.meta ~= nil then
-        pt.meta = pgfplotsmath.tonumber(pt.unfiltered.meta)
+        pt.meta = pgftonumber(pt.unfiltered.meta)
     end
 end
 
@@ -580,7 +582,7 @@ end
 -- PRIVATE
 -- @see \pgfplotsaxisserializedatapoint@private
 function Axis:serializeCoordToPgfplotsPrivate(pt)
-    return pgfplotsmath.toTeXstring(pt.meta)
+    return toTeXstring(pt.meta)
 end
 
 
@@ -588,7 +590,7 @@ end
 --
 function Axis:validatecoord(dir, point)
     if not dir or not point then error("arguments must not be nil") end
-    local result = pgfplotsmath.tonumber(point.x[dir])
+    local result = pgftonumber(point.x[dir])
     
     if result == nil then
         result = nil
@@ -773,7 +775,7 @@ local function axisLimitToTeXString(name, value)
 	if value == math.huge or value == -math.huge then
 		return ""
 	end
-	return name .. "=" .. pgfplotsmath.toTeXstring(value) .. ","
+	return name .. "=" .. toTeXstring(value) .. ","
 end
 
 -- PUBLIC
@@ -800,11 +802,11 @@ function Axis:surveyToPgfplots(plothandler)
         axisLimitToTeXString("@ymax", self.max[2]) ..
         axisLimitToTeXString("@zmax", self.max[3]) ..
     -- FIXME : what about datamin/datamx!?
-        "point meta min=" .. pgfplotsmath.toTeXstring(plothandler.metamin) ..","..
-        "point meta max=" .. pgfplotsmath.toTeXstring(plothandler.metamax) ..","..
+        "point meta min=" .. toTeXstring(plothandler.metamin) ..","..
+        "point meta max=" .. toTeXstring(plothandler.metamax) ..","..
         "@is3d=" .. tostring(self.is3d) .. "," ..
-        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord,pgfplotsmath.toTeXstring) .. "}," ..
-        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord,pgfplotsmath.toTeXstring) .. "}," ..
+        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord,toTeXstring) .. "}," ..
+        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord,toTeXstring) .. "}," ..
         "@plot has jumps=" .. tostring(hasJumps) .. "," ..
         "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
         "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..

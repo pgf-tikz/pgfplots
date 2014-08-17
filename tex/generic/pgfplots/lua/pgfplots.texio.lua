@@ -19,6 +19,8 @@ do
 -- all globals will be read from/defined in pgfplots:
 local _ENV = pgfplots
 
+local pgftonumber = pgfluamathfunctions.tonumber
+
 -- expands to the survey results 
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
@@ -28,9 +30,9 @@ end
 
 -- expands to the transformed point meta
 function texPerpointMetaTrafo(metaStr)
-    local meta = pgfplotsmath.tonumber(metaStr)
+    local meta = pgftonumber(metaStr)
     local transformed = gca.currentPlotHandler:visualizationTransformMeta(meta);
-    tex.sprint(pgfplotsmath.tostringfixed(transformed));
+    tex.sprint(tostringfixed(transformed));
 end
 
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
@@ -49,7 +51,6 @@ function texVisualizationInit(plotNum, plotIs3d)
     end
 end
 
-local tostringfixed = pgfplotsmath.tostringfixed
 local pgfXyCoordSerializer = function(pt)
 	-- FIXME : it is unsure of whether this here really an improvement - or if it would be faster to compute that stuff in TeX...
 	return "{" .. tostringfixed(pt.pgfXY[1]) .. "}{" .. tostringfixed(pt.pgfXY[2]) .. "}"
@@ -66,7 +67,7 @@ function texVisualizePlot(visualizerFactory)
 	local visualizer = visualizerFactory(currentPlotHandler)
 
 	local result = visualizer:getVisualizationOutput()
-	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfplotsmath.tostringfixed, pgfXyCoordSerializer)
+	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, tostringfixed, pgfXyCoordSerializer)
     tex.sprint(result_str)
 end
 
@@ -106,9 +107,9 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 	local colormap = ColorMaps[mapName];
 	if colormap then
 		local result = colormap:findPrecomputed(
-			pgfplotsmath.tonumber(inMin),
-			pgfplotsmath.tonumber(inMax),
-			pgfplotsmath.tonumber(x))
+			pgftonumber(inMin),
+			pgftonumber(inMax),
+			pgftonumber(x))
 
 		local str = ""
 		for i = 1,#result do
@@ -240,9 +241,9 @@ function texAddplotExpressionCoordinateGenerator(
 		end
 			
 	else
-		domainxmin= pgfplotsmath.tonumber(domainxmin)
-		domainxmax= pgfplotsmath.tonumber(domainxmax)
-		samplesx= pgfplotsmath.tonumber(samplesx)
+		domainxmin= pgftonumber(domainxmin)
+		domainxmax= pgftonumber(domainxmax)
+		samplesx= pgftonumber(samplesx)
 	end
 
 	local expressions
@@ -259,9 +260,9 @@ function texAddplotExpressionCoordinateGenerator(
 		domainMax = { domainxmax }
 		samples = { samplesx }
 	else
-		local domainymin = pgfplotsmath.tonumber(domainymin)
-		local domainymax = pgfplotsmath.tonumber(domainymax)
-		local samplesy = pgfplotsmath.tonumber(samplesy)
+		local domainymin = pgftonumber(domainymin)
+		local domainymax = pgftonumber(domainymax)
+		local samplesy = pgftonumber(samplesy)
 
 		domainMin = { domainxmin, domainymin }
 		domainMax = { domainxmax, domainymax }
