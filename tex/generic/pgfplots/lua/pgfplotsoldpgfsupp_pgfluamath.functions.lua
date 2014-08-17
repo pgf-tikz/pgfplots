@@ -1,3 +1,28 @@
+--------------------------------------------------------------------------------------------------
+------ This file is a copy of some part of PGF/Tikz.
+------ It has been copied here to provide :
+------  - compatibility with older PGF versions
+------  - availability of PGF contributions by Christian Feuersaenger
+------    which are necessary or helpful for pgfplots.
+------
+------ For reasons of simplicity, I have copied the whole file, including own contributions AND
+------ PGF parts. The copyrights are as they appear in PGF.
+------
+------ Note that pgfplots has compatible licenses.
+------ 
+------ This copy has been modified in the following ways:
+------  - nested \input commands have been updated
+------  
+--
+-- Support for the contents of this file will NOT be done by the PGF/TikZ team. 
+-- Please contact the author and/or maintainer of pgfplots (Christian Feuersaenger) if you need assistance in conjunction
+-- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
+-- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
+----------------------------------------------------------------------------------------------------
+-- Date of this copy: So 17. Aug 16:15:40 CEST 2014 ---
+
+
+
 -- Copyright 2011 by Christophe Jorssen
 --
 -- This file may be distributed and/or modified
@@ -7,11 +32,20 @@
 --
 -- See the file doc/generic/pgf/licenses/LICENSE for more details.
 --
--- $Id: pgfluamath.functions.lua,v 1.9 2013/07/25 10:39:34 tantau Exp $
+-- $Id: pgfluamath.functions.lua,v 1.11 2014/08/16 14:48:20 cfeuersaenger Exp $
 --
 
 local pgfluamathfunctions = pgfluamathfunctions or {}
 
+-- Maps function names to their function.
+--
+-- Note that this allows to register functions which are not in pgfluamathfunctions. 
+--
+-- Note that the string keys are not necessarily the same as the function
+-- names. In particular, the math expression "not(1,1)" will execute notPGF(1,1) 
+--
+-- Note that each function which is added to pgfluamathfunctions will _automatically_ be inserted into this map, see __newindex.
+-- (I fear it will not be erased directly...)
 pgfluamathfunctions.stringToFunctionMap = {}
 
 local newFunctionAllocatedCallback = function(table,key,value)
@@ -38,6 +72,33 @@ local mathpow, mathrad, mathrandom = math.pow, math.rad, math.random
 local mathrandomseed, mathsin = math.randomseed, math.sin
 local mathsinh, mathsqrt, mathtanh = math.sinh, math.sqrt, math.tanh
 local mathtan = math.tan
+
+local trigFormatToRadians = mathrad
+
+local radiansToTrigFormat = mathdeg
+
+pgfluamathfunctions.TrigFormat = { 'deg', 'rad' }
+pgfluamathfunctions.stringToFunctionMap["TrigFormat"] = nil
+
+-- choice is one of the valid choices in TrigFormat.
+function pgfluamathfunctions.setTrigFormat(choice)
+	if choice == 'deg' then
+		trigFormatToRadians = mathrad
+		radiansToTrigFormat = mathdeg
+	elseif choice == 'rad' then
+		local identity = function(x) return x end
+		trigFormatToRadians = identity
+		radiansToTrigFormat = identity
+	else
+		error("The argument '" .. tostring(choice) .. "' is no valid choice for setTrigFormat.")
+	end
+end
+pgfluamathfunctions.stringToFunctionMap["setTrigFormat"] = nil
+
+pgfluamathfunctions.setRandomSeed = mathrandomseed
+pgfluamathfunctions.stringToFunctionMap["setRandomSeed"] = nil
+
+-------------------------------------------
 
 function pgfluamathfunctions.add(x,y)
    return x+y
@@ -70,10 +131,6 @@ function pgfluamathfunctions.factorial(x)
    else
       return x * pgfluamathfunctions.factorial(x-1)
    end
-end
-
-function pgfluamathfunctions.deg(x)
-   return mathdeg(x)
 end
 
 function pgfluamathfunctions.ifthenelse(x,y,z)
@@ -197,7 +254,17 @@ function pgfluamathfunctions.rnd()
 end
 
 function pgfluamathfunctions.rand()
-   return mathrandom(-1,1)
+   return -1 + mathrandom() *2
+end
+
+function pgfluamathfunctions.random(x,y)
+   if x == nil and y == nil then
+      return mathrandom()
+   elseif y == nil then
+      return mathrandom(x)
+   else
+      return mathrandom(x,y)
+   end
 end
 
 function pgfluamathfunctions.deg(x)
@@ -281,39 +348,50 @@ function pgfluamathfunctions.Mod(x,y)
 end
 
 function pgfluamathfunctions.Sin(x)
-   return mathsin(mathrad(x))
+   return mathsin(trigFormatToRadians(x))
 end
 pgfluamathfunctions.sin=pgfluamathfunctions.Sin
 
 function pgfluamathfunctions.Cos(x)
-   return mathcos(mathrad(x))
+   return mathcos(trigFormatToRadians(x))
 end
 pgfluamathfunctions.cos=pgfluamathfunctions.Cos
 
 function pgfluamathfunctions.Tan(x)
-   return mathtan(mathrad(x))
+   return mathtan(trigFormatToRadians(x))
 end
 pgfluamathfunctions.tan=pgfluamathfunctions.Tan
 
 function pgfluamathfunctions.aSin(x)
-   return mathdeg(mathasin(x))
+   return radiansToTrigFormat(mathasin(x))
 end
 pgfluamathfunctions.asin=pgfluamathfunctions.aSin
 
 function pgfluamathfunctions.aCos(x)
-   return mathdeg(mathacos(x))
+   return radiansToTrigFormat(mathacos(x))
 end
 pgfluamathfunctions.acos=pgfluamathfunctions.aCos
 
 function pgfluamathfunctions.aTan(x)
-   return mathdeg(mathatan(x))
+   return radiansToTrigFormat(mathatan(x))
 end
 pgfluamathfunctions.atan=pgfluamathfunctions.aTan
 
 function pgfluamathfunctions.aTan2(y,x)
-   return mathdeg(mathatan2(y,x))
+   return radiansToTrigFormat(mathatan2(y,x))
 end
 pgfluamathfunctions.atan2=pgfluamathfunctions.aTan2
+pgfluamathfunctions.atantwo=pgfluamathfunctions.aTan2
+
+function pgfluamathfunctions.cot(x)
+	return pgfluamathfunctions.cos(x) / pgfluamathfunctions.sin(x)
+end
+function pgfluamathfunctions.sec(x)
+	return 1 / pgfluamathfunctions.cos(x)
+end
+function pgfluamathfunctions.cosec(x)
+	return 1 / pgfluamathfunctions.sin(x)
+end
 
 function pgfluamathfunctions.pointnormalised (pgfx, pgfy)
    local pgfx_normalised, pgfy_normalised
@@ -395,6 +473,7 @@ function pgfluamathfunctions.tostringfixed(x)
     return stringformat("%f", x)
 end
 
+-- converts an input number to a string which is accepted by the TeX FPU
 function pgfluamathfunctions.toTeXstring(x)
     local result = ""
     if x ~= nil then

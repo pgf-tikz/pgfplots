@@ -42,14 +42,14 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 	# $PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
 	#-------------------------------------------------- 
 FILES=(\
-	$PGFDIR/generic/pgf/basiclayer/pgfcoreexternal.code.tex \
-	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
+	$PGFDIR/generic/pgf/libraries/luamath/pgflibraryluamath.code.tex \
 )
 for A in "${FILES[@]}"; do
 	echo "creating compatibility version for `basename $A` ... " 
 	echo -e "$HEADER" | \
 		cat - "$A" | \
-		sed 's/\\input \(pgf\|tikz\)\(.*\)\.code\.tex/\\input pgfplotsoldpgfsupp_\1\2.code.tex/' \
+		sed 's/\\input \(pgf\|tikz\)\(.*\)\.code\.tex/\\input pgfplotsoldpgfsupp_\1\2.code.tex/' | \
+		sed 's/require("\(pgf\|tikz\)\(.*\)/require("pgfplotsoldpgfsupp_\1\2/' \
 		> pgfplotsoldpgfsupp_`basename $A` \
 		|| exit 1
 done

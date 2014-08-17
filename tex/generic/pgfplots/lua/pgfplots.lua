@@ -3,10 +3,18 @@ require("pgfplots.binary")
 
 -- all classes/globals will be added to this table:
 pgfplots = {}
+
 require("pgfplots.util")
--- FIXME : solve dependencies when releasing this pgfplots version...
-pgfplots.pgfluamathparser = require("pgfluamath.parser")
-pgfplots.pgfluamathfunctions = require("pgfluamath.functions")
+
+-- see pgfrcs.code.tex -- all versions after 3.0.0 (excluding 3.0.0) will set this version:
+if not pgf or not pgf.pgfversion then
+	pgfplots.log("log", "pgfplots.lua: loading complementary lua code for your pgf version...\n")
+	pgfplots.pgfluamathfunctions = require("pgfplotsoldpgfsupp_pgfluamath.functions")
+	pgfplots.pgfluamathparser = require("pgfplotsoldpgfsupp_pgfluamath.parser")
+else
+	pgfplots.pgfluamathparser = require("pgfluamath.parser")
+	pgfplots.pgfluamathfunctions = require("pgfluamath.functions")
+end
 
 require("pgfplots.plothandler")
 require("pgfplots.meshplothandler")
