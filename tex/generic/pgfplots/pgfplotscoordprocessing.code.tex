@@ -2675,20 +2675,16 @@
 			\let\pgfpmeta@expr@origchoice\pgfutil@empty
 		\fi
 		%
-		\def\pgfplots@loc@TMPa{#1}%
-		\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPa
-		\edef\pgfplots@loc@TMPa{\noexpand\pgfutil@in@{\pgfplots@backslash@as@other}{\pgfplots@loc@TMPa}}%
-		\pgfplots@loc@TMPa
-		\ifpgfutil@in@
+		\pgfplotsutilifcontainsmacro{#1}{%
 			% oh. The point meta expression contains a backslash - it
 			% depends on a macro. This means: it depends on \thisrow
 			% or similar TeX stuff - which must be evaluated by TeX.
 			%
 			% LUA cannot be used for this point meta handler.
 			\let\pgfpmeta@expr@LUA@class\pgfutil@empty
-		\else
+		}{%
 			\def\pgfpmeta@expr@LUA@class{pgfplots.ExpressionPointMetaHandler.new("#1")}%
-		\fi
+		}%
 	},
 	LUA class=\pgfpmeta@expr@LUA@class,
 }%
@@ -5256,6 +5252,8 @@
 	%
 	\pgfplots@PREPARE@COORD@STREAM{#3}%
 	%
+	\def\pgfplots@addplotimpl@expression@xEXPR{#1}%
+	%
 	% Determine whether the x range is parameterized or uniform and
 	% prepare a macro which assigns \pgfplots@current@point@x:
 	\def\pgfplots@addplotimpl@expression@prepare@x{%
@@ -5267,15 +5265,14 @@
 		\let\pgfplots@current@point@y=\pgfmathresult
 	}%
 	\def\pgfplots@addplotimpl@expression@hasuniform@x{0}%
-	\def\pgfplots@loc@TMPa{#1}%
 	% do we have '\x' as x coordinate?
 	\expandafter\def\expandafter\pgfplots@loc@TMPb\expandafter{\tikz@plot@var}%
-	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	\ifx\pgfplots@addplotimpl@expression@xEXPR\pgfplots@loc@TMPb
 		\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
 	\else
 		\edef\pgfplots@loc@TMPb{\pgfplots@plot@var@nonmacro}%
 		% do we have 'x' as x coordinate?
-		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\ifx\pgfplots@addplotimpl@expression@xEXPR\pgfplots@loc@TMPb
 			\def\pgfplots@addplotimpl@expression@hasuniform@x{1}%
 		\fi
 	\fi
@@ -5422,23 +5419,29 @@
 		\def\pgfplots@current@point@z{}%
 	\fi
 	%
-	\def\b@pgfplots@LUA@survey@expression{0}%
-	\ifpgfplots@LUA@backend@supported
-		\def\b@pgfplots@LUA@survey@expression{1}%
-		\ifpgfplotsplothandlermesh@patch@type@sampling
-			\def\b@pgfplots@LUA@survey@expression{0}%
-			\pgfplots@LUA@plotexpression@log@deactivation{patch type sampling unsupported (yet)}%
-		\fi
-	\fi
-	%
-	\edef\pgfplots@loc@TMPb{\pgfplots@plot@var@y@nonmacro}%
-	% do we have 'y' as y coordinate?
-	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	% do we have '\y' as y coordinate?
+	\def\pgfplots@addplotimpl@expression@hasuniform@y{0}%
+	\expandafter\def\expandafter\pgfplots@loc@TMPb\expandafter{\pgfplots@plot@var@y}%
+	\ifx\pgfplots@addplotimpl@expression@yEXPR\pgfplots@loc@TMPb
+		\def\pgfplots@addplotimpl@expression@hasuniform@y{1}%
 		\def\pgfplots@addplotimpl@expression@prepare@y{%
 			\edef\pgfplots@current@point@y{\pgfplots@plot@var@y}%
 		}%
+	\else
+		\edef\pgfplots@loc@TMPb{\pgfplots@plot@var@y@nonmacro}%
+		% do we have 'y' as y coordinate?
+		\ifx\addplotimpl@expression@yEXPR\pgfplots@loc@TMPb
+			\def\pgfplots@addplotimpl@expression@hasuniform@y{1}%
+			\def\pgfplots@addplotimpl@expression@prepare@y{%
+				\edef\pgfplots@current@point@y{\pgfplots@plot@var@y}%
+			}%
+		\fi
 	\fi
-
+	%
+	%
+	\pgfplots@addplotimpl@expression@check@LUA
+	\let\b@pgfplots@LUA@survey@expression=\pgfplotsretval
+	%
 	% START:
 	%  (NOTE: this does also define 'x', 'y', and 'z' math
 	%  expressions!)
@@ -5500,6 +5503,49 @@
 	\fi
 	%
 	\pgfplots@coord@stream@end
+}%
+
+% Defines \pgfplotsretval to be '1' if the pure LUA version of
+% \addplot expression is enabled. It defines \pgfplotsretval to be 0
+% if not.
+\def\pgfplots@addplotimpl@expression@check@LUA{%
+	\def\pgfplotsretval{0}%
+	\ifpgfplots@LUA@backend@supported
+		\def\b@pgfplots@LUA@survey@expression{1}%
+		\ifpgfplotsplothandlermesh@patch@type@sampling
+			\def\pgfplotsretval{0}%
+			\pgfplots@LUA@plotexpression@log@deactivation{patch type sampling unsupported (yet)}%
+		\fi
+		%
+		\if1\pgfplots@addplotimpl@expression@hasuniform@x
+		\else
+			\expandafter\pgfplotsutilifcontainsmacro\expandafter{\pgfplots@addplotimpl@expression@xEXPR}{%
+				\def\pgfplotsretval{0}%
+				\pgfplots@command@to@string\pgfplots@addplotimpl@expression@xEXPR\pgfplots@loc@TMPa
+				\pgfplots@LUA@plotexpression@log@deactivation{x expression '\pgfplots@loc@TMPa' contains a TeX macro}%
+			}{%
+			}%
+		\fi
+		%
+		\if1\pgfplots@addplotimpl@expression@hasuniform@y
+		\else
+			\expandafter\pgfplotsutilifcontainsmacro\expandafter{\pgfplots@addplotimpl@expression@yEXPR}{%
+				\def\pgfplotsretval{0}%
+				\pgfplots@command@to@string\pgfplots@addplotimpl@expression@yEXPR\pgfplots@loc@TMPa
+				\pgfplots@LUA@plotexpression@log@deactivation{y expression '\pgfplots@loc@TMPa' contains a TeX macro}%
+			}{%
+			}%
+		\fi
+		%
+		\ifpgfplots@curplot@threedim
+			\expandafter\pgfplotsutilifcontainsmacro\expandafter{\pgfplots@addplotimpl@expression@zEXPR}{%
+				\def\pgfplotsretval{0}%
+				\pgfplots@command@to@string\pgfplots@addplotimpl@expression@zEXPR\pgfplots@loc@TMPa
+				\pgfplots@LUA@plotexpression@log@deactivation{z expression '\pgfplots@loc@TMPa' contains a TeX macro}%
+			}{%
+			}%
+		\fi
+	\fi
 }%
 
 \def\pgfplots@LUA@plotexpression@log@deactivation#1{%
@@ -5603,7 +5649,7 @@
 		% for that special string.
 		\edef\pgfplots@loc@TMPb{%
 			{\expandafter\noexpand\tikz@plot@var}%
-			{\noexpand\pgfplots@plot@var@y\the\t@pgfplots@toka}%
+			{\expandafter\noexpand\pgfplots@plot@var@y\the\t@pgfplots@toka}%
 		}%
 		\expandafter\pgfplots@addplotimpl@expression@@\pgfplots@loc@TMPb{#4}%
 	\else
