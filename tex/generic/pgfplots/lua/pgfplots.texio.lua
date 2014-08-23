@@ -53,7 +53,11 @@ end
 
 local pgfXyCoordSerializer = function(pt)
 	-- FIXME : it is unsure of whether this here really an improvement - or if it would be faster to compute that stuff in TeX...
-	return "{" .. tostringfixed(pt.pgfXY[1]) .. "}{" .. tostringfixed(pt.pgfXY[2]) .. "}"
+	if pt.pgfXY ~=nil then
+		return "{" .. tostringfixed(pt.pgfXY[1]) .. "}{" .. tostringfixed(pt.pgfXY[2]) .. "}"
+	else
+		return "{0}{0}"
+	end
 end
 
 -- expands to the resulting coordinates. Note that these coordinates are already mapped somehow (typically: to fixed point)

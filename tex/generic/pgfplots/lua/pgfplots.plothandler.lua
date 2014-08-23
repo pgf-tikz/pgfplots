@@ -607,7 +607,7 @@ end
 -- @see \pgfplotsaxisparsecoordinate
 function Axis:parsecoordinate(pt)
     -- replace empty strings by 'nil':
-    for i = 1,3,1 do
+    for i = 1,3 do
         pt.x[i] = stringOrDefault(pt.x[i], nil)
     end
     pt.meta = stringOrDefault(pt.meta)
@@ -621,25 +621,25 @@ function Axis:parsecoordinate(pt)
     local unfiltered = Coord.new()
     unfiltered.x = {}
     unfiltered.meta = pt.meta
-    for i = 1,3,1 do
+    for i = 1,3 do
         unfiltered.x[i] = pt.x[i]
     end
     result.unfiltered = unfiltered
 
     -- FIXME : self:prefilter(pt[i])
-    for i = 1,self:loopMax(),1 do
+    for i = 1,self:loopMax() do
         result.x[i] = self:preparecoord(i, pt.x[i])
         -- FIXME : 
         -- result.x[i] = self:filtercoord(i, result.x[i])
     end
     -- FIXME : result.x = self:xyzfilter(result.x)
 
-    for i = 1,self:loopMax(),1 do
+    for i = 1,self:loopMax() do
         self:validatecoord(i, result)
     end
     
     local resultIsBounded = true
-    for i = 1,self:loopMax(),1 do
+    for i = 1,self:loopMax() do
         if result.x[i] == nil then
             resultIsBounded = false
         end
@@ -778,6 +778,26 @@ local function axisLimitToTeXString(name, value)
 	return name .. "=" .. toTeXstring(value) .. ","
 end
 
+local function findFirstValidCoord(coords)
+	for i=1,#coords do
+		local pt = coords[i]
+		if pt.x[1] ~=nil then
+			return pt
+		end
+	end
+	return nil
+end
+
+local function findLastValidCoord(coords)
+	for i=#coords,1,-1 do
+		local pt = coords[i]
+		if pt.x[1] ~=nil then
+			return pt
+		end
+	end
+	return nil
+end
+
 -- PUBLIC
 --
 -- @return a set of (private) key-value pairs such that the TeX code of pgfplots can
@@ -786,8 +806,8 @@ end
 -- @param plothandler an instance of Plothandler
 function Axis:surveyToPgfplots(plothandler)
 	plothandler:surveyend()
-    local firstCoord = plothandler.coords[1] or Coord.new()
-    local lastCoord = plothandler.coords[#plothandler.coords] or Coord.new()
+    local firstCoord = findFirstValidCoord(plothandler.coords) or Coord.new()
+    local lastCoord = findLastValidCoord(plothandler.coords) or Coord.new()
     local hasJumps
     local filteredCoordsAway
     if plothandler.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
@@ -811,6 +831,8 @@ function Axis:surveyToPgfplots(plothandler)
         "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
         "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..
         ""
+
+	-- log("returning " .. result .. "\n\n")
     
     return result
 end

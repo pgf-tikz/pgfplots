@@ -179,7 +179,7 @@ function MeshVisualizer:constructor(sourcePlotHandler, patchType, rows, cols, is
 		self.isXVariesOrdering = true
 	end
 
-	log("initialized MeshVisualizer with " .. tostring(sourcePlotHandler) .. ", " .. tostring(patchType) .. ", isMatrixInput = " .. tostring(isMatrixInput) .. ", isMatrixOutput = " .. tostring(isMatrixOutput) .. ", isZBufferSort = " .. tostring(isZBufferSort) .. " rows = " ..tostring(rows) .. " cols = " ..tostring(cols) .. " is x varies=" .. tostring(isXVariesOrdering))
+	-- log("initialized MeshVisualizer with " .. tostring(sourcePlotHandler) .. ", " .. tostring(patchType) .. ", isMatrixInput = " .. tostring(isMatrixInput) .. ", isMatrixOutput = " .. tostring(isMatrixOutput) .. ", isZBufferSort = " .. tostring(isZBufferSort) .. " rows = " ..tostring(rows) .. " cols = " ..tostring(cols) .. " is x varies=" .. tostring(isXVariesOrdering))
 end
 
 function MeshVisualizer:getVisualizationOutput()
