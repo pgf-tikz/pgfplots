@@ -1,5 +1,6 @@
 
-PDFLATEX=pdflatex -shell-escape
+# PDFLATEX=pdflatex -shell-escape
+PDFLATEX=lualatex -shell-escape
 
 all: pgfplots.pdf pgfplotstable.pdf TeX-programming-notes.pdf pgfplotstodo.pdf
 	@echo "$^ have been compiled successfully. I did NOT check for references, so you may need to rerun make several times."
