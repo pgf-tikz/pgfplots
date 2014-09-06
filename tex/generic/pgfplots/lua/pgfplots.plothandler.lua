@@ -76,7 +76,7 @@ end
 PointMetaMap = newClass()
 
 function PointMetaMap:constructor(inMin,inMax, warnForfilterDiscards)
-    if not inMin or not inMax or not warnForfilterDiscards then error("arguments must not be nil") end
+    if not inMin or not inMax or warnForfilterDiscards == nil then error("arguments must not be nil") end
     self._mapper = LinearMap.new(inMin,inMax, 0, 1000)
     self.warnForfilterDiscards = warnForfilterDiscards
 end
@@ -207,9 +207,14 @@ end
 
 -- @see \pgfplotsplothandlersurveypoint
 function Plothandler:surveypoint(pt)
-	updatePseudoConstants(pt)
+	updatePseudoConstants(nil)
 
     local current = self.axis:parsecoordinate(pt)
+
+	-- this here defines the math functions for x, y, or z.
+	-- FIXME: are there any hidden callers which rely on these constants in parsecoordinate!?
+	updatePseudoConstants(current)
+
     if current.x[1] ~= nil then
         current = self.axis:preparecoordinate(current)
         self.axis:updatelimitsforcoordinate(current)
