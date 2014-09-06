@@ -71,7 +71,7 @@ function texVisualizePlot(visualizerFactory)
 	local visualizer = visualizerFactory(currentPlotHandler)
 
 	local result = visualizer:getVisualizationOutput()
-	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, tostringfixed, pgfXyCoordSerializer)
+	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfXyCoordSerializer)
     tex.sprint(result_str)
 end
 

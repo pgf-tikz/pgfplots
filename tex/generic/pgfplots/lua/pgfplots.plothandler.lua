@@ -223,19 +223,19 @@ end
 --
 -- @return a string containing all surveyed coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
 function Plothandler:surveyedCoordsToPgfplots(axis)
-	return self:getCoordsInTeXFormat(axis, self.coords,  toTeXstring)
+	return self:getCoordsInTeXFormat(axis, self.coords)
 end
 
 -- PUBLIC
 --
 -- @return a string containing all coordinates in the format which is accepted \pgfplotsaxisdeserializedatapointfrom
 -- @param extraSerializer a function which takes an instance of Coord and returns a string. can be nil.
-function Plothandler:getCoordsInTeXFormat(axis, coords, coordtoNumberFunction, extraSerializer)
+function Plothandler:getCoordsInTeXFormat(axis, coords, extraSerializer)
     if not axis then error("arguments must not be nil") end
     local result = {}
     for i = 1,#coords,1 do
         local pt = coords[i]
-        local ptstr = self:serializeCoordToPgfplots(pt, coordtoNumberFunction)
+        local ptstr = self:serializeCoordToPgfplots(pt)
         local axisPrivate = axis:serializeCoordToPgfplotsPrivate(pt)
 		if extraSerializer then
 			axisPrivate = extraSerializer(pt) .. "{" .. axisPrivate .. "}"
@@ -249,11 +249,11 @@ end
 -- PRIVATE 
 --
 -- does the same as \pgfplotsplothandlerserializepointto
-function Plothandler:serializeCoordToPgfplots(pt, coordtoNumberFunction)
+function Plothandler:serializeCoordToPgfplots(pt)
     return 
-        coordtoNumberFunction(pt.x[1]) .. "," ..
-        coordtoNumberFunction(pt.x[2]) .. "," ..
-        coordtoNumberFunction(pt.x[3])
+        toTeXstring(pt.x[1]) .. "," ..
+        toTeXstring(pt.x[2]) .. "," ..
+        toTeXstring(pt.x[3])
 end
 
 function Plothandler:visualizationPhaseInit()
@@ -825,8 +825,8 @@ function Axis:surveyToPgfplots(plothandler)
         "point meta min=" .. toTeXstring(plothandler.metamin) ..","..
         "point meta max=" .. toTeXstring(plothandler.metamax) ..","..
         "@is3d=" .. tostring(self.is3d) .. "," ..
-        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord,toTeXstring) .. "}," ..
-        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord,toTeXstring) .. "}," ..
+        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord) .. "}," ..
+        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord) .. "}," ..
         "@plot has jumps=" .. tostring(hasJumps) .. "," ..
         "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
         "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..
