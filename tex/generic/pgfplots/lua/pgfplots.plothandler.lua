@@ -286,6 +286,34 @@ function Plothandler:visualizationTransformMeta(meta)
     end
 end
 
+-- Modifies coords inplace.
+-- @return nothing.
+-- see \pgfplots@apply@zbuffer@sort@coordinates
+function Plothandler:sortCoordinatesByViewDepth()
+    local coords = self.coords
+
+	local axis = self.axis
+	local viewdir = axis.viewdir
+
+	-- Step 1: compute view depth for every coordinate
+	local getVertexDepth = axis.getVertexDepth
+	for i=1,#coords do
+		local vertexDepth = getVertexDepth(axis,coords[i])
+		coords[i].vertexDepth = vertexDepth
+	end
+	
+	-- Step 2: sort (inplace)
+	local comparator = function(ptA, ptB)
+		return ptA.vertexDepth > ptB.vertexDepth
+	end
+	table.sort(coords, comparator)
+
+	-- Step 3: cleanup: do not leave 'vertexDepth' inside of the array
+	for i=1,#coords do
+		coords[i].vertexDepth = nil
+	end
+end
+
 -------------------------------------------------------
 -- Generic plot handler: one which has the default survey phase
 -- It is actually the same as Plothandler...
@@ -537,6 +565,28 @@ function Axis:constructor()
 	-- needed during visualization phase -- but only for 3d!
 	self.viewdir = {}
     return self
+end
+
+function Axis:getVertexDepth(pt)
+	local vertexDepth = 0
+	local vertex = pt.x
+	local viewdir = self.viewdir
+	if vertex[1] == nil then
+		-- an empty coordinate. Get rid of it.
+		return 0
+	end
+
+	if #vertex ~=3 then
+		error("Cannot compute vertex depth of " .. tostring(pt) .. ": expected a 3d point but got " .. tostring(#vertex)) 
+	end
+	if not viewdir or #viewdir~=3 then error("got unexpected view dir " ..tostring(viewdir) ) end
+
+	for k = 1,3 do
+		local component = vertex[k]
+		vertexDepth = vertexDepth + component*viewdir[k]
+	end
+
+	return vertexDepth
 end
 
 function Axis:setunitvectors(unitvectors)

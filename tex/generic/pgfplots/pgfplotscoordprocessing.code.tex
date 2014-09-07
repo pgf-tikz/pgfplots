@@ -3464,9 +3464,9 @@
 			{% precommand(s):
 				\expandafter\noexpand\csname pgfplots@curplot@threedim\ifpgfplots@curplot@threedim true\else false\fi\endcsname
 				%
+				% Did we prepare the data within LUA? remember that!
 				\ifpgfplots@LUA@backend@supported
-					% hm. I am not sure if it is a good idea to
-					% serialize the "true" case. Think about it...
+					\noexpand\pgfplots@LUA@backend@supportedtrue
 				\else 
 					\noexpand\pgfplots@LUA@backend@supportedfalse
 				\fi
@@ -8793,40 +8793,11 @@
 	\or
 		% sort.
 		\if\pgfplots@meshmode n%
-			\begingroup
-			\def\pgfplots@coord@stream@start{%
-				\pgfplotsarraynewempty\pgfplots@zbuffer@local
-				\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
-				\c@pgfplots@scanlineindex=0
-				\def\pgfplots@zbuffer@local@SETCUR####1{%
-					\expandafter\pgfplotsarrayset\c@pgfplots@scanlineindex\of\pgfplots@zbuffer@local\to{####1}%
-				}%
-			}%
-			\def\pgfplots@coord@stream@coord{%
-				\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}%
-				\advance\c@pgfplots@scanlineindex by1
-			}%
-			\def\pgfplots@coord@stream@end{%
-				\ifnum\c@pgfplots@scanlineindex=\numcoords
-				\else
-					\pgfplotsarrayresize\pgfplots@zbuffer@local{\c@pgfplots@scanlineindex}%
-				\fi
-				\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
-				\pgfkeysdef{/pgfplots/array/unscope pre}{%
-					\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
-					\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
-						\expandafter\pgfplotsapplistXpushback\expandafter{\expandafter{\curelem}}\to{\pgfp@sortedlist}%
-					}%
-					\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
-					\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
-				}%
-				\pgfkeysdef{/pgfplots/array/unscope post}{}%
-				\pgfplotsarraysort\pgfplots@zbuffer@local
-			}%
-			\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
-			\endgroup
-			\let\pgfplots@stored@current@data=\pgfplotsglobalretval
-			\global\let\pgfplotsglobalretval=\pgfutil@empty
+			\ifpgfplots@LUA@backend@supported
+				\directlua{pgfplots.texApplyZBufferSort()}%
+			\else
+				\pgfplots@apply@zbuffer@sort@coordinates
+			\fi
 		\else
 			% meshmode handles sort separately!
 		\fi
@@ -8904,6 +8875,42 @@
 	\fi
 }%
 
+\def\pgfplots@apply@zbuffer@sort@coordinates{%
+	\begingroup
+	\def\pgfplots@coord@stream@start{%
+		\pgfplotsarraynewempty\pgfplots@zbuffer@local
+		\pgfplotsarrayresize\pgfplots@zbuffer@local{\numcoords}%
+		\c@pgfplots@scanlineindex=0
+		\def\pgfplots@zbuffer@local@SETCUR####1{%
+			\expandafter\pgfplotsarrayset\c@pgfplots@scanlineindex\of\pgfplots@zbuffer@local\to{####1}%
+		}%
+	}%
+	\def\pgfplots@coord@stream@coord{%
+		\expandafter\pgfplots@zbuffer@local@SETCUR\expandafter{\pgfplots@coord@stream@foreach@NORMALIZED@curencoded}%
+		\advance\c@pgfplots@scanlineindex by1
+	}%
+	\def\pgfplots@coord@stream@end{%
+		\ifnum\c@pgfplots@scanlineindex=\numcoords
+		\else
+			\pgfplotsarrayresize\pgfplots@zbuffer@local{\c@pgfplots@scanlineindex}%
+		\fi
+		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplots@apply@zbuffer@SORT@iflessthan
+		\pgfkeysdef{/pgfplots/array/unscope pre}{%
+			\pgfplotsapplistXnewempty{\pgfp@sortedlist}%
+			\pgfplotsarrayforeachungrouped\pgfplots@zbuffer@local\as\curelem{%
+				\expandafter\pgfplotsapplistXpushback\expandafter{\expandafter{\curelem}}\to{\pgfp@sortedlist}%
+			}%
+			\pgfplotsapplistXlet\pgfplots@loc@TMPa={\pgfp@sortedlist}%
+			\global\let\pgfplotsglobalretval=\pgfplots@loc@TMPa
+		}%
+		\pgfkeysdef{/pgfplots/array/unscope post}{}%
+		\pgfplotsarraysort\pgfplots@zbuffer@local
+	}%
+	\expandafter\pgfplots@coord@stream@foreach@NORMALIZED\expandafter{\pgfplots@stored@current@data}%
+	\endgroup
+	\let\pgfplots@stored@current@data=\pgfplotsglobalretval
+	\global\let\pgfplotsglobalretval=\pgfutil@empty
+}%
 % Defines \pgfplotsglobalretval (globally) to be a partial reversion of the
 % (normalized) 2d coordinate sequence '#1'.
 %

@@ -230,20 +230,17 @@ function MeshVisualizer:applyZBufferSort(coords)
 	-- directly omit the 1/n --- it is the same for every
 	-- vertex anyway, and we only want to compare the depth
 	-- values.
-	local viewdir = self.axis.viewdir
-	if not viewdir or #viewdir~=3 then error("got unexpected view dir " ..tostring(viewdir) ) end
+	local axis = self.axis
+	local getVertexDepth = axis.getVertexDepth
 	for i=1,numPatches do
 		local patch = patches[i]
 		local patchcoords = patch.coords
 
 		local sumOfVertexDepth = 0
 		for j = 1,numVertices do
-			local vertex = patchcoords[j].x
-			local vertexDepth = 0
-			for k = 1,3 do
-				local component = vertex[k]
-				vertexDepth = vertexDepth + component*viewdir[k]
-			end
+			local vertex = patchcoords[j]
+
+			local vertexDepth = getVertexDepth(axis,vertex)
 			
 			sumOfVertexDepth = sumOfVertexDepth + vertexDepth
 		end

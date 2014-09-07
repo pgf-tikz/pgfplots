@@ -99,6 +99,14 @@ function texApplyZBufferReverseStream()
     currentPlotHandler:reverseStream(scanLineLength)
 end 
 
+-- Expands to nothing
+function texApplyZBufferSort()
+    local currentPlotHandler = gca.currentPlotHandler
+    if not currentPlotHandler then error("This function cannot be used in the current context") end
+    
+   currentPlotHandler:sortCoordinatesByViewDepth()
+end 
+
 -- Expands to the resulting coordinates
 function texGetSurveyedCoordsToPgfplots()
     local currentPlotHandler = gca.currentPlotHandler
