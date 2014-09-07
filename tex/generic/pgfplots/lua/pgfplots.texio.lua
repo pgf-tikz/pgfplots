@@ -214,7 +214,9 @@ do
 			local domainMin = arg1
 			local h = arg2-arg1
 			local domainMax = arg3
-			local samples = math.floor((domainMax - domainMin)/h) + 1
+			
+			-- round to the nearest integer (using +0.5, should be ok)
+			local samples = math.floor((domainMax - domainMin)/h + 0.5) + 1
 
 			return domainMin, domainMax, samples
 		end
