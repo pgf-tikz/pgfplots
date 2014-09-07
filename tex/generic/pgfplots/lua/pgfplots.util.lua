@@ -17,6 +17,25 @@ local _ENV = pgfplots
 
 log=texio.write_nl
 
+local stringfind = string.find
+local stringsub = string.sub
+local tableinsert = table.insert
+
+-- Splits 'str' at delimiter and returns a table of strings
+function stringsplit( str, delimiter )
+	if not str or not delimiter then error("arguments must not be nil") end
+	local result = { }
+	local start = 1
+	local findStart, findEnd = stringfind( str, delimiter, start )
+	while findStart do
+		tableinsert( result, stringsub( str, start, findStart-1 ) )
+		start = findEnd + 1
+		findStart, findEnd = stringfind( str, delimiter, start )
+	end
+	tableinsert( result, stringsub( str, start ) )
+	return result
+end
+
 function stringOrDefault(str, default)
     if str == nil or type(str) == 'string' and string.len(str) == 0 then
         return default
