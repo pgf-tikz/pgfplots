@@ -21,6 +21,16 @@ local _ENV = pgfplots
 
 local pgftonumber = pgfluamathfunctions.tonumber
 
+function texSurveyPoint(x,y,z,meta)
+	local pt = Coord.new()
+	pt.x[1] = x
+	pt.x[2] = y
+	pt.x[3] = z
+	pt.meta = meta
+	
+	gca.currentPlotHandler:surveypoint(pt)
+end
+
 -- expands to the survey results 
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()

@@ -712,6 +712,8 @@ end
 -- @see \pgfplotsaxispreparecoordinate
 function Axis:preparecoordinate(pt)
     -- the default "preparation" is to return it as is (no number parsing)
+	--
+	-- FIXME : data cs! Stacking!
     return pt
 end
 
