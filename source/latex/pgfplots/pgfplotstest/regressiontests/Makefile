@@ -55,10 +55,16 @@
 # (in case you approved that they are "not an error"). 
 # The file should contain what the failure-output of the 'make test.diff' target.
 
-UNIT_SOURCES=$(wildcard unittest_*.tex)
+
+LUA_BACKEND_SUFFIX=_luabackend
+AUTOMATIC_LUALATEX_BACKEND_TESTS=$(shell grep -v "\#" < automatic_luatest.list )
+GENERATED_LUALATEX_BACKEND_TESTS=$(AUTOMATIC_LUALATEX_BACKEND_TESTS:%.tex=%$(LUA_BACKEND_SUFFIX).tex)
+
+UNIT_SOURCES=$(wildcard unittest_*.tex) $(GENERATED_LUALATEX_BACKEND_TESTS)
 
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
+DIFF_MEASURES_LUABACKEND_ONLY=$(GENERATED_LUALATEX_BACKEND_TESTS:.tex=.diff)
 
 # REQUIRES apcalc package ('calc' executable)
 ACCEPTED_NORMALIZED_ERROR=5e-4
@@ -78,6 +84,7 @@ WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/regressiontests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
+DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND:=1.11-127-g27984f2
 
 PGF_CVS_PATH=~/code/tex/pgf
 PGF_REFERENCE_PATH=$(PGF_CVS_PATH)
@@ -98,10 +105,20 @@ $(shell mkdir -p gnuplot references/gnuplot references/plotdata)
 
 diff: $(DIFF_MEASURES) 
 
+difflua: $(DIFF_MEASURES_LUABACKEND_ONLY)
+
 pdf: $(UNIT_PDFS) 
 
 clean: cleanX
 	rm -fr references 
+
+$(GENERATED_LUALATEX_BACKEND_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
+	@echo "Generating $@ from $^ ..."
+	@rm -f $@
+	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug}}" >> $@
+	@echo "% FILE HAS BEEN GENERATED. Do NOT edit. See Makefile." >> $@
+	@echo "\\input $^" >> $@
+
 
 # clean all except for references:
 cleanX:
@@ -163,6 +180,9 @@ cleanX:
 
 references: $(UNIT_PDF_REFERENCES)
 
+%$(LUA_BACKEND_SUFFIX).checkoutreferencerev.sh:
+	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND)" > $@ || exit 1; fi
+
 %.checkoutreferencerev.sh:
 	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
 
@@ -207,6 +227,9 @@ endif
 	@echo "$(STATISTICS) $@: recompiling $< ..."
 	@rm -f $@; bash ./$(@:.pdf=.compile.sh) $(<:.tex=) 1>$(<:.tex=.log.all) 2>&1  || \
 		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
+
+%$(LUA_BACKEND_SUFFIX).compile.sh:
+	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'lualatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
 
 %.compile.sh:
 	@if [ ! -f $@ ]; then echo "generating default $@ ..."; echo 'pdflatex -shell-escape -interaction batchmode -halt-on-error "$$@"' > $@; fi
