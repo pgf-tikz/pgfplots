@@ -56,6 +56,7 @@
 # The file should contain what the failure-output of the 'make test.diff' target.
 
 
+# files with this suffix are in .gitignore
 LUA_BACKEND_SUFFIX=_luabackend
 AUTOMATIC_LUALATEX_BACKEND_TESTS=$(shell grep -v "\#" < automatic_luatest.list )
 GENERATED_LUALATEX_BACKEND_TESTS=$(AUTOMATIC_LUALATEX_BACKEND_TESTS:%.tex=%$(LUA_BACKEND_SUFFIX).tex)
