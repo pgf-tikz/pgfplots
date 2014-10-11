@@ -85,7 +85,7 @@ WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/regressiontests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
-DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND:=1.11-127-g27984f2
+DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND:=1.11-136-ga3d24a1
 
 PGF_CVS_PATH=~/code/tex/pgf
 PGF_REFERENCE_PATH=$(PGF_CVS_PATH)
@@ -182,7 +182,8 @@ cleanX:
 references: $(UNIT_PDF_REFERENCES)
 
 %$(LUA_BACKEND_SUFFIX).checkoutreferencerev.sh:
-	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND)" > $@ || exit 1; fi
+	@echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND))...";
+	@echo "git checkout $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND)" > $@ 
 
 %.checkoutreferencerev.sh:
 	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
