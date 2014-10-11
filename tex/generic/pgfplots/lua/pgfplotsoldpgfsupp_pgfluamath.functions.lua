@@ -19,7 +19,7 @@
 -- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 -- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 ----------------------------------------------------------------------------------------------------
--- Date of this copy: Sa 11. Okt 21:51:32 CEST 2014 ---
+-- Date of this copy: Sa 11. Okt 22:27:41 CEST 2014 ---
 
 
 
