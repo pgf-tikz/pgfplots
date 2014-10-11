@@ -64,9 +64,13 @@ LinearMap = newClass()
 --
 function LinearMap:constructor(inMin, inMax, outMin, outMax)
     if not inMin or not inMax or not outMin or not outMax then error("arguments must not be nil") end
-    if inMin >= inMax then error("invalid input domain " .. tostring(inMin) .. ":" .. tostring(inMax)) end
-    self.offset = outMin - (outMax-outMin)*inMin/(inMax-inMin)
-    self.scale = (outMax-outMin)/(inMax-inMin)
+	if inMin == inMax then
+		self.map = function (x) return inMin end
+	else
+		if inMin > inMax then error("linear map received invalid input domain " .. tostring(inMin) .. ":" .. tostring(inMax)) end
+		self.offset = outMin - (outMax-outMin)*inMin/(inMax-inMin)
+		self.scale = (outMax-outMin)/(inMax-inMin)
+	end
 end
 
 function LinearMap:map(x)

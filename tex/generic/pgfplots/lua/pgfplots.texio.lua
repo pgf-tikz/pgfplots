@@ -234,6 +234,7 @@ do
 end
 
 -- generates TeX output '1' on success and '0' on failure
+-- @param debugMode one of a couple of strings: "off", "verbose", or "compileerror"
 function texAddplotExpressionCoordinateGenerator(
 	is3d, 
 	xExpr, yExpr, zExpr, 
@@ -302,9 +303,16 @@ function texAddplotExpressionCoordinateGenerator(
 		domainMin, domainMax,
 		samples,
 		variableNames)
+
+	local compileErrorOnFailure
+	if debugMode == "compileerror" then
+		compileErrorOnFailure = true
+	elseif debugMode ~= "off" and debugMode ~= "verbose" then
+		error("Got unknown debugMode = " .. debugMode )
+	end
 	
 	local success
-	if debugMode then
+	if compileErrorOnFailure then
 		success = generator:generateCoords()
 	else
 		local resultOfGenerator

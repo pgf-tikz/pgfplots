@@ -116,7 +116,7 @@ clean: cleanX
 $(GENERATED_LUALATEX_BACKEND_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
 	@echo "Generating $@ from $^ ..."
 	@rm -f $@
-	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug}}" >> $@
+	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=verbose}}" >> $@
 	@echo "% FILE HAS BEEN GENERATED. Do NOT edit. See Makefile." >> $@
 	@echo "\\input $^" >> $@
 
