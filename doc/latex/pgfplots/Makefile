@@ -45,6 +45,14 @@ html: FORCE
 	@cd html && \
 		htlatex pgfplots.tex "../pgfplots.tex4ht.cfg"
 		
+# This _needs_ pdflatex:
+pgfplotstodo.pdf: revisionfile FORCE
+	mkdir -p gnuplot
+	@$(TEXMFCNF_FOR_MEMLIMITS) && pdflatex -shell-escape $(@:.pdf=.tex)
+	@bibtex $(@:.pdf=) || exit 0
+	@makeindex $(@:.pdf=) || exit 0
+	@echo ""
+	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
 
 pgfplots.pdf: $(ALL_FIGURES)
 
