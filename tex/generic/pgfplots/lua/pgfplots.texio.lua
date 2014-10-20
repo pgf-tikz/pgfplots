@@ -257,7 +257,7 @@ function texAddplotExpressionCoordinateGenerator(
 		if not domainxmin then
 			-- FAILURE: could not convert "samples at". 
 			-- Fall back to a TeX based survey.
-			log("log", "LUA survey failed: The value of 'samples at= " .. tostring(samplesAt) .. "' is unsupported by the LUA backend.\n")
+			log("log", "LUA survey failed: The value of 'samples at= " .. tostring(samplesAt) .. "' is unsupported by the LUA backend (currently, only 'samples at={a,b,...,c}' is supported).\n")
 			tex.sprint("0")
 			return
 		end
