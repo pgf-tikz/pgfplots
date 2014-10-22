@@ -85,7 +85,6 @@ WORKING_DIR=$(shell pwd)
 PGFPLOTS_GIT_BASEDIR=$(WORKING_DIR:source/latex/pgfplots/pgfplotstest/regressiontests=)
 TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
-DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND:=1.11-138-g08f49fb
 
 PGF_CVS_PATH=~/code/tex/pgf
 PGF_REFERENCE_PATH=$(PGF_CVS_PATH)
@@ -130,7 +129,8 @@ cleanX:
 
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
-	@./pdfdiff.sh $< references/$< $@
+	@# touch diff.png in case the diff routine fails -- we want to see it in the error report counts
+	@./pdfdiff.sh $< references/$< $@ || touch $@.png
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@ $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@.png; # no need to keep the images (the latter for multi-page mode). \
@@ -181,14 +181,15 @@ cleanX:
 
 references: $(UNIT_PDF_REFERENCES)
 
-%$(LUA_BACKEND_SUFFIX).checkoutreferencerev.sh:
-	@echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND))...";
-	@echo "git checkout $(DEFAULT_REFERENCE_BRANCH_AUTOMATIC_LUABACKEND)" > $@ 
-
 %.checkoutreferencerev.sh:
 	@if [ ! -f $@ ]; then pwd; echo "generating $@ (with $(DEFAULT_REFERENCE_BRANCH))..."; echo "git checkout $(DEFAULT_REFERENCE_BRANCH)" > $@ || exit 1; fi
 
 ifeq ($(ENABLE_DYNAMIC_REFERENCES),1)
+
+# the automatic LUA tests simply use their pdftex result as reference
+references/%$(LUA_BACKEND_SUFFIX).pdf: references/%.pdf
+	@echo "$<: Using pdftex result as reference"
+	ln -fs $(notdir $<) $@
 
 references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	@echo "$<: generating $@"; \
