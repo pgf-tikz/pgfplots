@@ -94,7 +94,7 @@ PGF_REFERENCE_PATH=$(PGF_CVS_PATH)
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
 AUTO_INDENT_PIPE=2>&1 | sed -e 's/^/  /'
-$(shell mkdir -p gnuplot references/gnuplot references/plotdata)
+$(shell mkdir -p gnuplot references/gnuplot )
 # -------------------------------------------------
 
 .NOTPARALLEL:
@@ -210,6 +210,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 		exit 1; \
 	fi
 	@#./patch_repository.sh $(TMP_REPOSITORY)
+	@if [ ! -d references/plotdata ]; then cd references; ln -s ../plotdata; fi
 	@cd references || exit 1;\
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
