@@ -2,7 +2,90 @@
 -- It is the only LUA component with this property.
 --
 -- Its purpose is to encapsulate the communication between TeX and LUA in a central LUA file
-
+--
+--
+-- Here is the idea how the TeX backend communicates with the LUA backend:
+--
+-- * TeX can call LUA methods in order to "do something". The reverse direction is not true: LUA cannot call TeX methods.
+--
+-- * the only way that LUA can read TeX input values or write TeX output values is the top layer (at the time of this writing: only pgfplots.texio.lua ).
+-- 
+-- * The LUA backend has one main purpose: scalability and performance. 
+--   Its purpose is _not_ to run a standalone visualization.
+--   
+--   The precise meaning of "scalability" is: the LUA backend should do as much
+--   as possible which is done for single coordinates. Coordinates constitute
+--   "scalability": the number of coordinates can become arbitrarily large.
+--
+--   "Performance" is related to scalability. But it is more: some dedicated
+--   utility function might have a TeX backend and will be invoked whenever it
+--   is needed. Candidates are colormap functions, z buffer arithmetics etc.
+--   
+--   Thus, the best way to ensure "scalability" is to move _everything_ which is to be done for a single coordinate to LUA.
+--
+--   Sometimes, this will be impossible or too expensive. 
+--	 Here, "Performance" might still be optimized by some dedicated LUA function.
+--
+-- 
+-- Unfortunately, the LUA backend does not simplify the code base - it makes it more complicated.
+-- This is due to the way it is used: one needs to know when the TeX backend
+-- delegates all its work to LUA. It is also due to the fact that it
+-- duplicates code: the same code is present in TeX and in LUA. I chose to keep
+-- the two code bases close to each other. This has a chance to simplify maintenance: if I know
+-- how something works in TeX, and I find some entry point in LUA, it will
+-- hopefully be closely related.
+--
+--
+-- It follows an overview over entry points into the LUA backend:
+--
+-- * \begin{axis}. It invokes \pgfplots@prepare@LUA@api .
+--     The purpose is to define the global pgfplots.gca "_g_et _c_urrent _a_xis" and to transfer some key presets.
+--  
+--     Log message: "lua backend=true: Activating LUA backend for axis."
+--
+-- * \end{axis}. It invokes \pgfplots@LUA@visualization@update@axis .
+--     The purpose is to transfer results of the survey phase to LUA; in particular axis properties like
+--     the view direction, data scale transformations, axis wide limits and some related properties.
+--     This has nothing to do with coordinates; the survey phase of coordinates is handled in a different way (see below).
+--
+--     Eventually, \pgfplots@LUA@cleanup will clear the global pgfplots.gca .
+--
+-- * \addplot . This has much to do with scalability, so much of its functionality is done in the LUA backend.
+--
+--     Keep in mind that \addplot is part of the survey phase: it collects coordinates and updates axis limits.
+--     Afterwards, it stores the survey results in the current axis.
+--
+--     The survey phase currently has two different ways to communicate with the LUA backend:
+--
+--      1. PARTIAL MODE. In this mode, the coordinate stream comes from TeX:
+--      some TeX code generates the coordinates. Whenever the stream is ready,
+--      it will invoke \pgfplots@LUA@survey@point .  This, in turn, calls the
+--      LUA  backend in order to complete the survey (which boils down to
+--      pgfplots.texSurveyPoint). PARTIAL MODE saves lots of time, but its
+--      scalability is limited due to the intensive use of TeX, it is less
+--      powerful than COMPLETE MODE.
+--
+--      2. COMPLETE MODE. In this mode, the entire coordinate stream is on the
+--      LUA side. The TeX code will merely call start the survey phase, call
+--      LUA, and end the survey phase. This is the most efficient
+--      implementation. At the time of this writing, it is limited to `\addplot
+--      expression`: the code for `\addplot expression` tries to transfer the
+--      entire processing to the LUA backend. If it succeeds, it will do
+--      nothing on the TeX side.
+--
+--      Both PARTIAL MODE and COMPLETE MODE call 
+--        \pgfplots@LUA@survey@start : transfer plot type and current axis arguments to LUA
+--      and
+--        \pgfplots@LUA@survey@end : copy LUA axis arguments back to TeX.
+--
+--     Eventually,  the axis will initiate the visualization phase for each plot. This is done by
+--        a) \pgfplots@LUA@visualization@init : it calls pgfplots.texVisualizationInit() and results in the log message
+--               "lua backend=true: Activating partial LUA backend for visualization of plot 0".
+--        b) \pgfplots@LUA@visualization@of@current@plot : it transfers control
+--               to LUA (pgfplots.texVisualizePlot) and does as much with the
+--               coordinates as possible. Eventually, it streams the result back to
+--               TeX which will visualize the stream by means of PGF's plot streams.
+--               This is somewhat complicated since it modifies the TeX streaming.
 local pgfplotsmath = pgfplots.pgfplotsmath
 local tex=tex
 local tostring=tostring
@@ -21,6 +104,7 @@ local _ENV = pgfplots
 
 local pgftonumber = pgfluamathfunctions.tonumber
 
+-- Called during \addplot, i.e. during the survey phase. It is only called in PARTIAL MODE (see above).
 function texSurveyPoint(x,y,z,meta)
 	local pt = Coord.new()
 	pt.x[1] = x
@@ -31,13 +115,16 @@ function texSurveyPoint(x,y,z,meta)
 	gca.currentPlotHandler:surveypoint(pt)
 end
 
--- expands to the survey results 
+-- Copies survey results of the current plot back to TeX. It expands to the
+-- survey results in a format accepted by \pgfplots@LUA@survey@end
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
 	tex.sprint(gca:surveyToPgfplots(gca.currentPlotHandler, true));
 	gca.currentPlotHandler=nil
 end
 
+-- A performance optimization: point meta transformation is done on the LUA side.
+--
 -- expands to the transformed point meta
 function texPerpointMetaTrafo(metaStr)
     local meta = pgftonumber(metaStr)
@@ -45,7 +132,10 @@ function texPerpointMetaTrafo(metaStr)
     tex.sprint(tostringfixed(transformed));
 end
 
+-- Called at the beginning of each plot visualization.
+--
 -- expands to '1' if LUA is available for this plot and '0' otherwise.
+-- @see texVisualizePlot
 function texVisualizationInit(plotNum, plotIs3d)
 	if not plotNum or plotIs3d==nil then error("arguments must not be nil") end
 
@@ -70,7 +160,10 @@ local pgfXyCoordSerializer = function(pt)
 	end
 end
 
--- expands to the resulting coordinates. Note that these coordinates are already mapped somehow (typically: to fixed point)
+-- Actually does as much of the visualization of the current plot: it transforms all coordinates to some point where the TeX visualization mode continues.
+--
+-- It expands to the resulting coordinates. Note that these coordinates are already mapped somehow (typically: to fixed point)
+-- @see texVisualizationInit
 function texVisualizePlot(visualizerFactory)
 	if not visualizerFactory then error("arguments must not be nil") end
 	if type(visualizerFactory) ~= "function" then error("arguments must be a function (a factory)") end
@@ -85,6 +178,7 @@ function texVisualizePlot(visualizerFactory)
     tex.sprint(result_str)
 end
 
+-- Modifies the Surveyed coordinate list.
 -- Expands to nothing
 function texApplyZBufferReverseScanline(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
@@ -93,6 +187,7 @@ function texApplyZBufferReverseScanline(scanLineLength)
     currentPlotHandler:reverseScanline(scanLineLength)
 end 
 
+-- Modifies the Surveyed coordinate list.
 -- Expands to nothing
 function texApplyZBufferReverseTransposed(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
@@ -101,6 +196,7 @@ function texApplyZBufferReverseTransposed(scanLineLength)
     currentPlotHandler:reverseTransposed(scanLineLength)
 end 
 
+-- Modifies the Surveyed coordinate list.
 -- Expands to nothing
 function texApplyZBufferReverseStream()
     local currentPlotHandler = gca.currentPlotHandler
@@ -109,6 +205,10 @@ function texApplyZBufferReverseStream()
     currentPlotHandler:reverseStream(scanLineLength)
 end 
 
+-- Modifies the Surveyed coordinate list.
+-- 
+-- Note that this is UNRELATED to mesh/surface plots! They have their own (patch-based) z buffer.
+--
 -- Expands to nothing
 function texApplyZBufferSort()
     local currentPlotHandler = gca.currentPlotHandler
@@ -117,6 +217,7 @@ function texApplyZBufferSort()
    currentPlotHandler:sortCoordinatesByViewDepth()
 end 
 
+-- Modifies the Surveyed coordinate list.
 -- Expands to the resulting coordinates
 function texGetSurveyedCoordsToPgfplots()
     local currentPlotHandler = gca.currentPlotHandler
@@ -125,6 +226,7 @@ function texGetSurveyedCoordsToPgfplots()
     tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end
 
+-- Performance optimization: computes the colormap lookup.
 function texColorMapPrecomputed(mapName, inMin, inMax, x)
 	local colormap = ColorMaps[mapName];
 	if colormap then
@@ -233,6 +335,10 @@ do
 	end
 end
 
+-- This is the code which attempts to transfer control from `\addplot expression' to LUA.
+--
+-- If it succeeds, the entire plot stream and the entire survey phase has been done in LUA.
+--
 -- generates TeX output '1' on success and '0' on failure
 -- @param debugMode one of a couple of strings: "off", "verbose", or "compileerror"
 function texAddplotExpressionCoordinateGenerator(
@@ -336,6 +442,7 @@ function texAddplotExpressionCoordinateGenerator(
 	end
 end
 
+-- Creates the default plot visualizer factory. It simply applies data scale trafos.
 function defaultPlotVisualizerFactory(plothandler)
 	return PlotVisualizer.new(plothandler)
 end
