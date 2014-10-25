@@ -121,7 +121,10 @@ end
 -- Copies survey results of the current plot back to TeX. It prints a couple of executable TeX statements as result.
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
-	tex.sprint(LOAD_TIME_CATCODETABLE, gca:surveyToPgfplots(gca.currentPlotHandler, true));
+	local result = gca:surveyToPgfplots(gca.currentPlotHandler, true)
+	log("returning " .. result .. "\n\n")
+    
+	tex.sprint(LOAD_TIME_CATCODETABLE, result);
 	gca.currentPlotHandler=nil
 end
 

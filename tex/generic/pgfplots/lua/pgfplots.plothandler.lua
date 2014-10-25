@@ -914,8 +914,6 @@ function Axis:surveyToPgfplots(plothandler)
 		"\\def\\pgfplotsaxisfilteredcoordsaway{0}"
 	end
 
-	-- log("returning " .. result .. "\n\n")
-    
     return result
 end
 
