@@ -205,8 +205,10 @@ function Plothandler:surveystart()
 end
 
 -- @see \pgfplotsplothandlersurveyend
+-- returns executable TeX code to communicate return values.
 function Plothandler:surveyend()
     -- empty by default.
+	return ""
 end
 
 -- @see \pgfplotsplothandlersurveypoint
@@ -876,11 +878,12 @@ end
 --
 -- @param plothandler an instance of Plothandler
 function Axis:surveyToPgfplots(plothandler)
-	plothandler:surveyend()
+	local plothandlerResult = plothandler:surveyend()
     local firstCoord = findFirstValidCoord(plothandler.coords) or Coord.new()
     local lastCoord = findLastValidCoord(plothandler.coords) or Coord.new()
 
     local result = 
+		plothandlerResult .. 
 		toTeXxyzCoord("\\pgfplots@currentplot@firstcoord", firstCoord) ..
 		toTeXxyzCoord("\\pgfplots@currentplot@lastcoord", lastCoord) ..
         axisLimitToTeXString("\\pgfplots@metamin", plothandler.metamin) ..
