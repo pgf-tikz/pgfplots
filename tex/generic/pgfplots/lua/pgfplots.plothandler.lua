@@ -836,7 +836,17 @@ local function axisLimitToTeXString(name, value)
 	if value == math.huge or value == -math.huge then
 		return ""
 	end
-	return name .. "=" .. toTeXstring(value) .. ","
+	return "\\gdef" .. name .. "{" .. toTeXstring(value) .. "}"
+end
+
+local function toTeXxyzCoord(namePrefix, pt )
+	local x = toTeXstring(pt.x[1])
+	local y = toTeXstring(pt.x[2])
+	local z = toTeXstring(pt.x[3])
+	return 
+		"\\gdef" .. namePrefix .. "@x{" .. x .. "}" ..
+		"\\gdef" .. namePrefix .. "@y{" .. y .. "}" ..
+		"\\gdef" .. namePrefix .. "@z{" .. z .. "}";
 end
 
 local function findFirstValidCoord(coords)
@@ -869,29 +879,37 @@ function Axis:surveyToPgfplots(plothandler)
 	plothandler:surveyend()
     local firstCoord = findFirstValidCoord(plothandler.coords) or Coord.new()
     local lastCoord = findLastValidCoord(plothandler.coords) or Coord.new()
-    local hasJumps
-    local filteredCoordsAway
-    if plothandler.plotHasJumps then hasJumps = 1 else hasJumps = 0 end
-    if plothandler.filteredCoordsAway then filteredCoordsAway = 1 else filteredCoordsAway = 0 end
 
-	-- FIXME : this could be rewritten by means of tex.spring("\\def\\macro{<value>}")
     local result = 
-        axisLimitToTeXString("@xmin", self.min[1]) ..
-        axisLimitToTeXString("@ymin", self.min[2]) ..
-        axisLimitToTeXString("@zmin", self.min[3]) ..
-        axisLimitToTeXString("@xmax", self.max[1]) ..
-        axisLimitToTeXString("@ymax", self.max[2]) ..
-        axisLimitToTeXString("@zmax", self.max[3]) ..
-    -- FIXME : what about datamin/datamx!?
-        "point meta min=" .. toTeXstring(plothandler.metamin) ..","..
-        "point meta max=" .. toTeXstring(plothandler.metamax) ..","..
-        "@is3d=" .. tostring(self.is3d) .. "," ..
-        "@first coord={" .. Plothandler:serializeCoordToPgfplots(firstCoord) .. "}," ..
-        "@last coord={" .. Plothandler:serializeCoordToPgfplots(lastCoord) .. "}," ..
-        "@plot has jumps=" .. tostring(hasJumps) .. "," ..
-        "@filtered coords away=" .. tostring(filteredCoordsAway) .. "," ..
-        "@surveyed coordindex=" .. tostring(plothandler.coordindex) .. "," ..
-        ""
+		toTeXxyzCoord("\\pgfplots@currentplot@firstcoord", firstCoord) ..
+		toTeXxyzCoord("\\pgfplots@currentplot@lastcoord", lastCoord) ..
+        axisLimitToTeXString("\\pgfplots@metamin", plothandler.metamin) ..
+        axisLimitToTeXString("\\pgfplots@metamax", plothandler.metamax) ..
+		"\\c@pgfplots@coordindex=" .. tostring(plothandler.coordindex) .. " " ..
+        axisLimitToTeXString("\\pgfplots@xmin", self.min[1]) ..
+        axisLimitToTeXString("\\pgfplots@ymin", self.min[2]) ..
+        axisLimitToTeXString("\\pgfplots@xmax", self.max[1]) ..
+        axisLimitToTeXString("\\pgfplots@ymax", self.max[2]);
+	if self.is3d then
+		result = result ..
+        axisLimitToTeXString("\\pgfplots@zmin", self.min[3]) ..
+        axisLimitToTeXString("\\pgfplots@zmax", self.max[3]) ..
+		"\\global\\pgfplots@threedimtrue ";
+	end
+    if plothandler.plotHasJumps then 
+		result = result ..
+		"\\def\\pgfplotsaxisplothasjumps{1}"
+	else
+		result = result ..
+		"\\def\\pgfplotsaxisplothasjumps{0}"
+	end
+    if plothandler.filteredCoordsAway then 
+		result = result ..
+		"\\def\\pgfplotsaxisfilteredcoordsaway{1}"
+	else
+		result = result ..
+		"\\def\\pgfplotsaxisfilteredcoordsaway{0}"
+	end
 
 	-- log("returning " .. result .. "\n\n")
     

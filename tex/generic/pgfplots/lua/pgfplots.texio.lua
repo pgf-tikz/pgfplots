@@ -104,6 +104,9 @@ local _ENV = pgfplots
 
 local pgftonumber = pgfluamathfunctions.tonumber
 
+-- will be assigned by pgfplots at boot time.
+LOAD_TIME_CATCODETABLE = nil
+
 -- Called during \addplot, i.e. during the survey phase. It is only called in PARTIAL MODE (see above).
 function texSurveyPoint(x,y,z,meta)
 	local pt = Coord.new()
@@ -115,11 +118,10 @@ function texSurveyPoint(x,y,z,meta)
 	gca.currentPlotHandler:surveypoint(pt)
 end
 
--- Copies survey results of the current plot back to TeX. It expands to the
--- survey results in a format accepted by \pgfplots@LUA@survey@end
+-- Copies survey results of the current plot back to TeX. It prints a couple of executable TeX statements as result.
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
-	tex.sprint(gca:surveyToPgfplots(gca.currentPlotHandler, true));
+	tex.sprint(LOAD_TIME_CATCODETABLE, gca:surveyToPgfplots(gca.currentPlotHandler, true));
 	gca.currentPlotHandler=nil
 end
 
