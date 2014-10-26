@@ -23,27 +23,47 @@ function texBoxPlotSurveyPoint(data)
 end
 
 -------------------------------------------------------
--- Replicates the survey phase of \pgfplotsplothandlerboxplot 
-BoxPlotPlothandler = newClassExtends(Plothandler)
 
-function BoxPlotPlothandler:constructor(axis, pointmetainputhandler)
-    Plothandler.constructor(self,"boxplot", axis, pointmetainputhandler)
+BoxPlotRequest = newClass()
+
+-- lowerQuartialPercent: typically 0.25
+-- upperQuartialPercent: typically 0.75
+-- whiskerRange: typically 1.5
+function BoxPlotRequest:constructor(lowerQuartialPercent, upperQuartialPercent, whiskerRange)
+	if not lowerQuartialPercent or not upperQuartialPercent or not whiskerRange then error("Arguments must not be nil") end
+	self.lowerQuartialPercent = pgftonumber(lowerQuartialPercent)
+	self.upperQuartialPercent = pgftonumber(upperQuartialPercent)
+	self.whiskerRange = pgftonumber(whiskerRange)
 end
 
-function BoxPlotPlothandler:surveystart()
-	self.boxplotInput = {}
-	self.boxplotSum = 0
-	self.boxplotSurveyMode = true
+-------------------------------------------------------
+
+BoxPlotResponse = newClass()
+
+function BoxPlotResponse:constructor()
+	self.lowerWhisker = nil
+	self.lowerQuartile = nil
+	self.median = nil
+	self.upperQuartile = nil
+	self.upperWhisker = nil
+	self.average = nil
+	self.outliers = {}
 end
 
-
-function BoxPlotPlothandler:surveyend()
-	self.boxplotSurveyMode = false
-
-	local data = self.boxplotInput
-	local sum = self.boxplotSum
-	self.boxplotInput = nil
-	self.boxplotSum = nil
+-- @param boxPlotRequest an instance of BoxPlotRequest
+-- @param data an indexed array with float values
+-- @return an instance of BoxPlotResponse
+function boxPlotCompute(boxPlotRequest, data)
+	if not boxPlotRequest or not data then error("Arguments must not be nil") end
+	
+	local sum = 0
+	for i = 1,#data do
+		local data_i = data[i]
+		if data_i == nil or type(data_i) ~= "number" then
+			error("Illegal input array at index " .. tostring(i) .. ": " .. tostring(data_i))
+		end
+		sum = sum + data_i
+	end
 
 	table.sort(data)
 	
@@ -67,9 +87,9 @@ function BoxPlotPlothandler:surveyend()
 	end
 
 
-	local lowerQuartileOff, lowerQuartileIsInt = getOffset(0.25)
+	local lowerQuartileOff, lowerQuartileIsInt = getOffset(boxPlotRequest.lowerQuartialPercent)
 	local medianOff, medianIsInt = getOffset(0.5)
-	local upperQuartileOff, upperQuartileIsInt = getOffset(0.75)
+	local upperQuartileOff, upperQuartileIsInt = getOffset(boxPlotRequest.upperQuartialPercent)
 
 	local lowerWhisker
 	local lowerQuartile = getValue(lowerQuartileOff, lowerQuartileIsInt)
@@ -78,7 +98,7 @@ function BoxPlotPlothandler:surveyend()
 	local upperWhisker
 	local average = sum / numCoords
 
-	local whiskerRange = 1.5 -- FIXME : make it configurable
+	local whiskerRange = boxPlotRequest.whiskerRange
 	local whiskerWidth = whiskerRange*(upperQuartile - lowerQuartile)
 	local upperWhiskerValue = upperQuartile + whiskerWidth
 	local lowerWhiskerValue = lowerQuartile - whiskerWidth
@@ -104,15 +124,49 @@ function BoxPlotPlothandler:surveyend()
 		end
 	end
 
+	local result = BoxPlotResponse.new()
+	result.lowerWhisker = lowerWhisker
+	result.lowerQuartile = lowerQuartile
+	result.median = median
+	result.upperQuartile = upperQuartile
+	result.upperWhisker = upperWhisker
+	result.average = average
+	result.outliers = outliers
+
+	return result
+end
+
+-------------------------------------------------------
+-- Replicates the survey phase of \pgfplotsplothandlerboxplot 
+BoxPlotPlothandler = newClassExtends(Plothandler)
+
+function BoxPlotPlothandler:constructor(boxPlotRequest, axis, pointmetainputhandler)
+	if not boxPlotRequest then error("Arguments must not be nil") end
+    Plothandler.constructor(self,"boxplot", axis, pointmetainputhandler)
+	self.boxPlotRequest = boxPlotRequest
+end
+
+function BoxPlotPlothandler:surveystart()
+	self.boxplotInput = {}
+	self.boxplotSurveyMode = true
+end
+
+
+function BoxPlotPlothandler:surveyend()
+	self.boxplotSurveyMode = false
+
+	local computed = boxPlotCompute( self.boxPlotRequest, self.boxplotInput )
+	self.boxplotInput = nil
+
 	-- FIXME : REPORT OUTLIERS!
 
 	local texResult = 
-		"\\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{"  .. toTeXstring(lowerWhisker) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{lower quartile}{" .. toTeXstring(lowerQuartile) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{median}{"         .. toTeXstring(median) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{upper quartile}{" .. toTeXstring(upperQuartile) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(upperWhisker) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(numCoords) .. "}"
+		"\\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{"  .. toTeXstring(computed.lowerWhisker) .. "}" ..
+		"\\pgfplotsplothandlersurveyend@boxplot@set{lower quartile}{" .. toTeXstring(computed.lowerQuartile) .. "}" ..
+		"\\pgfplotsplothandlersurveyend@boxplot@set{median}{"         .. toTeXstring(computed.median) .. "}" ..
+		"\\pgfplotsplothandlersurveyend@boxplot@set{upper quartile}{" .. toTeXstring(computed.upperQuartile) .. "}" ..
+		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(computed.upperWhisker) .. "}" ..
+		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(computed.numCoords) .. "}"
 		
 	-- FIXME : how should I invoke super.survey!?
 
@@ -122,7 +176,6 @@ end
 function BoxPlotPlothandler:semiSurveyedValue(data)
     local result = pgftonumber(data)
 	if result then
-		self.boxplotSum = self.boxplotSum + result
 		table.insert( self.boxplotInput, result )
 	end
 end
