@@ -11,6 +11,7 @@ local tostring=tostring
 local type=type
 local io=io
 local mathfloor=math.floor
+local pgfmathparse = pgfplots.pgfluamathparser.pgfmathparse
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -56,16 +57,19 @@ end
 function boxPlotCompute(boxPlotRequest, data)
 	if not boxPlotRequest or not data then error("Arguments must not be nil") end
 	
-	local sum = 0
 	for i = 1,#data do
 		local data_i = data[i]
 		if data_i == nil or type(data_i) ~= "number" then
 			error("Illegal input array at index " .. tostring(i) .. ": " .. tostring(data_i))
 		end
-		sum = sum + data_i
 	end
 
 	table.sort(data)
+
+	local sum = 0
+	for i = 1,#data do
+		sum = sum + data[i]
+	end
 	
 	local numCoords = #data
 
@@ -140,10 +144,24 @@ end
 -- Replicates the survey phase of \pgfplotsplothandlerboxplot 
 BoxPlotPlothandler = newClassExtends(Plothandler)
 
-function BoxPlotPlothandler:constructor(boxPlotRequest, axis, pointmetainputhandler)
-	if not boxPlotRequest then error("Arguments must not be nil") end
+-- drawDirection : either "x" or "y".
+function BoxPlotPlothandler:constructor(boxPlotRequest, drawDirection, drawPosition, axis, pointmetainputhandler)
+	if not boxPlotRequest or not drawDirection or not drawPosition then error("Arguments must not be nil") end
     Plothandler.constructor(self,"boxplot", axis, pointmetainputhandler)
 	self.boxPlotRequest = boxPlotRequest
+
+	local function evaluateDrawPosition()
+		local result = pgfmathparse(drawPosition)
+		return result
+	end
+
+	if drawDirection == "x" then
+		self.boxplotsetxy = function (a,b) return a,evaluateDrawPosition() + b end
+	elseif drawDirection == "y" then
+		self.boxplotsetxy = function (a,b) return evaluateDrawPosition() + b,a end
+	else
+		error("Illegal argument drawDirection="..tostring(drawDirection) )
+	end
 end
 
 function BoxPlotPlothandler:surveystart()
@@ -158,8 +176,6 @@ function BoxPlotPlothandler:surveyend()
 	local computed = boxPlotCompute( self.boxPlotRequest, self.boxplotInput )
 	self.boxplotInput = nil
 
-	-- FIXME : REPORT OUTLIERS!
-
 	local texResult = 
 		"\\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{"  .. toTeXstring(computed.lowerWhisker) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{lower quartile}{" .. toTeXstring(computed.lowerQuartile) .. "}" ..
@@ -168,7 +184,18 @@ function BoxPlotPlothandler:surveyend()
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(computed.upperWhisker) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(computed.numCoords) .. "}"
 		
-	-- FIXME : how should I invoke super.survey!?
+	Plothandler.surveystart(self)
+	
+	local outliers = computed.outliers
+	for i =1,#outliers do
+		local outlier = outliers[i]
+		local pt = Coord.new()
+		-- this here resembles \pgfplotsplothandlersurveypoint@boxplot@prepared when it is invoked during boxplot:
+		local X,Y = self.boxplotsetxy(outlier, 0)
+		pt.x = { X, Y, nil }
+		Plothandler.surveypoint(self,pt)
+	end
+	Plothandler.surveyend(self)
 
 	return texResult
 end
@@ -187,5 +214,7 @@ function BoxPlotPlothandler:surveypoint(pt)
 		Plothandler.surveypoint(self,pt)
 	end
 end
+
+-------------------------------------------------------
 
 end

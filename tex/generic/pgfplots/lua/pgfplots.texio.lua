@@ -122,7 +122,7 @@ end
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
 	local result = gca:surveyToPgfplots(gca.currentPlotHandler, true)
-	log("returning " .. result .. "\n\n")
+	--log("returning " .. result .. "\n\n")
     
 	tex.sprint(LOAD_TIME_CATCODETABLE, result);
 	gca.currentPlotHandler=nil
