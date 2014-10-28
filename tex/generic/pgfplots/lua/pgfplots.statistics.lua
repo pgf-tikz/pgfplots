@@ -73,6 +73,7 @@ function boxPlotCompute(boxPlotRequest, data)
 	
 	local numCoords = #data
 
+	-- return (integer index, boolean isInt)
 	local function getOffset(factor)
 		local off = numCoords * factor
 
@@ -83,6 +84,7 @@ function boxPlotCompute(boxPlotRequest, data)
 	end
 	
 	local function getValue(offset, isInt)
+		-- FIXME : is that correct!? data is 1-based, is offset also 1-based?
 		local res = data[offset]
 		if not isInt and offset < numCoords then
 			res = 0.5 * (res + data[offset+1])
