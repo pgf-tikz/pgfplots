@@ -180,6 +180,7 @@ function texVisualizePlot(visualizerFactory)
 
 	local result = visualizer:getVisualizationOutput()
 	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfXyCoordSerializer)
+	--log("returning " .. result_str .. "\n\n")
     tex.sprint(result_str)
 end
 
@@ -243,7 +244,7 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 		local str = ""
 		for i = 1,#result do
 			if i>1 then str = str .. "," end
-			str = str .. tostring(result[i])
+			str = str .. tostringfixed(result[i])
 		end
 		tex.sprint(str)
 	end
