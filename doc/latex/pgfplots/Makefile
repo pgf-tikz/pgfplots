@@ -22,6 +22,14 @@ $(info texinputs = $(TEXINPUTS))
 
 include pgfplots.makefile
 
+TeX-programming-notes.pdf: revisionfile FORCE
+	mkdir -p gnuplot
+	@$(TEXMFCNF_FOR_MEMLIMITS) && pdflatex $(@:.pdf=.tex)
+	@bibtex $(@:.pdf=) || exit 0
+	@makeindex $(@:.pdf=) || exit 0
+	@echo ""
+	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
+
 %.pdf: revisionfile FORCE
 	mkdir -p gnuplot
 	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) $(@:.pdf=.tex)
