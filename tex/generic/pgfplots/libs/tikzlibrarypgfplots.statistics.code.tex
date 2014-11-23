@@ -19,7 +19,13 @@
 %
 %--------------------------------------------
 
+\catcode`\;=12
+\catcode`\"=12
 \newif\ifpgfplotsplothandlerboxplot@variable@width
+
+\pgfutil@IfUndefined{directlua}{}{%
+	\directlua{require("pgfplots.statistics")}%
+}
 
 \pgfplotsset{
 	boxplot/.code={%
@@ -188,6 +194,18 @@
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@boxplot
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@boxplot
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@boxplot
+	\def\pgfplotsplothandlerLUAfactory{%
+		function(axis, pointmetainputhandler) 
+			return pgfplots.BoxPlotPlothandler.new(
+				pgfplots.BoxPlotRequest.new( 
+					"\pgfkeysvalueof{/pgfplots/boxplot/lower quartile off}",
+					"\pgfkeysvalueof{/pgfplots/boxplot/upper quartile off}",
+					"\pgfkeysvalueof{/pgfplots/boxplot/whisker range}"),
+				"\pgfkeysvalueof{/pgfplots/boxplot/draw direction}",
+				"\pgfkeysvalueof{/pgfplots/boxplot/draw position}",
+				axis, pointmetainputhandler)
+		end
+	}%
 }
 
 
@@ -221,11 +239,14 @@
 \def\pgfplotsplothandlersurveyend@boxplot{%
 	\pgfplots@curplot@threedimfalse
 	%
-	\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
-	\pgfplotsapplistXnewempty\pgfp@boxplot@@
-	%
-	\if0\b@pgfplotsplothandlerboxplot@issorted
-		\pgfplotsplothandlersurveyend@boxplot@sort
+	\ifpgfplots@LUA@backend@supported
+	\else
+		\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
+		\pgfplotsapplistXnewempty\pgfp@boxplot@@
+		%
+		\if0\b@pgfplotsplothandlerboxplot@issorted
+			\pgfplotsplothandlersurveyend@boxplot@sort
+		\fi
 	\fi
 	%
 	%
@@ -246,9 +267,12 @@
 	%
 	\pgfplotsplothandlersurveystart
 	%
-	% this will report outliers as point stream:
-	\pgfplotsplothandlersurveyend@boxplot@computestats
-	\let\pgfplots@boxplot@data=\relax
+	\ifpgfplots@LUA@backend@supported
+	\else
+		% this will report outliers as point stream:
+		\pgfplotsplothandlersurveyend@boxplot@computestats
+		\let\pgfplots@boxplot@data=\relax
+	\fi
 	%
 	\let\pgfplotsplothandlerboxplotprepared@normalize@values=\pgfplotsplothandlerboxplotprepared@normalize@values@@
 	\pgfplotsplothandlerboxplotprepared@normalize@values
@@ -412,6 +436,8 @@
 %
 % The "replaced by #2" means to set the value right away and to modify
 % the plot's option list to reflect the new value.
+%
+% ---- NOTE: this routine is also invoked from the LUA BACKEND.
 \def\pgfplotsplothandlersurveyend@boxplot@set#1#2{%
 	\pgfkeysgetvalue{/pgfplots/boxplot/#1}\pgfplots@loc@TMPa
 	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
@@ -488,6 +514,10 @@
 			% accept the match!
 			% ... and search for the next search target.
 			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
+			% 
+			% we have to reassess the current point for the next search target.
+			% Since this index is advanced during the loop, we have to decrement it here:
+			\advance\c@pgfplots@coordindex by-1 %
 		\else
 			% ... continue searching for the same target in order to
 			% compute the mean.
@@ -509,6 +539,9 @@
 			%
 			% ... and search for the next search target.
 			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
+			% we have to reassess the current point for the next search target.
+			% Since this index is advanced during the loop, we have to decrement it here:
+			\advance\c@pgfplots@coordindex by-1 %
 			%
 		\fi
 	\fi
@@ -561,12 +594,19 @@
 	\else
 		\pgfplotscoordmath{float}{if is bounded}{\pgfplots@current@point@data}{%
 			%
-			\pgfplotsplothandlersurveypoint@boxplot@
+			\ifpgfplots@LUA@backend@supported
+				\pgfplotsplothandlerboxplot@LUA@survey@point
+			\else
+				\pgfplotsplothandlersurveypoint@boxplot@
+			\fi
 		}{%
 		}%
 	\fi
 }%
 
+\def\pgfplotsplothandlerboxplot@LUA@survey@point{%
+	\directlua{pgfplots.texBoxPlotSurveyPoint("\pgfplots@current@point@data")}%
+}%
 \def\pgfplotsplothandlersurveypoint@boxplot@{%
 	\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlerboxplot@num
 	%
@@ -1059,4 +1099,7 @@
 	\pgfplots@boxplot@cs@decompose{#1}%
 	\pgfplotsboxplotpointabwhisker{\pgfplots@boxplotcs@a}{\pgfplots@boxplotcs@b}%
 }%
+
+\catcode`\;=\pgfplots@oldcatcodesemicolon
+\catcode`\"=\pgfplots@oldcatcodedoublequote
 \endinput

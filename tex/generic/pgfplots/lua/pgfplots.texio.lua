@@ -121,7 +121,10 @@ end
 -- Copies survey results of the current plot back to TeX. It prints a couple of executable TeX statements as result.
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()
-	tex.sprint(LOAD_TIME_CATCODETABLE, gca:surveyToPgfplots(gca.currentPlotHandler, true));
+	local result = gca:surveyToPgfplots(gca.currentPlotHandler, true)
+	--log("returning " .. result .. "\n\n")
+    
+	tex.sprint(LOAD_TIME_CATCODETABLE, result);
 	gca.currentPlotHandler=nil
 end
 
@@ -177,6 +180,7 @@ function texVisualizePlot(visualizerFactory)
 
 	local result = visualizer:getVisualizationOutput()
 	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfXyCoordSerializer)
+	--log("returning " .. result_str .. "\n\n")
     tex.sprint(result_str)
 end
 
@@ -240,7 +244,7 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 		local str = ""
 		for i = 1,#result do
 			if i>1 then str = str .. "," end
-			str = str .. tostring(result[i])
+			str = str .. tostringfixed(result[i])
 		end
 		tex.sprint(str)
 	end
