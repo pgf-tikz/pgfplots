@@ -26,16 +26,24 @@ HEADER='------------------------------------------------------------------------
 
 HEADER="$HEADER\n-- Date of this copy: `date` ---\n\n\n"
 
+DIR=$PGFDIR/generic/pgf/libraries/luamath
 FILES=(\
-	$PGFDIR/generic/pgf/libraries/luamath/pgfluamath.functions.lua \
-	$PGFDIR/generic/pgf/libraries/luamath/pgfluamath.parser.lua \
+	pgf/luamath/functions.lua \
+	pgf/luamath/parser.lua \
 )
+
+# copy pgf/luamath/functions.lua
+# ->   pgfplotsoldpgfsupp/luamath/functions.lua
+
 for A in "${FILES[@]}"; do
-	echo "creating compatibility version for `basename $A` ... " 
+	echo "creating compatibility version for $A ... " 
+	NEWLOCATION=pgfplotsoldpgfsupp/${A#pgf/}
+
+	mkdir -p `dirname $NEWLOCATION`
 	echo -e "$HEADER" | \
-		cat - "$A" | \
-		sed 's/require("\(pgf\|tikz\)\(.*\)/require("pgfplotsoldpgfsupp_\1\2/' \
-		> pgfplotsoldpgfsupp_`basename $A` \
+		cat - "$DIR/$A" | \
+		sed 's/require("\(pgf\|tikz\)\.\(.*\)/require("pgfplotsoldpgfsupp.\2/' \
+		> $NEWLOCATION \
 		|| exit 1
 done
 

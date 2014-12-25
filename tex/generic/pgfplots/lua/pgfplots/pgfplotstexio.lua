@@ -8,7 +8,7 @@
 --
 -- * TeX can call LUA methods in order to "do something". The reverse direction is not true: LUA cannot call TeX methods.
 --
--- * the only way that LUA can read TeX input values or write TeX output values is the top layer (at the time of this writing: only pgfplots.texio.lua ).
+-- * the only way that LUA can read TeX input values or write TeX output values is the top layer (at the time of this writing: only pgfplotstexio.lua ).
 -- 
 -- * The LUA backend has one main purpose: scalability and performance. 
 --   Its purpose is _not_ to run a standalone visualization.

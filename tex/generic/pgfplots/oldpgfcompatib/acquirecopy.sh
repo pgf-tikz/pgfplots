@@ -49,7 +49,7 @@ for A in "${FILES[@]}"; do
 	echo -e "$HEADER" | \
 		cat - "$A" | \
 		sed 's/\\input \(pgf\|tikz\)\(.*\)\.code\.tex/\\input pgfplotsoldpgfsupp_\1\2.code.tex/' | \
-		sed 's/require("\(pgf\|tikz\)\(.*\)/require("pgfplotsoldpgfsupp_\1\2/' \
+		sed 's/require("\(pgf\|tikz\)\(.*\)/require("pgfplotsoldpgfsupp.\2/' \
 		> pgfplotsoldpgfsupp_`basename $A` \
 		|| exit 1
 done

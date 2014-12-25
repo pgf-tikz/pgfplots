@@ -19,7 +19,7 @@
 -- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 -- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 ----------------------------------------------------------------------------------------------------
--- Date of this copy: Sa 11. Okt 22:27:41 CEST 2014 ---
+-- Date of this copy: Do 25. Dez 13:31:48 CET 2014 ---
 
 
 
@@ -37,7 +37,7 @@
 --
 -- usage:
 --
--- pgfluamathparser = require("pgfplotsoldpgfsupp_pgfluamath.parser")
+-- pgfluamathparser = require("pgfplotsoldpgfsupp.luamath.parser")
 --
 -- local result = pgfluamathparser.pgfmathparse("1+ 2*4^2")
 --
@@ -45,7 +45,7 @@
 
 local pgfluamathparser = pgfluamathparser or {}
 
-pgfluamathfunctions = require("pgfplotsoldpgfsupp_pgfluamath.functions")
+pgfluamathfunctions = require("pgfplotsoldpgfsupp.luamath.functions")
 
 -- lpeg is always present in luatex
 local lpeg = require("lpeg")
