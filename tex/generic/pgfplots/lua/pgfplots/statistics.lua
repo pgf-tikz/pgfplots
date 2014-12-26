@@ -11,6 +11,7 @@ local tostring=tostring
 local type=type
 local io=io
 local mathfloor=math.floor
+local mathceil=math.ceil
 local pgfmathparse = pgfplots.pgfluamathparser.pgfmathparse
 
 do
@@ -65,9 +66,104 @@ function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	return res
 end
 
+----------------
+
+ParameterizedPercentileEstimator = newClassExtends(PercentileEstimator)
+
+function ParameterizedPercentileEstimator:constructor( typeFlag )
+	-- http://en.wikipedia.org/wiki/Quantile
+	
+	local stdLookup = function(data, h )
+		local h_low = mathfloor(h)
+		local x_low = data[ h_low ]
+		local x_up = data[ h_low +1 ]
+		return x_low + (h - h_low) * (x_up - x_low)
+	end
+
+	
+	if typeFlag == 1 then
+		-- R1 
+		self.getValue = function(self, percentile, data)
+			local h= #data * percentile
+			return data[ mathceil(h) ]
+		end
+	elseif typeFlag == 2 then
+		-- R2 
+		self.getValue = function(self, percentile, data)
+			local h= #data * percentile + 0.5
+			return data[ 0.5*(mathceil(h-0.5) + mathfloor(h+0.5) ) ]
+		end
+	elseif typeFlag == 3 then
+		-- R3 
+		-- FIXME : implement mathround
+		error("Got unsupported type '" .. tostring(typeFlag) .. "'")
+		self.getValue = function(self, percentile, data)
+			local h= #data * percentile
+			return data[ mathround(h) ]
+		end
+	elseif typeFlag == 4 then
+		-- R4 
+		self.getValue = function(self, percentile, data)
+			local h= #data * percentile
+			return stdLookup(data,h)
+		end
+	elseif typeFlag == 5 then
+		-- R5 
+		self.getValue = function(self, percentile, data)
+			local h= #data * percentile + 0.5
+			return stdLookup(data,h)
+		end
+	elseif typeFlag == 6 then
+		-- R6 
+		self.getValue = function(self, percentile, data)
+			local h= (#data +1) * percentile
+			return stdLookup(data,h)
+		end
+	elseif typeFlag == 7 then
+		-- R7 (Excel)
+		self.getValue = function(self, percentile, data)
+			local h= (#data -1) * percentile + 1
+			return stdLookup(data,h)
+		end
+	elseif typeFlag == 8 then
+		-- R8 
+		self.getValue = function(self, percentile, data)
+			local h= (#data + 1/3) * percentile + 1/3
+			return stdLookup(data,h)
+		end
+	elseif typeFlag == 9 then
+		-- R9 
+		self.getValue = function(self, percentile, data)
+			local h= (#data + 1/4) * percentile + 3/8
+			return stdLookup(data,h)
+		end
+	else
+		error("Got unsupported type '" .. tostring(typeFlag) .. "'")
+	end
+end
+
+
 getPercentileEstimator = function(estimatorName) 
 	if estimatorName == "legacy" then
 		return LegacyPgfplotsPercentileEstimator.new()
+	elseif estimatorName == "R1" then
+		return ParameterizedPercentileEstimator.new(1)
+	elseif estimatorName == "R2" then
+		return ParameterizedPercentileEstimator.new(2)
+	elseif estimatorName == "R3" then
+		return ParameterizedPercentileEstimator.new(3)
+	elseif estimatorName == "R4" then
+		return ParameterizedPercentileEstimator.new(4)
+	elseif estimatorName == "R5" then
+		return ParameterizedPercentileEstimator.new(5)
+	elseif estimatorName == "R6" then
+		return ParameterizedPercentileEstimator.new(6)
+	elseif estimatorName == "R7" then
+		return ParameterizedPercentileEstimator.new(7)
+	elseif estimatorName == "R8" then
+		return ParameterizedPercentileEstimator.new(8)
+	elseif estimatorName == "R9" then
+		return ParameterizedPercentileEstimator.new(9)
 	end
 
 	error("Unknown estimator '" .. estimatorName .. "'")
