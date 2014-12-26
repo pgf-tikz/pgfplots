@@ -35,11 +35,11 @@ function PercentileEstimator:getValue(percentile, data)
 	error("Use implementation of PercentileEstimator, not interface")
 end
 
+-- LegacyPgfplotsPercentileEstimator is the percentile estimator as it has been shipped with pgfplots.
+-- I decided to mark it as deprecated because it is non-standard and not comparable with other programs.
 LegacyPgfplotsPercentileEstimator = newClassExtends(PercentileEstimator)
-
 function LegacyPgfplotsPercentileEstimator:constructor()
 end
-
 function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	if not percentile or not data then error("Arguments must not be nil") end
 	local numCoords = #data
