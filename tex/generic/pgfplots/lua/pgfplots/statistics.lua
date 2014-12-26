@@ -25,16 +25,66 @@ end
 
 -------------------------------------------------------
 
+PercentileEstimator = newClass()
+
+function PercentileEstimator:constructor()
+end
+
+-- @param percentile the requested percentile. Use 0.5 for the median, 0.25 for the first quartile, 0.95 for the 95% percentile etc.
+function PercentileEstimator:getValue(percentile, data)
+	error("Use implementation of PercentileEstimator, not interface")
+end
+
+LegacyPgfplotsPercentileEstimator = newClassExtends(PercentileEstimator)
+
+function LegacyPgfplotsPercentileEstimator:constructor()
+end
+
+function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
+	if not percentile or not data then error("Arguments must not be nil") end
+	local numCoords = #data
+	local h = numCoords * percentile
+
+	local offset_low = mathfloor(h)
+	local isInt = ( h==offset_low )
+
+	local offset_high 
+	if offset_low+1 <= numCoords then 
+		offset_high = offset_low+1 
+	else 
+		offset_high = numCoords 
+	end
+	
+	-- FIXME : is that correct!? data is 1-based, is offset also 1-based?
+	local x_low = data[offset_low]
+	local x_up = data[offset_high]
+	local res = x_low
+	if not isInt then
+		res = 0.5 * (res + x_up)
+	end
+	return res
+end
+
+getPercentileEstimator = function(estimatorName) 
+	if estimatorName == "legacy" then
+		return LegacyPgfplotsPercentileEstimator.new()
+	end
+
+	error("Unknown estimator '" .. estimatorName .. "'")
+end
+
 BoxPlotRequest = newClass()
 
--- lowerQuartialPercent: typically 0.25
--- upperQuartialPercent: typically 0.75
--- whiskerRange: typically 1.5
-function BoxPlotRequest:constructor(lowerQuartialPercent, upperQuartialPercent, whiskerRange)
-	if not lowerQuartialPercent or not upperQuartialPercent or not whiskerRange then error("Arguments must not be nil") end
+-- @param lowerQuartialPercent: typically 0.25
+-- @param upperQuartialPercent: typically 0.75
+-- @param whiskerRange: typically 1.5
+-- @param estimator: an instance of PercentileEstimator
+function BoxPlotRequest:constructor(lowerQuartialPercent, upperQuartialPercent, whiskerRange, estimator)
+	if not lowerQuartialPercent or not upperQuartialPercent or not whiskerRange or not estimator then error("Arguments must not be nil") end
 	self.lowerQuartialPercent = pgftonumber(lowerQuartialPercent)
 	self.upperQuartialPercent = pgftonumber(upperQuartialPercent)
 	self.whiskerRange = pgftonumber(whiskerRange)
+	self.estimator = estimator
 end
 
 -------------------------------------------------------
@@ -73,34 +123,10 @@ function boxPlotCompute(boxPlotRequest, data)
 	
 	local numCoords = #data
 
-	-- return (integer index, boolean isInt)
-	local function getOffset(factor)
-		local off = numCoords * factor
-
-		local res = mathfloor(off)
-		local isInt = res == off
-
-		return res, isInt
-	end
-	
-	local function getValue(offset, isInt)
-		-- FIXME : is that correct!? data is 1-based, is offset also 1-based?
-		local res = data[offset]
-		if not isInt and offset < numCoords then
-			res = 0.5 * (res + data[offset+1])
-		end
-		return res
-	end
-
-
-	local lowerQuartileOff, lowerQuartileIsInt = getOffset(boxPlotRequest.lowerQuartialPercent)
-	local medianOff, medianIsInt = getOffset(0.5)
-	local upperQuartileOff, upperQuartileIsInt = getOffset(boxPlotRequest.upperQuartialPercent)
-
 	local lowerWhisker
-	local lowerQuartile = getValue(lowerQuartileOff, lowerQuartileIsInt)
-	local median = getValue(medianOff, medianIsInt)
-	local upperQuartile = getValue(upperQuartileOff, upperQuartileIsInt)
+	local lowerQuartile = 	boxPlotRequest.estimator:getValue(boxPlotRequest.lowerQuartialPercent, data)
+	local median = 			boxPlotRequest.estimator:getValue(0.5, data)
+	local upperQuartile = 	boxPlotRequest.estimator:getValue(boxPlotRequest.upperQuartialPercent, data)
 	local upperWhisker
 	local average = sum / numCoords
 
