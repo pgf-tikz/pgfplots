@@ -62,6 +62,7 @@
 	boxplot/lower whisker/.initial=auto,
 	boxplot/upper whisker/.initial=auto,
 	boxplot/average/.initial=,
+	%
 	boxplot/estimator/.is choice,
 	boxplot/estimator/legacy/.code={\def\pgfplots@boxplot@estimator{legacy}},
 	boxplot/estimator/R1/.code={\def\pgfplots@boxplot@estimator{R1}},
@@ -262,18 +263,7 @@
 	%
 	\def\b@pgfplotsplothandlerboxplot@issorted{1}%
 	%
-	% FIXME : the decision to store the input points into a SINGLY
-	% LINKED LIST is based on the observation that huge TeX arrays
-	% (with one macro per index) run into out-of-memory easily.
-	% The list does not: it does not need that many macros and uses a
-	% different memory limit...
-	%
-	% However, the linked-list is bought off for a high price... the
-	% statistics computation takes linear time instead of constant.
-	% But we have linear time anyway, so it does not destroy the
-	% asymptotics... and it appears to be better to get it into main
-	% memory (?)
-	\pgfplotsapplistXnewempty\pgfp@boxplot@@
+	\pgfplotsarraynewempty\pgfp@boxplot@@
 	\def\c@pgfplotsplothandlerboxplot@num{0}%
 	\c@pgfplots@coordindex=0
 }%
@@ -283,9 +273,6 @@
 	%
 	\ifpgfplots@LUA@backend@supported
 	\else
-		\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
-		\pgfplotsapplistXnewempty\pgfp@boxplot@@
-		%
 		\if0\b@pgfplotsplothandlerboxplot@issorted
 			\pgfplotsplothandlersurveyend@boxplot@sort
 		\fi
@@ -313,7 +300,6 @@
 	\else
 		% this will report outliers as point stream:
 		\pgfplotsplothandlersurveyend@boxplot@computestats
-		\let\pgfplots@boxplot@data=\relax
 	\fi
 	%
 	\let\pgfplotsplothandlerboxplotprepared@normalize@values=\pgfplotsplothandlerboxplotprepared@normalize@values@@
@@ -324,40 +310,8 @@
 }%
 
 \def\pgfplotsplothandlersurveyend@boxplot@sort{%
-	% how bad. we have to convert to array, sort, convert back to
-	% list... it would have been better if we had worked with arrays
-	% right away! But see the docs in front of the line
-	% '\pgfplotsapplistXnewempty\pgfp@boxplot@@' somewhere in this
-	% file...
-	%
-	\begingroup
-	\pgfplotsarraynewempty{P}%
-	\pgfplotsarrayresize{P}{\c@pgfplots@coordindex}%
-	%
-	\c@pgfplots@coordindex=0
-	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplots@boxplot@fillarray
-	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
-	%
-	\pgfkeysdef{/pgfplots/array/unscope pre}{%
-		\pgfplotsapplistXnewempty\pgfp@boxplot@@
-		\pgfplotsarrayforeachungrouped{##1}\as\elem{%
-			\edef\elem{{\elem}}%
-			\expandafter\pgfplotsapplistXpushback\expandafter{\elem}\to\pgfp@boxplot@@
-		}%
-		\pgfplotsapplistXlet\pgfplots@boxplot@data=\pgfp@boxplot@@
-		\global\let\pgfplots@glob@boxplot@TMPd=\pgfplots@boxplot@data
-	}%
-	\pgfkeysdef{/pgfplots/array/unscope post}{%
-	}%
-	%
-	%\message{[}\pgfplotsarrayforeach{P}\as\elem{\message{\elem,}}\message{]^^J}%
-	%
 	\pgfkeys{/pgfplots/float <}%
-	\pgfplotsarraysort{P}%
-	%
-	\endgroup
-	\let\pgfplots@boxplot@data=\pgfplots@glob@boxplot@TMPd
-	%\message{-> \meaning\pgfplots@boxplot@data^^J}%
+	\pgfplotsarraysort{\pgfp@boxplot@@}%
 }%
 
 \def\pgfplots@boxplot@fillarray{%
@@ -367,47 +321,80 @@
 
 %%%%
 
-% 
-% OUTPUT:
-% \pgfplotsretval: the result of #1 * #2 as integer
-% \pgfplotsretvalb = 1 iff #1 * #2 is an integer (without loss)
-\def\pgfplots@boxplot@get@quantile@offset#1#2{%
-	\pgfplotscoordmath{float}{parsenumber}{#2}%
-	\pgfplotscoordmath{float}{op}{multiply}{{\pgfmathresult}{#1}}%
-	\pgfplotscoordmath{float}{tofixed}{\pgfmathresult}%
-	\afterassignment\pgfplots@boxplot@get@quantile@remainder
-	\c@pgf@countd=\pgfmathresult\relax
-	\edef\pgfplotsretval{\the\c@pgf@countd}%
-}%
-
-\def\pgfplots@boxplot@get@quantile@remainder#1\relax{%
-	\ifdim #1pt>0.001pt
-		\def\pgfplotsretvalb{0}%
+\def\pgfplotsplothandler@boxplot@init@percentile@estimator{%
+	\def\pgfplots@loc@TMPb{legacy}%
+	\ifx\pgfplots@loc@TMPb\pgfplots@boxplot@estimator
+		\let\pgfplotsplothandler@boxplot@percentile@estimator@=\pgfplotsplothandler@boxplot@percentile@estimator@legacy
 	\else
-		\def\pgfplotsretvalb{1}%
+		% first, strip 'R' and store the integer number into \pgfplotsretval:
+		\def\pgfplots@loc@TMPb##1##2{%
+			\def\pgfplotsretval{##2}%
+		}%
+		\expandafter\pgfplots@loc@TMPb\pgfplots@boxplot@estimator
+		\ifcase\pgfplotsretval\relax
+			% 0:
+			\pgfplots@error{illegal argument 'estimator=\pgfplots@boxplot@estimator' encountered.}%
+		\or
+			% R1:
+		\else
+			\pgfplots@error{illegal argument 'estimator=\pgfplots@boxplot@estimator' encountered.}%
+		\fi
 	\fi
 }%
 
+% #1: the percentile in question (like 0.5 for the median)
+% #2: the number of data points in the array \pgfp@boxplot@@
+% POSTCONDITION: \pgfmathresult contains the result.
+\def\pgfplotsplothandler@boxplot@percentile@estimator#1#2{%
+	\begingroup
+	\pgfkeys{/pgf/fpu}%
+	\pgfplotsplothandler@boxplot@percentile@estimator@{#1}{#2}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+\def\pgfplotsplothandler@boxplot@percentile@estimator@getIndex#1#2{%
+	\c@pgf@countd=#1\relax
+	\advance\c@pgf@countd by-1 % we have 0-based indices
+	\ifnum\c@pgf@countd<0	\c@pgf@countd=0 \fi
+	\ifnum\c@pgf@countd<#2\relax \else \c@pgf@countd=#2\relax \advance\c@pgf@countd by-1 \fi
+	\pgfplotsarrayselect\c@pgf@countd\of\pgfp@boxplot@@\to\pgfmathresult
+}%
+
+\def\pgfplotsplothandler@boxplot@percentile@estimator@#1#2{%
+	\pgfplots@error{The estimator is uninitialized in this context. Call \string\pgfplotsplothandler@boxplot@init@percentile@estimator\space first.}%
+}
+
+\def\pgfplotsplothandler@boxplot@percentile@estimator@legacy#1#2{%
+	\pgfmathparse{#1*#2}%
+	\let\h=\pgfmathresult
+	\pgfmathparse{floor(\h)}%
+	\pgfmathfloattoint\pgfmathresult
+	\let\offset@low=\pgfmathresult
+	%
+	\pgfmathparse{\h > \offset@low}%
+	\ifpgfmathfloatcomparison
+		\def\b@is@int{0}%
+	\else
+		\def\b@is@int{1}%
+	\fi
+	%
+	\c@pgf@countd=\offset@low\relax
+	\advance\c@pgf@countd by1 %
+	\edef\offset@high{\the\c@pgf@countd}%
+	%
+	\pgfplotsplothandler@boxplot@percentile@estimator@getIndex{\offset@low}{#2}%
+	\if0\b@is@int
+		\let\temp=\pgfmathresult
+		\pgfplotsplothandler@boxplot@percentile@estimator@getIndex{\offset@high}{#2}%
+		\pgfmathparse{0.5*(\temp + \pgfmathresult)}%
+	\fi
+}
+
+
 \def\pgfplotsplothandlersurveyend@boxplot@computestats{ 
 	%
-	% compute TMPa := float(\numcoords - 1)
-	\pgfplotscoordmath{float}{one}%
-	\let\pgfplots@loc@TMPa=\pgfmathresult
-	\pgfplotscoordmath{float}{parsenumber}{\numcoords}%
-	\let\pgfplots@boxplot@numcoords=\pgfmathresult
-	\pgfplotscoordmath{float}{op}{subtract}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
-	\let\pgfplots@boxplot@numcoords@minus@one=\pgfmathresult
-	%
-	% compute the indices into the coordinate arrays:
-	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{\pgfplotsboxplotvalue{lower quartile off}}%
-	\let\c@pgfplotsplothandlerboxplot@lowerquartile=\pgfplotsretval
-	\let\b@pgfplotsplothandlerboxplot@lowerquartile@isint=\pgfplotsretvalb
-	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{0.5}%
-	\let\c@pgfplotsplothandlerboxplot@median=\pgfplotsretval
-	\let\b@pgfplotsplothandlerboxplot@median@isint=\pgfplotsretvalb
-	\pgfplots@boxplot@get@quantile@offset{\pgfplots@boxplot@numcoords@minus@one}{\pgfplotsboxplotvalue{upper quartile off}}%
-	\let\c@pgfplotsplothandlerboxplot@upperquartile=\pgfplotsretval
-	\let\b@pgfplotsplothandlerboxplot@upperquartile@isint=\pgfplotsretvalb
+	\pgfplotsplothandler@boxplot@init@percentile@estimator
 	%
 	% hm. I once had the idea to support quartile-based whisker
 	% definitions... but I did not implement them.
@@ -423,15 +410,16 @@
 	\let\pgfplotsplothandlerboxplot@upperquartile=\pgfutil@empty
 	\let\pgfplotsplothandlerboxplot@upperwhisker=\pgfutil@empty
 	%
-	\c@pgfplots@coordindex=0 %
-	\def\pgfplots@boxplot@@next@target{lowerquartile}%
-	\def\pgfplots@boxplot@next@@lowerquartile{median}%
-	\def\pgfplots@boxplot@next@@median{upperquartile}%
-	\def\pgfplots@boxplot@next@@upperquartile{}%
-	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplotsplothandlersurveyend@boxplot@computestats@quantile
-	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
+	\pgfplotsplothandler@boxplot@percentile@estimator{\pgfkeysvalueof{/pgfplots/boxplot/lower quartile off}}{\numcoords}%
+	\let\pgfplotsplothandlerboxplot@lowerquartile=\pgfmathresult
+	\pgfplotsplothandler@boxplot@percentile@estimator{\pgfkeysvalueof{/pgfplots/boxplot/upper quartile off}}{\numcoords}%
+	\let\pgfplotsplothandlerboxplot@upperquartile=\pgfmathresult
+	\pgfplotsplothandler@boxplot@percentile@estimator{0.5}{\numcoords}%
+	\let\pgfplotsplothandlerboxplot@median=\pgfmathresult
 	%
 	%
+	\pgfplotscoordmath{float}{parsenumber}{\numcoords}%
+	\let\pgfplots@boxplot@numcoords=\pgfmathresult
 	\pgfplotscoordmath{float}{op}{divide}{{\pgfplotsplothandlerboxplot@sum}{\pgfplots@boxplot@numcoords}}%
 	\let\pgfplotsplothandlerboxplot@average=\pgfmathresult
 	%
@@ -461,9 +449,9 @@
 	\pgfplotscoordmath{float}{op}{subtract}{{\pgfplotsplothandlerboxplot@lowerquartile}{\pgfplots@boxplot@whisker@width}}%
 	\let\pgfplotsplothandlerboxplot@lowerwhisker@value=\pgfmathresult
 	%
-	\c@pgfplots@coordindex=0 %
-	\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased
-	\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop\pgfplots@boxplot@data\pgfplots@EOI
+	\pgfplotsarrayforeachungrouped\pgfp@boxplot@@\as\pgfplots@current@point@data{%
+		\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased
+	}%
 	%
 	\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{\pgfplotsplothandlerboxplot@lowerwhisker}%
 	\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{\pgfplotsplothandlerboxplot@upperwhisker}%
@@ -529,70 +517,6 @@
 		\expandafter\pgfplotsplothandlersurveyend@boxplot@computestats@loop
 	\fi
 }%
-
-% Really computes stats.
-% 
-% This method computes ALL quantiles (one after the other). These are 0.25,
-% 0.5, and 0.75. Perhaps I add quantile-based whiskers eventually.
-%
-% XXX : this method is quite inefficient because it iterates through a
-% loop for what would be 3 arrays lookups otherwise. If I would have enough
-% courage to store the points into an array, both this and the
-% whisker-loop would be more efficient. But in TeX, arrays are not
-% necessarily that efficient ... they run out of memory easily!
-%
-% The data is in \pgfplots@current@point@data.
-\def\pgfplotsplothandlersurveyend@boxplot@computestats@quantile{%
-	%
-	\c@pgf@countd=\csname c@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname\relax
-	\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
-	%
-	\ifnum\c@pgf@countd=\c@pgfplots@coordindex\relax
-		% Ah - we found the occurence of the current search target! 
-		\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname=\pgfplots@current@point@data
-		%
-		\expandafter\let\expandafter\pgfplots@loc@TMPb\csname b@pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target @isint\endcsname
-		\if 1\pgfplots@loc@TMPb
-			% accept the match!
-			% ... and search for the next search target.
-			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
-			% 
-			% we have to reassess the current point for the next search target.
-			% Since this index is advanced during the loop, we have to decrement it here:
-			\advance\c@pgfplots@coordindex by-1 %
-		\else
-			% ... continue searching for the same target in order to
-			% compute the mean.
-		\fi
-	\else
-		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		\else
-			% Ah! this can *only* happen if we have to compute a
-			% mean between the previous and this data point.
-			%
-			% The current search target is 0.5 * (value + next):
-			\pgfplotscoordmath{float}{op}{add}{{\pgfplots@current@point@data}{\pgfplots@loc@TMPa}}%
-			\let\pgfplots@loc@TMPb=\pgfmathresult
-			\pgfplotscoordmath{float}{parsenumber}{0.5}%
-			\pgfplotscoordmath{float}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@TMPb}}%
-			%
-			\expandafter\let\csname pgfplotsplothandlerboxplot@\pgfplots@boxplot@@next@target\endcsname
-				=\pgfmathresult
-			%
-			% ... and search for the next search target.
-			\expandafter\let\expandafter\pgfplots@boxplot@@next@target\csname pgfplots@boxplot@next@@\pgfplots@boxplot@@next@target\endcsname
-			% we have to reassess the current point for the next search target.
-			% Since this index is advanced during the loop, we have to decrement it here:
-			\advance\c@pgfplots@coordindex by-1 %
-			%
-		\fi
-	\fi
-	%
-	\ifx\pgfplots@boxplot@@next@target\pgfutil@empty
-		% stop searching.
-		\let\pgfplotsplothandlersurveyend@boxplot@computestats@=\relax
-	\fi
-}
 
 \def\pgfplotsplothandlersurveyend@boxplot@computestats@valuebased{%
 	\ifx\pgfplotsplothandlerboxplot@lowerwhisker\pgfutil@empty
@@ -664,8 +588,8 @@
 	\let\pgfplotsplothandlerboxplot@sum=\pgfmathresult
 	%
 	% store parsed result.
-	\edef\pgfmathresult{{\pgfplots@current@point@data}}%
-	\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfp@boxplot@@
+	\edef\pgfmathresult{\pgfplots@current@point@data}%
+	\expandafter\pgfplotsarraypushback\expandafter{\pgfmathresult}\to\pgfp@boxplot@@
 	%
 	\let\pgfplotsplothandlerboxplot@last=\pgfplots@current@point@data
 	%
