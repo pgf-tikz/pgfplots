@@ -352,3 +352,27 @@ assertEquals(response.lowerQuartile, 42, "0.25 with " .. tostring(request.estima
 assertEquals(response.upperQuartile, 50, "0.75 with " .. tostring(request.estimator))
 assertEquals(response.median, 46, "0.5 with " .. tostring(request.estimator))
 end
+
+
+-------------
+--
+-- Proof of concept of "morePercentiles"
+do
+-- R7 (excel)
+local request =
+	pgfplots.BoxPlotRequest.new( 
+		"0.25",
+		"0.75",
+		"1.5",
+		pgfplots.getPercentileEstimator("R7"),
+		{ 0.1, 0.95 } );
+local data ={1, 2, 1, 5, 4, 10, 7, 10, 9, 8, 9, 9, };
+local response = pgfplots.boxPlotCompute(request, data)
+
+assertEquals(response.lowerQuartile, 3.5, "0.25 with " .. tostring(request.estimator))
+assertEquals(response.upperQuartile, 9, "0.75 with " .. tostring(request.estimator))
+assertEquals(response.median, 7.5, "0.5 with " .. tostring(request.estimator))
+assertEquals(#response.morePercentiles, 2, "got unexpected number of morePercentiles")
+assertEquals(response.morePercentiles[1], 1.1, "0.1 with " .. tostring(request.estimator))
+assertEquals(response.morePercentiles[2], 10, "0.95 with " .. tostring(request.estimator))
+end

@@ -189,12 +189,18 @@ BoxPlotRequest = newClass()
 -- @param upperQuartialPercent: typically 0.75
 -- @param whiskerRange: typically 1.5
 -- @param estimator: an instance of PercentileEstimator
-function BoxPlotRequest:constructor(lowerQuartialPercent, upperQuartialPercent, whiskerRange, estimator)
+-- @param morePercentiles: either nil or an array of percentiles to compute
+function BoxPlotRequest:constructor(lowerQuartialPercent, upperQuartialPercent, whiskerRange, estimator, morePercentiles)
 	if not lowerQuartialPercent or not upperQuartialPercent or not whiskerRange or not estimator then error("Arguments must not be nil") end
 	self.lowerQuartialPercent = pgftonumber(lowerQuartialPercent)
 	self.upperQuartialPercent = pgftonumber(upperQuartialPercent)
 	self.whiskerRange = pgftonumber(whiskerRange)
 	self.estimator = estimator
+	if not morePercentiles then
+		self.morePercentiles = {}
+	else
+		self.morePercentiles = morePercentiles
+	end
 end
 
 -------------------------------------------------------
@@ -208,6 +214,7 @@ function BoxPlotResponse:constructor()
 	self.upperQuartile = nil
 	self.upperWhisker = nil
 	self.average = nil
+	self.morePercentiles = {}
 	self.outliers = {}
 end
 
@@ -237,6 +244,12 @@ function boxPlotCompute(boxPlotRequest, data)
 	local lowerQuartile = 	boxPlotRequest.estimator:getValue(boxPlotRequest.lowerQuartialPercent, data)
 	local median = 			boxPlotRequest.estimator:getValue(0.5, data)
 	local upperQuartile = 	boxPlotRequest.estimator:getValue(boxPlotRequest.upperQuartialPercent, data)
+
+	local morePercentileValues = {}
+	for i = 1,#boxPlotRequest.morePercentiles do
+		morePercentileValues[i] = boxPlotRequest.estimator:getValue(boxPlotRequest.morePercentiles[i], data)
+	end
+
 	local upperWhisker
 	local average = sum / numCoords
 
@@ -273,6 +286,7 @@ function boxPlotCompute(boxPlotRequest, data)
 	result.upperQuartile = upperQuartile
 	result.upperWhisker = upperWhisker
 	result.average = average
+	result.morePercentiles = morePercentileValues
 	result.outliers = outliers
 
 	return result
