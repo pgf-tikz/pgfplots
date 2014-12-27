@@ -31,6 +31,19 @@ PercentileEstimator = newClass()
 function PercentileEstimator:constructor()
 end
 
+function PercentileEstimator:getIndex(data, i)
+	local idx = i
+	if idx < 1 then idx = 1 end
+	if idx > #data then idx = #data end
+
+	local result = data[idx]
+	if not result then
+		error("Box plot percentile estimator '" .. tostring(self) .." accessed illegal array index " .. tostring(idx) .. " in array of length " .. tostring(#data))
+	end
+	return result
+end
+	
+
 -- @param percentile the requested percentile. Use 0.5 for the median, 0.25 for the first quartile, 0.95 for the 95% percentile etc.
 function PercentileEstimator:getValue(percentile, data)
 	error("Use implementation of PercentileEstimator, not interface")
@@ -41,6 +54,9 @@ end
 LegacyPgfplotsPercentileEstimator = newClassExtends(PercentileEstimator)
 function LegacyPgfplotsPercentileEstimator:constructor()
 end
+function LegacyPgfplotsPercentileEstimator:__tostring()
+	return "estimator=legacy";
+end
 function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	if not percentile or not data then error("Arguments must not be nil") end
 	local numCoords = #data
@@ -49,16 +65,10 @@ function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	local offset_low = mathfloor(h)
 	local isInt = ( h==offset_low )
 
-	local offset_high 
-	if offset_low+1 <= numCoords then 
-		offset_high = offset_low+1 
-	else 
-		offset_high = numCoords 
-	end
+	local offset_high = offset_low+1 
 	
-	-- FIXME : is that correct!? data is 1-based, is offset also 1-based?
-	local x_low = data[offset_low]
-	local x_up = data[offset_high]
+	local x_low = self:getIndex(data, offset_low)
+	local x_up = self:getIndex(data, offset_high)
 	local res = x_low
 	if not isInt then
 		res = 0.5 * (res + x_up)
@@ -70,36 +80,40 @@ end
 
 ParameterizedPercentileEstimator = newClassExtends(PercentileEstimator)
 
+function ParameterizedPercentileEstimator:__tostring()
+	return "estimator=" .. tostring(self.typeFlag) ;
+end
+
 function ParameterizedPercentileEstimator:constructor( typeFlag )
 	-- http://en.wikipedia.org/wiki/Quantile
-	
+	self.typeFlag = typeFlag
+
+	local getIndex = self.getIndex
+
 	local stdLookup = function(data, h )
 		local h_low = mathfloor(h)
-		local x_low = data[ h_low ]
-		local x_up = data[ h_low +1 ]
+		local x_low = getIndex(self, data, h_low )
+		local x_up = getIndex(self, data, h_low +1 )
 		return x_low + (h - h_low) * (x_up - x_low)
 	end
-
 	
 	if typeFlag == 1 then
 		-- R1 
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile
-			return data[ mathceil(h) ]
+			return getIndex(self, data, mathceil(h) )
 		end
 	elseif typeFlag == 2 then
 		-- R2 
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile + 0.5
-			return data[ 0.5*(mathceil(h-0.5) + mathfloor(h+0.5) ) ]
+			return 0.5*(getIndex(self, data, mathceil(h-0.5)) + getIndex(self, data, mathfloor(h+0.5) ) )
 		end
 	elseif typeFlag == 3 then
 		-- R3 
-		-- FIXME : implement mathround
-		error("Got unsupported type '" .. tostring(typeFlag) .. "'")
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile
-			return data[ mathround(h) ]
+			return getIndex(self, data, pgfluamathfunctions.round(h) )
 		end
 	elseif typeFlag == 4 then
 		-- R4 
@@ -166,7 +180,7 @@ getPercentileEstimator = function(estimatorName)
 		return ParameterizedPercentileEstimator.new(9)
 	end
 
-	error("Unknown estimator '" .. estimatorName .. "'")
+	error("Unknown estimator '" .. tostring(estimatorName) .. "'")
 end
 
 BoxPlotRequest = newClass()
