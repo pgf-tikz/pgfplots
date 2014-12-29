@@ -1,3 +1,5 @@
+# needs (at least):
+# $ tlmgr install zapfding symbol units
 
 # PDFLATEX=pdflatex -shell-escape
 PDFLATEX=lualatex -shell-escape

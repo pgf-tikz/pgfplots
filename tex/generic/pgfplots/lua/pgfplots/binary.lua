@@ -1,4 +1,8 @@
 
+-- Attention: functions in this file are part of the backend driver.
+-- They are supposed to work back with Lua 5.1 .
+-- Note that most of the 'lua backend' requires Lua 5.2 (currently)
+
 pgfplotsGetLuaBinaryStringFromCharIndicesChunkSize = 7000;
 
 if unpack == nil then
