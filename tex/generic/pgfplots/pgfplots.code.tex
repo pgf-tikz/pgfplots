@@ -10992,6 +10992,8 @@
 	\let\pgfsetyvec@orig=\pgfsetyvec
 	\let\pgfsetzvec@orig=\pgfsetzvec
 	\let\tikz@checkunit@orig=\tikz@checkunit
+	\let\pgfpatharcaxes@orig=\pgfpatharcaxes
+	\let\tikz@do@arc@orig=\tikz@do@arc
 	%
 	\let\pgfsetxvec=\pgfplots@setxvec@restorepgfpoint
 	\let\pgfsetyvec=\pgfplots@setyvec@restorepgfpoint
@@ -11165,12 +11167,75 @@
 		\let\pgfpointxyz=\pgfplotspointaxisxyz
 		\let\pgfqpointxy=\pgfplotsqpointaxisxy
 		\let\pgfqpointxyz=\pgfplotsqpointaxisxyz
+		\let\pgfpatharcaxes=\pgfplots@patharcaxes
+		\let\tikz@do@arc=\pgfplots@tikz@do@arc
 		%
 		% tikz checks for units before it calls \pgfpointxy . This must
 		% not suffer from TeX's math restrictions, so we have to use the
 		% FPU for this task. Patch the command as well:
 		\let\tikz@checkunit=\pgfplots@checkunit@fpu
 	\fi
+}%
+
+\def\pgfplots@disable@directionmath{%
+  	\def\pgfplotstransformdirectionx##1{\def\pgfmathresult{##1}}%
+  	\let\pgfplotstransformdirectiony=\pgfplotstransformdirectionx
+  	\let\pgfplotstransformdirectionz=\pgfplotstransformdirectionx
+}%
+
+% As of compat=1.11, pgfplots has to accept the following syntax elements:
+%
+% \draw[green,thick,->] (0,-1)	arc[radius=1, start angle= -90, end angle=-180];
+% \draw[green,thick,->] (0,-1)	arc[radius=1cm, start angle= -90, end angle=-180];
+% \draw[green,thick,->] (0,-1)	arc[radius={transformdirectionx(1)}, start angle= -90, end angle=-180];
+%
+% all of them should work. The last one (transformdirectionx) is due
+% to legacy compatibility. Since the 1.11 code handles these syntaxes
+% automatically, 'transformdirectionx' will be ignored silently.
+\def\pgfplots@tikz@do@arc#1#2#3#4{%
+	\begingroup
+	% strip 'transformdirectionx' if it occurs in the angles:
+	\pgfplots@disable@directionmath
+	\pgfmathparse{#3}%
+	\t@pgfplots@toka={\tikz@do@arc@orig{#1}{#2}}%
+	\edef\pgfplots@arc@x{%
+		\pgfmathresult
+		\ifpgfmathunitsdeclared pt\fi
+	}%
+	\pgfmathparse{#4}%
+	\xdef\pgfplots@arc@y{%
+		\pgfmathresult
+		\ifpgfmathunitsdeclared pt\fi
+	}%
+	% ok, invoke the TikZ command with the expanded args:
+	\xdef\pgfplots@glob@TMPa{\the\t@pgfplots@toka{\pgfplots@arc@x}{\pgfplots@arc@y}}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}%
+
+% #1 = angle of first point
+% #2 = angle of second point
+% #3 = first axis
+% #4 = second axis
+\def\pgfplots@patharcaxes#1#2#3#4{%
+  {%
+  	% see docs of \pgfplots@tikz@do@arc for a motivation:
+	\pgfplots@disable@directionmath
+	%
+	% ok, now, evaluate the arcs. Since this implements 
+	% 'substitute pgfpoint', we have to evaluate the angles via 
+	% 'axis direction cs' ...
+	\let\pgfpointxy=\pgfplotspointaxisdirectionxy
+	\let\pgfpointxyz=\pgfplotspointaxisdirectionxyz
+	%
+    \pgftransformtriangle{\pgfpointorigin}{#3}{#4}%
+	%
+	% ... and the coordinates as such using 'axis cs':
+	\let\pgfpointxy=\pgfplotspointaxisxy
+	\let\pgfpointxyz=\pgfplotspointaxisxyz
+	%
+    \pgfpatharc{#1}{#2}{1pt}%
+  }%
 }%
 
 \def\pgfplots@checkunit@fpu#1{%
