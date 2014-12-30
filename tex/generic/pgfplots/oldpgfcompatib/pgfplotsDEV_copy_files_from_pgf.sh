@@ -30,19 +30,21 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 	# $PGFDIR/generic/pgf/utilities/pgfkeysfiltered.code.tex  \
 	# $PGFDIR/generic/pgf/utilities/pgfkeys.code.tex  \
 	# $PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
-	# $PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex \
 	# $PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
+	# $PGFDIR/generic/pgf/libraries/pgflibraryplothandlers.code.tex \
 	# $PGFDIR/generic/pgf/basiclayer/pgfcoreexternal.code.tex \
 	# $PGFDIR/generic/pgf/basiclayer/pgfcorescopes.code.tex \
 	# $PGFDIR/generic/pgf/basiclayer/pgfcorelayers.code.tex \
 	# $PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
 	# $PGFDIR/latex/pgf/utilities/tikzexternal.sty \
 	# $PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
+	# $PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
+	# $PGFDIR/generic/pgf/libraries/pgflibraryfillbetween.code.tex \
 	#-------------------------------------------------- 
 FILES=(\
 	`find $PGFDIR/latex/pgf/doc -name '*.tex'`\
-	$PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
-	$PGFDIR/generic/pgf/libraries/pgflibraryfillbetween.code.tex \
+	$PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
+	$PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
 )
 for A in "${FILES[@]}"; do
 	echo "creating compatibility version for `basename $A` ... " 
