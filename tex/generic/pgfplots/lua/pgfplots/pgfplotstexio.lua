@@ -134,7 +134,7 @@ end
 function texPerpointMetaTrafo(metaStr)
     local meta = pgftonumber(metaStr)
     local transformed = gca.currentPlotHandler:visualizationTransformMeta(meta);
-    tex.sprint(tostringfixed(transformed));
+    tex.sprint(LOAD_TIME_CATCODETABLE, tostringfixed(transformed));
 end
 
 -- Called at the beginning of each plot visualization.
@@ -181,7 +181,7 @@ function texVisualizePlot(visualizerFactory)
 	local result = visualizer:getVisualizationOutput()
 	local result_str = currentPlotHandler:getCoordsInTeXFormat(gca, result, pgfXyCoordSerializer)
 	--log("returning " .. result_str .. "\n\n")
-    tex.sprint(result_str)
+    tex.sprint(LOAD_TIME_CATCODETABLE, result_str)
 end
 
 -- Modifies the Surveyed coordinate list.
@@ -229,7 +229,7 @@ function texGetSurveyedCoordsToPgfplots()
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
     
-    tex.sprint(currentPlotHandler:surveyedCoordsToPgfplots(gca))
+    tex.sprint(LOAD_TIME_CATCODETABLE, currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end
 
 -- Performance optimization: computes the colormap lookup.
@@ -246,7 +246,7 @@ function texColorMapPrecomputed(mapName, inMin, inMax, x)
 			if i>1 then str = str .. "," end
 			str = str .. tostringfixed(result[i])
 		end
-		tex.sprint(str)
+		tex.sprint(LOAD_TIME_CATCODETABLE, str)
 	end
 end
 
