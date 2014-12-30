@@ -215,6 +215,7 @@ end
 function Plothandler:surveypoint(pt)
 	updatePseudoConstants(nil)
 
+	local updateLimits = self.config.updateLimits
     local current = self.axis:parsecoordinate(pt)
 
 	-- this here defines the math functions for x, y, or z.
@@ -223,7 +224,9 @@ function Plothandler:surveypoint(pt)
 
     if current.x[1] ~= nil then
         current = self.axis:preparecoordinate(current)
-        self.axis:updatelimitsforcoordinate(current)
+		if updateLimits then
+			self.axis:updatelimitsforcoordinate(current)
+		end
     end
     self.axis:datapointsurveyed(current, self)
     
@@ -345,6 +348,7 @@ function PlothandlerConfig:constructor()
     self.unboundedCoords = UnboundedCoords.discard
     self.warnForfilterDiscards=true
     self.pointmetarel = PointMetaRel.axiswide
+	self.updateLimits = true
     return self
 end
 
