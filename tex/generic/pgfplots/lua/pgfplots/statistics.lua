@@ -49,7 +49,7 @@ function PercentileEstimator:getValue(percentile, data)
 	error("Use implementation of PercentileEstimator, not interface")
 end
 
--- LegacyPgfplotsPercentileEstimator is the percentile estimator as it has been shipped with pgfplots.
+-- LegacyPgfplotsPercentileEstimator is a minimally repaired percentile estimator as it has been shipped with pgfplots.10 .
 -- I decided to mark it as deprecated because it is non-standard and not comparable with other programs.
 LegacyPgfplotsPercentileEstimator = newClassExtends(PercentileEstimator)
 function LegacyPgfplotsPercentileEstimator:constructor()
@@ -76,6 +76,32 @@ function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	return res
 end
 
+-- LegacyBadPgfplotsPercentileEstimator is _the_ percentile estimator as it has been shipped with pgfplots 1.10.
+-- It has bugs and is non-standard. Don't use it.
+LegacyBadPgfplotsPercentileEstimator = newClassExtends(PercentileEstimator)
+function LegacyBadPgfplotsPercentileEstimator:constructor()
+end
+function LegacyBadPgfplotsPercentileEstimator:__tostring()
+	return "estimator=legacy*";
+end
+function LegacyBadPgfplotsPercentileEstimator:getValue(percentile, data)
+	if not percentile or not data then error("Arguments must not be nil") end
+	local numCoords = #data
+	local h = (numCoords-1) * percentile
+
+	local offset_low = mathfloor(h)
+	local isInt = ( h==offset_low )
+
+	local offset_high = offset_low+1 
+	
+	local x_low = self:getIndex(data, offset_low+1)
+	local x_up = self:getIndex(data, offset_high+1)
+	local res = x_low
+	if not isInt then
+		res = 0.5 * (res + x_up)
+	end
+	return res
+end
 ----------------
 
 ParameterizedPercentileEstimator = newClassExtends(PercentileEstimator)
@@ -160,6 +186,8 @@ end
 getPercentileEstimator = function(estimatorName) 
 	if estimatorName == "legacy" then
 		return LegacyPgfplotsPercentileEstimator.new()
+	elseif estimatorName == "legacy*" then
+		return LegacyBadPgfplotsPercentileEstimator.new()
 	elseif estimatorName == "R1" then
 		return ParameterizedPercentileEstimator.new(1)
 	elseif estimatorName == "R2" then
