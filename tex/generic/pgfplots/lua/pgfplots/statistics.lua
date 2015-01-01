@@ -362,7 +362,7 @@ function BoxPlotPlothandler:surveyend()
 		"\\pgfplotsplothandlersurveyend@boxplot@set{median}{"         .. toTeXstring(computed.median) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper quartile}{" .. toTeXstring(computed.upperQuartile) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(computed.upperWhisker) .. "}" ..
-		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(computed.numCoords) .. "}"
+		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(# self.boxplotInput) .. "}"
 		
 	Plothandler.surveystart(self)
 	
