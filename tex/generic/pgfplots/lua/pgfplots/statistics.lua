@@ -354,7 +354,6 @@ function BoxPlotPlothandler:surveyend()
 	self.boxplotSurveyMode = false
 
 	local computed = boxPlotCompute( self.boxPlotRequest, self.boxplotInput )
-	self.boxplotInput = nil
 
 	local texResult = 
 		"\\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{"  .. toTeXstring(computed.lowerWhisker) .. "}" ..
@@ -364,6 +363,7 @@ function BoxPlotPlothandler:surveyend()
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(computed.upperWhisker) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(# self.boxplotInput) .. "}"
 		
+	self.boxplotInput = nil
 	Plothandler.surveystart(self)
 	
 	local outliers = computed.outliers
