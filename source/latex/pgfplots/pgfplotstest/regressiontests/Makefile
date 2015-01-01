@@ -88,8 +88,8 @@ DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 # the following two variables control which PGF version is to be used for the references and the actual files, respectively:
 #PGF_REFERENCE_PATH=~/code/tex/pgf
-#PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
-PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
+PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
+#PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
 PGF_ACTUAL_PATH=$(PGF_REFERENCE_PATH)
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
@@ -231,7 +231,8 @@ endif
 %.pdf: %.tex %.compile.sh $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
 	@echo "$(STATISTICS) $@: recompiling $< ..."
 	@rm -f $@; \
-	export TEXINPUTS=.:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/latex//:$(TEXINPUTS); \
+	export TEXINPUTS="./:$(PGFPLOTS_GIT_BASEDIR)/tex//:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/latex//:"; \
+	export LUAINPUTS="$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/:$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/generic/pgf/libraries/luamath/:"; \
 	bash ./$(@:.pdf=.compile.sh) $(<:.tex=) 1>$(<:.tex=.log.all) 2>&1  || \
 		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 
