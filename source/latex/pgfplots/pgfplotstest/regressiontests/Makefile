@@ -58,7 +58,7 @@
 
 # files with this suffix are in .gitignore
 LUA_BACKEND_SUFFIX=_luabackend
-AUTOMATIC_LUALATEX_BACKEND_TESTS=$(shell grep -v "\#" < automatic_luatest.list )
+AUTOMATIC_LUALATEX_BACKEND_TESTS=$(shell grep -v "\#" < luatests_automatic.list )
 GENERATED_LUALATEX_BACKEND_TESTS=$(AUTOMATIC_LUALATEX_BACKEND_TESTS:%.tex=%$(LUA_BACKEND_SUFFIX).tex)
 
 UNIT_SOURCES=$(wildcard unittest_*.tex) $(GENERATED_LUALATEX_BACKEND_TESTS)
