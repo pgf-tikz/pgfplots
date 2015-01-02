@@ -55,6 +55,26 @@ function Coord:__tostring()
     return result
 end
 
+local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
+
+-- a reference to a Coord which is returned by math expressions involving 'x', 'y', or 'z'
+-- see surveystart()
+local pseudoconstant_pt = nil
+local function pseudoconstant_x() return pseudoconstant_pt.x[1] end
+local function pseudoconstant_y() return pseudoconstant_pt.x[2] end
+local function pseudoconstant_z() return pseudoconstant_pt.x[3] end
+local function pseudoconstant_rawx() return pgftonumber(pseudoconstant_pt.unfiltered.x[1]) end
+local function pseudoconstant_rawy() return pgftonumber(pseudoconstant_pt.unfiltered.x[2]) end
+local function pseudoconstant_rawz() return pgftonumber(pseudoconstant_pt.unfiltered.x[3]) end
+local function pseudoconstant_meta() return pseudoconstant_pt.meta end
+
+-- @return the old value
+local function updatePseudoConstants(pt)
+	local old = pseudoconstant_pt
+	pseudoconstant_pt = pt
+	return old
+end
+
 -------------------------------------------------------
 
 LinearMap = newClass()
@@ -178,21 +198,6 @@ function Plothandler:setperpointmetalimits(pt)
     end
 end
 
-local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
-
-local pseudoconstant_pt = nil
-local function pseudoconstant_x() return pseudoconstant_pt.x[1] end
-local function pseudoconstant_y() return pseudoconstant_pt.x[2] end
-local function pseudoconstant_z() return pseudoconstant_pt.x[3] end
-local function pseudoconstant_rawx() return pgftonumber(pseudoconstant_pt.unfiltered.x[1]) end
-local function pseudoconstant_rawy() return pgftonumber(pseudoconstant_pt.unfiltered.x[2]) end
-local function pseudoconstant_rawz() return pgftonumber(pseudoconstant_pt.unfiltered.x[3]) end
-local function pseudoconstant_meta() return pseudoconstant_pt.meta end
-
-local function updatePseudoConstants(pt)
-	pseudoconstant_pt = pt
-end
-
 -- @see \pgfplotsplothandlersurveystart
 function Plothandler:surveystart()
 	stringToFunctionMap["x"] = pseudoconstant_x
@@ -216,7 +221,7 @@ function Plothandler:surveypoint(pt)
 	updatePseudoConstants(nil)
 
 	local updateLimits = self.config.updateLimits
-    local current = self.axis:parsecoordinate(pt)
+    local current = self.axis:parsecoordinate(pt, self.config.filterExpressionByDir)
 
 	-- this here defines the math functions for x, y, or z.
 	-- FIXME: are there any hidden callers which rely on these constants in parsecoordinate!?
@@ -349,7 +354,8 @@ function PlothandlerConfig:constructor()
     self.warnForfilterDiscards=true
     self.pointmetarel = PointMetaRel.axiswide
 	self.updateLimits = true
-    return self
+	self.filterExpressionByDir = {"", "", ""}
+	return self
 end
 
 -------------------------------------------------------
@@ -644,6 +650,22 @@ function Axis:preparecoord(dir, value)
     return value
 end
 
+function Axis:filtercoord(dir, ptCoords, filterExpressionByDir)
+	local result = ptCoords.x[dir]
+	if filterExpressionByDir[dir]:len() > 0 then
+
+		for j = 1,#ptCoords.x do
+			ptCoords.x[j] = pgftonumber(ptCoords.x[j])
+		end
+		local old = updatePseudoConstants(ptCoords)
+
+		result = pgfmathparse(filterExpressionByDir[dir])
+
+		updatePseudoConstants(old)
+	end
+	return result
+end
+
 -- PRIVATE
 -- @see \pgfplotsaxisserializedatapoint@private
 function Axis:serializeCoordToPgfplotsPrivate(pt)
@@ -670,7 +692,7 @@ end
 -- PRIVATE
 --
 -- @see \pgfplotsaxisparsecoordinate
-function Axis:parsecoordinate(pt)
+function Axis:parsecoordinate(pt, filterExpressionByDir)
     -- replace empty strings by 'nil':
     for i = 1,3 do
         pt.x[i] = stringOrDefault(pt.x[i], nil)
@@ -694,8 +716,9 @@ function Axis:parsecoordinate(pt)
     -- FIXME : self:prefilter(pt[i])
     for i = 1,self:loopMax() do
         result.x[i] = self:preparecoord(i, pt.x[i])
-        -- FIXME : 
-        -- result.x[i] = self:filtercoord(i, result.x[i])
+    end
+    for i = 1,self:loopMax() do
+        result.x[i] = self:filtercoord(i, result, filterExpressionByDir)
     end
     -- FIXME : result.x = self:xyzfilter(result.x)
 
