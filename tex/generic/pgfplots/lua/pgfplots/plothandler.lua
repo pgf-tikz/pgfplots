@@ -651,6 +651,7 @@ function Axis:preparecoord(dir, value)
 end
 
 function Axis:filtercoord(dir, ptCoords, filterExpressionByDir)
+	if not dir or not ptCoords or not filterExpressionByDir then error("Arguments must not be nil") end
 	local result = ptCoords.x[dir]
 	if filterExpressionByDir[dir]:len() > 0 then
 
