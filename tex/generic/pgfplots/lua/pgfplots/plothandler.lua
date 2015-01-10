@@ -714,11 +714,14 @@ function Axis:parsecoordinate(pt, filterExpressionByDir)
     end
     result.unfiltered = unfiltered
 
+	-- copy values such that filtercoord can access them in the same order as the TeX impl.
+    for i = 1,self:loopMax() do
+		result.x[i] = pt.x[i]
+	end
+
     -- FIXME : self:prefilter(pt[i])
     for i = 1,self:loopMax() do
         result.x[i] = self:preparecoord(i, pt.x[i])
-    end
-    for i = 1,self:loopMax() do
         result.x[i] = self:filtercoord(i, result, filterExpressionByDir)
     end
     -- FIXME : result.x = self:xyzfilter(result.x)
