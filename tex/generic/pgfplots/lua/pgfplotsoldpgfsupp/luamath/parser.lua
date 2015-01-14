@@ -19,7 +19,7 @@
 -- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 -- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 ----------------------------------------------------------------------------------------------------
--- Date of this copy: Sa 27. Dez 11:04:50 CET 2014 ---
+-- Date of this copy: Mi 14. Jan 21:15:32 CET 2015 ---
 
 
 
@@ -33,7 +33,7 @@
 --
 -- See the file doc/generic/pgf/licenses/LICENSE for more details.
 --
--- $Id: pgfluamath.parser.lua,v 1.22 2014/10/11 20:03:21 cfeuersaenger Exp $	
+-- $Id: parser.lua,v 1.1 2014/12/27 14:11:49 cfeuersaenger Exp $	
 --
 -- usage:
 --
