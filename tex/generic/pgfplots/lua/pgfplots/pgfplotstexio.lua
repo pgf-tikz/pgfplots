@@ -416,10 +416,18 @@ function texAddplotExpressionCoordinateGenerator(
 		samples,
 		variableNames)
 
+	local messageOnFailure
 	local compileErrorOnFailure
 	if debugMode == "compileerror" then
 		compileErrorOnFailure = true
-	elseif debugMode ~= "off" and debugMode ~= "verbose" then
+		messageOnFailure = true
+	elseif debugMode == "off" or debugMode == "verbose" then
+		messageOnFailure = true
+		compileErrorOnFailure = false
+	elseif debugMode == "off and silent" then
+		messageOnFailure = false
+		compileErrorOnFailure = false
+	else
 		error("Got unknown debugMode = " .. debugMode )
 	end
 	
@@ -434,7 +442,7 @@ function texAddplotExpressionCoordinateGenerator(
 			success = resultOfGenerator
 		end
 
-		if not success and type(resultOfGenerator) ~= "boolean" then
+		if messageOnFailure and not success and type(resultOfGenerator) ~= "boolean" then
 			log("log", "LUA survey failed: " .. resultOfGenerator .. ". Use \\pgfplotsset{lua debug} to see more.\n")
 		end
 	end
