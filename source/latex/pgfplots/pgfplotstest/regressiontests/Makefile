@@ -61,11 +61,15 @@ LUA_BACKEND_SUFFIX=_luabackend
 AUTOMATIC_LUALATEX_BACKEND_TESTS=$(shell grep -v "\#" < luatests_automatic.list )
 GENERATED_LUALATEX_BACKEND_TESTS=$(AUTOMATIC_LUALATEX_BACKEND_TESTS:%.tex=%$(LUA_BACKEND_SUFFIX).tex)
 
-UNIT_SOURCES=$(wildcard unittest_*.tex) $(GENERATED_LUALATEX_BACKEND_TESTS)
+AUTOMATIC_LUALATEX_TO_PDFTEX_FALLBACK_TESTS=$(shell grep -v "\#" < luatests_automatic_texfallback.list )
+GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS=$(AUTOMATIC_LUALATEX_TO_PDFTEX_FALLBACK_TESTS:%.tex=%$(LUA_BACKEND_SUFFIX).tex)
+
+UNIT_SOURCES=$(wildcard unittest_*.tex) $(GENERATED_LUALATEX_BACKEND_TESTS) $(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS)
 
 UNIT_PDFS=$(UNIT_SOURCES:.tex=.pdf)
 DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 DIFF_MEASURES_LUABACKEND_ONLY=$(GENERATED_LUALATEX_BACKEND_TESTS:.tex=.diff)
+DIFF_MEASURES_LUABACKEND_FALLBACKS_ONLY=$(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS:.tex=.diff)
 
 # REQUIRES apcalc package ('calc' executable)
 ACCEPTED_NORMALIZED_ERROR=5e-4
@@ -106,6 +110,10 @@ $(shell mkdir -p gnuplot references/gnuplot )
 
 diff: $(DIFF_MEASURES) 
 
+diffluaall: difflua diffluafallback
+
+diffluafallback: $(DIFF_MEASURES_LUABACKEND_FALLBACKS_ONLY)
+
 difflua: $(DIFF_MEASURES_LUABACKEND_ONLY)
 
 pdf: $(UNIT_PDFS) 
@@ -117,13 +125,19 @@ $(GENERATED_LUALATEX_BACKEND_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
 	@echo "Generating $@ from $^ ..."
 	@rm -f $@
 	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=verbose}}" >> $@
-	@echo "% FILE HAS BEEN GENERATED. Do NOT edit. See Makefile." >> $@
+	@echo "% FILE HAS BEEN GENERATED because it is in luatests_automatic.list . Do NOT edit. See Makefile." >> $@
 	@echo "\\input $^" >> $@
 
+$(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
+	@echo "Generating $@ from $^ ..."
+	@rm -f $@
+	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=compileerror}}" >> $@
+	@echo "% FILE HAS BEEN GENERATED because it is in luatests_automatic_texfallback.list . Do NOT edit. See Makefile." >> $@
+	@echo "\\input $^" >> $@
 
 # clean all except for references:
 cleanX:
-	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*-figure* unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)
+	rm -fr $(DIFF_MEASURES) $(UNIT_PDFS) unittest*-figure* unittest*.png $(DIRECTORY_FOR_ACCEPTED_ERRORS) $(GENERATED_LUALATEX_BACKEND_TESTS) $(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS)
 
 %.diff.png: %.diff
 	@
