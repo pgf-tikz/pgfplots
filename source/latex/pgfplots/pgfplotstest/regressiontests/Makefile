@@ -124,14 +124,14 @@ clean: cleanX
 $(GENERATED_LUALATEX_BACKEND_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
 	@echo "Generating $@ from $^ ..."
 	@rm -f $@
-	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=verbose}}" >> $@
+	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=compileerror}}" >> $@
 	@echo "% FILE HAS BEEN GENERATED because it is in luatests_automatic.list . Do NOT edit. See Makefile." >> $@
 	@echo "\\input $^" >> $@
 
 $(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS): %$(LUA_BACKEND_SUFFIX).tex: %.tex
 	@echo "Generating $@ from $^ ..."
 	@rm -f $@
-	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=compileerror}}" >> $@
+	@echo "\\AtBeginDocument{\\pgfplotsset{lua backend, lua debug=verbose}}" >> $@
 	@echo "% FILE HAS BEEN GENERATED because it is in luatests_automatic_texfallback.list . Do NOT edit. See Makefile." >> $@
 	@echo "\\input $^" >> $@
 
