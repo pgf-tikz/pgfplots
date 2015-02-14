@@ -38,40 +38,6 @@
 }
 \pgfplotsutil@IfUndefined{pgfutil@IfUndefined}{\let\pgfutil@IfUndefined=\pgfplotsutil@IfUndefined}{}
 
-\newif\ifpgfplots@LUA@supported
-\pgfutil@IfUndefined{directlua}{%
-	\pgfplots@LUA@supportedfalse
-}{%
-	\pgfplots@LUA@supportedtrue
-}%
-
-% this is an emergency key which allows to switch off LUA support in
-% pgfplots early at boot time. 
-%
-% use \def\pgfplotsenablelua{0} to switch it off. '1' switches it on
-% (or uncommenting the line).
-\pgfutil@IfUndefined{pgfplotsenablelua}{}{%
-	\def\pgfplots@glob@TMPc{1}%
-	\ifx\pgfplots@glob@TMPc\pgfplotsenablelua
-	\else
-		\pgfplots@LUA@supportedfalse
-	\fi
-}%
-
-\pgfkeys{
-	/pgfplots/lua support/.is choice,
-	/pgfplots/lua support/true/.code={\pgfplots@LUA@supportedtrue},%
-	/pgfplots/lua support/false/.code={\pgfplots@LUA@supportedfalse},%
-	/pgfplots/lua support/auto/.code={%
-		\pgfutil@IfUndefined{directlua}{%
-			\pgfplots@LUA@supportedfalse
-		}{%
-			\pgfplots@LUA@supportedtrue
-		}%
-	},%
-	%/pgfplots/lua support/auto,% this is the default anyway
-}
-
 \def\pgfplotsloglevel{4}%
 
 \def\pgfplots@log#1#2{%
@@ -89,6 +55,79 @@
 		\immediate\write-1{Package pgfplots info\pgfplots@log@tmp: #2}%
 	\fi
 }%
+
+\newif\ifpgfplots@LUA@supported
+\pgfutil@IfUndefined{directlua}{%
+	\pgfplots@LUA@supportedfalse
+}{%
+	\pgfplots@LUA@supportedtrue
+}%
+
+% this is an emergency key which allows to switch off LUA support in
+% pgfplots early at boot time. 
+%
+% use \def\pgfplotsenablelua{0} to switch it off. '1' switches it on
+% (or uncommenting the line).
+\pgfutil@IfUndefined{pgfplotsenablelua}{}{%
+	\ifpgfplots@LUA@supported
+		\def\pgfplots@glob@TMPc{1}%
+		\ifx\pgfplots@glob@TMPc\pgfplotsenablelua
+			\message{Pgfplots: found emergency control flag \string\pgfplotsenablelua=1. Keeping LUA active.^^J}%
+		\else
+			\message{Pgfplots: found emergency control flag \string\pgfplotsenablelua!=1. Disabling LUA support.^^J}%
+			\pgfplots@LUA@supportedfalse
+		\fi
+	\fi
+}%
+
+\def\pgfplots@alloc@catcodetable{%
+	% it is task of the TeX format to load this.
+	% context comes with it out-of-the box, and pgfplots.sty loads luatexbase.sty
+	\pgfutil@IfUndefined{newcatcodetable}{%
+		% Oh. The TeX format does not have support for
+		% \newcatcodetable and the associated pgfplots module did not
+		% load an addon-package!?
+		%
+		% We _need_ the catcodes which are active when pgfplots starts.
+		% And there is no central mechanism to allocate catcodes. I will
+		% take one for me now and hope that it will not be used (soon).
+		\def\pgfplotsglobalretval{41}%
+	}{%
+		% the macro \pgfplots@luabackend@table is never used by TeX
+		% code.
+		% I only need the value inside of the .lua files: whenever
+		% they print something, they need to use it.
+		\newcatcodetable\pgfplots@luabackend@table
+		\let\pgfplotsglobalretval=\pgfplots@luabackend@table
+	}%
+}%
+\ifpgfplots@LUA@supported
+	\let\pgfplotsutil@directlua=\directlua
+	\pgfplotsutil@directlua{
+		tex.enableprimitives("pgfplotsutil@",{ "savecatcodetable", "luaescapestring"})}%
+	\pgfplots@log3{Initializing with LUA version \pgfplotsutil@directlua{tex.print(_VERSION)}}%
+	\pgfplotsutil@directlua{require("pgfplots"); pgfplots.pgfplotsversion = "\pgfplotsversion";}%
+	%
+	\pgfplots@alloc@catcodetable
+	\c@pgf@counta=\pgfplotsglobalretval
+	\pgfplotsutil@savecatcodetable\c@pgf@counta
+	\pgfplotsutil@directlua{pgfplots.LOAD_TIME_CATCODETABLE = \the\c@pgf@counta}%
+\fi
+
+\pgfkeys{
+	/pgfplots/lua support/.is choice,
+	/pgfplots/lua support/true/.code={\pgfplots@LUA@supportedtrue},%
+	/pgfplots/lua support/false/.code={\pgfplots@LUA@supportedfalse},%
+	/pgfplots/lua support/auto/.code={%
+		\pgfutil@IfUndefined{directlua}{%
+			\pgfplots@LUA@supportedfalse
+		}{%
+			\pgfplots@LUA@supportedtrue
+		}%
+	},%
+	%/pgfplots/lua support/auto,% this is the default anyway
+}
+
 \def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
 \def\pgfplotstable@error@pkg#1{\PackageError{pgfplotstable}{#1}{}}%
 % DO NOT USE THIS METHOD DIRECTLY: use \pgfplotswarning{<warning name>}<args>\pgfeov
