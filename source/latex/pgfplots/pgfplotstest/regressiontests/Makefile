@@ -91,9 +91,9 @@ TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 # the following two variables control which PGF version is to be used for the references and the actual files, respectively:
-#PGF_REFERENCE_PATH=~/code/tex/pgf
+PGF_REFERENCE_PATH=~/code/tex/pgf
 #PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
-PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
+#PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
 PGF_ACTUAL_PATH=$(PGF_REFERENCE_PATH)
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
