@@ -73,6 +73,7 @@
 	/pgfplots/table/header/false/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headerfalse},
 	/pgfplots/table/header/has colnames/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
 	/pgfplots/table/header=true,
+	/pgfplots/table/search path/.initial=.,
 	/pgfplots/table/x index/.initial=0,
 	/pgfplots/table/x/.initial=,
 	/pgfplots/table/x expr/.initial=,
@@ -916,6 +917,79 @@
 
 {\catcode`\"=12 \gdef\pgfplots@dquote{"}}
 
+% gets the search path (after applying some basic sanity checks)
+\def\pgfplotstable@get@search@path{%
+	\pgfkeysgetvalue{/pgfplots/table/search path}\pgfplotsretval
+	\ifx\pgfplotsretval\pgfutil@empty
+		\def\pgfplotsretval{.}%
+		\pgfkeyslet{/pgfplots/table/search path}\pgfplotsretval
+	\fi
+	%
+	\def\b@pgfplotstable@search@contains@cwd{0}%
+	\def\pgfplotstable@loc@TMPd{.}%
+	\def\pgfplotstable@loc@TMPc{./}%
+	\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotsretval}\as\pgfplotstable@loc@TMPa{%
+		\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPd
+			\def\b@pgfplotstable@search@contains@cwd{1}%
+		\fi
+		\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPc
+			\def\b@pgfplotstable@search@contains@cwd{1}%
+		\fi
+	}%
+	%
+	\if0\b@pgfplotstable@search@contains@cwd
+		\t@pgfplotstable@a=\expandafter{\pgfplotsretval}%
+		\edef\pgfplotsretval{.,\the\t@pgfplotstable@a}%
+		\pgfkeyslet{/pgfplots/table/search path}\pgfplotsretval
+	\fi
+}
+
+%
+% POSTCONDITION:
+% - \r@pgfplots@reada is the opened result file (or eof if there is no
+%   such file).
+% - \pgfplotstableread@filename is the first found file path.
+\def\pgfplotstable@search@and@open@file{%
+	\pgfplotstable@get@search@path
+	%
+	\let\pgfplotstableread@filename@name=\pgfplotstableread@filename
+	%
+	\def\b@pgfplotstable@search@done{0}%
+	\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotsretval}\as\pgfplotstable@loc@TMPa{%
+		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+			% silently skip empty entries in the list.
+		\else
+			\if0\b@pgfplotstable@search@done
+				\t@pgfplotstable@a=\expandafter{\pgfplotstable@loc@TMPa}%
+				\t@pgfplots@tokc=\expandafter{\pgfplotstableread@filename@name}%
+				\edef\pgfplotstableread@filename{\the\t@pgfplotstable@a/\the\t@pgfplots@tokc}%
+%\message{Checking file \pgfplotstableread@filename^^J}%
+				%
+				\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
+				\ifeof\r@pgfplots@reada
+					\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+				\else
+					\pgfplots@warning{%
+						You requested to open table '\pgfplotstableread@filename', but there is also a '\pgfplotstableread@filename.tex'. 
+						TeX will automatically append the suffix '.tex', so I will now open '\pgfplotstableread@filename.tex'.
+						Please make sure you don't accidentally load TeX files - this may produce unrecoverable errors.}%
+					\closein\r@pgfplots@reada
+					\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+				\fi
+				%
+				\ifeof\r@pgfplots@reada
+				\else
+					\def\b@pgfplotstable@search@done{1}%
+				\fi
+			\fi
+		\fi
+	}%
+	%
+	\if0\b@pgfplotstable@search@done
+		\let\pgfplotstableread@filename=\pgfplotstableread@filename@name
+	\fi
+}%
+
 % Opens \pgfplotstableread@filename.
 \def\pgfplotstableread@openfile{%
 	\def\pgfplotstable@loc@TMPa{\pgfutil@in@{ }}%
@@ -926,20 +1000,11 @@
 	\fi
 	\let\pgfplotstableread@old@crcr=\\%
 	\def\\{\string\\}% just to make sure we don't try to open inline table data...
-	\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
-	\ifeof\r@pgfplots@reada
-		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
-	\else
-		\pgfplots@warning{%
-			You requested to open table '\pgfplotstableread@filename', but there is also a '\pgfplotstableread@filename.tex'. 
-			TeX will automatically append the suffix '.tex', so I will now open '\pgfplotstableread@filename.tex'.
-			Please make sure you don't accidentally load TeX files - this may produce unrecoverable errors.}%
-		\closein\r@pgfplots@reada
-		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
-	\fi
+	%
+	\pgfplotstable@search@and@open@file
 	%
 	\ifeof\r@pgfplots@reada
-		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename'. In case you intended to provide inline data: maybe TeX screwed up your end-of-lines? Try `row sep=crcr' and terminate your lines with `\string\\' (refer to the pgfplotstable manual for details)}\pgfeov%
+		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename' in 'search path=\pgfkeysvalueof{/pgfplots/table/search path}'. In case you intended to provide inline data: maybe TeX screwed up your end-of-lines? Try `row sep=crcr' and terminate your lines with `\string\\' (refer to the pgfplotstable manual for details)}\pgfeov%
 		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
 		\def\pgfplotstableread@ready{0}%
 	\fi
