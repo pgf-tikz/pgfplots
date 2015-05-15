@@ -62,6 +62,7 @@
 \newif\ifpgfplots@tableread@to@listener
 \newif\ifpgfplots@tableread@use@begingroup
 \newif\ifpgfplotstable@trimcells
+\newif\ifpgfplotstable@search@path@implicit@CWD
 
 \pgfkeys{%
 	/pgfplots/table/every table/.style={},
@@ -74,6 +75,8 @@
 	/pgfplots/table/header/has colnames/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
 	/pgfplots/table/header=true,
 	/pgfplots/table/search path/.initial=.,
+	/pgfplots/table/search path/implicit ./.is if=pgfplotstable@search@path@implicit@CWD,
+	/pgfplots/table/search path/implicit .=true,
 	/pgfplots/table/x index/.initial=0,
 	/pgfplots/table/x/.initial=,
 	/pgfplots/table/x expr/.initial=,
@@ -925,24 +928,41 @@
 		\pgfkeyslet{/pgfplots/table/search path}\pgfplotsretval
 	\fi
 	%
-	\def\b@pgfplotstable@search@contains@cwd{0}%
-	\def\pgfplotstable@loc@TMPd{.}%
-	\def\pgfplotstable@loc@TMPc{./}%
-	\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotsretval}\as\pgfplotstable@loc@TMPa{%
-		\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPd
-			\def\b@pgfplotstable@search@contains@cwd{1}%
+	\ifpgfplotstable@search@path@implicit@CWD
+		\def\b@pgfplotstable@search@contains@cwd{0}%
+		\def\pgfplotstable@loc@TMPd{.}%
+		\def\pgfplotstable@loc@TMPc{./}%
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotsretval}\as\pgfplotstable@loc@TMPa{%
+			\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPd
+				\def\b@pgfplotstable@search@contains@cwd{1}%
+			\fi
+			\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPc
+				\def\b@pgfplotstable@search@contains@cwd{1}%
+			\fi
+		}%
+		%
+		\if0\b@pgfplotstable@search@contains@cwd
+			\t@pgfplotstable@a=\expandafter{\pgfplotsretval}%
+			\edef\pgfplotsretval{.,\the\t@pgfplotstable@a}%
+			\pgfkeyslet{/pgfplots/table/search path}\pgfplotsretval
 		\fi
-		\ifx\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPc
-			\def\b@pgfplotstable@search@contains@cwd{1}%
-		\fi
-	}%
-	%
-	\if0\b@pgfplotstable@search@contains@cwd
-		\t@pgfplotstable@a=\expandafter{\pgfplotsretval}%
-		\edef\pgfplotsretval{.,\the\t@pgfplotstable@a}%
-		\pgfkeyslet{/pgfplots/table/search path}\pgfplotsretval
 	\fi
 }
+
+\def\pgfplotstable@search@path@add@slash#1{%
+	\def\pgfplotsretval{#1/}%
+	\def\pgfplotstable@loc@TMPd{./}%
+	\def\pgfplotstable@loc@TMPc{.//}%
+	\ifx\pgfplotsretval\pgfplotstable@loc@TMPd
+		% Ah -- we have #1='.' Do NOT use a slash at all in order to
+		% not disable the processing of TEXINPUTS (if pdftex finds ./
+		% , it will NOT evaluated TEXINPUTS as it seems)
+		\let\pgfplotsretval=\pgfutil@empty
+	\fi
+	\ifx\pgfplotsretval\pgfplotstable@loc@TMPc
+		\let\pgfplotsretval=\pgfutil@empty
+	\fi
+}%
 
 %
 % POSTCONDITION:
@@ -960,10 +980,12 @@
 			% silently skip empty entries in the list.
 		\else
 			\if0\b@pgfplotstable@search@done
-				\t@pgfplotstable@a=\expandafter{\pgfplotstable@loc@TMPa}%
+				%
+				\expandafter\pgfplotstable@search@path@add@slash\expandafter{\pgfplotstable@loc@TMPa}%
+				%
+				\t@pgfplotstable@a=\expandafter{\pgfplotsretval}%
 				\t@pgfplots@tokc=\expandafter{\pgfplotstableread@filename@name}%
-				\edef\pgfplotstableread@filename{\the\t@pgfplotstable@a/\the\t@pgfplots@tokc}%
-%\message{Checking file \pgfplotstableread@filename^^J}%
+				\edef\pgfplotstableread@filename{\the\t@pgfplotstable@a\the\t@pgfplots@tokc}%
 				%
 				\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
 				\ifeof\r@pgfplots@reada
