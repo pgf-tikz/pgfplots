@@ -538,7 +538,9 @@
 % @see \pgfplotsforeachungrouped
 % This loop can be nested.
 \long\def\pgfplotsforeachentryinCSV#1#2#3{%
+	\pgfplots@for@reset@break
 	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2,\pgfplots@EOI
+	\pgfplots@for@restore@break
 }%
 % A variant of \pgfplotsforeachentryinCSV where a trailing comma
 % indicates the end of input.
@@ -551,7 +553,9 @@
 %
 % This loop can be nested.
 \long\def\pgfplotsforeachentryinCSVisterminated#1#2#3{%
+	\pgfplots@for@reset@break
 	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2\pgfplots@EOI
+	\pgfplots@for@restore@break
 }%
 % #1 : the loop macro
 % #2 : the loop BODY
@@ -567,7 +571,13 @@
 \long\def\pgfplotsforeachentryinCSV@next#1#2#3,{%
 	\def#1{#3}%
 	#2\relax
-	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}%
+	\ifpgffor@continue
+		\long\def\pgfplotsforeachentryinCSV@next@{\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}}%
+	\else
+		% ah, \breakforeach reached.
+		\def\pgfplotsforeachentryinCSV@next@{\pgfplots@gobble@until@EOI}%
+	\fi
+	\pgfplotsforeachentryinCSV@next@
 }%
 
 
@@ -606,7 +616,26 @@
 		\pgfplots@error{Found unexpected characters: expected 'in '.}%
 	}%
 }
+
+\def\pgfplots@for@reset@break{%
+	\edef\pgfplotsforeachungrouped@@@{%
+		\ifpgffor@continue
+			\noexpand\pgffor@continuetrue
+		\else
+			\noexpand\pgffor@continuefalse
+		\fi
+	}%
+	%
+	\pgffor@continuetrue
+}%
+
+\def\pgfplots@for@restore@break{%
+	\pgfplotsforeachungrouped@@@
+}%
+
 \long\def\pgfplotsforeachungrouped@@#1#2#3#4{%
+	\pgfplots@for@reset@break
+	%
 	\def\pgfplots@foreach@loc@TMPa{#2}%
 	\ifx\pgfplots@foreach@loc@TMPa\pgfutil@empty
 		\pgfplotsforeachungrouped@isuniform{#3}%
@@ -622,6 +651,9 @@
 		% invoke  \foreach #1/#2 in {#3} and transport results:
 		\pgfplotsforeachungroupedslashed@#1/#2{#3}{#4}%
 	\fi
+	%
+	% restore the old value of \breakforeach:
+	\pgfplots@for@restore@break
 }
 \let\pgfplots@original@pgfmathadd@=\pgfmathadd@
 
@@ -697,27 +729,29 @@
 }%
 \long\def\pgfplotsforeachungroupeduniform@loop@mathengine#1#2#3#4#5#6#7{%
 	#1{#2}{#3}%
-	\ifdim\pgfmathresult pt=0pt
-		\pgfutil@in@{.0\relax}{#2\relax}%
-		\ifpgfutil@in@
-			\def\pgfplotsforeach@loc@TMP##1.0\relax{%
-				\def#4{##1}%
-			}%
-			\pgfplotsforeach@loc@TMP#2\relax
-		\else
-			\def#4{#2}%
+	\ifpgffor@continue
+		\ifdim\pgfmathresult pt=0pt
+			\pgfutil@in@{.0\relax}{#2\relax}%
+			\ifpgfutil@in@
+				\def\pgfplotsforeach@loc@TMP##1.0\relax{%
+					\def#4{##1}%
+				}%
+				\pgfplotsforeach@loc@TMP#2\relax
+			\else
+				\def#4{#2}%
+			\fi
+			#6\relax
+			\pgfmathadd@{#2}{#5}%
+			\t@pgfplots@toka={{#1}}%
+			\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+			\t@pgfplots@tokc={{#3}{#4}{#5}{#6}{--}}%
+			% loop!
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
+				\the\t@pgfplots@toka
+				{\the\t@pgfplots@tokb}%
+				\the\t@pgfplots@tokc}%
+			\expandafter\pgfplots@loc@TMPa
 		\fi
-		#6\relax
-		\pgfmathadd@{#2}{#5}%
-		\t@pgfplots@toka={{#1}}%
-		\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
-		\t@pgfplots@tokc={{#3}{#4}{#5}{#6}{--}}%
-		% loop!
-		\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsforeachungroupeduniform@loop@mathengine
-			\the\t@pgfplots@toka
-			{\the\t@pgfplots@tokb}%
-			\the\t@pgfplots@tokc}%
-		\expandafter\pgfplots@loc@TMPa
 	\fi
 }%
 
