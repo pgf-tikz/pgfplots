@@ -1792,18 +1792,19 @@
 	}%
 }
 
+% This is part of \pgfplots@assign@default@tick@foraxis and relies on
+% its temporary variables.
+%
+% INPUT: 
+%   \MIN : the lower axis limit of #1 (a TeX register, in transformed range)
+%   \MAX : same with upper axis limit of #1
+% OUTPUT:
+%   \H   :  will contain the (transformed) distance between adjacent ticks
+%   \aftergroup\pgfplots@isuniformticktrue set if it applies
+%
+%
 \def\pgfplots@ticks@compute@tick@distance#1{%
-	% Ok, we have either log or linear axis and need default
-	% ticks MIN,MIN+H,...,MAX.
-	\let\MINH=\pgf@xa
-	\let\H=\pgf@xb
-	\let\MAX=\pgf@ya
-	\let\MIN=\pgf@yb
 	% compute step size 'H':
-	\MAX=\csname pgfplots@#1max\endcsname pt %
-	\advance\MAX by0.001pt % avoid round errors
-	%\expandafter\MIN\the\c@pgf@counta pt
-	\MIN=\csname pgfplots@#1min\endcsname pt %
 	\H=\MAX
 	\advance\H by-\MIN
 	\ifdim\H<0pt \H=-1\H \fi
@@ -1830,43 +1831,19 @@
 		\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\Hmacro
 		\let\Hmacro=\pgfmathresult
 		%
-%\message{snapped-to-nicest = \Hmacro^^J}%
-		\aftergroup\pgfplots@isuniformticktrue
-		% The following code is carried out in floating point
-		% arithmetics because it requires large data ranges.
-		%
-		% I want to compute MIN@new := I*H  where I is chosen
-		% such that MIN = I*H + rest with rest < H.
-		% The problem is the possibly large range of MIN. I
-		% can't work completely in the transformed datarange,
-		% so numbers get too large.
-		%
-		% So, compute I := int( MIN / H )  (integer truncation)
-		% in float arithmetics and then MIN@new := I*H
-		\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
-		\pgfmathfloatint@{\pgfmathresult}%
-		\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
-		\let\MIN@new=\pgfmathresult
 		% Ok, we are ready.
 		% Now, convert everything into the fixed point data
 		% range:
 		\ifpgfplots@is@datascaled
-			\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
-			\MIN=\pgfmathresult pt
 			\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
 			\H=\pgfmathresult pt
 		\else
-			\pgfmathfloattofixed\MIN@new
-			\MIN=\pgfmathresult pt
 			\pgfmathfloattofixed\Hmacro
 			\H=\pgfmathresult pt
 		\fi
 		%
-		% And, since we have used finite precision, I is most
-		% likely to be large. So: subtract one H. In the worst
-		% case, this produces one tick position too much (but
-		% it won't be printed).
-		\advance\MIN by-\H\relax
+%\message{snapped-to-nicest = \Hmacro^^J}%
+		\aftergroup\pgfplots@isuniformticktrue
 	\else
 		% CASE LOG AXIS
 		%
@@ -1897,6 +1874,66 @@
 		\fi
 %\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
 		\H=\pgfplots@loc@log@to@display@log@scale\H
+	\fi
+}
+
+
+% This macro is NECESSARILY part of
+% \pgfplots@assign@default@tick@foraxis:
+%
+% OUTPUT:
+% \csname pgfplots@#1tick\endcsname
+% \csname pgfplots@tick@distance@#1\endcsname
+% FIXME : some \aftergroup trickery...
+\def\pgfplots@assign@default@tick@foraxis@compute#1{%
+	% Ok, we have either log or linear axis and need default
+	% ticks MIN,MIN+H,...,MAX.
+	\let\MINH=\pgf@xa
+	\let\H=\pgf@xb
+	\let\MAX=\pgf@ya
+	\let\MIN=\pgf@yb
+	%
+	\MAX=\csname pgfplots@#1max\endcsname pt %
+	\advance\MAX by0.001pt % avoid round errors
+	%\expandafter\MIN\the\c@pgf@counta pt
+	\MIN=\csname pgfplots@#1min\endcsname pt %
+	%
+	\pgfplots@ticks@compute@tick@distance#1%
+	%
+	% OK, now compute MIN/MAX :
+	\ifpgfplots@cur@is@linear
+		% The following code is carried out in floating point
+		% arithmetics because it requires large data ranges.
+		%
+		% I want to compute MIN@new := I*H  where I is chosen
+		% such that MIN = I*H + rest with rest < H.
+		% The problem is the possibly large range of MIN. I
+		% can't work completely in the transformed datarange,
+		% so numbers get too large.
+		%
+		% So, compute I := int( MIN / H )  (integer truncation)
+		% in float arithmetics and then MIN@new := I*H
+		\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
+		\pgfmathfloatint@{\pgfmathresult}%
+		\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
+		\let\MIN@new=\pgfmathresult
+		%
+		% Now, convert everything into the fixed point data
+		% range:
+		\ifpgfplots@is@datascaled
+			\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
+			\MIN=\pgfmathresult pt
+		\else
+			\pgfmathfloattofixed\MIN@new
+			\MIN=\pgfmathresult pt
+		\fi
+		%
+		% And, since we have used finite precision, I is most
+		% likely to be large. So: subtract one H. In the worst
+		% case, this produces one tick position too much (but
+		% it won't be printed).
+		\advance\MIN by-\H\relax
+	\else
 		% Now, we want to activate the Tick set 
 		%   {lowest, lowest+H, ..., highest}
 		%
@@ -2184,7 +2221,7 @@
 	\fi
 	%
 	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
-		\pgfplots@ticks@compute@tick@distance#1%
+		\pgfplots@assign@default@tick@foraxis@compute#1%
 		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
 		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
 		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
