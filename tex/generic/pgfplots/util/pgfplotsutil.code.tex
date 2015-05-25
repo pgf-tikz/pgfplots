@@ -1,3 +1,6 @@
+%
+%
+%
 %--------------------------------------------
 %
 % Package pgfplots
@@ -538,9 +541,9 @@
 % @see \pgfplotsforeachungrouped
 % This loop can be nested.
 \long\def\pgfplotsforeachentryinCSV#1#2#3{%
-	\pgfplots@for@reset@break
-	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2,\pgfplots@EOI
-	\pgfplots@for@restore@break
+	\pgfplots@for@reset@break{%
+		\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2,\pgfplots@EOI
+	}%
 }%
 % A variant of \pgfplotsforeachentryinCSV where a trailing comma
 % indicates the end of input.
@@ -553,9 +556,9 @@
 %
 % This loop can be nested.
 \long\def\pgfplotsforeachentryinCSVisterminated#1#2#3{%
-	\pgfplots@for@reset@break
-	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2\pgfplots@EOI
-	\pgfplots@for@restore@break
+	\pgfplots@for@reset@break{%
+		\pgfplotsforeachentryinCSVisterminated@loop{#1}{#3}#2\pgfplots@EOI
+	}%
 }%
 % #1 : the loop macro
 % #2 : the loop BODY
@@ -571,13 +574,17 @@
 \long\def\pgfplotsforeachentryinCSV@next#1#2#3,{%
 	\def#1{#3}%
 	#2\relax
-	\ifpgffor@continue
-		\long\def\pgfplotsforeachentryinCSV@next@{\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}}%
-	\else
-		% ah, \breakforeach reached.
-		\def\pgfplotsforeachentryinCSV@next@{\pgfplots@gobble@until@EOI}%
-	\fi
-	\pgfplotsforeachentryinCSV@next@
+	%--------------------------------------------------
+	% FIXME : This here causes regressions for some reason:
+	% \ifpgffor@continue
+	% 	\long\def\pgfplotsforeachentryinCSV@next@{\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}}%
+	% \else
+	% 	% ah, \breakforeach reached.
+	% 	\def\pgfplotsforeachentryinCSV@next@{\pgfplots@gobble@until@EOI}%
+	% \fi
+	% \pgfplotsforeachentryinCSV@next@
+	%-------------------------------------------------- 
+	\pgfplotsforeachentryinCSVisterminated@loop{#1}{#2}%
 }%
 
 
@@ -617,43 +624,35 @@
 	}%
 }
 
-\def\pgfplots@for@reset@break{%
-	\edef\pgfplotsforeachungrouped@@@{%
-		\ifpgffor@continue
-			\noexpand\pgffor@continuetrue
-		\else
-			\noexpand\pgffor@continuefalse
-		\fi
-	}%
-	%
-	\pgffor@continuetrue
-}%
-
-\def\pgfplots@for@restore@break{%
-	\pgfplotsforeachungrouped@@@
+\long\def\pgfplots@for@reset@break#1{%
+	\ifpgffor@continue
+		#1\relax
+		\pgffor@continuetrue
+	\else
+		#1\relax
+		\pgffor@continuefalse
+	\fi
 }%
 
 \long\def\pgfplotsforeachungrouped@@#1#2#3#4{%
-	\pgfplots@for@reset@break
-	%
-	\def\pgfplots@foreach@loc@TMPa{#2}%
-	\ifx\pgfplots@foreach@loc@TMPa\pgfutil@empty
-		\pgfplotsforeachungrouped@isuniform{#3}%
-		\ifpgfplots@loc@tmp
-			% special handling:
-			% \foreach #1 in {a,b,...,c} can be improved:
-			\pgfplotsforeachungroupeduniform@{#1}#3\relax{#4}%
+	\pgfplots@for@reset@break{%
+		%
+		\def\pgfplots@foreach@loc@TMPa{#2}%
+		\ifx\pgfplots@foreach@loc@TMPa\pgfutil@empty
+			\pgfplotsforeachungrouped@isuniform{#3}%
+			\ifpgfplots@loc@tmp
+				% special handling:
+				% \foreach #1 in {a,b,...,c} can be improved:
+				\pgfplotsforeachungroupeduniform@{#1}#3\relax{#4}%
+			\else
+				% invoke  \foreach #1 in {#3} and transport results:
+				\pgfplotsforeachungroupednonuniform@#1{#3}{#4}%
+			\fi
 		\else
-			% invoke  \foreach #1 in {#3} and transport results:
-			\pgfplotsforeachungroupednonuniform@#1{#3}{#4}%
+			% invoke  \foreach #1/#2 in {#3} and transport results:
+			\pgfplotsforeachungroupedslashed@#1/#2{#3}{#4}%
 		\fi
-	\else
-		% invoke  \foreach #1/#2 in {#3} and transport results:
-		\pgfplotsforeachungroupedslashed@#1/#2{#3}{#4}%
-	\fi
-	%
-	% restore the old value of \breakforeach:
-	\pgfplots@for@restore@break
+	}%
 }
 \let\pgfplots@original@pgfmathadd@=\pgfmathadd@
 
@@ -750,7 +749,7 @@
 				\the\t@pgfplots@toka
 				{\the\t@pgfplots@tokb}%
 				\the\t@pgfplots@tokc}%
-			\expandafter\pgfplots@loc@TMPa
+			\expandafter\expandafter\expandafter\pgfplots@loc@TMPa
 		\fi
 	\fi
 }%
