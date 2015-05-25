@@ -1792,6 +1792,276 @@
 	}%
 }
 
+\def\pgfplots@ticks@compute@tick@distance#1{%
+	% Ok, we have either log or linear axis and need default
+	% ticks MIN,MIN+H,...,MAX.
+	\let\MINH=\pgf@xa
+	\let\H=\pgf@xb
+	\let\MAX=\pgf@ya
+	\let\MIN=\pgf@yb
+	% compute step size 'H':
+	\MAX=\csname pgfplots@#1max\endcsname pt %
+	\advance\MAX by0.001pt % avoid round errors
+	%\expandafter\MIN\the\c@pgf@counta pt
+	\MIN=\csname pgfplots@#1min\endcsname pt %
+	\H=\MAX
+	\advance\H by-\MIN
+	\ifdim\H<0pt \H=-1\H \fi
+%\message{Axis limit #1: [\the\MIN:\the\MAX], diff = \the\H.^^J}%
+	\c@pgf@counta=\desirednumticks
+	\advance\c@pgf@counta by-1 %
+	\divide\H by\c@pgf@counta
+%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H^^J}%
+	%
+	% SEARCH for the NEXT FEASABLE H.
+	\edef\Hmacro{\pgf@sys@tonumber\H}%
+	\ifpgfplots@cur@is@linear
+		% CASE LINEAR AXIS
+		\ifpgfplots@is@datascaled
+			% This here works if the scaling trafo is linear.
+			\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{\Hmacro}%
+			\let\Hmacro=\pgfmathresult
+		\else
+			\pgfmathfloatparsenumber{\Hmacro}%
+			\let\Hmacro=\pgfmathresult
+		\fi
+%\message{Got T^{-1}(H#1) = \Hmacro^^J}%
+		%
+		\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\Hmacro
+		\let\Hmacro=\pgfmathresult
+		%
+%\message{snapped-to-nicest = \Hmacro^^J}%
+		\aftergroup\pgfplots@isuniformticktrue
+		% The following code is carried out in floating point
+		% arithmetics because it requires large data ranges.
+		%
+		% I want to compute MIN@new := I*H  where I is chosen
+		% such that MIN = I*H + rest with rest < H.
+		% The problem is the possibly large range of MIN. I
+		% can't work completely in the transformed datarange,
+		% so numbers get too large.
+		%
+		% So, compute I := int( MIN / H )  (integer truncation)
+		% in float arithmetics and then MIN@new := I*H
+		\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
+		\pgfmathfloatint@{\pgfmathresult}%
+		\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
+		\let\MIN@new=\pgfmathresult
+		% Ok, we are ready.
+		% Now, convert everything into the fixed point data
+		% range:
+		\ifpgfplots@is@datascaled
+			\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
+			\MIN=\pgfmathresult pt
+			\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
+			\H=\pgfmathresult pt
+		\else
+			\pgfmathfloattofixed\MIN@new
+			\MIN=\pgfmathresult pt
+			\pgfmathfloattofixed\Hmacro
+			\H=\pgfmathresult pt
+		\fi
+		%
+		% And, since we have used finite precision, I is most
+		% likely to be large. So: subtract one H. In the worst
+		% case, this produces one tick position too much (but
+		% it won't be printed).
+		\advance\MIN by-\H\relax
+	\else
+		% CASE LOG AXIS
+		%
+		% search for the "best" H= j* log(10),  j an integer.
+		%
+		% And prefer j=1 if that is possible (otherwise minor
+		% ticks are not useful).
+		\pgfmath@basic@multiply@{\Hmacro}{\pgfplots@loc@log@from@display@log@scale}%
+		\let\Hmacrobaseten=\pgfmathresult
+		\expandafter\H\pgfmathresult pt
+%\message{ [ H / log(10) = \pgfmathresult ]}%
+		\ifdim\H<2pt
+			\H=1pt
+		\else
+			\ifnum\H<1pt
+				\H=1pt
+			\else
+				\expandafter\pgfmathfloor\expandafter{\pgfmathresult}%
+				\expandafter\H\pgfmathresult pt
+			\fi
+		\fi
+		\ifdim\H=1pt
+			\aftergroup\pgfplots@isuniformticktrue
+			\pgfplots@isuniformticktrue
+		\else
+			\aftergroup\pgfplots@isuniformtickfalse
+			\pgfplots@isuniformtickfalse
+		\fi
+%\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
+		\H=\pgfplots@loc@log@to@display@log@scale\H
+		% Now, we want to activate the Tick set 
+		%   {lowest, lowest+H, ..., highest}
+		%
+		% Where 
+		% 	lowest =  I * log(10) + rest, |rest| < log(10).
+		% this is conceptionally different from the approach for
+		% linear axes, because H = j*log(10).
+		%
+		% remember the original xmin in MINH:
+		\MINH=\MIN
+		%
+		% and compute I and I*log(10) here:
+		\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
+		\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
+		\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+		\ifdim\MIN<0pt
+			% the truncation rounds TOWARDS 0 which is not what I want.
+			\advance\c@pgf@counta by-1
+		\fi
+		\MIN=\pgfplots@loc@log@to@display@log@scale pt
+		\multiply\MIN by\c@pgf@counta
+		\ifpgfplots@isuniformtick
+		\else
+			% This here is a special case to move the first tick
+			% near the lower axis limit.
+			%
+			% "Near" means either directly above or directly below ymin.
+			% 
+			% My application example is as follows:
+			% Let H = 2*log(10).
+			% Furthermore, ymin = 3e-6, ymax= 8e-2. That means we can choose either
+			%    10^{-5}, 10^{-3}, 10^{-1}
+			% or
+			%    10^{-4}, 10^{-2}
+			% as ticks. Well, I prefer the first one.
+			%
+			% HEURISTICS: start as near to ymin as possible!
+			%
+			% We check here if we can come nearer to ymin if we
+			% shift the current tick by log(10):
+			%  if( ymin - I * log(10) < 0.5*H ->  use I+1, that means add log(10).
+			%
+			% that's equivalent to 
+			%  2*(ymin - I * log(10)) - H < 0.
+			\advance\MINH by-\MIN
+			\multiply\MINH by2
+			\advance\MINH by-\H
+			% 
+			\ifdim\MINH<0pt
+				\advance\MIN \pgfplots@loc@log@to@display@log@scale pt
+			\fi
+		\fi
+	\fi
+	\MINH=\MIN
+	\advance\MINH by\H
+	% Ok, now it can happen that only ONE tick label is placed in
+	% this range.
+	% That's useless, so check for it.
+	%
+	% That's the case if
+	%    MIN < ORIGMIN && MAX < MIN+2 H 
+	% MIN < ORIGMIN by construction (ok, MIN <= ORIGMIN by
+	% construction, but I don't care about this case). 
+	% So: check only the second condition.
+%\message{Got MIN=\pgf@sys@tonumber\MIN; H=\pgf@sys@tonumber\H; MAX=\pgf@sys@tonumber\MAX.^^J}%
+	\def\pgfplots@tick@returnval@ready{0}%
+	\pgfplots@tmpa=\MINH
+	\advance\pgfplots@tmpa by\H
+	\ifdim\MAX<\pgfplots@tmpa
+		\pgfplots@if{pgfplots@#1islinear}{%
+			\begingroup
+				\def\pgfplots@tick@returnval@ready{1}%
+				\pgfutil@ifundefined{pgfplots@assign@default@tick@foraxis@recurselevel}{%
+					\def\pgfplots@assign@default@tick@foraxis@recurselevel{1}%
+				}{%
+					\pgfplotsutil@advancestringcounter\pgfplots@assign@default@tick@foraxis@recurselevel
+				}%
+				\ifnum\pgfplots@assign@default@tick@foraxis@recurselevel<15
+					\c@pgf@counta=\axisdefaulttryminticks\relax
+					\advance\c@pgf@counta by1
+					\edef\axisdefaulttryminticks{\the\c@pgf@counta}%
+%\message{**TOO FEW TICK LABELS FOR #1. RECURSION with try min ticks=\axisdefaulttryminticks.**^^J}%
+					% recurse.
+					\pgfplots@assign@default@tick@foraxis{#1}%
+					\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
+					\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
+				\else
+					\pgfplotswarning{tick computation failed}{#1}{\axisdefaulttryminticks}\pgfeov%
+					\def\pgfplots@tick@returnval@ready{0}%
+				\fi
+				\pgfmath@smuggleone\pgfplots@tick@returnval@ready
+			\endgroup
+		}{%
+			% Case logarithmic axes and too few ticks.
+			\aftergroup\pgfplots@isuniformtickfalse
+			% ok, do something special.
+			%
+			% The idea is now to place ticks at
+			% 10^{i*h} with properly choosen 'h'.
+			%
+			% So: apply basically the SAME code as above for linear
+			% axis, just everything log 10!  And keep in mind that all
+			% coordinates are actually given as natural logarithms.
+			\MIN\csname pgfplots@#1min\endcsname pt
+			\H=\MAX
+			\advance\H by-\MIN
+			\ifdim\H<0pt \H=-1\H \fi
+			\H=\pgfplots@loc@log@from@display@log@scale \H
+%\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
+			\c@pgf@counta=\desirednumticks\relax
+			\advance\c@pgf@counta by-1
+			\ifnum\c@pgf@counta>2
+				% subtract one more. This algorithm here produces more
+				% ticks than the normal one which is designed for 10^i
+				\advance\c@pgf@counta by-1
+			\fi
+			\divide\H by\c@pgf@counta\relax
+%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
+			%
+			% SEARCH for the NEXT FEASABLE H.
+			\edef\Hmacro{\pgf@sys@tonumber\H}%
+			\pgfmathfloatparsenumber{\Hmacro}%
+			\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\pgfmathresult
+			%
+			\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+			\let\Hmacro=\pgfmathresult
+			\H=\Hmacro pt %
+			% Ok, our step size h for 10^{i*h} is ready!
+%\message{determined step size 10^{\Hmacro}}%
+			% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
+			% compute I such that
+			%   10^{min} = 10^{I * H + rest};  |rest| < H
+			% -> I = round(xmin/H)
+			% -> MIN = I * H
+			% BUT EVERYTHING to log(10) basis!
+			\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
+			\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+				{\pgf@sys@tonumber\MIN}%
+				{\Hmacro}%
+			}%
+			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+			\ifdim\MIN<0pt
+				% the truncation rounds TOWARDS 0 which is not what I want.
+				\advance\c@pgf@counta by-1
+			\fi
+			\MIN=\H\relax
+			\multiply\MIN by\c@pgf@counta\relax
+			%
+			% convert back to basis 'e':
+			\MIN=\pgfplots@loc@log@to@display@log@scale\MIN\relax
+			\H=\pgfplots@loc@log@to@display@log@scale\H\relax
+			\MINH=\MIN\relax
+			\advance\MINH by\H\relax
+		}%
+	\fi
+%\message{final H=\the\H.}%
+	\if0\pgfplots@tick@returnval@ready
+		\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\H}}%
+		\advance\MAX by0.5\H % avoid rounding inaccuracies:
+		\xdef\pgfplots@glob@TMPa{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
+	\fi
+	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@glob@TMPb
+}%
+
 % Computes tick positions using the current axis limits.
 %
 % Parameters:
@@ -1914,271 +2184,9 @@
 	\fi
 	%
 	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
-		% Ok, we have either log or linear axis and need default
-		% ticks MIN,MIN+H,...,MAX.
-		\let\MINH=\pgf@xa
-		\let\H=\pgf@xb
-		\let\MAX=\pgf@ya
-		\let\MIN=\pgf@yb
-		% compute step size 'H':
-		\MAX=\csname pgfplots@#1max\endcsname pt %
-		\advance\MAX by0.001pt % avoid round errors
-		%\expandafter\MIN\the\c@pgf@counta pt
-		\MIN=\csname pgfplots@#1min\endcsname pt %
-		\H=\MAX
-		\advance\H by-\MIN
-		\ifdim\H<0pt \H=-1\H \fi
-%\message{Axis limit #1: [\the\MIN:\the\MAX], diff = \the\H.^^J}%
-		\c@pgf@counta=\desirednumticks
-		\advance\c@pgf@counta by-1 %
-		\divide\H by\c@pgf@counta
-%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H^^J}%
-		%
-		% SEARCH for the NEXT FEASABLE H.
-		\edef\Hmacro{\pgf@sys@tonumber\H}%
-		\ifpgfplots@cur@is@linear
-			% CASE LINEAR AXIS
-			\ifpgfplots@is@datascaled
-				% This here works if the scaling trafo is linear.
-				\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{\Hmacro}%
-				\let\Hmacro=\pgfmathresult
-			\else
-				\pgfmathfloatparsenumber{\Hmacro}%
-				\let\Hmacro=\pgfmathresult
-			\fi
-%\message{Got T^{-1}(H#1) = \Hmacro^^J}%
-			%
-			\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\Hmacro
-			\let\Hmacro=\pgfmathresult
-			%
-%\message{snapped-to-nicest = \Hmacro^^J}%
-			\aftergroup\pgfplots@isuniformticktrue
-			% The following code is carried out in floating point
-			% arithmetics because it requires large data ranges.
-			%
-			% I want to compute MIN@new := I*H  where I is chosen
-			% such that MIN = I*H + rest with rest < H.
-			% The problem is the possibly large range of MIN. I
-			% can't work completely in the transformed datarange,
-			% so numbers get too large.
-			%
-			% So, compute I := int( MIN / H )  (integer truncation)
-			% in float arithmetics and then MIN@new := I*H
-			\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
-			\pgfmathfloatint@{\pgfmathresult}%
-			\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
-			\let\MIN@new=\pgfmathresult
-			% Ok, we are ready.
-			% Now, convert everything into the fixed point data
-			% range:
-			\ifpgfplots@is@datascaled
-				\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
-				\MIN=\pgfmathresult pt
-				\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
-				\H=\pgfmathresult pt
-			\else
-				\pgfmathfloattofixed\MIN@new
-				\MIN=\pgfmathresult pt
-				\pgfmathfloattofixed\Hmacro
-				\H=\pgfmathresult pt
-			\fi
-			%
-			% And, since we have used finite precision, I is most
-			% likely to be large. So: subtract one H. In the worst
-			% case, this produces one tick position too much (but
-			% it won't be printed).
-			\advance\MIN by-\H\relax
-		\else
-			% CASE LOG AXIS
-			%
-			% search for the "best" H= j* log(10),  j an integer.
-			%
-			% And prefer j=1 if that is possible (otherwise minor
-			% ticks are not useful).
-			\pgfmath@basic@multiply@{\Hmacro}{\pgfplots@loc@log@from@display@log@scale}%
-			\let\Hmacrobaseten=\pgfmathresult
-			\expandafter\H\pgfmathresult pt
-%\message{ [ H / log(10) = \pgfmathresult ]}%
-			\ifdim\H<2pt
-				\H=1pt
-			\else
-				\ifnum\H<1pt
-					\H=1pt
-				\else
-					\expandafter\pgfmathfloor\expandafter{\pgfmathresult}%
-					\expandafter\H\pgfmathresult pt
-				\fi
-			\fi
-			\ifdim\H=1pt
-				\aftergroup\pgfplots@isuniformticktrue
-				\pgfplots@isuniformticktrue
-			\else
-				\aftergroup\pgfplots@isuniformtickfalse
-				\pgfplots@isuniformtickfalse
-			\fi
-%\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
-			\H=\pgfplots@loc@log@to@display@log@scale\H
-			% Now, we want to activate the Tick set 
-			%   {lowest, lowest+H, ..., highest}
-			%
-			% Where 
-			% 	lowest =  I * log(10) + rest, |rest| < log(10).
-			% this is conceptionally different from the approach for
-			% linear axes, because H = j*log(10).
-			%
-			% remember the original xmin in MINH:
-			\MINH=\MIN
-			%
-			% and compute I and I*log(10) here:
-			\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
-			\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
-			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
-			\ifdim\MIN<0pt
-				% the truncation rounds TOWARDS 0 which is not what I want.
-				\advance\c@pgf@counta by-1
-			\fi
-			\MIN=\pgfplots@loc@log@to@display@log@scale pt
-			\multiply\MIN by\c@pgf@counta
-			\ifpgfplots@isuniformtick
-			\else
-				% This here is a special case to move the first tick
-				% near the lower axis limit.
-				%
-				% "Near" means either directly above or directly below ymin.
-				% 
-				% My application example is as follows:
-				% Let H = 2*log(10).
-				% Furthermore, ymin = 3e-6, ymax= 8e-2. That means we can choose either
-				%    10^{-5}, 10^{-3}, 10^{-1}
-				% or
-				%    10^{-4}, 10^{-2}
-				% as ticks. Well, I prefer the first one.
-				%
-				% HEURISTICS: start as near to ymin as possible!
-				%
-				% We check here if we can come nearer to ymin if we
-				% shift the current tick by log(10):
-				%  if( ymin - I * log(10) < 0.5*H ->  use I+1, that means add log(10).
-				%
-				% that's equivalent to 
-				%  2*(ymin - I * log(10)) - H < 0.
-				\advance\MINH by-\MIN
-				\multiply\MINH by2
-				\advance\MINH by-\H
-				% 
-				\ifdim\MINH<0pt
-					\advance\MIN \pgfplots@loc@log@to@display@log@scale pt
-				\fi
-			\fi
-		\fi
-		\MINH=\MIN
-		\advance\MINH by\H
-		% Ok, now it can happen that only ONE tick label is placed in
-		% this range.
-		% That's useless, so check for it.
-		%
-		% That's the case if
-		%    MIN < ORIGMIN && MAX < MIN+2 H 
-		% MIN < ORIGMIN by construction (ok, MIN <= ORIGMIN by
-		% construction, but I don't care about this case). 
-		% So: check only the second condition.
-%\message{Got MIN=\pgf@sys@tonumber\MIN; H=\pgf@sys@tonumber\H; MAX=\pgf@sys@tonumber\MAX.^^J}%
-		\def\pgfplots@tick@returnval@ready{0}%
-		\pgfplots@tmpa=\MINH
-		\advance\pgfplots@tmpa by\H
-		\ifdim\MAX<\pgfplots@tmpa
-			\pgfplots@if{pgfplots@#1islinear}{%
-				\begingroup
-					\def\pgfplots@tick@returnval@ready{1}%
-					\pgfutil@ifundefined{pgfplots@assign@default@tick@foraxis@recurselevel}{%
-						\def\pgfplots@assign@default@tick@foraxis@recurselevel{1}%
-					}{%
-						\pgfplotsutil@advancestringcounter\pgfplots@assign@default@tick@foraxis@recurselevel
-					}%
-					\ifnum\pgfplots@assign@default@tick@foraxis@recurselevel<15
-						\c@pgf@counta=\axisdefaulttryminticks\relax
-						\advance\c@pgf@counta by1
-						\edef\axisdefaulttryminticks{\the\c@pgf@counta}%
-%\message{**TOO FEW TICK LABELS FOR #1. RECURSION with try min ticks=\axisdefaulttryminticks.**^^J}%
-						% recurse.
-						\pgfplots@assign@default@tick@foraxis{#1}%
-						\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
-						\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
-					\else
-						\pgfplotswarning{tick computation failed}{#1}{\axisdefaulttryminticks}\pgfeov%
-						\def\pgfplots@tick@returnval@ready{0}%
-					\fi
-					\pgfmath@smuggleone\pgfplots@tick@returnval@ready
-				\endgroup
-			}{%
-				% Case logarithmic axes and too few ticks.
-				\aftergroup\pgfplots@isuniformtickfalse
-				% ok, do something special.
-				%
-				% The idea is now to place ticks at
-				% 10^{i*h} with properly choosen 'h'.
-				%
-				% So: apply basically the SAME code as above for linear
-				% axis, just everything log 10!  And keep in mind that all
-				% coordinates are actually given as natural logarithms.
-				\MIN\csname pgfplots@#1min\endcsname pt
-				\H=\MAX
-				\advance\H by-\MIN
-				\ifdim\H<0pt \H=-1\H \fi
-				\H=\pgfplots@loc@log@from@display@log@scale \H
-%\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
-				\c@pgf@counta=\desirednumticks\relax
-				\advance\c@pgf@counta by-1
-				\ifnum\c@pgf@counta>2
-					% subtract one more. This algorithm here produces more
-					% ticks than the normal one which is designed for 10^i
-					\advance\c@pgf@counta by-1
-				\fi
-				\divide\H by\c@pgf@counta\relax
-%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
-				%
-				% SEARCH for the NEXT FEASABLE H.
-				\edef\Hmacro{\pgf@sys@tonumber\H}%
-				\pgfmathfloatparsenumber{\Hmacro}%
-				\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\pgfmathresult
-				%
-				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
-				\let\Hmacro=\pgfmathresult
-				\H=\Hmacro pt %
-				% Ok, our step size h for 10^{i*h} is ready!
-%\message{determined step size 10^{\Hmacro}}%
-				% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
-				% compute I such that
-				%   10^{min} = 10^{I * H + rest};  |rest| < H
-				% -> I = round(xmin/H)
-				% -> MIN = I * H
-				% BUT EVERYTHING to log(10) basis!
-				\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
-				\pgfmathlog@invoke@expanded\pgfmathdivide@{%
-					{\pgf@sys@tonumber\MIN}%
-					{\Hmacro}%
-				}%
-				\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
-				\ifdim\MIN<0pt
-					% the truncation rounds TOWARDS 0 which is not what I want.
-					\advance\c@pgf@counta by-1
-				\fi
-				\MIN=\H\relax
-				\multiply\MIN by\c@pgf@counta\relax
-				%
-				% convert back to basis 'e':
-				\MIN=\pgfplots@loc@log@to@display@log@scale\MIN\relax
-				\H=\pgfplots@loc@log@to@display@log@scale\H\relax
-				\MINH=\MIN\relax
-				\advance\MINH by\H\relax
-			}%
-		\fi
-%\message{final H=\the\H.}%
-		\if0\pgfplots@tick@returnval@ready
-			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\H}}%
-			\advance\MAX by0.5\H % avoid rounding inaccuracies:
-			\xdef\pgfplots@glob@TMPa{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
-		\fi
+		\pgfplots@ticks@compute@tick@distance#1%
+		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
+		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
 		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
 	\else
 		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
