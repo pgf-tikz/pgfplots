@@ -1970,6 +1970,38 @@
 	}%
 }%
 
+% The key 'xtick distance' can have any value. This routine avoids
+% 'dimension too large' programmatically
+\def\pgfplots@assign@default@tick@foraxis@cap#1#2{%
+	\ifpgfplots@is@datascaled
+		\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{16000}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{#1}{min}{\pgfplots@loc@TMPb}{#2}%
+		\edef\pgfplots@loc@TMPc{#2}%
+		\ifx\pgfplots@loc@TMPc\pgfmathresult
+			\def\pgfplotsretval{0}%
+		\else
+			\def\pgfplotsretval{1}%
+		\fi
+	\else
+		\pgfplotscoordmath{#1}{parsenumber}{16000}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{#1}{parsenumber}{#2}%
+		\let\pgfplots@loc@TMPc=\pgfmathresult
+		\pgfplotscoordmath{#1}{min}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+		%
+		\ifx\pgfplots@loc@TMPc\pgfmathresult
+			\def\pgfplotsretval{0}%
+		\else
+			\def\pgfplotsretval{1}%
+		\fi
+	\fi
+	%
+	\ifx1\pgfplotsretval
+		\pgfplotswarning{dimension too large in ticks}{#1}{#2}{\pgfmathresult}\pgfeov%
+	\fi
+}
+
 % This macro is NECESSARILY part of
 % \pgfplots@assign@default@tick@foraxis:
 %
@@ -1998,6 +2030,8 @@
 		% ah - a user argument. OK, prefer that one over the default:
 		\pgfplotscoordmath{default}{parse}{abs(\Hmacro)}%
 		\let\Hmacro=\pgfmathresult
+		\pgfplots@assign@default@tick@foraxis@cap{#1}{\Hmacro}%
+		\let\Hmacro=\pgfmathresult
 		\ifpgfplots@cur@is@linear
 			\ifpgfplots@is@datascaled
 				\pgfplotscoordmath{#1}{datascaletrafo noshift}{\pgfmathresult}%
@@ -2018,6 +2052,7 @@
 		\fi
 		\def\b@pgfplots@ticks@computed@tick@distance@is@final{1}%
 	\fi
+%\message{Got H=\the\H\space(\Hmacro)^^J}%
 	%
 	% OK, now compute MIN/MAX :
 	\ifpgfplots@cur@is@linear
@@ -2131,12 +2166,22 @@
 		\fi
 	\fi
 	%
-%\message{final H=\the\H.}%
+	% assert that we have at least a minimal tick distance.
+	% FIXME :this minimum might actually be too small...
+	\ifdim\MINH=\MIN
+		\pgfplotsthrow{dimension too small in ticks}{#1}\pgfeov%
+		% 
+		% make sure that the compilation succeeds:
+		\H=1pt %
+		\advance\MINH by\H
+	\fi
+	%
 	\if0\pgfplots@tick@returnval@ready
 		\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\H}}%
 		\advance\MAX by0.5\H % avoid rounding inaccuracies:
 		\xdef\pgfplots@glob@TMPa{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
 	\fi
+%\message{final H=\the\H; returning \pgfplots@glob@TMPa.}%
 	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
 	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@glob@TMPb
 }%
