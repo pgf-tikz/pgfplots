@@ -641,6 +641,11 @@
 % Check if a label does not cross the x-axis
 \def\pgfplots@ytick@check@tickshow{%
 	\pgfplots@tickshowtrue
+	%
+	\pgfplots@if@has@axis@shift x{%
+		\pgfplots@hide@obscured@ytickfalse
+	}{}%
+	%
 	\ifpgfplots@hide@obscured@ytick
 		\if\pgfplots@yaxislinesnum2% center
 			\ifcase\pgfplots@xaxislinesnum\relax
@@ -684,6 +689,13 @@
 }
 \def\pgfplots@ztick@check@tickshow{%
 	\pgfplots@tickshowtrue
+	%
+	\pgfplots@if@has@axis@shift x{%
+		\pgfplots@if@has@axis@shift y{%
+			\pgfplots@hide@obscured@ztickfalse
+		}{}%
+	}{}%
+	%
 	\ifpgfplots@hide@obscured@ztick
 		\if\pgfplots@zaxislinesnum2% center
 			\pgfplotsmath@ifapproxequal@dim
@@ -757,15 +769,13 @@
 	%
 	% Assemble the \pgfplots@drawticklines@for@placecomputedtick
 	% command.
-	\def\pgfplots@drawticklines@for@placecomputedtick{%
-		\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftbeg pt}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftend pt}}%
-		\fi
-		\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
-			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftbeg pt}}%
-			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftend pt}}%
-		\fi
+	\def\pgfplots@drawticklines@for@placecomputedtick@LOWER{%
+		\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftbeg pt}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftend pt}}%
+	}%
+	\def\pgfplots@drawticklines@for@placecomputedtick@UPPER{%
+		\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftbeg pt}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftend pt}}%
 	}%
 %\message{place computed tick: LOWEROK=\pgfplots@drawticklines@for@placecomputedtick@LOWEROK; UPPEROK=\pgfplots@drawticklines@for@placecomputedtick@UPPEROK.}%
 }%
@@ -829,6 +839,11 @@
 % This is just a special case for centered axis lines.
 \def\pgfplots@xtick@check@tickshow{%
 	\pgfplots@tickshowtrue
+	%
+	\pgfplots@if@has@axis@shift y{%
+		\pgfplots@hide@obscured@xtickfalse
+	}{}%
+	%
 	\ifpgfplots@hide@obscured@xtick
 		\if\pgfplots@xaxislinesnum2% center
 			\ifcase\pgfplots@yaxislinesnum\relax
@@ -1219,6 +1234,63 @@
 	\pgfpathlineto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
 }%
 
+% Implements 'axis x line shift' and its friends.
+%
+% It is called by grid line drawing instructions, tick lines, and tick
+% labels and installs a common shift. The purpose is to shift the
+% _entire_ axis along the outer normal.
+%
+% The operation is supposed to be used when an oriented surf is
+% installed.
+%
+%  #1 used to determine the axis for which the outer normal is to be
+%  determined. #1 is the 'a' value of the current oriented surf, i.e.
+%  one of 0, 1, 2, or v.
+%
+%  #2 same as '#1', but this here determines the 'b' value of the
+%  current oriented surf.
+%
+% exactly one of '#1' or '#2' must be 'v' such that a unique line can
+% be identified.
+\def\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf#1#2{%
+	\if v#1%
+		\let\pgfplots@loc@TMPa=\pgfplotspointonorientedsurfaceA%
+		\if v#2%
+			\pgfplots@error{Exactly one of '#1' or '#2' must be 'v', not both}%
+		\fi
+	\else
+		\if v#2%
+			\let\pgfplots@loc@TMPa=\pgfplotspointonorientedsurfaceB%
+		\else
+			\pgfplots@error{One of '#1' or '#2' must be 'v'}%
+		\fi
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/axis \pgfplots@loc@TMPa\space line shift}\pgfplots@loc@TMPb
+	\ifx\pgfplots@loc@TMPb\pgfutil@empty
+	\else
+		% in this case, we KNOW that is is 
+		%   (a) parsed and 
+		%   (b) nonzero and
+		%   (c) a dimension WITHOUT unit
+		% See \pgfplots@init@axis@shift
+		\ifpgfplots@separate@axis@lines
+		\else
+			\pgfplots@error{Internal error encountered: separate axis lines=false but axis shift found}%
+		\fi
+		\pgftransformshift{%
+			\expandafter\pgfqpointscale\expandafter{\pgfplots@loc@TMPb}{%
+				\begingroup
+				\pgf@process{%
+					\pgfplotspointonorientedsurfaceabtolinespec{#1}{#2}%
+					\expandafter\pgfplotspointouternormalvectorofaxis\expandafter{\pgfplotsretval}%
+				}%
+				\endgroup
+			}%
+		}%
+	\fi
+}%
+
 % Draws ticks on the currently active "oriented surface".
 %
 % The oriented surface is two dimensional and has been initialised
@@ -1386,12 +1458,29 @@
 			\let\pgfplots@subtickwidth@=\pgfmathresult
 			\let\pgfplots@subtickwidth=\pgfmathresult
 			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@subtickwidth@}%
-			\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curtickpos{%
-				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
-				\let\pgfplots@curtickpos=\pgfplots@tick
-				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
-				\pgfplots@drawticklines@for@placecomputedtick
-			}%
+			\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
+				\begingroup
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf v0%
+				\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curtickpos{%
+					\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+					\let\pgfplots@curtickpos=\pgfplots@tick
+					\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+					\pgfplots@drawticklines@for@placecomputedtick@LOWER
+				}%
+				\endgroup
+			\fi
+			%
+			\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
+				\begingroup
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf v1%
+				\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curtickpos{%
+					\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+					\let\pgfplots@curtickpos=\pgfplots@tick
+					\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+					\pgfplots@drawticklines@for@placecomputedtick@UPPER
+				}%
+				\endgroup
+			\fi
 			\endpgfextra;
 		}{}%
 		%
@@ -1407,12 +1496,29 @@
 			\let\pgfplots@tickwidth@=\pgfmathresult
 			\let\pgfplots@tickwidth=\pgfmathresult
 			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@tickwidth@}%
-			\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
-				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
-				\let\pgfplots@curtickpos=\pgfplots@tick
-				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
-				\pgfplots@drawticklines@for@placecomputedtick
-			}%
+			\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
+				\begingroup
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf v0%
+				\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
+					\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+					\let\pgfplots@curtickpos=\pgfplots@tick
+					\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+					\pgfplots@drawticklines@for@placecomputedtick@LOWER
+				}%
+				\endgroup
+			\fi
+			%
+			\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
+				\begingroup
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf v1%
+				\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
+					\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+					\let\pgfplots@curtickpos=\pgfplots@tick
+					\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+					\pgfplots@drawticklines@for@placecomputedtick@UPPER
+				}%
+				\endgroup
+			\fi
 			\endpgfextra;
 		}{}%
 		%
@@ -1553,6 +1659,7 @@
 			\def\pgfmathlogtologten@{\pgfplotscoordmath{#1}{log to log 10}}%
 			%
 			\xdef\pgfplots@show@ticklabel@LASTTICK{}%
+			\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf{v}{\pgfplots@ticklabelside}%
 			\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
 				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
 				\let\pgfplots@curtickpos=\pgfplots@tick

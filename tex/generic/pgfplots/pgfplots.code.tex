@@ -2337,6 +2337,16 @@
 	/pgfplots/every boxed y axis/.style={},
 	/pgfplots/every boxed z axis/.style={},
 %	/pgfplots/hide axis/.belongs to family=/pgfplots,
+	%
+	/pgfplots/axis x line shift/.initial=,
+	/pgfplots/axis y line shift/.initial=,
+	/pgfplots/axis z line shift/.initial=,
+	/pgfplots/axis line shift/.style={%
+		/pgfplots/axis x line shift={#1},%
+		/pgfplots/axis y line shift={#1},%
+		/pgfplots/axis z line shift={#1},%
+	},%
+	%
 % sets \pgfplots@xaxislinesnum to
 % box=0
 % bottom=1
@@ -4354,6 +4364,10 @@
 }
 
 
+% 'inner' means lines which pass through the origin (i.e. lines which
+% are not on the outer bounding box). In other words: this has an
+% effect if and only if 'axis #1 lines=center'
+%
 % #1: the 'a' axis on the oriented surface (the same as \pgfplotspointonorientedsurfaceA)
 % #2: the 'b' axis on the orentied surface (the same as \pgfplotspointonorientedsurfaceB)
 \def\pgfplots@drawaxis@innerlines@onorientedsurf#1#2#3{%
@@ -4370,6 +4384,7 @@
 			}]
 		\pgfextra
 		\csname pgfplotspointonorientedsurfaceabsetupforset#3\endcsname{\csname pgfplots@logical@ZERO@#3\endcsname}{2}%
+		\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf v2%
 		\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@logical@ZERO@#2\endcsname}}%
 		\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@logical@ZERO@#2\endcsname}}%
 		\endpgfextra
@@ -4377,6 +4392,10 @@
 	\fi
 }%
 
+% Draws outer axis lines, i.e. those which are on the bounding box.
+% This has an effect if and only if axis #1 lines!=center.
+% 
+%
 % Ok, we don't mind whether edges with thick lines look ugly. We just
 % draw separate lines. This here is necessary if we want arrow heads.
 %
@@ -4393,6 +4412,7 @@
 				\pgfextra
 				% exchange roles of A <-> B axes:
 				\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf 0v%
 				\pgfplots@drawgridlines@onorientedsurf@fromto{\csname pgfplots@#2min\endcsname}%
 				\endpgfextra 
 				};
@@ -4402,6 +4422,7 @@
 				\pgfextra
 				% exchange roles of A <-> B axes:
 				\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+				\pgfplots@transformshift@along@outer@normal@on@line@of@oriented@surf 1v%
 				\pgfplots@drawgridlines@onorientedsurf@fromto{\csname pgfplots@#2max\endcsname}%
 				\endpgfextra 
 				};
@@ -6088,7 +6109,45 @@
 	\pgfplots@ticklabel@maxtickdimen@reset x%
 	\pgfplots@ticklabel@maxtickdimen@reset y%
 	\pgfplots@ticklabel@maxtickdimen@reset z%
+	%
+	\pgfplots@init@axis@shift
 }
+
+% executes '#2' if 'axis #1 line shift' is set and '#3' if not.
+\def\pgfplots@if@has@axis@shift#1#2#3{%
+	\pgfkeysgetvalue{/pgfplots/axis #1 line shift}\pgfplots@loc@TMPb
+	\ifx\pgfplots@loc@TMPb\pgfutil@empty
+		#3%
+	\else
+		#2%
+	\fi
+}%
+
+\def\pgfplots@init@axis@shift{%
+	\pgfplotsforeachentryinCSV{\pgfplots@loc@TMPa}{x,y,z}{%
+		% check if 'axis #1 line shift' is set and non-zero. 
+		\expandafter\pgfplots@if@has@axis@shift\pgfplots@loc@TMPa{%
+			\pgfkeysgetvalue{/pgfplots/axis \pgfplots@loc@TMPa\space line shift}\pgfplots@loc@TMPb
+			\pgfmathparse{\pgfplots@loc@TMPb}%
+			\ifdim\pgfmathresult pt=0pt
+				\def\pgfplots@loc@TMPb{}%
+			\else
+				\edef\pgfplots@loc@TMPb{\pgfmathresult}% NO unit here
+				\if z\pgfplots@loc@TMPa
+					\ifpgfplots@threedim
+						\pgfplots@separate@axis@linestrue
+					\fi
+				\else
+					\pgfplots@separate@axis@linestrue
+				\fi
+			\fi
+			% 
+			% normalize the value - no need to parse it over and over again:
+			\pgfkeyslet{/pgfplots/axis \pgfplots@loc@TMPa\space line shift}\pgfplots@loc@TMPb
+		}{}%
+	}%
+}%
+
 \def\pgfplots@init@ticks@ready{}%
 \def\pgfplots@init@ticks@for#1{%
 	\pgfplots@isuniformticktrue
