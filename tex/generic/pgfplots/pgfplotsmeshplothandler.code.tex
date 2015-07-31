@@ -142,18 +142,12 @@
 	\ifx\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@defaulttext
 		\let\pgfplotsplothandlermesh@patchclass=\pgfutil@empty
 	\fi
-	\if2\pgfplotsplothandlermesh@matrixinput
-		% mesh input=image
-		% force a rectangular patch type:
-		\def\pgfplotsplothandlermesh@patchclass{rectangle}%
-		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
-	\fi
 	\ifx\pgfplotsplothandlermesh@patchclass\pgfutil@empty
 		% assign default patch class.
-		\if1\pgfplotsplothandlermesh@matrixinput
-			\def\pgfplotsplothandlermesh@patchclass{rectangle}%
-		\else
+		\if0\pgfplotsplothandlermesh@matrixinput
 			\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\else
+			\def\pgfplotsplothandlermesh@patchclass{rectangle}%
 		\fi
 		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 	\fi
@@ -622,6 +616,27 @@
 	\def\pgfplotspatchvertexdepth{#4}%
 	\def\pgfplotspatchvertexcoords{#5}%
 }%
+
+% Assumes that #1 expands to an argument of \pgfplotspatchvertex and
+% that #2 is a macro containing another patch vertex. 
+%
+% It then replaces #2 by a new vector which is equal to #2 except for
+% the point meta which is taken from #1.
+\def\pgfplotspatchvertexcopymeta#1\to#2{%
+	\begingroup
+	\expandafter\pgfplotspatchvertex#1\endvertex
+	\let\pgfplots@loc@TMPa=\pgfplotspatchvertexmeta
+	\expandafter\pgfplotspatchvertex#2\endvertex
+	\xdef\pgfplots@glob@TMPc{%
+		{\pgfplotspatchvertexx}%
+		{\pgfplotspatchvertexy}%
+		{\pgfplots@loc@TMPa}%
+		\pgfplotspatchvertexdepth:\pgfplotspatchvertexcoords
+	}%
+	\endgroup
+	\let#2=\pgfplots@glob@TMPc
+}%
+
 \def\pgfplotspointpatchvertex#1#2#3#4:#5\endvertex{%
 	\global\pgf@x=#1
 	\global\pgf@y=#2
@@ -1919,8 +1934,9 @@
 					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
 				\else
 					% mesh input=image
-					% FIXME 
-					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader@image
+					% this should never happen because matrix output
+					% is off for mesh input=image
+					\pgfplots@error{Illegal internal state encountered}%
 				\fi
 %\message{initialised DECODE for direct matrix output (from matrix).^^J}%
 			\fi
@@ -2604,6 +2620,10 @@
 		% use colordata of ONE corner point. That's easy, not
 		% much to do.
 		\def\pgfplotsplothandlermesh@get@flat@color{%
+			% ATTENTION : this does not respect potential reordering done
+			% by 'z buffer'! That means that 'shader=flat corner' is
+			% well defined for 'z buffer=none', otherwise it is
+			% undefined (depends on view)
 			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex}%
 			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 			\pgfplotsaxisvisphasetransformpointmeta
