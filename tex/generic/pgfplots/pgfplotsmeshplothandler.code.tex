@@ -7,7 +7,7 @@
 % 
 % It is based on Till Tantau's PGF package.
 %
-% Copyright 2007-2010 by Christian Feuersänger.
+% Copyright 2007-2015 by Christian Feuersänger.
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -133,13 +133,21 @@
 %  END OF EXAMPLE
 %  -> see also the legend image for mesh plots.
 %
+
+\input pgfplotsmeshplotimage.code.tex
+
 \def\pgfplotsplothandlermesh{%
 	\def\pgfplotsplothandlername{mesh}%
 	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 	\ifx\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@defaulttext
 		\let\pgfplotsplothandlermesh@patchclass=\pgfutil@empty
 	\fi
-	% FIXME : detect 1d mode here!
+	\if2\pgfplotsplothandlermesh@matrixinput
+		% mesh input=image
+		% force a rectangular patch type:
+		\def\pgfplotsplothandlermesh@patchclass{rectangle}%
+		\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
+	\fi
 	\ifx\pgfplotsplothandlermesh@patchclass\pgfutil@empty
 		% assign default patch class.
 		\if1\pgfplotsplothandlermesh@matrixinput
@@ -160,6 +168,11 @@
 	\let\pgfplotsplothandlersurveyaftersetpointmeta=\pgfplotsplothandlersurveyaftersetpointmeta@mesh@cdatanormalize
 	%
 	\def\pgfplotsplothandlerLUAfactory{pgfplots.MeshPlothandler.new}%
+	\if2\pgfplotsplothandlermesh@matrixinput
+		% mesh input=image
+		% this is currently unsupported in LUA:
+		\let\pgfplotsplothandlerLUAfactory=\pgfutil@empty
+	\fi
 	%
 	\pgfkeysgetvalue{/pgfplots/patch table/value}\pgfplotsplothandlermesh@patchtable
 	\ifx\pgfplotsplothandlermesh@patchtable\pgfutil@empty
@@ -272,7 +285,19 @@
 	\fi
 	%
 	% assign boolean:
-	\let\b@pgfplotsplothandlermesh@matrixoutput=\pgfplotsplothandlermesh@matrixinput
+	\ifcase\pgfplotsplothandlermesh@matrixinput
+		% mesh input=patches
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\or
+		% mesh input=lattice
+		\def\b@pgfplotsplothandlermesh@matrixoutput{1}%
+	\or
+		% mesh input=image
+		% while it _could_ potentially provide matrix output, the
+		% implementation is quite involved. We don't have it.
+		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
+	\fi
+	%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{allow matrix}%
 	\if0\pgfplotsretval
 		\def\b@pgfplotsplothandlermesh@matrixoutput{0}%
@@ -1833,8 +1858,10 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \def\pgfplotsplothandlermesh@init@DECODE{%
-	\if1\pgfplotsplothandlermesh@matrixinput
-		% mesh input=lattice
+	\if0\pgfplotsplothandlermesh@matrixinput
+%\message{initialised DECODE for patch output (from patch).^^J}%
+	\else
+		% mesh input=lattice|image
 		% Init memory:
 		%
 		% And now finally: initialise the conversion from 
@@ -1842,15 +1869,24 @@
 		\if\pgfplots@plot@mesh@ordering0%
 			% x varies (=rowwise):
 			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@cols
+			\let\pgfplotsplothandlermesh@numscanlines=\pgfplotsplothandlermesh@rows
 		\else
 			% y varies (=colwise):
 			\let\pgfplotsplothandlermesh@scanlinelength=\pgfplotsplothandlermesh@rows
+			\let\pgfplotsplothandlermesh@numscanlines=\pgfplotsplothandlermesh@cols
 		\fi
 		%
 		\if1\pgfplotsplothandlermesh@ONEDIMMODE
 %\message{initialised DECODE for 1d mode.^^J}%
 			% FIXME : needs LUA support...
-			\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
+			\if1\pgfplotsplothandlermesh@matrixinput
+				% mesh input=lattice
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@ONEDIMMODE
+			\else
+				% mesh input=image
+					% FIXME 
+				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@image@ONEDIMMODE
+			\fi
 		\else
 			\if0\b@pgfplotsplothandlermesh@matrixoutput
 				\if1\b@pgfplots@LUA@visualization@enabled
@@ -1861,17 +1897,34 @@
 					\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
 					\advance\c@pgfplots@scanlineindex by1
 					\pgfplotsdequenewempty{lastscanline}\capacity{\the\c@pgfplots@scanlineindex}%
-					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
+					\if1\pgfplotsplothandlermesh@matrixinput
+						% mesh input=lattice
+						\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline
 %\message{initialised DECODE for patch output (from matrix).^^J}%
+					\else
+						% mesh input=image
+						% lastinterpscanline contains a line of
+						% interpolated points, and there is one more than points. Preallocate it:
+						\advance\c@pgfplots@scanlineindex by1
+						\pgfplotsdequenewempty{lastinterpscanline}\capacity{\the\c@pgfplots@scanlineindex}%
+						% NOTE: implementation is in a separate file.
+						\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@image@fillscanline
+%\message{initialised DECODE for IMAGE output (from matrix).^^J}%
+					\fi
 				\fi
 			\else
 				% SPECIAL HANDLING!
-				\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+				\if1\pgfplotsplothandlermesh@matrixinput
+					% mesh input=lattice
+					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader
+				\else
+					% mesh input=image
+					% FIXME 
+					\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@to@shader@image
+				\fi
 %\message{initialised DECODE for direct matrix output (from matrix).^^J}%
 			\fi
 		\fi
-	\else
-%\message{initialised DECODE for patch output (from patch).^^J}%
 	\fi
 }%
 
@@ -2113,8 +2166,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \def\pgfplotsplothandlermesh@init@meshkeys{%
-	\if1\pgfplotsplothandlermesh@matrixinput
-		% mesh input=lattice
+	\ifcase\pgfplotsplothandlermesh@matrixinput\relax
+		% mesh input=patches
+		\pgfkeys{/pgfplots/mesh/ordering/x varies}% disable any special handling.
+	\else
+		% mesh input=lattice|image
 		\pgfplotsautocompletemeshkeys%
 		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
@@ -2134,9 +2190,6 @@
 			\def\pgfplotsplothandlermesh@patchclass{line}%
 			\pgfkeyslet{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 		\fi
-	\else
-		% mesh input=patches
-		\pgfkeys{/pgfplots/mesh/ordering/x varies}% disable any special handling.
 	\fi
 	%
 	\pgfplotspatchclass{\pgfkeysvalueof{/pgfplots/patch type}}{get dimension}%
@@ -2831,8 +2884,7 @@
 	\let\pgfplotsplothandlermesh@im=\pgfplotsplothandlermesh@i
 }%
 
-% the pgf@plotstreampoint routine for the first scan line:
-\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
+\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline@common#1{%
 	\pgfplotsplothandlermesh@compute@vertex@depth% <-- this modifies \pgfplotsretval
 	\let\pgfplots@view@depth=\pgfplotsretval
 	\pgf@process{#1}%
@@ -2840,12 +2892,18 @@
 	\edef\pgfplots@loc@TMPa{{\the\pgf@x}{\the\pgf@y}{\pgfplots@current@point@meta}\pgfplots@view@depth:\pgfplotsretval}%
 	\expandafter\pgfplotsdequepushback\pgfplots@loc@TMPa\to{lastscanline}%
 	\advance\c@pgfplots@scanlineindex by1
+}%
+
+% the pgf@plotstreampoint routine for the first scan line:
+\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline#1{%
+	\pgfplotsplothandlermesh@PIPE@DECODE@matrix@fillscanline@common{#1}%
 	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
 		% second line!
 		\let\pgfplotsplothandlermesh@PIPE@DECODE=\pgfplotsplothandlermesh@PIPE@DECODE@matrix%%
 		\c@pgfplots@scanlineindex=0
 	\fi
 }%
+
 % This is the pgf@plotstreampoint for all scan lines starting with the
 % second.
 %
@@ -2868,7 +2926,10 @@
 % end
 %
 % This is a SWEEP through the data matrix.
-\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix#1{%
+% #1: the current point of the linearized data matrix
+% #2: a callback (TeX code) which will be executed for each point with j>0
+% #3: a callback (TeX code) which will be executed if the scanline is completed, i.e. j=cols
+\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix@collect@and@callback#1#2#3{%
 	% NOTATION: 
 	% 	'im == (i-1)'
 	% 	'jm == (j-1)'
@@ -2881,19 +2942,29 @@
 	\pgfplotsdequepopfront{lastscanline}\to\pgfplotsplothandlermesh@im@j
 	\expandafter\pgfplotsdequepushback\pgfplotsplothandlermesh@i@j\to{lastscanline}%
 	\ifnum\c@pgfplots@scanlineindex>0
-		\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
-		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im@jm}%
-		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im@j}%
-		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i@j}%
-		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i@jm}%
+		#2%
 	\fi
 	\let\pgfplotsplothandlermesh@im@jm=\pgfplotsplothandlermesh@im@j
 	\let\pgfplotsplothandlermesh@i@jm=\pgfplotsplothandlermesh@i@j
 	\advance\c@pgfplots@scanlineindex by1
 	\ifnum\c@pgfplots@scanlineindex=\pgfplotsplothandlermesh@scanlinelength\relax
-		\c@pgfplots@scanlineindex=0
+		#3%
 	\fi
 }%
+\def\pgfplotsplothandlermesh@PIPE@DECODE@matrix#1{%
+	\pgfplotsplothandlermesh@PIPE@DECODE@matrix@collect@and@callback{#1}{%
+		\let\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@input
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im@jm}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@im@j}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i@j}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@i@jm}%
+	}{%
+		% if scan line is completed, start the next one:
+		\c@pgfplots@scanlineindex=0
+	}%
+}%
+
+
 \def\pgfplotsplothandlermesh@shader@interp@incremental@transpose#1{%
 	\pgfplotsaxisvisphasetransformpointmeta
 	\pgf@process{#1}%
