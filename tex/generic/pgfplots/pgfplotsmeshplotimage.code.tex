@@ -27,6 +27,113 @@
 % This file essentially belongs to the 'mesh' plot handler.
 % It implements the (rather involved) feature 'mesh input=image'.
 %
+% 'mesh input=image' is implemented during the visualization phase
+% and, partially, during the survey phase. The survey phase merely
+% updates the data limits. The visualization phase has the complete
+% knowledge about the input matrix size and can compute the cells.
+
+\def\pgfplotsplothandlersurveystart@mesh@image{%
+	\let\pgfplotsplothandlermesh@image@lastx=\pgfutil@empty
+	\let\pgfplotsplothandlermesh@image@lastlastx=\pgfutil@empty
+	\let\pgfplotsplothandlermesh@image@lasty=\pgfutil@empty
+	\def\b@pgfplotsplothandlermesh@image@updatedlimits@x@next{1}%
+	\def\b@pgfplotsplothandlermesh@image@updatedlimits@y@next{0}%
+	%
+	% FIXME : this will NOT be computed unless there ARE scanlines!
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlersurveyend@mesh@scanlinecomplete
+}%
+\def\pgfplotsplothandlersurveyend@mesh@image{%
+}%
+\def\pgfplotsplothandlersurveypoint@mesh@image{%
+	\pgfplotsplothandlersurveypoint@default
+	%
+	% The 'update limits' routine for 'mesh input=image' is a
+	% HEURISTICS.
+	%
+	% It works well for "real" image plots, i.e. for those which are
+	% not skewed or changed parametrically.
+	%
+	% The main challenge is that we have to update the matrix limits
+	% while we pass through the scanlines.
+	%
+	% The idea is:
+	% - update cell midpoint limits using the standard PGFPlots
+	%   methods. We would like to have the cell limits instead,
+	%   though... to this end:
+	% - update the lower x cell limit for the first encountered X in every
+	%   scanline
+	% - update the upper x cell limit for the last encountered X in every
+	%   scanline
+	% - update the lower AND upper y cell limit for the first encountered Y
+	%   in every scanline.
+	%
+	% That means: 
+	% - we do NOT update X limits for mid points
+	% - we do NOT update Y limits for the second, third, ..., nth
+	%   point on scanlines. Only for the first.
+	%
+	% For parametric image plots, these limits will be inaccurate. I
+	% suppose these are rather exotic anyway, so I accept that to
+	% simplify the implementation.
+	%
+	\if1\b@pgfplotsplothandlermesh@image@updatedlimits@x@next
+		\ifx\pgfplots@current@point@x\pgfutil@empty
+		\else
+			\ifx\pgfplotsplothandlermesh@image@lastx\pgfutil@empty
+			\else
+				\pgfplotscoordmath{x}{parse}{\pgfplotsplothandlermesh@image@lastx - 0.5*(\pgfplots@current@point@x - \pgfplotsplothandlermesh@image@lastx)}%
+				\let\pgfplots@current@point@xh=\pgfmathresult
+				\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@xh\pgfplots@current@point@y\pgfplots@current@point@z
+				%
+				\def\b@pgfplotsplothandlermesh@image@updatedlimits@x@next{0}%
+			\fi
+		\fi
+	\fi
+	%
+	\if1\b@pgfplotsplothandlermesh@image@updatedlimits@y@next
+		\ifx\pgfplots@current@point@y\pgfutil@empty
+		\else
+			\ifx\pgfplotsplothandlermesh@image@lasty\pgfutil@empty
+			\else
+				\pgfplotscoordmath{y}{parse}{\pgfplotsplothandlermesh@image@lasty - 0.5*(\pgfplots@current@point@y - \pgfplotsplothandlermesh@image@lasty)}%
+				\let\pgfplots@current@point@yh=\pgfmathresult
+				\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@yh\pgfplots@current@point@z
+				%
+				%
+				\pgfplotscoordmath{y}{parse}{\pgfplots@current@point@y + 0.5*(\pgfplots@current@point@y - \pgfplotsplothandlermesh@image@lasty)}%
+				\let\pgfplots@current@point@yh=\pgfmathresult
+				\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@yh\pgfplots@current@point@z
+				%
+				\def\b@pgfplotsplothandlermesh@image@updatedlimits@y@next{0}%
+			\fi
+		\fi
+	\fi
+	\let\pgfplotsplothandlermesh@image@lastlastx=\pgfplotsplothandlermesh@image@lastx
+	\let\pgfplotsplothandlermesh@image@lastx=\pgfplots@current@point@x
+	%
+	\let\pgfplotsplothandlermesh@image@lasty=\pgfplots@current@point@y
+}%
+
+\def\pgfplotsplothandlersurveyend@mesh@scanlinecomplete{%
+	\ifx\pgfplotsplothandlermesh@image@lastlastx\pgfutil@empty
+	\else
+		\ifx\pgfplotsplothandlermesh@image@lastx\pgfutil@empty
+		\else
+			\pgfplotscoordmath{x}{parse}{\pgfplotsplothandlermesh@image@lastx + 0.5*(\pgfplotsplothandlermesh@image@lastx - \pgfplotsplothandlermesh@image@lastlastx)}%
+			\let\pgfplots@current@point@xh=\pgfmathresult
+			\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@xh\pgfplots@current@point@y\pgfplots@current@point@z
+		\fi
+	\fi
+	%
+	\def\b@pgfplotsplothandlermesh@image@updatedlimits@y@next{1}%
+	%
+	\let\pgfplotsplothandlermesh@image@lastlastx=\pgfutil@empty
+	\let\pgfplotsplothandlermesh@image@lastx=\pgfutil@empty
+	\def\b@pgfplotsplothandlermesh@image@updatedlimits@x@next{1}%
+	%
+}%
+
+%
 % The 'mesh' plot handler has a "visualization pipeline" as part of
 % its visualization:
 %
