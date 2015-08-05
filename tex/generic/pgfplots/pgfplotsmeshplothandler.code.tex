@@ -663,6 +663,7 @@
 	\pgf@xa=0pt
 	\pgf@ya=0pt
 	\pgf@yb=0pt
+	\def\b@pgfplotspatchvertexaccum@ignore@unbounded@metadata{0}%
 	\if0\pgfplotsplothandlermesh@colorinput
 		% mesh/color input=colormap
 		\pgfplotscoordmath{meta}{zero}%
@@ -676,6 +677,51 @@
 	\fi
 }%
 
+% if this is called, all following accumulation commands will replace unbounded point meta by the fixed zero value.
+\def\pgfplotspatchvertexaccum@configure@ignore@unboundedmetadata{%
+	\def\b@pgfplotspatchvertexaccum@ignore@unbounded@metadata{1}%
+}%
+
+% #1 scale
+% #2 meta
+\def\pgfplotspatchvertexaddscaledmeta@if@applicable@colormap#1#2{%
+	\let\pgfmathresult@=\pgfmathresult
+	\if1\b@pgfplotspatchvertexaccum@ignore@unbounded@metadata
+		\pgfplotsifpointmetaisbounded{#2}{\pgfplots@loc@tmptrue}{\pgfplots@loc@tmpfalse}%
+	\else
+		\pgfplots@loc@tmptrue
+	\fi
+	\ifpgfplots@loc@tmp
+		\pgfplotscoordmath{meta}{parsenumber}{#1}%
+		\pgfplotscoordmath{meta}{op}{multiply}{{#2}{\pgfmathresult}}%
+		\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
+	\fi
+}%
+
+% #1 scale
+% #2 meta
+\def\pgfplotspatchvertexaddscaledmeta@if@applicable@explicit#1#2{%
+	\if1\b@pgfplotspatchvertexaccum@ignore@unbounded@metadata
+		\edef\pgfmathresult@{#2}%
+		\ifx\pgfmathresult@\pgfutil@empty
+			\pgfplots@loc@tmpfalse
+		\else
+			\pgfplots@loc@tmptrue
+		\fi
+	\else
+		\pgfplots@loc@tmptrue
+	\fi
+	\let\pgfmathresult@=\pgfmathresult
+	\ifpgfplots@loc@tmp
+		\begingroup
+		\pgfplotscoloraddweighted{\pgfplotsplothandlermesh@explicit@color@num@comps}
+			{\pgfmathresult@}{#1}{#2}%
+		\let\pgfmathresult=\pgfplotsretval
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	\fi
+}
+
 % #1: the patch's x coordinate
 % #2: the patch's y coordinate
 % #3: the patch's point meta value
@@ -686,20 +732,12 @@
 	\global\pgf@y=#2 %
 	\advance\pgf@xa by#6\pgf@x
 	\advance\pgf@ya by#6\pgf@y
-	\let\pgfmathresult@=\pgfmathresult
 	\if0\pgfplotsplothandlermesh@colorinput
 		% mesh/color input=colormap
-		\pgfplotscoordmath{meta}{parsenumber}{#6}%
-		\pgfplotscoordmath{meta}{op}{multiply}{{#3}{\pgfmathresult}}%
-		\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
+		\pgfplotspatchvertexaddscaledmeta@if@applicable@colormap{#6}{#3}%
 	\else
 		% mesh/color input=explicit
-		\begingroup
-		\pgfplotscoloraddweighted{\pgfplotsplothandlermesh@explicit@color@num@comps}
-			{\pgfmathresult@}{#6}{#3}%
-		\let\pgfmathresult=\pgfplotsretval
-		\pgfmath@smuggleone\pgfmathresult
-		\endgroup
+		\pgfplotspatchvertexaddscaledmeta@if@applicable@explicit{#6}{#3}%
 	\fi
 	\def\pgfplotspatchvertexdepth{#4}%
 	\ifx\pgfplotspatchvertexdepth\pgfutil@empty
