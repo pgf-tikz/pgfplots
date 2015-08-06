@@ -138,6 +138,15 @@
 
 \def\pgfplotsplothandlermesh{%
 	\def\pgfplotsplothandlername{mesh}%
+	%
+	% acquire values as they are known right now. Note that these values may change during the survey phase, so they will be updated later.
+	\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
+	\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
+	\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
+	\edef\pgfplotsplothandlermesh@numpoints{\pgfplotsplothandlermesh@numpoints}%
+	\edef\pgfplotsplothandlermesh@cols{\pgfplotsplothandlermesh@cols}%
+	\edef\pgfplotsplothandlermesh@rows{\pgfplotsplothandlermesh@rows}%
+	%
 	\pgfkeysgetvalue{/pgfplots/patch type}\pgfplotsplothandlermesh@patchclass
 	\ifx\pgfplotsplothandlermesh@patchclass\pgfplotsplothandlermesh@patchclass@defaulttext
 		\let\pgfplotsplothandlermesh@patchclass=\pgfutil@empty
@@ -158,11 +167,10 @@
 	\fi
 	%
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@mesh
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@mesh
 	\let\pgfplotsplothandlersurveyaftersetpointmeta=\pgfplotsplothandlersurveyaftersetpointmeta@mesh@cdatanormalize
-	\if2\pgfplotsplothandlermesh@matrixinput
-		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh@image
-	\fi
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlersurveyend@mesh@scanlinecomplete
 	%
 	\def\pgfplotsplothandlerLUAfactory{pgfplots.MeshPlothandler.new}%
 	\if2\pgfplotsplothandlermesh@matrixinput
@@ -438,6 +446,8 @@
 \def\pgfplots@autocomplete@meshkeys#1{%
 	% For #1 = 0, the values are only partially completed (which is
 	% also compatible with patch plots)
+	%
+	% get (potentially) updated values:
 	\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplotsplothandlermesh@rows
 	\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplotsplothandlermesh@cols
 	\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplotsplothandlermesh@numpoints
@@ -2093,7 +2103,86 @@
 		\pgfplotsplothandlersurveystart@mesh@image
 	\fi
 	%
+	\pgfplotsplothandlersurveypoint@mesh@check@scanline@length@init
 }%
+
+\def\pgfplotsplothandlersurveypoint@mesh{%
+	\pgfplotsplothandlersurveypoint@default
+	%
+	\pgfplotsplothandlersurveypoint@mesh@common
+}
+
+\def\pgfplotsplothandlersurveypoint@mesh@common{%
+	\if2\pgfplotsplothandlermesh@matrixinput
+		\pgfplotsplothandlersurveypoint@mesh@image
+	\fi
+	%
+	\ifcase\pgfplotsplothandlermesh@matrixinput
+	\else
+		% mesh input=lattice|image
+		\pgfplotsplothandlersurveypoint@mesh@check@scanline@length
+	\fi
+}%
+
+% initializes \pgfplotsplothandlersurveypoint@mesh@check@scanline@length, see its comments.
+\def\pgfplotsplothandlersurveypoint@mesh@check@scanline@length@init{%
+	\pgfkeysgetvalue{/pgfplots/empty line}\pgfplots@loc@TMPa%
+	\def\pgfplots@loc@TMPb{scanline}
+	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+	\else
+		\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
+	\fi
+	\if\pgfplots@plot@mesh@ordering0%
+		% ordering = x varies= rowwise -> scanline is cols!
+		\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+			\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
+		\fi
+	\else
+		% ordering = y varies = colwise: scanline is rows!
+		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
+			% a pity... we cannot do anything!
+			\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
+		\fi
+	\fi
+}
+
+% Invokes \pgfplotsscanlinecomplete if the scanline is complete according to the keys 'mesh/rows' and/or 'mesh/cols'
+% 
+% This routine improves the precision of the scanline computation, but not much.
+% At the time of this writing, its only purpose is to help 'matrix input=image'
+% as that requires information about the current scanline in order to update its
+% axis limits.
+% 
+% Note that this macro is unnecessary in many cases: if the user input _contains_ end-of-scanline markers, it is redundant.
+%
+% Limitations of this routine:
+% 1. it requires 'empty line=scanline'.
+% 2. if mesh/ordering=x varies, it requires that mesh/cols is set.
+%    if mesh/ordering=y varies, it requires that mesh/rows is set.
+%
+% In all other cases, it simply becomes a no-op without further notice (i.e. it will be \let to \relax)
+\def\pgfplotsplothandlersurveypoint@mesh@check@scanline@length{%
+%\message{checking scanline length for \the\c@pgfplots@scanlineindex. cols=\pgfplotsplothandlermesh@cols, rows=\pgfplotsplothandlermesh@rows. ordering = \pgfplots@plot@mesh@ordering^^J}%
+	\if\pgfplots@plot@mesh@ordering0%
+		% ordering = x varies= rowwise -> scanline is cols!
+		\ifnum\pgfplotsplothandlermesh@cols=\c@pgfplots@scanlineindex\relax
+			% it does not hurt to invoke this here multiple times -- it has to handle that case anyway:
+			\pgfplotsscanlinecomplete
+		\fi
+	\else
+		% ordering = y varies = colwise: scanline is rows!
+		\ifnum\pgfplotsplothandlermesh@rows=\c@pgfplots@scanlineindex\relax
+			% it does not hurt to invoke this here multiple times -- it has to handle that case anyway:
+			\pgfplotsscanlinecomplete
+		\fi
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@mesh@noreset@of@pointmeta{%
+	\pgfplotsplothandlersurveypoint@default@noreset@of@pointmeta
+	\pgfplotsplothandlersurveypoint@mesh@common
+}%
+
 \def\pgfplotsplothandlersurveyend@mesh{%
 	\pgfplotsplothandlersurveyend@default
 	\if0\pgfplotsplothandlermesh@colorinput
@@ -2109,6 +2198,15 @@
 	\fi
 	%
 }
+
+\def\pgfplotsplothandlersurveyend@mesh@scanlinecomplete{%
+	%
+	%
+	\if2\pgfplotsplothandlermesh@matrixinput
+		% mesh input=image
+		\pgfplotsplothandlersurveyend@mesh@image@scanlinecomplete
+	\fi
+}%
 
 \def\pgfplotsplothandlersurveyaftersetpointmeta@mesh@cdatanormalize{%	
 	\pgfplotsplothandlersurveyaftersetpointmeta@default
@@ -2169,7 +2267,7 @@
 	\pgfplotsplothandlersurveyend@mesh
 	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@default
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@default
-	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@default@noreset@of@pointmeta
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh@noreset@of@pointmeta
 	\pgfplotsplothandlersurveystart
 	\expandafter\pgfplotstable@isloadedtable\expandafter{\pgfplotsplothandlermesh@patchtable}{%
 		\pgfplots@error{Sorry, 'patch table={<loaded table>}' has not been implemented; it would probably be too slow :-(. Please provide a file name or inline table data}%
