@@ -254,7 +254,7 @@
 		\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@i@j\times{0.25}%
 		\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@i@jm\times{0.25}%
 		\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@bb
-		\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@bb
+		\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@bb
 		%
 		%
 		\if1#1%
@@ -271,7 +271,7 @@
 			\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@im@j\times{1.0}%
 			\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@im@jm\times{1.0}%
 			\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@ab
-			\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@im@j\to\pgfplotsplothandlermesh@ab
+			\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@im@j\to\pgfplotsplothandlermesh@ab
 		\else
 			\ifnum\c@pgfplots@scanlineindex=1
 				\pgfplotsdequepopfront{lastinterpscanline}\to\pgfplotsplothandlermesh@aa
@@ -292,7 +292,7 @@
 			\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@i@jm\times{1.0}%
 			\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@im@jm\times{1.0}%
 			\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@ba
-			\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@i@jm\to\pgfplotsplothandlermesh@ba
+			\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@i@jm\to\pgfplotsplothandlermesh@ba
 			%
 			\if1#1%
 				% ok, extrapolate 'aa' as well:
@@ -305,7 +305,7 @@
 				\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@ba\times{1.0}%
 				\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@ab\times{1.0}%
 				\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@aa
-				\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@im@jm\to\pgfplotsplothandlermesh@aa
+				\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@im@jm\to\pgfplotsplothandlermesh@aa
 			\else
 				% in this case, 'aa' has been fetched from the deque
 				% (from the previous scanline)
@@ -321,7 +321,8 @@
 			% loop iteration prepared them).
 		\fi
 		%
-		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@aa}%
+		\pgfplotsplothandlermesh@image@set@first@color@to\pgfplotsplothandlermesh@im@jm\to\pgfplotsplothandlermesh@aa
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsretval}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@ab}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@bb}%
 		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@ba}%
@@ -339,6 +340,22 @@
 		\let\pgfplotsplothandlermesh@ba=\pgfplotsplothandlermesh@bb
 		\let\pgfplotsplothandlermesh@aa=\pgfplotsplothandlermesh@ab
 		%
+}%
+
+% The color handling of 'matrix input=image' is quite involved.
+% There are the following requirements:
+% 1. the point meta of the cell's first vertex _must_ be equal to the point meta of the cell mid point, i.e. equal to the user input. 
+% 2. All other vertices should be interpolated "as smart as possible". This interpolation scheme should work even if adjacent cell midpoints have _no_ bounded meta data!
+% 3. The routines which glue adjacent cells together have to ensure that they do not accidentally intermix (1) and (2). This is complicated since the sweep loop intermingles both responsibilities (sigh).
+%
+% This helper function ensures (1): it copies the point meta of the \pgfplotspatchvertex #1 to the values of of #2 and assigns the result to \pgfplotsretval.
+% #1 a valid \pgfplotspatchvertex
+% #2 a valid \pgfplotspatchvertex
+%
+% POSTCONDITION: \pgfplotsretval contains the result, i.e. a copy of '#2' which contains the point meta of '#1'.
+\def\pgfplotsplothandlermesh@image@set@first@color@to#1\to#2{%
+	\let\pgfplotsretval=#2%
+	\pgfplotspatchvertexcopymeta#1\to\pgfplotsretval
 }%
 
 \def\pgfplotsplothandlermesh@PIPE@DECODE@image@sweep@create@cell@lastrow{%
@@ -373,7 +390,7 @@
 	\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@i@j\times{1.0}%
 	\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@last@bb
 	% FIXME : which is the correctly extrapolated cdata!?
-	%\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@last@bb
+	%\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@last@bb
 	%
 	\ifnum\c@pgfplots@scanlineindex=1
 		% compute Lba = Lbb + Laa - Lab
@@ -384,12 +401,13 @@
 		\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@last@ab\times{-1.0}%
 		\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@last@ba
 		% FIXME : which is the correctly extrapolated cdata!?
-		%\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@i@jm\to\pgfplotsplothandlermesh@last@ba
+		%\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@i@jm\to\pgfplotsplothandlermesh@last@ba
 	\else
 		% transported from previous iteration.
 	\fi
 	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@aa}%
+	\pgfplotsplothandlermesh@image@set@first@color@to\pgfplotsplothandlermesh@i@jm\to\pgfplotsplothandlermesh@last@aa
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsretval}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@ab}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@bb}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@ba}%
@@ -425,9 +443,10 @@
 	\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@last@aa\times{-1.0}%
 	\expandafter\pgfplotspatchvertexadd\pgfplotsplothandlermesh@last@ab\times{1.0}%
 	\pgfplotspatchvertexfinish\pgfplotsplothandlermesh@last@bb
-	\pgfplotspatchvertexcopymeta\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@last@bb
+	\pgfplotspatchvertexcopymetaifbounded\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@last@bb
 	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@aa}%
+	\pgfplotsplothandlermesh@image@set@first@color@to\pgfplotsplothandlermesh@i@j\to\pgfplotsplothandlermesh@last@aa
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsretval}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@ab}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@last@bb}%
 	% this value is transported from previous iteration:
@@ -489,7 +508,8 @@
 		\pgfplotsdequepopfront{lastinterpscanline}\to\pgfplotsplothandlermesh@ab
 	\fi
 	%
-	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@aa}%
+	\pgfplotsplothandlermesh@image@set@first@color@to\pgfplotsplothandlermesh@im@j\to\pgfplotsplothandlermesh@aa
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsretval}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@ab}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@bb}%
 	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotsplothandlermesh@ba}%
