@@ -148,6 +148,7 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
     self.pointmetamap = nil -- will be set later
     self.filteredCoordsAway = false
     self.plotHasJumps = false
+	self.hasUnboundedPointMeta = false
 	-- will be set before the visualization phase starts. At least.
 	self.plotIs3d = false
     return self
@@ -186,7 +187,7 @@ end
 --
 -- updates point meta limits
 function Plothandler:setperpointmetalimits(pt)
-    if pt.meta ~= nil then
+    if self.pointmetainputhandler ~= nil and self.pointmetainputhandler:isPointMetaBounded(pt.meta) then
         if not type(pt.meta) == 'number' then error("got unparsed input "..tostring(pt)) end
         if self.autocomputeMetaMin then
             self.metamin = math.min(self.metamin, pt.meta )
@@ -195,6 +196,9 @@ function Plothandler:setperpointmetalimits(pt)
         if self.autocomputeMetaMax then
             self.metamax = math.max(self.metamax, pt.meta )
         end
+	else
+		-- FIXME : the TeX code also checks for 'bounded point meta' if there is no point meta input!?
+		self.hasUnboundedPointMeta = true
     end
 end
 
@@ -488,6 +492,25 @@ end
 --
 function PointMetaHandler.assign(pt)
     error("This instance of PointMetaHandler is not implemented")
+end
+
+-- see \pgfplotsifpointmetaisbounded
+function PointMetaHandler:isPointMetaBounded(meta)
+	if meta == nil then
+		return false
+	end
+
+	if self.isSymbolic then
+		if meta == "" then
+			return false
+		else
+			return true
+		end
+
+	else
+		-- check the number:
+		return pgfplotsmath.isfinite(meta)
+	end
 end
 
 
@@ -936,6 +959,13 @@ function Axis:surveyToPgfplots(plothandler)
 	else
 		result = result ..
 		"\\def\\pgfplotsaxisplothasjumps{0}"
+	end
+    if plothandler.hasUnboundedPointMeta then 
+		result = result ..
+		"\\def\\pgfplotsaxisplothasunboundedpointmeta{1}"
+	else
+		result = result ..
+		"\\def\\pgfplotsaxisplothasunboundedpointmeta{0}"
 	end
     if plothandler.filteredCoordsAway then 
 		result = result ..
