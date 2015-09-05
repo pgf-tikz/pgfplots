@@ -375,10 +375,114 @@
 	\begingroup
 	\c@pgf@counta=0
 	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
-		\message{\#\the\c@pgf@counta: \elem; }%
-		\advance\c@pgf@counta by1
+		\pgfmath@basic@multiply@{\the\c@pgf@counta}{\csname pgfpl@cm@#1@h\endcsname}%
+		\message{\#\the\c@pgf@counta=(\pgfmathresult)=(\elem);^^J}%
+		\advance\c@pgf@counta by1 %
 	}%
 	\message{^^J}%
+	\endgroup
+}
+
+% #1: comma-separated list of values for the current entry
+% #2: color map name
+% #3: the current index into the colormap
+% #4: the "x coordinate", i.e. the offset within the colormap
+%
+% Defines \pgfplotsretval
+%
+% Example:
+% \pgfplotscolormaptodatafile[
+%		output each nth=1,
+%		output format=csv,
+%	]{viridis}
+%	{viridis.dat}
+\def\pgfplotscolormaptodatafile@elem#1#2#3#4{
+	\let\pgfplotsretval=\pgfutil@empty
+}%
+
+\begingroup
+\catcode`\[=1
+\catcode`\]=2
+\catcode`\{=12
+\catcode`\}=12
+\xdef\pgfplots@lbrace[{]%
+\xdef\pgfplots@rbrace[}]%
+\endgroup
+
+
+\pgfkeys{
+	/pgfplots/colormap/output each nth/.initial=1,
+	/pgfplots/colormap/output format/.is choice,
+	/pgfplots/colormap/output format/csv/.code={%
+		\def\pgfplotscolormaptodatafile@head##1{%
+			\let\pgfplotsretval=\pgfutil@empty
+		}%
+		\def\pgfplotscolormaptodatafile@elem##1##2##3##4{%
+			\edef\pgfplotsretval{##4,##1}%
+		}%
+		\def\pgfplotscolormaptodatafile@foot##1{%
+			\let\pgfplotsretval=\pgfutil@empty
+		}%
+	},
+	/pgfplots/colormap/output format/native/.code={%
+		\def\pgfplotscolormaptodatafile@head##1{%
+			\edef\pgfplotsretval{\string\pgfplotsset\pgfplots@lbrace colormap={##1}\pgfplots@lbrace}%
+		}%
+		\def\pgfplotscolormaptodatafile@elem##1##2##3##4{%
+			\edef\pgfplotsretval{\csname pgfpl@cm@##2@colspace\endcsname=(##1)}%
+		}%
+		\def\pgfplotscolormaptodatafile@foot##1{%
+			\edef\pgfplotsretval{\pgfplots@rbrace\pgfplots@rbrace}%
+		}%
+	},
+	/pgfplots/colormap/output format=csv,
+}
+
+
+% An export of a color map.
+% #1: options. Can use 'output each nth=2' and 'output format=csv|native'
+% #2: a color map
+% #3: a data file
+\def\pgfplotscolormaptodatafile{\pgfutil@ifnextchar[{\pgfplotscolormaptodatafile@}{\pgfplotscolormaptodatafile@[]}}%
+\def\pgfplotscolormaptodatafile@[#1]#2#3{%
+	\begingroup
+	\pgfqkeys{/pgfplots/colormap}{#1}%
+	\pgfkeysgetvalue{/pgfplots/colormap/output each nth}{\pgfplots@eachnth}%
+	\immediate\openout\w@pgf@writea=#3\relax
+	\pgfplotscolormaptodatafile@head{#2}%
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\immediate\write\w@pgf@writea{%
+			\pgfplotsretval
+		}%
+	\fi
+	\gdef\pgfplots@eachnth@cur{0}%
+	\pgfplotsarrayforeach{pgfpl@cm@#2}\as\elem{%
+		\ifnum\pgfplots@eachnth@cur=0\relax
+			\gdef\pgfplots@eachnth@cur{0}%
+			\pgfmath@basic@multiply@{\pgfplotsarrayforeachindex}{\csname pgfpl@cm@#2@h\endcsname}%
+			\edef\pgfplots@loc@TMPa{{\elem}{#2}{\pgfplotsarrayforeachindex}{\pgfmathresult}}%
+			\expandafter\pgfplotscolormaptodatafile@elem\pgfplots@loc@TMPa
+			\ifx\pgfplotsretval\pgfutil@empty
+			\else
+				\immediate\write\w@pgf@writea{%
+					\pgfplotsretval
+				}%
+			\fi
+		\fi
+		\pgfplotsutil@advancestringcounter@global\pgfplots@eachnth@cur%
+		\ifnum\pgfplots@eachnth@cur=\pgfplots@eachnth\relax
+			\gdef\pgfplots@eachnth@cur{0}%
+		\fi
+	}%
+	\pgfplotscolormaptodatafile@foot{#2}%
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\immediate\write\w@pgf@writea{%
+			\pgfplotsretval
+		}%
+	\fi
+	\immediate\closeout\w@pgf@writea
 	\endgroup
 }
 
@@ -781,6 +885,7 @@
 \pgfutil@definecolor{mapped color}{rgb}{0,0,0}% make sure this color exists. It will be overwritten if needed.
 % ATTENTION: replicated in pgfplots.code.tex :
 \pgfplotscreatecolormap{hot}{color(0cm)=(blue); color(1cm)=(yellow); color(2cm)=(orange); color(3cm)=(red)}
+
 
 \def\pgfplotspointmetatransformedrange{0:1000}
 
