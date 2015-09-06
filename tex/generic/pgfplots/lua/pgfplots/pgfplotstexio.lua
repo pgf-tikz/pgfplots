@@ -118,6 +118,17 @@ function texSurveyPoint(x,y,z,meta)
 	gca.currentPlotHandler:surveypoint(pt)
 end
 
+-- Called during \addplot, i.e. during the survey phase. It is only called in PARTIAL MODE (see above).
+function texSurveyAddJump()
+	local pt = Coord.new()
+	pt.x[1] = nil
+	pt.x[2] = nil
+	pt.x[3] = nil
+	pt.meta = nil
+	
+	gca:addSurveyedJump(gca.currentPlotHandler, pt)
+end
+
 -- Copies survey results of the current plot back to TeX. It prints a couple of executable TeX statements as result.
 -- @see \pgfplots@LUA@survey@end
 function texSurveyEnd()

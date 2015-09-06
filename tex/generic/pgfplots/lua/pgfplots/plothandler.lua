@@ -174,6 +174,7 @@ function Plothandler:addSurveyedPoint(pt)
     -- log("addSurveyedPoint(" .. tostring(pt) .. ") ...\n")
 end
 
+
 -- PRIVATE
 --
 -- assigns the point meta value by means of the PointMetaHandler
@@ -876,16 +877,20 @@ function Axis:datapointsurveyed(pt, plothandler)
                     log("NOTE: coordinate " .. tostring(pt) .. " has been dropped because " .. reason .. "\n")
                 end
             else
-                plothandler.plotHasJumps = true
-
-                local serialized = self:addVisualizationDependencies(pt)
-                plothandler:addSurveyedPoint(serialized)
+				self:addSurveyedJump(plothandler, pt)
             end
         end
     end
     
     -- note that the TeX variant would increase the coord index here.
     -- We do it it surveypoint.
+end
+
+function Axis:addSurveyedJump(plothandler, pt)
+	plothandler.plotHasJumps = true
+
+	local serialized = self:addVisualizationDependencies(pt)
+	plothandler:addSurveyedPoint(serialized)
 end
 
 local function axisLimitToTeXString(name, value)
