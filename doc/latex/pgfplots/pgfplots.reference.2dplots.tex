@@ -1758,9 +1758,15 @@ Please note that |\ifdim| compares \TeX\ lengths, so the example employs the suf
 \subsection{Interrupted Plots}
 \index{Interrupted Plots}%
 \label{pgfplots:interrupt}%
-Sometimes it is desirable to draw parts of a single plot separately, without connection between the parts (discontinuities). \PGFPlots\ offers two ways to generate interrupted plots: either using |empty line|s or by providing |unbounded coords|.
+Sometimes it is desirable to draw parts of a single plot separately, without connection between the parts (discontinuities). \PGFPlots\ offers three ways to generate interrupted plots: 
+\begin{enumerate}
+	\item |empty line|s in the input file or
+	\item by providing |unbounded coords| or
+	\item by providing unbounded |point meta|.
+\end{enumerate}
 
-The first way is simple; it needs no extra key (only |\pgfplotsset{compat=1.4}| or newer in your preamble):
+\subsubsection{Interrupted Plots using Empty Lines}
+The first way to generate interrupted plots is simple; it needs no extra key (only |\pgfplotsset{compat=1.4}| or newer in your preamble):
 \begin{codeexample}[]
 \begin{tikzpicture}
 \begin{axis}[
@@ -1776,7 +1782,9 @@ The first way is simple; it needs no extra key (only |\pgfplotsset{compat=1.4}| 
 \end{codeexample}
 \noindent Here, \PGFPlots\ runs with the default configuration |empty line=auto| which interpretes empty lines as ``jump'' markers. This works for any data input method, i.e.\ using |\addplot coordinates|, |\addplot table|, and |\addplot file|.
 
+Note that |empty line| is useful for two--dimensional plots only since it has a special meaning for three--dimensional plots (in which case |empty line=scanline| decodes matrices).
 
+\subsubsection{Interrupted Plots using Unbounded Coordinate Values}
 The second way to generate interrupted plots addresses the case where |empty line|s are unavailable or impossible (due to limitations of the tool generating the data file, for example). In this case, interrupted plots can be achieved using the |unbounded coords| key combined with coordinate values |nan|, |inf| or |-inf|.
 
 \begin{pgfplotskey}{unbounded coords=\mchoice{discard,jump} (initially discard)}
@@ -1838,6 +1846,59 @@ The second way to generate interrupted plots addresses the case where |empty lin
 \end{codeexample}
 	\noindent This example requires |unbounded coords=jump|\index{mesh!Coordinate filtering}\index{surf!Coordinate filtering} \emph{and} an unbounded value (like |nan|) in order to work. Choosing either |unbounded coords=discard| or an empty string to discard values would result in a broken lattice which would confuse \PGFPlots.
 \end{pgfplotskey}
+
+\subsubsection{Interrupted Plots using Unbounded Point Meta Values}
+The third way to generate interrupted plots is designed for input data which forms a |mesh|, i.e.\ for three--dimensional plots: in this case, |point meta| is expected (by |mesh| or |surf| and its variants). If one of the involved coordinates has an unbounded value for its |point meta|, all adjacent patches which require the |point meta| will be omitted.
+
+The following example has \emph{one} of its |point meta| values set to |nan| (not a number):
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y dir=reverse]
+\addplot coordinates {(0,0) (3,2)};
+
+\addplot[surf,point meta=explicit] coordinates {
+(0,0) [0] (1,0) [1] (2,0) [2] (3,0) [3]
+
+(0,1) [4] (1,1) [5] (2,1) [nan] (3,1) [7]
+
+(0,2) [8] (1,2) [9] (2,2) [10] (3,2) [11]
+};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+Note that all four adjacent cells are omitted since the default |shader| is |shader=flat mean|, an averaging scheme which fails to compute the averages. 
+
+If we use |flat corner|, only one cell becomes invisible:
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[y dir=reverse,shader=flat corner]
+\addplot coordinates {(0,0) (3,2)};
+
+\addplot[surf,point meta=explicit] coordinates {
+(0,0) [0] (1,0) [1] (2,0) [2] (3,0) [3]
+
+(0,1) [4] (1,1) [5] (2,1) [nan] (3,1) [7]
+
+(0,2) [8] (1,2) [9] (2,2) [10] (3,2) [11]
+};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+The case |shader=flat corner| choose the color of the \emph{first} vertex of each patch. For |mesh input=lattice| as in our example above, this applies to the rectangle with vertices $(2,1)$, $(3,1)$, $(2,2)$, $(3,2)$.
+
+The feature can be used to choose |point meta| accordingly, for example to strip certain pieces of the input:
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[shader=flat corner,domain=-1:1]
+\addplot3[surf,
+	point meta={abs(x-y)<0.1 || abs(x-0.5)<0.1 ? nan : z}] 
+	{exp(-x^2-y^2)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
 
 More about this coordinate filtering can be found in Section~\ref{sec:filters} ``Skipping Or Changing Coordinates -- Filters''.
 
