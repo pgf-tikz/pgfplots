@@ -1042,6 +1042,11 @@
 	% issues \pgfplotspatchvertex{...}\endvertex for the first vertex.
 	first vertex/.code=
 		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ first vertex\endcsname{#1}},%
+	% issues \pgfplotspatchvertex{...}\endvertex for the vertex which
+	% was the first BEFORE any z buffer reorderings changed the
+	% sequence (i.e. it undoes the effect of z buffer for the patch).
+	first vertex before z buffer/.code=
+		{\expandafter\def\csname pgfpptch\pgfplotsdeclarepatchclass@ first vertex before z buffer\endcsname{#1}},%
 	%
 	% invokes 
 	% 	\pgfplotspatchvertex...\endvertex
@@ -1300,6 +1305,7 @@
 	get dimension=\def\pgfplotsretval{1},
 	supports global path=\def\pgfplotsretval{1},
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex,
+	first vertex before z buffer=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@A\endvertex #1%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@line@B\endvertex #1%
@@ -1526,6 +1532,40 @@
 	#6%
 }%
 
+% implements 'first vertex before z buffer' for rectangle
+% Note that 'mesh input=lattice' generates the rectangle patch as
+% follows: if the input matrix has the form
+%
+% (i-1,j-1)  (i,j-1)
+%
+% (i-1,j)    (i,j)
+%
+% it generates the rectangle
+%
+% A   D
+%
+% B   C
+%
+% (if you try to map this to a plot, ensure that you have 'y dir=reverse')
+\def\pgfplotspatchclass@rect@first@before@z@buffer{%
+	\ifcase\pgfplotsplothandlermesh@zbuffer@choice\relax
+		% none
+		\let\pgfplots@loc@TMPa\pgfplotspatchclass@rect@A
+	\or
+		% reverse x seq
+		\let\pgfplots@loc@TMPa\pgfplotspatchclass@rect@B
+	\or
+		% reverse y seq
+		\let\pgfplots@loc@TMPa\pgfplotspatchclass@rect@D
+	\or
+		% reverse xy seq
+		\let\pgfplots@loc@TMPa\pgfplotspatchclass@rect@C
+	\or
+		% sort 
+		\let\pgfplots@loc@TMPa\pgfplotspatchclass@rect@A
+	\fi
+	\expandafter\pgfplotspatchvertex\pgfplots@loc@TMPa\endvertex
+}%
 
 % A rectangle specified in the sequence
 % D <-- C
@@ -1568,6 +1608,7 @@
 		\pgfplotspatchready
 	},%
 	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex,
+	first vertex before z buffer=\pgfplotspatchclass@rect@first@before@z@buffer,
 	foreach vertex={%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex #1%
 		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex #1%
@@ -1929,6 +1970,10 @@
 	}%
 }%
 \def\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@firstvertex{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{first vertex before z buffer}%
+	\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@check
+}%
+\def\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@firstvertex@legacy{%
 	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{first vertex}%
 	\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@check
 }%
@@ -2829,16 +2874,21 @@
 		%
 		% use colordata of ONE corner point. That's easy, not
 		% much to do.
-		\def\pgfplotsplothandlermesh@get@flat@color{%
-			% ATTENTION : this does not respect potential reordering done
-			% by 'z buffer'! That means that 'shader=flat corner' is
-			% well defined for 'z buffer=none', otherwise it is
-			% undefined (depends on view)
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex}%
-			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-			\pgfplotsaxisvisphasetransformpointmeta
-			\let\pgfplotsretval=\pgfplotspointmetatransformed%
-		}%
+		\if1\b@pgfplots@correct@shader@flat
+			\def\pgfplotsplothandlermesh@get@flat@color{%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex before z buffer}%
+				\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+				\pgfplotsaxisvisphasetransformpointmeta
+				\let\pgfplotsretval=\pgfplotspointmetatransformed%
+			}%
+		\else
+			\def\pgfplotsplothandlermesh@get@flat@color{%
+				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{first vertex}%
+				\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+				\pgfplotsaxisvisphasetransformpointmeta
+				\let\pgfplotsretval=\pgfplotspointmetatransformed%
+			}%
+		\fi
 	\else
 		% 'flat mean':
 		%
@@ -2911,7 +2961,11 @@
 			% ok, this uses (only) 'shader=flat' 
 			\if c\pgfplotsplothandlermesh@flatmode
 				% 'flat corner':
-				\let\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta=\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@firstvertex
+				\if1\b@pgfplots@correct@shader@flat
+					\let\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta=\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@firstvertex
+				\else
+					\let\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta=\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@firstvertex@legacy
+				\fi
 			\else
 				% 'flat mean':
 				\let\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta=\pgfplotsplothandlermesh@PIPE@CHECKJUMP@meta@everyvertex
