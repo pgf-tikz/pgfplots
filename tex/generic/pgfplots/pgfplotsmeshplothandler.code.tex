@@ -170,7 +170,7 @@
 	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@mesh
 	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@mesh
 	\let\pgfplotsplothandlersurveyaftersetpointmeta=\pgfplotsplothandlersurveyaftersetpointmeta@mesh@cdatanormalize
-	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlersurveyend@mesh@scanlinecomplete
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlersurvey@mesh@scanlinecomplete
 	%
 	\def\pgfplotsplothandlerLUAfactory{pgfplots.MeshPlothandler.new}%
 	\if2\pgfplotsplothandlermesh@matrixinput
@@ -2195,6 +2195,7 @@
 	\if2\pgfplotsplothandlermesh@matrixinput
 		% mesh input=image
 		\pgfplotsplothandlersurveystart@mesh@image
+		\pgfplotsplothandlermesh@needs@scanlinecomplete@notificationstrue
 	\fi
 	%
 	\pgfplotsplothandlersurveypoint@mesh@check@scanline@length@init
@@ -2218,23 +2219,36 @@
 	\fi
 }%
 
+\def\pgfplotsplothandlersurveypoint@pseudoconstant@row@index{%
+	\if\pgfplots@plot@mesh@ordering0%
+		% ordering = x varies= rowwise -> scanline is cols!
+	\else
+		% ordering = y varies = colwise: scanline is rows!
+		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
+	\fi
+}%
+
 % initializes \pgfplotsplothandlersurveypoint@mesh@check@scanline@length, see its comments.
 \def\pgfplotsplothandlersurveypoint@mesh@check@scanline@length@init{%
 	\pgfkeysgetvalue{/pgfplots/empty line}\pgfplots@loc@TMPa%
 	\def\pgfplots@loc@TMPb{scanline}
 	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
 	\else
+		% without end-of-scanline markers, the notification
+		% \pgfplotsscanlinecomplete does not make sense anyway in this
+		% context. Disable it:
 		\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
 	\fi
 	\if\pgfplots@plot@mesh@ordering0%
 		% ordering = x varies= rowwise -> scanline is cols!
 		\ifx\pgfplotsplothandlermesh@cols\pgfutil@empty
+			% ... and without columns, we cannot generate the notification.
 			\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
 		\fi
 	\else
 		% ordering = y varies = colwise: scanline is rows!
 		\ifx\pgfplotsplothandlermesh@rows\pgfutil@empty
-			% a pity... we cannot do anything!
+			% ... and without rows, we cannot generate the notification.
 			\let\pgfplotsplothandlersurveypoint@mesh@check@scanline@length=\relax
 		\fi
 	\fi
@@ -2277,6 +2291,8 @@
 	\pgfplotsplothandlersurveypoint@mesh@common
 }%
 
+\newif\ifpgfplotsplothandlermesh@needs@scanlinecomplete@notifications
+
 \def\pgfplotsplothandlersurveyend@mesh{%
 	\pgfplotsplothandlersurveyend@default
 	\if0\pgfplotsplothandlermesh@colorinput
@@ -2291,9 +2307,47 @@
 		\pgfplotsplothandlersurveyend@mesh@image
 	\fi
 	%
+	\ifpgfplotsplothandlermesh@needs@scanlinecomplete@notifications
+		%
+		% OK, we EXPECT that the code generated 
+		% notifications of sorts \pgfplotsscanlinecomplete.
+		%
+		% If this turns out to be NOT the case, we generate a
+		% warning/error.
+		%
+		% This, in turn, is restricted to the following cases:
+		% 1. there have been end-of-scanline markers in the input
+		% stream (that's why we can only decide it here, after the
+		% input has been surveyed)
+		% 2. OR \pgfplotsscanlinecomplete has been called due to scan
+		% line length comparison with mesh/cols or mesh/rows. In this
+		% case, the required argument must have been set, see 
+		%  \pgfplotsplothandlersurveypoint@mesh@check@scanline@length@init
+		%
+		\ifnum\c@pgfplotsplothandlermesh@image@numscanlines<2
+			\pgfplotsautocompletemeshkeys%
+			\ifx\pgfplotsplothandlersurveypoint@mesh@check@scanline@length\relax
+				% ah -- this routine has been cleared because the keys are
+				% missing.
+				%
+				% Please see the comments on
+				% \pgfplotsplothandlersurveypoint@mesh@check@scanline@length
+				% for details.
+				%
+				\if\pgfplots@plot@mesh@ordering0%
+					% ordering = x varies= rowwise -> scanline is cols!
+					\pgfplotswarning{imagesc limits incomplete}{mesh/cols=\pgfplotsplothandlermesh@cols}\pgfeov%
+				\else
+					% ordering = y varies = colwise: scanline is rows!
+					\pgfplotswarning{imagesc limits incomplete}{mesh/rows=\pgfplotsplothandlermesh@rows}\pgfeov%
+				\fi
+			\fi
+		\fi
+	\fi
+	%
 }
 
-\def\pgfplotsplothandlersurveyend@mesh@scanlinecomplete{%
+\def\pgfplotsplothandlersurvey@mesh@scanlinecomplete{%
 	%
 	%
 	\if2\pgfplotsplothandlermesh@matrixinput
