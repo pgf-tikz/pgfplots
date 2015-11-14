@@ -429,7 +429,7 @@
 		\endgroup
 		\pgfkeyslet{/pgfplots/cycle multi list/@totalN\pgfplots@loc@TMPb}\pgfmathresult
 		\pgfkeyslet{/pgfplots/cycle multi list/@N\pgfplots@loc@TMPb}\pgfmathresult
-%\def\temp{#1}\message{cycle multi list/@list={\meaning\temp};   /@N\pgfplots@loc@TMPb = \pgfkeysvalueof{/pgfplots/cycle multi list/@N\pgfplots@loc@TMPb}.}%
+%\def\temp{#1}\message{cycle multi list/@list={\meaning\temp}; /@N\pgfplots@loc@TMPb = \pgfkeysvalueof{/pgfplots/cycle multi list/@N\pgfplots@loc@TMPb}}%
 		\pgfplotsutil@advancestringcounter\pgfplots@loc@TMPb
 	\fi
 	%
@@ -476,6 +476,24 @@
 \def\pgfplots@cycle@multi@list@finalize\pgfplots@cycle@multi@list@EOI{%
 	\pgfkeyslet{/pgfplots/cycle multi list/@dim}\pgfplots@loc@TMPb
 	\pgfplots@cycle@multi@list@finalize@
+	\c@pgf@countd=0 %
+	\c@pgf@counta=0 %
+	\pgfplotsloop{%
+		\ifnum\c@pgf@counta<\pgfplots@loc@TMPb\relax
+			\pgfplotsloopcontinuetrue
+		\else
+			\pgfplotsloopcontinuefalse
+		\fi
+	}{%
+		\pgfkeysgetvalue{/pgfplots/cycle multi list/@N\the\c@pgf@counta}\pgfplots@cycle@N
+		\ifnum\c@pgf@countd<\pgfplots@cycle@N\relax
+			\c@pgf@countd=\pgfplots@cycle@N\relax
+		\fi
+		\advance\c@pgf@counta by1
+	}%
+	\edef\pgfplots@loc@TMPd{\the\c@pgf@countd}%
+	\pgfkeyslet{/pgfplots/cycle multi list/@maxlen}\pgfplots@loc@TMPd
+%\message{cycle multi list/@maxlen=\pgfplots@loc@TMPd^^J}%
 }%
 
 \def\pgfplots@pgfkeys@set@point@meta@value#1{%
@@ -2118,7 +2136,14 @@
 	% <first list spec>\nextlist <second list spec>\nextlist ....
 	% where each list spec is EITHER a cycle list name OR a cycle list
 	% argument.
-	/pgfplots/cycle multi list/.code={\pgfplots@cycle@multi@list{#1}},
+	/pgfplots/cycle multi list/.code={%
+		\def\pgfplots@cycle@multi@list@sequence{L}% [L]exicographical
+		\pgfplots@cycle@multi@list{#1}%
+	},
+	/pgfplots/cycle multiindex list/.code={%
+		\def\pgfplots@cycle@multi@list@sequence{M}% [M]ultiindex
+		\pgfplots@cycle@multi@list{#1}%
+	},
 	% #1: list index
 	% #2: maximum number of elements to use
 	/pgfplots/cycle multi list/partial sublist/.code 2 args={%
@@ -2131,6 +2156,7 @@
 		\fi
 	},%
 	/pgfplots/cycle multi list/@dim/.initial=0,
+	%/pgfplots/cycle multi list/@maxlen/.initial=0,
 	%/pgfplots/cycle multi list/@list0/.style={},
 	%/pgfplots/cycle multi list/@N0/.initial=0,%
 	%/pgfplots/cycle multi list/@totalN0/.initial=0,%
@@ -4637,43 +4663,77 @@
 		\edef\pgfplots@listindex{\the\c@pgf@counta}%
 	\fi
 	\ifnum\pgfplots@cycle@dim>0
-		% use the 'cycle multi list' feature.
-		%
-		% it employs a scalar -> multiindex map like
-		% void fromScalar( size_t d, size_t scalar, size_t* Iout, const size_t* N )
-		% {
-		% 	size_t ret=scalar;
-		% 	for( int i = d-1; i>=0; --i ) {
-		% 		Iout[i] = ret % N[i];
-		% 		ret /= N[i];
-		% 	}
-		% }
-		% to get the different indices into the cycle lists.
-		%-------------------------------------------------- 
-		\c@pgf@counta=\pgfplots@cycle@dim\relax
-		\c@pgf@countb=\pgfplots@listindex\relax
-		\advance\c@pgf@counta by-1
-		\pgfplotsloop{%
-			\ifnum\c@pgf@counta<0
-				\pgfplotsloopcontinuefalse
-			\else
-				\pgfplotsloopcontinuetrue
-			\fi
-		}{%
-			\pgfkeysgetvalue{/pgfplots/cycle multi list/@N\the\c@pgf@counta}\pgfplots@cycle@N
-			% compute list index:
-			\pgfplotsmathmodint{\c@pgf@countb}{\pgfplots@cycle@N}%
-			\divide\c@pgf@countb by \pgfplots@cycle@N\relax
+		\if L\pgfplots@cycle@multi@list@sequence
+			% use the 'cycle multi list' feature.
 			%
-			\expandafter\pgfplots@getautoplotspec@
-				\csname pgfp@cyclist@/pgfplots/cycle multi list/@list\the\c@pgf@counta @\endcsname
-				{\pgfplots@cycle@N}%
-				{\pgfmathresult}%
-			\t@pgfplots@toka=\expandafter{#1,}%
-			\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
-			\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			% it employs a scalar -> multiindex map like
+			% void fromScalar( size_t d, size_t scalar, size_t* Iout, const size_t* N )
+			% {
+			% 	size_t ret=scalar;
+			% 	for( int i = d-1; i>=0; --i ) {
+			% 		Iout[i] = ret % N[i];
+			% 		ret /= N[i];
+			% 	}
+			% }
+			% to get the different indices into the cycle lists.
+			%-------------------------------------------------- 
+			\c@pgf@counta=\pgfplots@cycle@dim\relax
+			\c@pgf@countb=\pgfplots@listindex\relax
 			\advance\c@pgf@counta by-1
-		}%
+			\pgfplotsloop{%
+				\ifnum\c@pgf@counta<0
+					\pgfplotsloopcontinuefalse
+				\else
+					\pgfplotsloopcontinuetrue
+				\fi
+			}{%
+				\pgfkeysgetvalue{/pgfplots/cycle multi list/@N\the\c@pgf@counta}\pgfplots@cycle@N
+				% compute list index:
+				\pgfplotsmathmodint{\c@pgf@countb}{\pgfplots@cycle@N}%
+				\divide\c@pgf@countb by \pgfplots@cycle@N\relax
+				%
+				\expandafter\pgfplots@getautoplotspec@
+					\csname pgfp@cyclist@/pgfplots/cycle multi list/@list\the\c@pgf@counta @\endcsname
+					{\pgfplots@cycle@N}%
+					{\pgfmathresult}%
+				\t@pgfplots@toka=\expandafter{#1,}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+				\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+				\advance\c@pgf@counta by-1
+			}%
+		\else
+			\if M\pgfplots@cycle@multi@list@sequence
+				% Multiindex variant.
+				%
+				% take the i'th element of each sub-list where i
+				% =\pgfplots@listindex
+				\pgfplotsmathmodint{\pgfplots@listindex}{\pgfkeysvalueof{/pgfplots/cycle multi list/@maxlen}}%
+				\let\pgfplots@listindex=\pgfmathresult
+				%
+				\c@pgf@counta=0
+				\pgfplotsloop{%
+					\ifnum\c@pgf@counta<\pgfplots@cycle@dim\relax
+						\pgfplotsloopcontinuetrue
+					\else
+						\pgfplotsloopcontinuefalse
+					\fi
+				}{%
+					\pgfkeysgetvalue{/pgfplots/cycle multi list/@N\the\c@pgf@counta}\pgfplots@cycle@N
+					\ifnum\pgfplots@listindex<\pgfplots@cycle@N\relax
+						\expandafter\pgfplots@getautoplotspec@
+							\csname pgfp@cyclist@/pgfplots/cycle multi list/@list\the\c@pgf@counta @\endcsname
+							{\pgfplots@cycle@N}%
+							{\pgfplots@listindex}%
+						\t@pgfplots@toka=\expandafter{#1,}%
+						\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+						\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+					\fi
+					\advance\c@pgf@counta by1
+				}%
+			\else
+				\pgfplots@error{Internal error: expected 'L' or 'M', not '\pgfplots@cycle@multi@list@sequence'}%
+			\fi
+		\fi
 	\else
 		% normal cycle list:
 		\pgfplotslistsize\autoplotspeclist\to\c@pgf@countd

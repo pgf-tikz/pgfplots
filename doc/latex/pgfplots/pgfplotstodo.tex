@@ -39,6 +39,7 @@ The following steps have to be done for every release:
 			\item 
 		Copy the external lib (both coreexternal + tikz lib) to pgfplots (feature with label/ref)
 			\item backw. layer for luamath library: bugfix which is not in 3.0.1
+			\item fix floor/ceiling in fpu
 		\end{itemize}
 	
 	advertise new possibilities on
@@ -159,12 +160,22 @@ Note that context MK IV needs it installed in \verb|~/texmf| (doesn't respect en
 
 \section{Documentation todo}
 \begin{bugtracker}
+
+\begin{doctodo}
+	document \verb|\boldmath $...$| for pgfplotstable
+\end{doctodo}
+
 \begin{doctodo}
 	Document standalone vs. external
 
 	\begin{itemize}
 		\item standalone does not work with loops (compare \url{http://tex.stackexchange.com/questions/191108/how-to-avoid-copied-code-with-the-combination-pgfplots-standalone})
 		\item generating just one single figure without a document is simpler with standalone
+		\item external integrates seamlessly
+		\item external can be enabled later-on
+		\item external supports label+ref
+		\item external supports make out of the box
+		\item external supports bounding box control (trim)
 		\item $\cdots$
 	\end{itemize}
 \end{doctodo}
@@ -992,6 +1003,24 @@ La.
 \section{Bugs in PGFPlots}
 
 \begin{bugtracker}
+\begin{bug}
+	dateplot lib: accuracy problems cause unexpected rounding effects if used without date ZERO
+
+	perhaps I have to compute dateZERO programmatically?
+
+	\url{https://sourceforge.net/p/pgfplots/bugs/96/}
+\end{bug}
+
+\begin{bug}
+	pgfplotstable: dec sep align does not work if someone uses custom \verb|column type| or \verb|assign column name|.
+
+	See \url{http://tex.stackexchange.com/questions/276395/pgfplotstable-formatting-problems/277284#277284}
+\end{bug}
+
+
+\begin{bug}
+	add sanity check to lua backend before sending mapped coordinates to TeX: \url{http://tex.stackexchange.com/questions/269656/pgfplots-with-big-data-dimension-too-large}
+\end{bug}
 
 \begin{bug}
 	feature \verb|/pgfplots/compat/BB/1.8| (\verb|clip bounding box=upper bound|) produces problems in the following figure:
@@ -1105,7 +1134,9 @@ La.
 	 compare \url{http://tex.stackexchange.com/questions/250825/axis-dir-reverse-and-colormap-bug-in-tikz}
 \end{bug}
 
-\begin{bug}[closed]
+\begin{bug}[]
+	3.0.1 comes with a WRONG fix! It is plain wrong... 
+
 	fixed in pgf 3.0.1 (not released at the time of this writing)
 
 	MATH BUGS:
@@ -1628,31 +1659,30 @@ y index=1,
 	samples=2, 
 	set layers, cell picture=false,
 }
+\tracingmacros=2 \tracingcommands=2
 \begin{axis}[
-	scale only axis,
 	xlabel=x,ylabel=y,
-	axis y line*=left,
 xmin=-1,
 xmax=1,
 ymin=-1, ymax=1,
-%enlargelimits=true,
 ]
-\addplot {x};
+\addplot coordinates {(-5,-5) (5,5)};
 \end{axis}
-\begin{axis}[
-	scale only axis,
-	xlabel=x,ylabel=y,
-	axis y line*=right,
-xmin=-1,
-xmax=1,
-ymin=0, ymax=2,
-%enlargelimits=true,
-]
-\addplot {1-x};
-\end{axis}
+\draw[line width=4pt] (-27.42155pt,-14.14372pt) -- (200.83115pt,168.5547pt);
+	\draw[red,thick] (current bounding box.south west) -- (current bounding box.north east);
+ % \message{FINAL (bad) size: (\the\pgf@picminx,\the\pgf@picminy) -- (\the\pgf@picmaxx,\the\pgf@picmaxy)^^J}%
+
 \end{tikzpicture}
 \end{document}
+\end{document}
 \end{verbatim}
+	some notes here:
+	\begin{itemize}
+		\item \verb|\draw[line width=4pt] (-27.42155pt,-14.14372pt) -- (200.83115pt,168.5547pt);| appears to be the correct bb.
+		\item patching \verb|pgf@procotolsizes| to output \verb|\message{pgf@protocolsizes: (\the\pgf@picminx,\the\pgf@picminy) -- (\the\pgf@picmaxx,\the\pgf@picmaxy)^^J}%| reveals that there is a huge BB entry of \verb|(584.9945pt,485.99854pt)|
+		\item is part of \verb|clippath@install| and is used as soon as the description cs is prepared. The problem appears to be inside of the clippath preparation, though -- why does it use such a big value?
+		\item the description cs is used during \verb|\pgfplots@low@level@shape@INNER@define|
+	\end{itemize}
 \end{bug}
 
 \begin{bug}[closed]
@@ -4367,6 +4397,50 @@ and you can remark that colour filling overlaps x- and y-axis ! So I suggest tha
 % FEATURES
 \section{Feature Proposals PGFPlots}
 \begin{bugtracker}
+
+\begin{feature}
+\begin{verbatim}
+	>
+>> Zu cycle multi list*: verstehe ich es recht, dass Du sowas wie folgt
+>> meinst:
+>>
+>> cycle multi list*={
+>>    red,blue\nextlist
+>>    solid,{dotted,mark options={solid}}\nextlist
+>>    mark=*,mark=x
+>> },
+>>
+>> sodass man damit zwei plots machen kann, der erste mit
+>> 	red,solid,mark=*
+>> und der zweite mit
+>> 	blue,dotted,mark options={solid},mark=x
+>> ? D.h. dass der i.te Zugriff aus jeder Liste das element i nimmt?
+>> Das waere ja recht einfach, denke ich.
+>
+> Genau das meine ich, wenn das auch mit zuvor generierten Listen
+> funktioniert. Also zum Beispiel
+> 	cycle multi list*={
+> 	    color list\nextlist
+> 	    line list\nextlist
+> 	    mark list
+> 	},
+> (Weil ich baue ja gerade _nur_ an der ersten Liste ...)
+> Wenn dann auch noch das "Using Sub-Lists, also zum Beispiel
+> 	[2 of]color list
+> funktioniert wäre das großartig.
+\end{verbatim}
+\end{feature}
+
+\begin{feature}
+	add expressions 'row' and `col' which expand to the current row/col index of an input matrix.
+
+	Implementation is ready on branch \verb|rowcolgetters|, with the following todo list left:
+	\begin{enumerate}
+		\item LUA backned
+		\item doku
+		\item \verb|empty line=jump| is broken!
+	\end{enumerate}
+\end{feature}
 
 \begin{feature}
 	fillbetween: add support to style the ``positive'' and ``negative'' region, respectively.
