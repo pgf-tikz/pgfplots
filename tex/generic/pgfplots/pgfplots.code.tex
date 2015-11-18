@@ -164,10 +164,98 @@
 % Creates a named plot cycle list.
 %
 % #1:  the name of the final list. Can be used in 'cycle list name'
-% #2:  the list entries. You can use either a comma-separated list or
-%      a '\\'-terminated list. The latter case also requires '\\'
-%      AFTER the last entry.
-\def\pgfplotscreateplotcyclelist#1#2{\expandafter\pgfplots@assign@list\csname pgfp@cyclist@\string#1@\endcsname{#2}}
+% #2:  the list entries.
+% 		It accepts the following formats:
+% 		\pgfplotscreateplotcyclelist{name}{[of colormap]}%
+% 		\pgfplotscreateplotcyclelist{name}{[of colormap=<colormap name>]}%
+% 		\pgfplotscreateplotcyclelist{name}{[colors of colormap={<list>}{<colormap name>}]}%
+% 		\pgfplotscreateplotcyclelist{name}{[indices of colormap={<list>}{<colormap name>}]}%
+% 		\pgfplotscreateplotcyclelist{name}{comma-separated-list}
+% 		\pgfplotscreateplotcyclelist{name}{'\\'-separated list(requires the last item to be terminated by '\\')}
+\def\pgfplotscreateplotcyclelist#1#2{%
+	\pgfplotscreateplotcyclelist@check@specials{#1}{#2}#2\pgfplots@EOI%
+}%
+
+\def\pgfplotscreateplotcyclelist@check@specials#1#2{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotscreateplotcyclelist@check@specials@{#1}%
+	}{%
+		\pgfplotscreateplotcyclelist@check@specials@@{#1}{#2}%
+	}%
+}%
+\def\pgfplotscreateplotcyclelist@check@specials@#1[#2]{%
+	\pgfqkeys{/pgfplots/@cycle}{result name={#1},#2}%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfplots@gobble@until@EOI
+	}{%
+		\pgfplotscreateplotcyclelist@check@specials@gobble@error{#2}%
+	}%
+}%
+\def\pgfplotscreateplotcyclelist@check@specials@gobble@error#1#2\pgfplots@EOI{%
+	\t@pgfplots@tokb={[#1]}%
+	\t@pgfplots@toka={#2}%
+	\pgfplots@error{Encountered unexpected characters '\the\t@pgfplots@toka' after option '\the\t@pgfplots@tokb' in cycle list definition}%
+}%
+\def\pgfplotscreateplotcyclelist@check@specials@@#1#2#3\pgfplots@EOI{%
+	\expandafter\pgfplots@assign@list\csname pgfp@cyclist@\string#1@\endcsname{#2}%
+}
+
+\def\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion#1#2{%
+	\pgfplots@color@of@colormap@parse{#1}%
+	\begingroup
+	\gdef\pgfplots@glob@TMPa{}%
+	\gdef\pgfplots@glob@TMPb{0}%
+	\def\pgfplots@loc@TMPa{\foreach \x in }%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@color@of@colormap@value}{%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@color@of@colormap@name}%
+		\edef\currentValue{#2=\x\space of \the\t@pgfplots@tokb}%
+		%
+		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+		\t@pgfplots@tokb=\expandafter{\currentValue\\}%
+		\xdef\pgfplots@glob@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		%
+		\pgfplotsutil@advancestringcounter@global\pgfplots@glob@TMPb
+		\ifnum\pgfplots@glob@TMPb>\pgfkeysvalueof{/pgfplots/@cycle/max size} %
+			% cycle lists have quadratic runtime. Use small ones!
+			\pgfplotswarning{cycle list size limit reached}\pgfeov
+			\breakforeach
+		\fi
+	}%
+	\endgroup
+	\pgfkeysgetvalue{/pgfplots/@cycle/result name}\pgfplots@color@of@colormap@name
+	\t@pgfplots@tokb=\expandafter{\pgfplots@color@of@colormap@name}%
+	\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+	\edef\pgfplots@loc@TMPa{\noexpand\pgfplotscreateplotcyclelist{\the\t@pgfplots@tokb}{\the\t@pgfplots@toka}}%
+%\message{got \meaning\pgfplots@loc@TMPa^^J}%
+	\pgfplots@loc@TMPa
+}%
+
+\pgfqkeys{/pgfplots/@cycle}{%
+	result name/.initial=,
+	max size/.initial=80,
+	of colormap/.code={%
+		\pgfplotsutilifstringequal{#1}{\pgfkeysnovalue}{%
+			\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
+			\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\pgfkeysalso{indices of colormap={0,...,\pgfplotscolormaplastindexof{\pgfplots@loc@TMPa}} of {\the\t@pgfplots@toka}}%
+			}%
+			\pgfplots@loc@TMPa
+		}{%
+			\pgfplotscolormapifdefined{#1}{%
+				\pgfkeysalso{indices of colormap={0,...,\pgfplotscolormaplastindexof{#1}} of {#1}}%
+			}{%
+				\pgfplots@error{There is no such colormap '#1'. Maybe you need to write \string\pgfplotsset{#1} first?}%
+			}%
+		}%
+	},%
+	colors of colormap/.code={%
+		\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion{#1}{color of colormap}%
+	},
+	indices of colormap/.code={%
+		\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion{#1}{index of colormap}%
+	},
+}
 
 \pgfplotscreateplotcyclelist{black white}{%
 	every mark/.append style={fill=gray},mark=*\\%
@@ -2156,9 +2244,8 @@
 		/pgfplots/view/el={#2}%
 	},%
 	/pgfplots/cycle list/.code={%
-		\pgfplots@assign@list\autoplotspeclist{#1}%
-		\expandafter\let\csname pgfp@cyclist@auto@\endcsname=\autoplotspeclist
-		\pgfkeyssetvalue{/pgfplots/cycle multi list/@dim}{0}% de-activate.
+		\pgfplotscreateplotcyclelist{@internal@}{#1}%
+		\pgfkeysalso{/pgfplots/cycle list name={@internal@}}%
 	},
 	/pgfplots/cycle list/.belongs to family=/pgfplots,
 	/pgfplots/cycle list name/.code={%
