@@ -41,10 +41,10 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 	# $PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
 	# $PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
 	# $PGFDIR/generic/pgf/libraries/luamath/pgflibraryluamath.code.tex \
-	# $PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
 	#-------------------------------------------------- 
 FILES=(\
 	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
+	$PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
 )
 for A in "${FILES[@]}"; do
 	echo "creating compatibility version for `basename $A` ... " 
