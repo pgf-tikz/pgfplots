@@ -698,7 +698,20 @@
 	\def\b@pgfplotspatchvertexaccum@ignore@unbounded@metadata{0}%
 	\if0\pgfplotsplothandlermesh@colorinput
 		% mesh/color input=colormap
-		\pgfplotscoordmath{meta}{zero}%
+		%\if m\pgfplots@colormap@access
+		\iftrue
+			% colormap access=map
+			\pgfplotscoordmath{meta}{zero}%
+		\else
+			% colormap access=direct
+			% FIXME : this causes lots of problems because the result is
+			% of an unexpected format at consumer side:
+			\begingroup
+			\pgfplotscolorzero{\pgfplotsplothandlermesh@explicit@color@num@comps}%
+			\let\pgfmathresult=\pgfplotsretval
+			\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+		\fi
 	\else
 		% mesh/color input=explicit
 		\begingroup
@@ -724,9 +737,26 @@
 		\pgfplots@loc@tmptrue
 	\fi
 	\ifpgfplots@loc@tmp
-		\pgfplotscoordmath{meta}{parsenumber}{#1}%
-		\pgfplotscoordmath{meta}{op}{multiply}{{#2}{\pgfmathresult}}%
-		\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
+		%\if m\pgfplots@colormap@access
+		\iftrue
+			% colormap access=map
+			\pgfplotscoordmath{meta}{parsenumber}{#1}%
+			\pgfplotscoordmath{meta}{op}{multiply}{{#2}{\pgfmathresult}}%
+			\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
+		\else
+			% colormap access=direct
+			% FIXME : this causes lots of problems because the result is
+			% of an unexpected format at consumer side:
+			% colormap access=direct
+			% interpolate colors, not their indices:
+			\begingroup
+			\pgfplotscoordmath{meta}{parsenumber}{#1}%
+			\pgfplotscoordmath{meta}{tofixed}{\pgfmathresult}%
+			\pgfplotscolormapgetindex{\pgfmathresult}{\pgfplotsplothandlermesh@colormapname}%
+			\global\let\pgfplots@glob@TMPc=\pgfmathresult
+			\endgroup
+			\pgfplotspatchvertexaddscaledmeta@if@applicable@explicit{#1}{\pgfplots@glob@TMPc}%
+		\fi
 	\else
 		\pgfplotscoordmath{meta}{op}{multiply}{{\pgfplots@metamin}{\pgfmathresult}}%
 		\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult@}{\pgfmathresult}}%
@@ -2612,12 +2642,19 @@
 
 \def\pgfplotsplothandlermesh@init@cdata{%
 	% Ok, we have color data.
-	%
-	\pgfkeysgetvalue{/pgfplots/mesh/colorspace explicit color output}\pgfplots@loc@TMPa
-	\pgfplotscolorspacegetcomponents{\pgfplots@loc@TMPa}%
-	\let\pgfplotsplothandlermesh@explicit@color@num@comps=\pgfplotsretval
-	%
 	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsplothandlermesh@colormapname
+	%
+	%
+	\if0\pgfplotsplothandlermesh@colorinput
+		% mesh/color input=colormap
+		\pgfplotscolormapgetcolorcomps{\pgfplotsplothandlermesh@colormapname}%
+		\let\pgfplotsplothandlermesh@explicit@color@num@comps=\pgfplotsretval
+	\else
+		% mesh/color input=explicit
+		\pgfkeysgetvalue{/pgfplots/mesh/colorspace explicit color output}\pgfplots@loc@TMPa
+		\pgfplotscolorspacegetcomponents{\pgfplots@loc@TMPa}%
+		\let\pgfplotsplothandlermesh@explicit@color@num@comps=\pgfplotsretval
+	\fi
 	%
 	\pgfkeysgetvalue{/pgfplots/mesh/interior colormap name}\pgfplotsplothandlermesh@colormapname@interior
 	\ifx\pgfplotsplothandlermesh@colormapname@interior\pgfutil@empty
@@ -2652,7 +2689,21 @@
 \def\pgfplotsplothandlermesh@definemappedcolor#1{%
 	\if0\pgfplotsplothandlermesh@colorinput
 		% mesh/color input=colormap
-		\pgfplotscolormapdefinemappedcolor{#1}%
+		\if m\pgfplots@colormap@access
+			% colormap access=map
+			\pgfplotscolormapdefinemappedcolor{#1}%
+		\else
+			% colormap access=direct
+			% we assume that the color *is* already normalized, 
+			% i.e. it is {<comma-separate-components>} and to be
+			% interpreted in the correct color space.
+			\edef\pgfplots@loc@TMPb{%
+				\noexpand\pgfutil@definecolor{mapped color}
+					{\pgfplotscolormapcolorspaceof{\pgfplotsplothandlermesh@colormapname}}%
+					{#1}%
+			}%
+			\pgfplots@loc@TMPb
+		\fi
 	\else
 		% mesh/color input=explicit
 		%
@@ -2980,39 +3031,65 @@
 		% use colordata as mean of all corners for shading.
 		\if0\pgfplotsplothandlermesh@colorinput
 			% mesh/color input=colormap
-			\def\pgfplotsplothandlermesh@get@flat@color{%
-				\global\pgfplots@tmpa=0pt
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
-					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
-					\pgfplotsaxisvisphasetransformpointmeta
-					\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
+			\if m\pgfplots@colormap@access
+				% colormap access=map
+				\def\pgfplotsplothandlermesh@get@flat@color{%
+					\global\pgfplots@tmpa=0pt
+					\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
+						\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+						\pgfplotsaxisvisphasetransformpointmeta
+						\global\advance\pgfplots@tmpa by\pgfplotspointmetatransformed pt
+					}%
+					\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
+					\global\divide\pgfplots@tmpa by\pgfplotsretval\relax
+					\edef\pgfplotsretval{\pgf@sys@tonumber\pgfplots@tmpa}%
+					\global\pgfplots@tmpa=0pt
 				}%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
-				\global\divide\pgfplots@tmpa by\pgfplotsretval\relax
-				\edef\pgfplotsretval{\pgf@sys@tonumber\pgfplots@tmpa}%
-				\global\pgfplots@tmpa=0pt
-			}%
+			\else
+				% colormap access=direct
+				% interpolate adjacent colors, not their indices:
+				\pgfplotsplothandlermesh@get@flat@color@explicit@prepare
+				\def\pgfplotsplothandlermesh@get@flat@color{%
+					\pgfplotsplothandlermesh@get@flat@color@explicit@accum{%
+						\begingroup
+						\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+						\pgfplotsaxisvisphasetransformpointmeta
+						\let\pgfplotspatchvertexmeta=\pgfplotspointmetatransformed
+						\pgfmath@smuggleone\pgfplotspatchvertexmeta
+						\endgroup
+					}%
+				}%
+			\fi
 		\else
 			% mesh/color input=explicit
-			\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
-			\pgf@xa=1pt %
-			\divide\pgf@xa by\pgfplotsretval\relax
-			\edef\pgfplotsplothandlermesh@get@flat@color@@{\pgf@sys@tonumber\pgf@xa}%
+			\pgfplotsplothandlermesh@get@flat@color@explicit@prepare
 			%
 			\def\pgfplotsplothandlermesh@get@flat@color{%
-				\pgfplotscolorzero{\pgfplotsplothandlermesh@explicit@color@num@comps}%
-				\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
-					\pgfplotscoloraddweighted
-						{\pgfplotsplothandlermesh@explicit@color@num@comps}%
-						{\pgfplotsretval}
-						{\pgfplotsplothandlermesh@get@flat@color@@}%
-						{\pgfplotspatchvertexmeta}%
-				}%
-				\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+				\pgfplotsplothandlermesh@get@flat@color@explicit@accum{}%
 				\pgfplotsaxisvisphasetransformpointmeta
 			}%
 		\fi
 	\fi
+}%
+
+\def\pgfplotsplothandlermesh@get@flat@color@explicit@prepare{%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{get num cdata vertices}%
+	\pgf@xa=1pt %
+	\divide\pgf@xa by\pgfplotsretval\relax
+	\edef\pgfplotsplothandlermesh@get@flat@color@@{\pgf@sys@tonumber\pgf@xa}%
+}%
+\def\pgfplotsplothandlermesh@get@flat@color@explicit@accum#1{%
+	\pgfplotscolorzero{\pgfplotsplothandlermesh@explicit@color@num@comps}%
+	\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass@output}{foreach cdata vertex}{%
+		#1%
+		\pgfplotscoloraddweighted
+			{\pgfplotsplothandlermesh@explicit@color@num@comps}%
+			{\pgfplotsretval}
+			{\pgfplotsplothandlermesh@get@flat@color@@}%
+			{\pgfplotspatchvertexmeta}%
+	}%
+	% FIXME : this here sounds wrong: !? what is this good for:
+	\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
 }%
 
 \def\pgfplotsplothandlermesh@init@jumphandling{%
@@ -3153,9 +3230,15 @@
 \def\pgfplotsplothandlermesh@set@shader@colormap{%
 	\if0\pgfplotsplothandlermesh@colorinput
 		% mesh/color input=colormap
-		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
-		\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
-		\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
+		\if m\pgfplots@colormap@access
+			% colormap access=map
+			\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
+			\expandafter\pgfplotscolormaptopdffunction\expandafter{\pgfplots@loc@TMPa}%
+			\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfplotsretval
+		\else
+			% tell it to expect explicit colors:
+			\pgfkeyslet{/pgfplots/surf shading/colormap}\pgfutil@empty
+		\fi
 	\else
 		% mesh/color input=explicit
 		%
