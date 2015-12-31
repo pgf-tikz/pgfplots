@@ -43,6 +43,8 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 	# $PGFDIR/generic/pgf/libraries/luamath/pgflibraryluamath.code.tex \
 	#-------------------------------------------------- 
 FILES=(\
+	$PGFDIR/generic/pgf/basiclayer/pgfcoreexternal.code.tex \
+	$PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
 	$PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
 	$PGFDIR/generic/pgf/libraries/pgflibraryfpu.code.tex \
 )

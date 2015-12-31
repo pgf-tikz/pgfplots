@@ -19,7 +19,7 @@
 % with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 % This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Date of this copy: Di 25. Dez 18:14:20 CET 2012 %%%
+%%% Date of this copy: Do 31. Dez 19:01:21 CET 2015 %%%
 
 
 
@@ -47,8 +47,25 @@
 % It replaces \tikzpicture/ \endtikzpicture and \tikz and invokes \beginpgfgraphicnamed ... \endpgfgraphicnamed
 % commands if necessary.
 
+% load this package in order to get \pdf@mdfivesum .
+% \pdf@mdfivesum is available for pdftex and lualatex and computes the
+% md5 sum. Note that pdftex has \pdfmdfivesum, but lualatex does not
+% have it.
+%
+% ... also used for \pdf@shellescape.
+\usepackage{pdftexcmds}
+\pgfutil@IfFileExists{atveryend.sty}{%
+	\usepackage{atveryend}%
+}{%
+	\message{! Package tikz Warning: \string\usepackage{atveryend} impossible. Automatic resolving of references within external files impossible.}%
+}%
+
 % source generic implementation:
 \input pgfplotsoldpgfsupp_tikzexternalshared.code.tex
+
+\pgfutil@IfUndefined{pdf@mdfivesum}{}{%
+	\let\tikzexternal@mdfivesum=\pdf@mdfivesum
+}%
 
 \def\tikzexternal@TEXDIALECT@begpicture{\begin{tikzpicture}}
 \def\tikzexternal@TEXDIALECT@endpicture{\end{tikzpicture}}%
@@ -77,6 +94,7 @@
 			\noexpand\endgroup
 			\noexpand#1{\the\t@tikzexternal@tmpa}%
 		}%
+		\t@tikzexternal@tmpa={}% release memory.
 	\else
 		\t@tikzexternal@tmpa=\expandafter{\the\t@tikzexternal@tmpa #2\end{#3}}%
 		\def\tikzexternal@TEXDIALECT@collectpicture@next{%
@@ -86,8 +104,30 @@
 }%
 \def\tikzexternal@laTeX@collect@until@end@tikzpicturetikzpicturestring{tikzpicture}%
 
+\def\tikzexternal@handle@landscape{%
+	\ltx@ifpackageloaded{pdflscape}{%
+		% Work around a bug in conjunction with pdflscape and
+		% external: without this optimize-away-instruction, the
+		% externalized image would be rotated - and it will be rotated
+		% once more again when it is included.
+		%
+		% if we "optimize it away", the landscape stuff will be
+		% omitted. I hope this is enough... might not be entirely
+		% fool-proof; perhaps we need to set it to \relax. For now, it
+		% will probably do the job
+		\tikzset{
+			external/.cd,
+			optimize command away=\landscape,
+			optimize command away=\endlandscape
+		}%
+	}{%
+	}%
+}%
+
 \AtBeginDocument{%
 	\pgfutil@ifundefined{tikzexternalrealjob}{%
 		\global\let\tikzexternalrealjob=\jobname
 	}{}%
+	\tikzexternal@handle@landscape
 }%
+
