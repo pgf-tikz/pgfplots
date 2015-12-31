@@ -2032,17 +2032,89 @@ The most common use-case of |point meta| is color information: if the point meta
 \end{pgfplotskeylist}
 
 \begin{pgfplotskey}{colormap access=\mchoice{map,direct} (initially map)}
-	This key configures how point meta data is used to determine colors from a color map. The initial configuration |map| performs the linear mapping operation explained above. The choice |direct| does not perform any transformation; it takes the point meta as integer indices into the current color map. 
+	This key configures how point meta data is used to determine colors from a color map. The initial configuration \declaretext{map} performs the linear mapping operation explained above.
+	
+	The choice \declaretext{direct} does not perform any transformation; it interpretes the value of |point meta| as integer indices into the current color map. If a number is no integer, it will be truncated by throwing away any fraction parts of the number.
 
-	Consequently, there is no interpolation between colors in the color map, there will only be as many colors as the color map contains explicitly.
+	Suppose we have the following color definitions:
+	\definecolor{YlGn-B}{RGB}{255,255,204}
+	\definecolor{YlGn-E}{RGB}{194,230,153}
+	\definecolor{YlGn-G}{RGB}{120,198,121}
+	\definecolor{YlGn-I}{RGB}{49,163,84}
+	\definecolor{YlGn-K}{RGB}{0,104,55}
+\begin{codeexample}[]
+	\definecolor{YlGn-B}{RGB}{255,255,204}
+	\definecolor{YlGn-E}{RGB}{194,230,153}
+	\definecolor{YlGn-G}{RGB}{120,198,121}
+	\definecolor{YlGn-I}{RGB}{49,163,84}
+	\definecolor{YlGn-K}{RGB}{0,104,55}
+
+    \def\showcolorandname#1{%
+    	\showcolor{#1}~\texttt{#1}%
+    }%
+    \def\showcolor#1{%
+    	\tikz \draw[black,fill={#1}] (0,0) rectangle (2em,1.6em);%
+    }%
+    %
+    \begin{minipage}[c]{5cm}
+        \showcolorandname{YlGn-K}\\
+        \showcolorandname{YlGn-I}\\
+        \showcolorandname{YlGn-G}\\
+        \showcolorandname{YlGn-E}\\
+    	\showcolorandname{YlGn-B}
+    \end{minipage}
+\end{codeexample}
+	and we use these colors in order to define a |colormap|:
+
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[
+	colormap={brewer}{
+		color=(YlGn-B) color=(YlGn-E) 
+		color=(YlGn-G) color=(YlGn-I) 
+		color=(YlGn-K)},
+	anchor=center,enlargelimits=false,
+	% FIXME : DEFINE A STYLE
+	colorbar sampled={
+		surf,
+		colormap access=direct,
+		shader=flat corner,
+		samples=\pgfplotscolormapsizeof
+			{\pgfkeysvalueof{/pgfplots/colormap name}}+1,
+	},
+	colorbar style={
+		point meta min=0,
+		point meta max=\pgfplotscolormapsizeof
+			{\pgfkeysvalueof{/pgfplots/colormap name}},
+	},
+]
+\addplot[matrix plot,
+	nodes near coords,mark=*,
+	point meta=explicit,
+	colormap access=direct,		
+]
+coordinates {
+(0,0) [0] (1,0) [1] (2,0) [2] (3,0) [NaN]
+
+(0,1) [3] (1,1) [4] (2,1) [5] (3,1) [99]
+
+(0,2) [3.5] (1,2) [-1] (2,2) [2.99] (3,2) [3]
+};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The example has a $3\times 4$ matrix, each with explicitly provided values of |point meta|. The first point has a |point meta| value of~$0$ and uses the first color of the |color map| (|YlGn-B|). The second point has value~$1$ and uses the second color, |YlGn-E|, and so on. Note that |NaN| is interpreted as `hole' in the matrix and is left empty (you see the background color here). Note furthermore that coordinate |(1,2) [-1]| is mapped to the first color as well since values outside of the allowed range are automatically clipped to the next correct color. The same holds for the point with |[99]|. Finally, the point with |[2.99]| is mapped to index $2$ since |colormap access=direct| truncates to the next integer index.
+
+	Note that |colormap access=direct| changes the way how |point meta| is translated to colors. However, it does \emph{not affect} |shader|. In other words, it is perfectly sane to use |shader=interp| or |shader=flat mean|. This, however, will interpolate the colors resulting from |colormap access=direct|! Our example above uses |shader=flat corner| which results in no color interpolation at all.
 
 	\paragraph{Some more details:}
 	\begin{itemize}
 		\item If there are $m$ colors in the color map and the color data falls outside of $[0,m-1]$, it will be pruned to either the first or the last color.
 		\item If color data is a real number, it will be truncated to the next smaller integer.
-		\item 
-	This key does not work for |shader=interp| (note that this shader will always interpolate in the color map).
+		\item If |colormap access=direct| is combined with a |shader|$\neq$|flat corner|, color interpolation takes place. However, the color interpolation is not carried out in terms of the scalar |point meta| (as would have been done for |colormap access=map|). Instead, it is carried out on the \emph{resulting} colors in their own colorspace. 
+
+		\item Note that |patch refines| or |patch to triangles| is unsupported in this context (at the time of this writing, it will interpolate the color indices, resulting in badly defined behavior).
+
 	\end{itemize}
-	\paragraph{Attention:} This feature is experimental and has never been used or tested so far. If you believe that it should receive more attention, let us know. 
 \end{pgfplotskey}
 
