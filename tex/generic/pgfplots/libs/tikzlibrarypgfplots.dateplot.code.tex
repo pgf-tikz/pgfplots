@@ -123,16 +123,47 @@
 % \def\pgfplotslibdateplot@discard@trailing@colon#1:{#1}%
 %-------------------------------------------------- 
 
+\let\pgfplots@calender@ZEROSHIFT=\pgfutil@empty
+\def\pgfplots@dateplot@ensure@ZEROSHIFT#1{%
+	\ifx\pgfplots@calender@ZEROSHIFT\pgfutil@empty
+		\ifx\pgfplots@global@dateplot@defaultshift\pgfutil@empty
+			\pgfplots@log4{dateplot: setting 'date ZERO={#1}' for this axis.}%
+			\pgfplots@dateplot@parse@ZEROSHIFT{#1}%
+			\global\let\pgfplots@global@dateplot@defaultshift=\pgfmathresult
+		\fi
+		%
+		\let\pgfplots@calender@ZEROSHIFT=\pgfplots@global@dateplot@defaultshift
+	\fi
+}%
+% defines \pgfplots@calender@ZEROSHIFT to be the zero shift
+\def\pgfplots@dateplot@get@ZEROSHIFT{%
+	\ifx\pgfplots@calender@ZEROSHIFT\pgfutil@empty
+		\ifx\pgfplots@global@dateplot@defaultshift\pgfutil@empty
+			% should never happen
+			\pgfplots@error{Illegal internal state: no 'date ZERO' value found}%
+			\def\pgfplots@calender@ZEROSHIFT{0}%
+		\else
+			\let\pgfplots@calender@ZEROSHIFT=\pgfplots@global@dateplot@defaultshift
+		\fi
+	\fi
+}%
+
+\def\pgfplots@dateplot@parse@ZEROSHIFT#1{%
+	\begingroup
+	\pgfcalendardatetojulian{#1}\c@pgf@counta
+	\edef\pgfmathresult{\the\c@pgf@counta}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
 \pgfplotsset{
 	/pgfplots/date ZERO/.code={%
-		\begingroup
-		\pgfcalendardatetojulian{#1}\c@pgf@counta
-		\edef\pgfmathresult{\the\c@pgf@counta}%
-		\pgfmath@smuggleone\pgfmathresult
-		\endgroup
+		\pgfplots@dateplot@parse@ZEROSHIFT{#1}%
 		\let\pgfplots@calender@ZEROSHIFT=\pgfmathresult
 	},
-	date ZERO=2006-01-01,
+	/pgfplots/execute at begin axis@@/.add={}{%
+		\global\let\pgfplots@global@dateplot@defaultshift=\pgfutil@empty
+	},
 	/pgfplots/date coordinates in/.code={%
 		\pgfkeysdef{/pgfplots/#1 coord trafo}{%
 			\begingroup
@@ -145,6 +176,9 @@
 			\else
 				\let\pgfplotstemptime=\pgfutil@empty
 			\fi
+			%
+			\expandafter\pgfplots@dateplot@ensure@ZEROSHIFT\expandafter{\pgfplotstempjuliandate}%
+			%
 			\expandafter\pgfcalendardatetojulian\expandafter{\pgfplotstempjuliandate}\c@pgf@counta
 			\advance\c@pgf@counta by-\pgfplots@calender@ZEROSHIFT\relax
 			\ifx\pgfplotstemptime\pgfutil@empty
@@ -169,6 +203,8 @@
 		\pgfkeysdef{/pgfplots/#1 coord inv trafo}{%
 			\edef\pgfplotstempjuliandatenumeric{##1}%
 			\begingroup
+				\pgfplots@dateplot@get@ZEROSHIFT
+				%
 				\expandafter\pgfplotslibdateplot@number@to@julian@and@time\pgfplotstempjuliandatenumeric\julianto{\c@pgf@counta}\hourto\Hour\minuteto\Minute%
 				\advance\c@pgf@counta by\pgfplots@calender@ZEROSHIFT\relax
 				\expandafter\pgfcalendarjuliantodate\expandafter{\the\c@pgf@counta}\year\month\day
