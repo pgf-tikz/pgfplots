@@ -9972,16 +9972,19 @@
 \pgfplotscolorbarCMYKworkaroundtrue
 
 \def\pgfplots@colorbar@draw@{%
-	\ifpgfplotscolorbarCMYKworkaround
-		% the default implementation for colorbars is based on
-		% \pgfplotscolormaptoshadingspec.
-		% This, in turn, does NOT work for CMYK.
-		%
-		% This here detects that case and switches to the (visually)
-		% equivalent 'colorbar sampled={surf,shader=interp}' style.
-		\if1\pgfplotscolormaptoshadingspectorgb
-			\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
-			\ifx\pgfplots@loc@TMPa\pgfplots@colorbar@draw@defaultimpl
+	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@colorbar@draw@defaultimpl
+		% Ah-- the default colorbar implementation is active! We may need to substitute it by a better one.
+		% Check that:
+		\def\b@pgfplots@colorbar@fallback@to@sampled{0}%
+		\ifpgfplotscolorbarCMYKworkaround
+			% the default implementation for colorbars is based on
+			% \pgfplotscolormaptoshadingspec.
+			% This, in turn, does NOT work for CMYK.
+			%
+			% This here detects that case and switches to the (visually)
+			% equivalent 'colorbar sampled={surf,shader=interp}' style.
+			\if1\pgfplotscolormaptoshadingspectorgb
 				\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPb
 				\pgfplotscolormapgetcolorspace{\pgfplots@loc@TMPb}%
 				\def\pgfplots@loc@TMPa{cmyk}%
@@ -9990,9 +9993,20 @@
 						\pgfplotswarning{colorbar CMYK unsupported}{\pgfplots@loc@TMPb}\pgfeov% 
 						\expandafter\gdef\csname pgfplots@colorbar@CMYK@\pgfplots@loc@TMPb\endcsname{1}%
 					}{}%
-					\pgfplotsset{colorbar sampled={surf,shader=interp}}%
+					\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
 				\fi
 			\fi
+		\fi
+		\if c\pgfplots@colormap@access
+			% colormap access=piecewise constant
+			% In this case, we want a sampled colorbar. 2x2 samples are enough since "shader=interp"
+			% automatically handles the correct interpolation scheme:
+			\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
+			\pgfkeys{/pgfplots/every colorbar/.append style={samples=2}}%
+		\fi
+		%
+		\if 1\b@pgfplots@colorbar@fallback@to@sampled
+			\pgfplotsset{colorbar sampled={surf,shader=interp}}%
 		\fi
 	\fi
 	%

@@ -87,7 +87,7 @@
 	\c@pgf@counta=\expandafter\pgfplotsarraysizeof\expandafter{\pgfplots@createcolormap@name}\relax
 	\advance\c@pgf@counta by-1 %
 	\expandafter\edef\csname\pgfplots@createcolormap@name @lastindex\endcsname{\the\c@pgf@counta}%
-%\pgfplots@colormap@showdebuginfofor{#1}%
+\pgfplots@colormap@showdebuginfofor{#1}%
 	\pgfplots@colormap@LUA@new{#1}%
 }
 
@@ -573,6 +573,7 @@
 % #1: the colormap
 \def\pgfplotscolormaptopdffunction#1{%
 	\begingroup
+	\pgfplotscolormapassertexists{#1}%
 	\pgfplotsapplistXnewempty\pgfplots@resultaccum
 	\pgfplotsapplistXpushback{
 		<< 
@@ -593,14 +594,31 @@
 	\if m\pgfplots@colormap@access
 		% colormap access=map
 		\def\pgfplots@order{1}%
+		\global\pgf@x=\csname pgfpl@cm@#1@h\endcsname pt %
+		\def\pgfplots@C@left{C0}%
+		\def\pgfplots@C@right{C1}%
 	\else
 		\if c\pgfplots@colormap@access
 			% colormap access=piecewise constant
+			% This has a dedicated special interval at the rightmost
+			% end. 
+			% See comments in pgfplotscolormapfindpiecewiseconst@precomputed@
 			\def\pgfplots@order{0}%
+			\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
+			%\advance\c@pgf@countd by1
+			%
+			\global\pgf@x=1000pt %
+			\global\divide\pgf@x by\c@pgf@countd
+			\def\pgfplots@C@left{C1}%
+			\def\pgfplots@C@right{C0}%
 		\else
 			% colormap access=direct
+			\pgfplots@error{This should never happen}%
 			% ?
 			\def\pgfplots@order{0}%
+			\global\pgf@x=\csname pgfpl@cm@#1@h\endcsname pt %
+			\def\pgfplots@C@left{C0}%
+			\def\pgfplots@C@right{C1}%
 		\fi
 	\fi
 	%
@@ -616,23 +634,42 @@
 				<<
 					/FunctionType 2
 					/Domain [0 \pgfplotscolormappdfmax] 
-					/C0 [\pgfplots@loc@TMPa] /C1 [\cdata] 
+					/\pgfplots@C@left\space [\pgfplots@loc@TMPa] /\pgfplots@C@right\space [\cdata] 
 					/N \pgfplots@order
 				>>
 			}%
 			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
 			\ifnum\c@pgf@counta<\c@pgf@countb\relax
-				\pgf@xa=\csname pgfpl@cm@#1@h\endcsname pt
+				\pgf@xa=\pgf@x
 				\multiply\pgf@xa by\c@pgf@counta\relax
-				\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain
-				\edef\pgfplots@loc@TMPd{ \pgf@sys@tonumber\pgf@xa}%
-				\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@bounds@accum%
+				\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
+				\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
+				\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
 			\fi
 			\pgfplotsapplistXpushback{ 0 1}\to\pgfplots@encode@accum%
 		\fi
 		\let\pgfplots@loc@TMPa=\cdata
 		\advance\c@pgf@counta by1
 	}%
+	\if 0\pgfplots@order
+		% add an artificial interval.
+		\edef\pgfplots@loc@TMPd{%
+			<<
+				/FunctionType 2
+				/Domain [0 \pgfplotscolormappdfmax] 
+				/\pgfplots@C@left\space [\cdata] /\pgfplots@C@right\space [\cdata] 
+				/N \pgfplots@order
+			>>
+		}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
+		\pgf@xa=\pgf@x
+		\advance\c@pgf@counta by-1 %
+		\multiply\pgf@xa by\c@pgf@counta\relax
+		\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
+		\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
+		\pgfplotsapplistXpushback{ 0 1}\to\pgfplots@encode@accum%
+	\fi
 	\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@resultaccum
 	\pgfplotsapplistXlet\pgfplotsbounds=\pgfplots@bounds@accum
 	\pgfplotsapplistXlet\pgfplotsencode=\pgfplots@encode@accum
@@ -832,30 +869,34 @@
 			\def\pgfmathresult{1000}%
 		\fi
 	\fi
-	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
-	\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\csname pgfpl@cm@#5@invh\endcsname}%
-	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
-	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
-	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
-	% without '.0' suffix:
-	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
-	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
-	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
-	\let\pgfplots@loc@factor=\pgfmathresult
-	\pgfmathsubtract@{1}{\pgfplots@loc@factor}%
-	\let\pgfplots@loc@factor@two=\pgfmathresult
-	% Step 2: interpolate the desired RGB value using vector valued
-	% interpolation on the identified interval.
-	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
-%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
-	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
 }%
 \def\pgfplotscolormapfind@precomputed@[#1:#2][#3]#4#5{%
 	\pgfplotscolormapassertexists{#5}%
 	\begingroup
 	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
 	%
+	% Now, we have it in [0,1000]. Find the correct interval:
+	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
+	\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\csname pgfpl@cm@#5@invh\endcsname}%
+	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
+	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
+	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
+	% without '.0' suffix:
+	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
+	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
+	% Step 2: interpolate the desired RGB value using vector valued
+	% interpolation on the identified interval.
+	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
+	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
+	%
 	% do the stuff which is specific to linear interpolation:
+	%
+	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
+	\let\pgfplots@loc@factor=\pgfmathresult
+	\pgfmathsubtract@{1}{\pgfplots@loc@factor}%
+	\let\pgfplots@loc@factor@two=\pgfmathresult
+	%
 	\pgfplotsarraysize{pgfpl@cm@#5}\to\c@pgf@countb
 	\advance\c@pgf@countb-1 %
 	\ifnum\c@pgf@counta<\c@pgf@countb
@@ -948,7 +989,53 @@
 	\pgfplotscolormapassertexists{#5}%
 	\begingroup
 	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
+	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
 	%
+	% Now, we have it in [0,1000]. Find the correct interval:
+	% In principle, we could easily find the correct interval. But the
+	% native approach has one distinct disadvantage: we will never
+	% assign the rightmost color unless #4=1000! That means that our
+	% colormap is not used entirely.
+	%
+	% I decided to enlarge the colormap artificially such that the
+	% rightmost color receives its own interval.
+	% 
+	% To this end, I recompute the coordinates at which colors "live".
+	% The operations sounds more involved than it is: I simply need a NEW mesh width locally 
+	% inside of this function. The new mesh width H can be computed as
+	% follows, assuming that the OLD colormap has mesh width h.
+	%
+	% H := 1000/ N
+	%
+	% N := n+1
+	% n := 1000/h + 1 = \pgfplotscolormapsizeof{#5}
+	%
+	% what I really need is:
+	%  1/H = ( 1000 * 1/h +1  +1 )/ 1000 = 1/h + 1/500 = invh + 0.002
+	%
+	% compute 1/H here:
+	\pgfmathadd@{\csname pgfpl@cm@#5@invh\endcsname}{0.002}%
+	\let\pgfplots@piecewiseconst@invh=\pgfmathresult%
+	\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\pgfplots@piecewiseconst@invh}%
+	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
+	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
+	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
+	% without '.0' suffix:
+	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
+	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
+	% Step 2: interpolate the desired RGB value using vector valued
+	% interpolation on the identified interval.
+	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+	%
+	\ifnum\c@pgf@counta=\pgfplotscolormapsizeof{#5}\relax
+		% we have artificially increased the "h" (see the comments
+		% above) -- meaning that this 'if' can happen. 
+		% ->Map the rightmost point to the rightmost interval:
+		\advance\c@pgf@counta by-1
+	\fi
+	%
+%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
+	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
 	\let\pgfmathresult=\pgfplotscolormapfind@rgb@LEFT
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
