@@ -568,6 +568,8 @@
 % The /Domain argument will be set to [ 0 \pgfplotscolormappdfmax ] and bounds will be
 % computed accordingly.
 %
+% Note that the value depends on 'colormap access'
+%
 % #1: the colormap
 \def\pgfplotscolormaptopdffunction#1{%
 	\begingroup
@@ -587,6 +589,21 @@
 	\ifnum\csname pgfpl@cm@#1@col@comps\endcsname>4
 		\pgfplots@error{Sorry, processing more than 4 color components (as required for color map #1) is unsupported in this context}%
 	\fi
+	%
+	\if m\pgfplots@colormap@access
+		% colormap access=map
+		\def\pgfplots@order{1}%
+	\else
+		\if c\pgfplots@colormap@access
+			% colormap access=piecewise constant
+			\def\pgfplots@order{0}%
+		\else
+			% colormap access=direct
+			% ?
+			\def\pgfplots@order{0}%
+		\fi
+	\fi
+	%
 	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\cdata{%
 		\edef\cdata{%
 			\expandafter
@@ -599,7 +616,8 @@
 				<<
 					/FunctionType 2
 					/Domain [0 \pgfplotscolormappdfmax] 
-					/C0 [\pgfplots@loc@TMPa] /C1 [\cdata] /N 1
+					/C0 [\pgfplots@loc@TMPa] /C1 [\cdata] 
+					/N \pgfplots@order
 				>>
 			}%
 			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
@@ -784,9 +802,7 @@
 		\expandafter\gdef\csname pgfplotscolormapfind@precomputed@warn@LUA@#1\endcsname{1}%
 	\fi
 }%
-\def\pgfplotscolormapfind@precomputed@[#1:#2][#3]#4#5{%
-	\pgfplotscolormapassertexists{#5}%
-	\begingroup
+\def\pgfplotscolormapfind@@@[#1:#2][#3]#4#5{%
 	% Step 0: compute #3 if it is missing and write it into
 	% \pgfplots@loc@TMPa.
 	\def\pgfplots@loc@TMPa{#3}%
@@ -833,7 +849,13 @@
 	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
 %\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
 	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
+}%
+\def\pgfplotscolormapfind@precomputed@[#1:#2][#3]#4#5{%
+	\pgfplotscolormapassertexists{#5}%
+	\begingroup
+	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
 	%
+	% do the stuff which is specific to linear interpolation:
 	\pgfplotsarraysize{pgfpl@cm@#5}\to\c@pgf@countb
 	\advance\c@pgf@countb-1 %
 	\ifnum\c@pgf@counta<\c@pgf@countb
@@ -870,6 +892,69 @@
 }%
 
 
+% Maps the number #4 into the colormap #5 using piecewise constant
+% interpolation. It returns the interpolated colors into \pgfmathresult. The result will be a triple
+% for an RGB colormap and it will contain four numbers for CMYK. The
+% components of the result will be in the range [0:1].
+% 
+% [#1:#2]  the number range of the data source (i.e. of #4). This is required to
+%          map into the colormap.
+% [#3]     (optional) the quantity 
+% 			 s := \pgfplotscolormaprange / (#2-#1).
+% 		   Precomputing this quantity may save a lot of time because
+% 		   divisions are expensive in TeX. You can omit [#3] or
+% 		   provide an empty string here.
+% #4       the number to map.
+% #5       the colormap's name. Must be defined with
+%          \pgfplotscreatecolormap before.
+%
+% Example:
+% \pgfplotscolormapfindpiecewiseconst[-1:1]{0.2}{my colormap}
+\def\pgfplotscolormapfindpiecewiseconst[#1:#2]{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotscolormapfindpiecewiseconst@precomputed[#1:#2]%
+	}{%
+		\pgfplotscolormapfindpiecewiseconst@precomputed[#1:#2][]%
+	}%
+}%
+\def\pgfplotscolormapfindpiecewiseconst@precomputed[#1:#2][#3]#4#5{%
+	%\ifpgfplots@LUA@supported
+	\iffalse
+		% FIXME : implement
+		\edef\pgfmathresult{%
+			\pgfplotsutil@directlua{%
+				pgfplots.texColorMapPrecomputed("#5", #1,#2,#4)
+			}%
+		}%
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfplotscolormapfindpiecewiseconst@precomputed@warn@LUA{#5}%
+			\pgfplotscolormapfindpiecewiseconst@precomputed@[#1:#2][#3]{#4}{#5}%
+		\else
+			%\message{LUA colormapfindpiecewiseconst[#1:#2](#4)(#5) = \pgfmathresult^^J}%
+		\fi
+	\else
+		\pgfplotscolormapfindpiecewiseconst@precomputed@[#1:#2][#3]{#4}{#5}%
+	\fi
+}
+
+\def\pgfplotscolormapfindpiecewiseconst@precomputed@warn@LUA#1{%
+	\expandafter\ifx\csname pgfplotscolormapfindpiecewiseconst@precomputed@warn@LUA@#1\endcsname\relax
+		\pgfplotswarning{lua colormap unavailable}{#1}\pgfeov%
+		\expandafter\gdef\csname pgfplotscolormapfindpiecewiseconst@precomputed@warn@LUA@#1\endcsname{1}%
+	\fi
+}%
+
+\def\pgfplotscolormapfindpiecewiseconst@precomputed@[#1:#2][#3]#4#5{%
+	\pgfplotscolormapassertexists{#5}%
+	\begingroup
+	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
+	%
+	\let\pgfmathresult=\pgfplotscolormapfind@rgb@LEFT
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+
 % Performs a direct color access into color map '#2' using an index
 % '#1'.
 %
@@ -899,7 +984,8 @@
 	\endgroup
 }
 
-% Invokes either \pgfplotscolormapfind or \pgfplotscolormapgetindex,
+% Invokes one of \pgfplotscolormapfind,
+% \pgfplotscolormapfindpiecewiseconst, or \pgfplotscolormapgetindex,
 % depending on the value of '/pgfplots/colormap access'.
 \def\pgfplotscolormapaccess[#1:#2]{%
 	\pgfutil@ifnextchar[{%
@@ -910,9 +996,16 @@
 }
 \def\pgfplotscolormapaccess@precomputed[#1:#2][#3]#4#5{%
 	\if m\pgfplots@colormap@access
+		% colormap access=map
 		\pgfplotscolormapfind@precomputed[#1:#2][#3]{#4}{#5}%
 	\else
-		\pgfplotscolormapgetindex{#4}{#5}%
+		\if c\pgfplots@colormap@access
+			% colormap access=piecewise constant
+			\pgfplotscolormapfindpiecewiseconst@precomputed[#1:#2][#3]{#4}{#5}%
+		\else
+			% colormap access=direct
+			\pgfplotscolormapgetindex{#4}{#5}%
+		\fi
 	\fi
 }%
 
