@@ -187,18 +187,145 @@
 	\pgfplots@createcolormap@grabnext@complete
 }%
 
+%%%%%%%%%%
+
+% defines \pgfplotsretval to contain the argument and \pgfplotsretvalb
+% to contain the colormap name.
+\def\pgfplots@createcolormap@special@split#1{%
+	\pgfutil@in@{of }{#1}%
+	\ifpgfutil@in@
+		\pgfplots@createcolormap@special@split@#1\pgfplots@EOI
+	\else
+		\pgfkeys@spdef\pgfplotsretval{#1}%
+		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsretvalb
+	\fi
+	\pgfplots@createcolormap@special@ensure@source@cm{\pgfplotsretvalb}%
+}%
+\def\pgfplots@createcolormap@special@split@#1of #2\pgfplots@EOI{%
+	\pgfkeys@spdef\pgfplotsretval{#1}%
+	\pgfkeys@spdef\pgfplotsretvalb{#2}%
+}
+\def\pgfplots@createcolormap@special@ensure@source@cm#1{%
+	\pgfplotscolormapifdefined{#1}{%
+	}{%
+		\pgfplots@error{The argument '#1' is no valid colormap.}%
+	}%
+}%
+
+% defines \pgfplotsretval to contain an expanded color definition
+% series
+% #1: position
+% #2: argument(s)
+\expandafter\def\csname pgfplots@createcolormap@grabnextspecial@colors of colormap\endcsname#1#2{%
+	\pgfplots@createcolormap@special@split{#2}%
+	\pgfplots@createcolormap@special@process{#1}{color of colormap}%
+%\message{colors of colormap(#1)=(#2): resulted in \meaning\pgfplotsretval^^J}%
+}
+\expandafter\def\csname pgfplots@createcolormap@grabnextspecial@samples of colormap\endcsname#1#2{%
+	\pgfplots@createcolormap@special@split{#2}%
+	\begingroup
+	\let\pgfplots@source=\pgfplotsretval
+	\let\pgfplots@sourcecm=\pgfplotsretvalb
+	\pgfplots@domain@to@foreach 0:1000\relax{\pgfplots@source}%
+	\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+	\edef\pgfplotsretval{colors of colormap(#1)=({\the\t@pgfplots@toka} of \pgfplots@sourcecm)}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+%\message{samples of colormap(#1)=(#2): resulted in \meaning\pgfplotsretval^^J}%
+}
+\expandafter\def\csname pgfplots@createcolormap@grabnextspecial@indices of colormap\endcsname#1#2{%
+	\pgfplots@createcolormap@special@split{#2}%
+	\pgfplots@createcolormap@special@process{#1}{index of colormap}%
+%\message{indices of colormap(#1)=(#2): resulted in \meaning\pgfplotsretval^^J}%
+}
+\expandafter\def\csname pgfplots@createcolormap@grabnextspecial@color of colormap\endcsname#1#2{%
+	\begingroup
+	% colormap access=map
+	\def\pgfplots@color@of@colormap@access{m}%
+	\pgfplots@color@of@colormap@define{#2}%
+	\edef\pgfplotsretval{%
+		\csname pgfpl@cm@\pgfplots@color@of@colormap@name @colspace\endcsname(#1)=(\pgfmathresult)%
+	}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
+\expandafter\def\csname pgfplots@createcolormap@grabnextspecial@index of colormap\endcsname#1#2{%
+	\begingroup
+	% colormap access=direct
+	\def\pgfplots@color@of@colormap@access{d}%
+	\pgfplots@color@of@colormap@define{#2}%
+	\edef\pgfplotsretval{%
+		\csname pgfpl@cm@\pgfplots@color@of@colormap@name @colspace\endcsname(#1)=(\pgfmathresult)%
+	}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
+\def\pgfplots@createcolormap@special@process#1#2{%
+	\begingroup
+	\let\pgfplots@source=\pgfplotsretval
+	\let\pgfplots@sourcecm=\pgfplotsretvalb
+	%\global\pgf@x=#1\relax
+	%
+	\pgfplotsapplistXnewempty\pgfplots@createcolormap@special@process@result
+	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in }%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@source}{%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@sourcecm}%
+		%
+		%\ifx\pgfplots@createcolormap@H\pgfutil@empty
+			\let\pgfplots@temp@pos\pgfutil@empty%
+		%\else
+		%	\edef\pgfplots@temp@pos{(\the\pgf@x)}%
+		%	\global\advance\pgf@x by\pgfplots@createcolormap@H\relax
+		%\fi
+		\edef\currentValue{#2\pgfplots@temp@pos=(\x\space of \the\t@pgfplots@tokb) }%
+		%
+		\expandafter\pgfplotsapplistXpushback\currentValue\to\pgfplots@createcolormap@special@process@result
+	}%
+	\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@createcolormap@special@process@result
+	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
+	\endgroup
+	\let\pgfplotsretval=\pgfplots@glob@TMPa
+}%
+%%%%%%%%%%
+
 \def\pgfplots@createcolormap@grabnext@complete{%
-	\edef\pgfplots@loc@TMPa{%
-		{\pgfplots@loc@TMPb}% position
-		{%
-		\pgfplots@loc@TMPa% colorspace
-		=\pgfplots@loc@TMPc% color data
+	\pgfutil@IfUndefined{pgfplots@createcolormap@grabnextspecial@\pgfplots@loc@TMPa}{%
+		% ok, this is a 'normal' color specification with position,
+		% colorspace, and color data.
+		%
+		\edef\pgfplots@loc@TMPa{%
+			{\pgfplots@loc@TMPb}% position
+			{%
+			\pgfplots@loc@TMPa% colorspace
+			=\pgfplots@loc@TMPc% color data
+			}%
+		}%
+		\expandafter\pgfplots@createcolormap@nextcolor\pgfplots@loc@TMPa
+		%
+		% continue loop:
+		\def\pgfplots@loc@TMPd{\pgfplots@createcolormap@}%
+	}{%
+		% ah - a special one based on another colormap!
+		% convert it into the standard format:
+		%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPc}%
+		\edef\pgfplots@loc@TMPd{%
+			\expandafter\noexpand\csname pgfplots@createcolormap@grabnextspecial@\pgfplots@loc@TMPa\endcsname
+				% position:
+				{\pgfplots@loc@TMPb}
+				% argument:
+				{\the\t@pgfplots@tokb}%
+		}%
+		\pgfplots@loc@TMPd
+		%
+		\def\pgfplots@loc@TMPd{%
+			\expandafter\pgfplots@createcolormap@\pgfplotsretval
 		}%
 	}%
-	\expandafter\pgfplots@createcolormap@nextcolor\pgfplots@loc@TMPa
+	%
 	%
 	% continue loop:
-	\pgfplots@createcolormap@
+	\pgfplots@loc@TMPd
 }%
 
 \def\pgfplots@createcolormap@grabnext@computenextposition{%
