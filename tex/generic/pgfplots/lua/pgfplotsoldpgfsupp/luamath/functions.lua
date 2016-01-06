@@ -19,7 +19,7 @@
 -- with the deployment of this patch or partial content of PGF. Note that the author and/or maintainer of pgfplots has no obligation to fix anything:
 -- This file comes without any warranty as the rest of pgfplots; there is no obligation for help.
 ----------------------------------------------------------------------------------------------------
--- Date of this copy: Mi 6. Jan 09:38:12 CET 2016 ---
+-- Date of this copy: Mi 6. Jan 11:32:04 CET 2016 ---
 
 
 
@@ -35,7 +35,7 @@
 -- $Id: functions.lua,v 1.3 2015/05/10 20:34:13 cfeuersaenger Exp $
 --
 
-local pgfluamathfunctions = {} -- or pgfluamathfunctions (backw. compat: override)
+local pgfluamathfunctions = pgfluamathfunctions or {}
 
 -- Maps function names to their function.
 --
