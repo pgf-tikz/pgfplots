@@ -181,7 +181,9 @@
 % 		\pgfplotscreateplotcyclelist{name}{comma-separated-list}
 % 		\pgfplotscreateplotcyclelist{name}{'\\'-separated list(requires the last item to be terminated by '\\')}
 \def\pgfplotscreateplotcyclelist#1#2{%
+	\pgfkeysinterruptkeyfilter
 	\pgfplotscreateplotcyclelist@check@specials{#1}{#2}#2\pgfplots@EOI%
+	\endpgfkeysinterruptkeyfilter
 }%
 
 \def\pgfplotscreateplotcyclelist@check@specials#1#2{%
@@ -498,7 +500,9 @@
 \def\pgfplots@cycle@multi@list#1{%
 	\def\pgfplots@loc@TMPb{0}%
 	\gdef\pgfplots@cycle@multi@list@finalize@{}%
+	\pgfkeysinterruptkeyfilter
 	\pgfplots@cycle@multi@list@#1\nextlist\pgfplots@cycle@multi@list@EOI
+	\endpgfkeysinterruptkeyfilter
 }%
 \def\pgfplots@cycle@multi@list@#1\nextlist{%
 	\pgfkeys@spdef\pgfplots@loc@TMPa{#1}%
@@ -537,6 +541,9 @@
 	}%
 }%
 
+\def\pgfplots@colormap@catcodemagic{colormap}
+\pgfplots@command@to@string\pgfplots@colormap@catcodemagic\pgfplots@colormap@catcodemagic
+
 % checks for 
 % - <known list>
 % - [<elements> of]<known list>
@@ -549,17 +556,38 @@
 \def\pgfplots@cycle@multi@list@findnamed{\pgfutil@ifnextchar[{\pgfplots@cycle@multi@list@findnamed@}{\pgfplots@cycle@multi@list@findnamed@[]}}%
 \def\pgfplots@cycle@multi@list@findnamed@[#1]#2\pgfplots@EOI{%
 	\def\pgfplots@loc@TMPa{#1}%
+	\pgfplots@loc@tmptrue
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
 	\else
-		\pgfplots@cycle@multi@list@findnamed@@#1 \pgfplots@EOI
+		\expandafter\pgfutil@in@\expandafter{\pgfplots@colormap@catcodemagic}{#1}%
+		\ifpgfutil@in@
+			% ups! This is actually one of
+			% [of colormap]
+			% [colors of colormap={...}]
+			% [indices of colormap={...}]
+			% which define a single cycle list! This is not what we aim
+			% for. Abort
+			\let\pgfplots@loc@TMPa=\pgfutil@empty
+			\pgfplots@loc@tmpfalse
+		\else
+			\pgfplots@cycle@multi@list@findnamed@@#1 \pgfplots@EOI
+		\fi
 	\fi
-	\pgfplotsifcyclelistexists{#2}{%
-		\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfp@cyclist@\string#2@\endcsname%
-	}{%
-		\let\pgfplots@loc@TMPa=\pgfutil@empty
-	}%
+	%
+	\ifpgfplots@loc@tmp
+		\pgfplotsifcyclelistexists{#2}{%
+			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfp@cyclist@\string#2@\endcsname%
+		}{%
+			\let\pgfplots@loc@TMPa=\pgfutil@empty
+		}%
+	\fi
 }
-\def\pgfplots@cycle@multi@list@findnamed@@#1 {\pgfutil@ifnextchar o{\pgfplots@cycle@multi@list@findnamed@@@{#1}}{\pgfplots@cycle@multi@list@findnamed@@@{#1}of}}%
+% #1: <elements> (an integer)
+\def\pgfplots@cycle@multi@list@findnamed@@#1 {%
+	\pgfutil@ifnextchar o
+		{\pgfplots@cycle@multi@list@findnamed@@@{#1}}%
+		{\pgfplots@cycle@multi@list@findnamed@@@{#1}of}%
+}%
 \def\pgfplots@cycle@multi@list@findnamed@@@#1of#2\pgfplots@EOI{%
 	\begingroup
 		\t@pgfplots@toka=\expandafter{\pgfplots@cycle@multi@list@finalize@}%
