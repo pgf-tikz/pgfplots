@@ -91,9 +91,10 @@ TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 # the following two variables control which PGF version is to be used for the references and the actual files, respectively:
-PGF_REFERENCE_PATH=~/code/tex/pgf
+#PGF_REFERENCE_PATH=~/code/tex/pgf
 #PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
 #PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
+PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.1/tex
 PGF_ACTUAL_PATH=$(PGF_REFERENCE_PATH)
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
@@ -228,6 +229,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	@if [ ! -d references/plotdata ]; then cd references; ln -s ../plotdata; fi
 	@cd references || exit 1;\
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
+	export LUAINPUTS="$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/:$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/generic/pgf/libraries/luamath/:"; \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \

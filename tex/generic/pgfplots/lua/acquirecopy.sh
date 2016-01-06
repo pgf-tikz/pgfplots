@@ -42,8 +42,9 @@ for A in "${FILES[@]}"; do
 	mkdir -p `dirname $NEWLOCATION`
 	echo -e "$HEADER" | \
 		cat - "$DIR/$A" | \
-		sed 's/require("\(pgf\|tikz\)\.\(.*\)/require("pgfplotsoldpgfsupp.\2/' \
-		> $NEWLOCATION \
+		sed 's/require("\(pgf\|tikz\)\.\(.*\)/require("pgfplotsoldpgfsupp.\2/' | \
+		sed 's/local \([a-z]*\) = \([a-z]*\) or {}/local \1 = {} -- or \2 (backw. compat: override)/' | \
+		cat > $NEWLOCATION \
 		|| exit 1
 done
 
