@@ -34,7 +34,7 @@ function matlab2pgfplots(varargin )
 %       parametric plots if x and y are not monotonically increasing.
 % 
 % See
-%   http://tug.ctan.org/tex-archive/graphics/pgf/contrib/pgfplots/
+%   http://www.ctan.org/pkg/pgfplots
 % for details about pgfplots.
 %
 %
