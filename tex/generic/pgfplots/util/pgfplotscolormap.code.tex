@@ -96,10 +96,14 @@
 	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
 	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
+	%
 	% ... and set up the X coordinates if the grid is not uniform:
-	\pgfplotsapplistXlet\pgfplots@loc@TMPc=\pgfplots@createcolormap@X
 	\expandafter\pgfplotsarraynewempty\expandafter{\pgfplots@createcolormap@name @X}%
 	\if0\b@pgfplotscreatecolormap@isuniform
+		% Uncomment the '\iftrue' for testing purposes (to see if a uniform map changes if
+		% processed as non-uniform):
+%	\iftrue
+		\pgfplotsapplistXlet\pgfplots@loc@TMPc=\pgfplots@createcolormap@X
 		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPc}\as\pgfplots@loc@TMPc{%
 			\ifx\pgfplots@loc@TMPc\pgfutil@empty
 			\else
@@ -108,6 +112,14 @@
 				\expandafter\pgfplotsarraypushback\expandafter{\pgfmathresult}\to{pgfpl@cm@#1@X}%
 			\fi
 		}%
+		%
+		% 'colormap access=piecewise constant' (order 0) requires a
+		% special scaling factor. See its consumers for details +
+		% documentation
+		\pgfmathparse{1000/(1000+\csname pgfpl@cm@#1@h\endcsname)}%
+		\expandafter\let\csname\pgfplots@createcolormap@name @X@scale@order0\endcsname=\pgfmathresult
+	\else
+		\expandafter\let\csname\pgfplots@createcolormap@name @X@scale@order0\endcsname=\pgfutil@empty
 	\fi
 	% clear temporary list:
 	\pgfplotsapplistXnewempty\pgfplots@createcolormap@X
@@ -441,7 +453,7 @@
 %\message{found current diff  = \pgfplots@createcolormap@H@cur\ ( from \pgfplots@createcolormap@MAX pt - \pgfplots@createcolormap@LAST pt) -> H=\pgfplots@createcolormap@H^^J}%
 	% 
 	% remember positions:
-	\pgfplotsapplistXpushback{#1,}\to\pgfplots@createcolormap@X
+	\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@createcolormap@MAX,}\to\pgfplots@createcolormap@X
 	%
 	\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsarraypushback{#2}\noexpand\to}%
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
@@ -757,6 +769,7 @@
 			\the\toks6 {\csname pgfpl@cm@#1@lastindex\endcsname}%
 			\noexpand\def\noexpand\pgfplots@loc@TMPa{\the\toks8 }%
 			\the\toks7
+			\def\expandafter\noexpand\csname pgfpl@cm@#1@X@scale@order0\endcsname{\csname pgfpl@cm@#1@X@scale@order0\endcsname}%
 		}%
 	\endgroup
 	\let#2=\pgfplots@glob@TMPa
@@ -828,15 +841,32 @@
 			\def\pgfplots@order{0}%
 			%
 			% advance the number of intervals by 1.
-			% To this end, we have to compute 
-			% N = n+1
-			% and 
-			% H = 1000 / (N-1) = 1000/n.
-			% Store H in \pgf@x:
-			\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
-			%
-			\global\pgf@x=1000pt %
-			\global\divide\pgf@x by\c@pgf@countd
+			\pgfplotscolormapifisuniform{#1}{%
+				% To this end, we have to compute 
+				% N = n+1
+				% and 
+				% H = 1000 / (N-1) = 1000/n.
+				% Store H in \pgf@x:
+				\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
+				%
+				\global\pgf@x=1000pt %
+				\global\divide\pgf@x by\c@pgf@countd
+			}{%
+				% the very same idea as for uniform colormaps applies
+				% for non-uniform maps as well: we create an
+				% artificial interval at the rightmost end.
+				% The idea is to think of a temporary map in the range
+				% [0,1000+ h] where h is the current colormap's
+				% mesh width. 
+				% Since the domain is [0,1000], we map [0,1000+h]
+				% linearly into [0,1000].
+				%
+				% This here is the scaling factor:
+				\global\pgf@x=\csname pgfpl@cm@#1@X@scale@order0\endcsname pt %
+				% see also
+				% \pgfplotscolormapfindpiecewiseconst@precomputed for
+				% comments
+			}%
 			%
 			% interchange the sequence in the PDF function as it is
 			% defined as 
@@ -878,7 +908,7 @@
 					\multiply\pgf@xa by\c@pgf@counta\relax
 				}{%
 					\pgfplotsarrayselect{\c@pgf@counta}\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPc
-					\pgf@xa=\pgfplots@loc@TMPc pt %
+					\pgf@xa=\pgfplots@loc@TMPc\pgf@x%
 				}%
 				\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
 				\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
@@ -900,10 +930,14 @@
 			>>
 		}%
 		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
-		% FIXME 
-		\pgf@xa=\pgf@x
 		\advance\c@pgf@counta by-1 %
-		\multiply\pgf@xa by\c@pgf@counta\relax
+		\pgfplotscolormapifisuniform{#1}{%
+			\pgf@xa=\pgf@x
+			\multiply\pgf@xa by\c@pgf@counta\relax
+		}{%
+			\pgfplotsarrayselect{\c@pgf@counta}\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPc
+			\pgf@xa=\pgfplots@loc@TMPc\pgf@x%
+		}%
 		\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
 		\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
 		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
@@ -1102,7 +1136,7 @@
 	\def\pgfplots@loc@samerange{0:1000}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@samerange
 		% we have phi(#4) = #4  because #4 in [0:1000].
-		\def\pgfmathresult{#4}%
+		\edef\pgfmathresult{#4}%
 	\else
 		% Step 1: perform lookup. Map #4 into the colormap's range
 		% using the linear trafo
@@ -1139,7 +1173,14 @@
 		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx}{0}{\pgfplotscolormapsizeof{#5}}%
 		\c@pgf@counta=\pgfplotsretval\relax
 		\ifnum\c@pgf@counta<0
+			% as per definition of \pgfplotsarraybinarysearch, a
+			% negative result indicates the "insertion point" ...
 			\c@pgf@counta=-\c@pgf@counta
+			% ... plus one.
+			\advance\c@pgf@counta by-1
+			%
+			% But we do not WANT the insertion point! We want the LEFT
+			% interval boundary!
 			\advance\c@pgf@counta by-1
 		\fi
 	}%
@@ -1282,24 +1323,63 @@
 		% Step 2: interpolate the desired RGB value using vector valued
 		% interpolation on the identified interval.
 		\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
-		%
-		\ifnum\c@pgf@counta=\pgfplotscolormapsizeof{#5}\relax
-			% we have artificially increased the "h" (see the comments
-			% above) -- meaning that this 'if' can happen. 
-			% ->Map the rightmost point to the rightmost interval:
-			\advance\c@pgf@counta by-1
-		\fi
 	}{%
-		% FIXME : extra interval!
-		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx}{0}{\pgfplotscolormapsizeof{#5}}%
+		% the same idea can also be applied to non-uniform grids.
+		% However, it is more involved here.
+		%
+		% My idea is that I add an extra interval of length 'h' at the right end of
+		% the domain, i.e. I enlarge the domain to [0,1000+h].
+		% 
+		% To this end, I map the input number linearly from 
+		%  [0,1000] -> [0,1000+h]
+		% using k(t) = (1000+h)/1000 * t
+		%
+		% Note that k(t) = 1/ pgfpl@cm@#5@X@scale@order0
+		%
+		% and search in the existing X coordinates of the colormap.
+		% Note that these X coordinates actually do not contain the
+		% artifical rightmost boundary point at 1000+h. But that is
+		% ok, we plan to assign COLOR(1000+h) := COLOR(1000) anyway.
+		%
+		% Naturally, some values 'k(t)' will be BEYOND '1000'. In this
+		% case, we simply use the rightmost interval and are done with
+		% it.
+		%
+		% compute k(t):
+		\pgfmathadd@{1000}{\csname pgfpl@cm@#5@h\endcsname}%
+		\pgf@xa=\pgfmathresult pt %
+		\divide\pgf@xa by1000 %
+		\edef\pgfplotscolormapfind@map@to@extra@interval{\pgf@sys@tonumber\pgf@xa}%
+		%
+		\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\pgfplotscolormapfind@map@to@extra@interval}%
+		\let\pgfplotscolormapfind@transformedx@=\pgfmathresult
+		%
+		% search k(t) in the original X values.
+		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx@}{0}{\pgfplotscolormapsizeof{#5}}%
 		\c@pgf@counta=\pgfplotsretval\relax
 		\ifnum\c@pgf@counta<0
+			% as per definition of \pgfplotsarraybinarysearch, a
+			% negative result indicates the "insertion point" ...
 			\c@pgf@counta=-\c@pgf@counta
+			% ... plus one.
+			\advance\c@pgf@counta by-1
+			%
+			% But we do not WANT the insertion point! We want the LEFT
+			% interval boundary!
 			\advance\c@pgf@counta by-1
 		\fi
+%\pgfplotscolormapserializeXtomacro{#5}\XXX
+%\message{k(\pgfplotscolormapfind@transformedx) = \pgfplotscolormapfind@transformedx@. Searching for value in X=(\XXX) resulted in \pgfplotsretval, and the index to use is \the\c@pgf@counta.^^J}%
 	}%
 	%
-%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
+	\ifnum\c@pgf@counta=\pgfplotscolormapsizeof{#5}\relax
+		% we have artificially increased the "h" (see the comments
+		% above) -- meaning that this 'if' can happen. 
+		% ->Map the rightmost point to the rightmost interval:
+		\advance\c@pgf@counta by-1
+	\fi
+	%
+%\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta/\pgfplotsarraysizeof{pgfpl@cm@#5}.^^J}%
 	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
 	\let\pgfmathresult=\pgfplotscolormapfind@rgb@LEFT
 	\pgfmath@smuggleone\pgfmathresult
