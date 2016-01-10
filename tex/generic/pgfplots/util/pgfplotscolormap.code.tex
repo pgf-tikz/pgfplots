@@ -55,6 +55,12 @@
 \def\pgfplots@createcolormap#1#2{%
 	\edef\pgfplots@createcolormap@name{pgfpl@cm@#1}%
 	\expandafter\pgfplotsarraynewempty\expandafter{\pgfplots@createcolormap@name}%
+	\pgfplotsapplistXnewempty\pgfplots@createcolormap@X
+	%
+	% '0' = is not uniform
+	% '1' = is uniform
+	% '2' = is FORCED to be uniform, i.e. will be reinterpolated
+	\def\b@pgfplotscreatecolormap@isuniform{2}%
 	\def\pgfplots@createcolormap@MIN{0}% NORMALIZATION: assume that lower-end is 0pt.
 	\def\pgfplots@createcolormap@MAX{0}% To be computed.
 	\pgfplots@createcolormap@initcolorspace
@@ -80,6 +86,21 @@
 	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
 	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
+	% ... and set up the X coordinates if the grid is not uniform:
+	\pgfplotsapplistXlet\pgfplots@loc@TMPc=\pgfplots@createcolormap@X
+	\expandafter\pgfplotsarraynewempty\expandafter{\pgfplots@createcolormap@name @X}%
+	\if0\b@pgfplotscreatecolormap@isuniform
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPc}\as\pgfplots@loc@TMPc{%
+			\ifx\pgfplots@loc@TMPc\pgfutil@empty
+			\else
+				% apply the trafo [0pt,MAX] -> [0,1000] here as well:
+				\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+				\expandafter\pgfplotsarraypushback\expandafter{\pgfmathresult}\to{pgfpl@cm@#1@X}%
+			\fi
+		}%
+	\fi
+	% clear temporary list:
+	\pgfplotsapplistXnewempty\pgfplots@createcolormap@X
 	%
 	\endpgfplotscolornormalizesequence%
 	\expandafter\let\csname\pgfplots@createcolormap@name @colspace\endcsname=\pgfplotsretval
@@ -102,6 +123,7 @@
 	\def\pgfplots@createcolormap@context{[#1]}%
 	\pgfmathparse{#1}%
 	\let\pgfplots@createcolormap@H=\pgfmathresult
+	\def\b@pgfplotscreatecolormap@isuniform{2}%
 	\pgfplots@createcolormap@
 }%
 
@@ -395,58 +417,75 @@
 		\pgfmathapproxequalto@{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
 		\ifpgfmathcomparison
 		\else
-			\pgfmathdivide@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
-			% after this group, \pgfmathresult is
-			% - empty if no reinterpolation is possible,
-			% - non-empty if reinterpolation IS possible. In this
-			%   case, it contains the integer multiple of H.
-			\begingroup
-				\afterassignment\pgfplots@createcolormap@nextRGB@consider@reinterpolation
-				\c@pgf@counta=\pgfmathresult\relax
-				\pgfmath@smuggleone\pgfmathresult
-			\endgroup
-			\ifx\pgfmathresult\pgfutil@empty
-				% I can't do that yet.
+			\if2\b@pgfplotscreatecolormap@isuniform
+				% force reinterpolation:
+				\pgfplotscreatecolormap@reinterpolate{#2}%
 			\else
-				\let\pgfplots@createcolormap@loop@end=\pgfmathresult
-				% interpolate missing values using the already fixed H.
-				% This interpolation procedure is stupid because it works
-				% only in forward direction - but it works at least.
-				% For the backwards direction, you can provide the
-				% meshwidth explicitly at
-				% \pgfplotscreatecolormap{}{[1pt]}
-				\pgfplotsforeachungrouped \c@pgfplots@createcolormap in {1,2,...,\pgfplots@createcolormap@loop@end} {%
-					\ifdim\c@pgfplots@createcolormap pt=\pgfplots@createcolormap@loop@end pt %
-						% omit the last.
-					\else
-						\pgfmathparse{\c@pgfplots@createcolormap/\pgfplots@createcolormap@loop@end}%
-						\let\pgfplots@createcolormap@scale@current=\pgfmathresult
-						\pgfmathparse{1-\pgfplots@createcolormap@scale@current}%
-						\let\pgfplots@createcolormap@scale@last=\pgfmathresult
-						%
-						\pgfplotscolornormalizesequencezero
-						\pgfplotscolornormalizesequenceaddweighted
-							{\pgfplotsretval}
-							{\pgfplots@createcolormap@scale@current}
-							{#2}%
-						\pgfplotscolornormalizesequenceaddweighted
-							{\pgfplotsretval}
-							{\pgfplots@createcolormap@scale@last}
-							{\pgfplots@createcolormap@last}%
-						%
-%\message{interpolation step \c@pgfplots@createcolormap = \pgfplotsretval^^J}%
-						\edef\pgfplots@loc@TMPa{%
-							\noexpand\pgfplotsarraypushback{\pgfplotsretval}%
-							\noexpand\to}%
-						\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
-					\fi
-				}%
+			% FIXME : how can I activate this without breaking old colormaps!?
+				% it is NOT uniform!
+				\def\b@pgfplotscreatecolormap@isuniform{0}%
+				%
+				\pgfmathmin@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
+				\let\pgfplots@createcolormap@H=\pgfmathresult
 			\fi
 		\fi
 	\fi
+	% 
+	% remember positions:
+	\pgfplotsapplistXpushback{#1,}\to\pgfplots@createcolormap@X
+	%
 	\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsarraypushback{#2}\noexpand\to}%
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
 	\edef\pgfplots@createcolormap@last{#2}%
+}%
+\def\pgfplotscreatecolormap@reinterpolate#1{%
+	\pgfmathdivide@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
+	% after this group, \pgfmathresult is
+	% - empty if no reinterpolation is possible,
+	% - non-empty if reinterpolation IS possible. In this
+	%   case, it contains the integer multiple of H.
+	\begingroup
+		\afterassignment\pgfplots@createcolormap@nextRGB@consider@reinterpolation
+		\c@pgf@counta=\pgfmathresult\relax
+		\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\ifx\pgfmathresult\pgfutil@empty
+		% I can't do that yet.
+	\else
+		\let\pgfplots@createcolormap@loop@end=\pgfmathresult
+		% interpolate missing values using the already fixed H.
+		% This interpolation procedure is stupid because it works
+		% only in forward direction - but it works at least.
+		% For the backwards direction, you can provide the
+		% meshwidth explicitly at
+		% \pgfplotscreatecolormap{}{[1pt]}
+		\pgfplotsforeachungrouped \c@pgfplots@createcolormap in {1,2,...,\pgfplots@createcolormap@loop@end} {%
+			\ifdim\c@pgfplots@createcolormap pt=\pgfplots@createcolormap@loop@end pt %
+				% omit the last.
+			\else
+				\pgfmathparse{\c@pgfplots@createcolormap/\pgfplots@createcolormap@loop@end}%
+				\let\pgfplots@createcolormap@scale@current=\pgfmathresult
+				\pgfmathparse{1-\pgfplots@createcolormap@scale@current}%
+				\let\pgfplots@createcolormap@scale@last=\pgfmathresult
+				%
+				\pgfplotscolornormalizesequencezero
+				\pgfplotscolornormalizesequenceaddweighted
+					{\pgfplotsretval}
+					{\pgfplots@createcolormap@scale@current}
+					{#1}%
+				\pgfplotscolornormalizesequenceaddweighted
+					{\pgfplotsretval}
+					{\pgfplots@createcolormap@scale@last}
+					{\pgfplots@createcolormap@last}%
+				%
+%\message{interpolation step \c@pgfplots@createcolormap = \pgfplotsretval^^J}%
+				\edef\pgfplots@loc@TMPa{%
+					\noexpand\pgfplotsarraypushback{\pgfplotsretval}%
+					\noexpand\to}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
+			\fi
+		}%
+	\fi
 }%
 \def\pgfplots@createcolormap@nextRGB@consider@reinterpolation#1\relax{%
 	\pgf@xa=#1pt
@@ -490,6 +529,17 @@
 		}%
 	\fi
 }%
+
+% Executes '#2' if the colormap named '#1' has a uniform grid and '#3'
+% if not.
+\def\pgfplotscolormapifisuniform#1#2#3{%
+	\ifnum0=\pgfplotsarraysizeof{pgfpl@cm@#1@X}\relax
+		#2\relax
+	\else
+		#3\relax
+	\fi
+}%
+
 % Shows debug info about colormap #1 into the console.
 \def\pgfplots@colormap@showdebuginfofor#1{%
 	\message{Debug info for color map '#1':^^J}%
@@ -501,10 +551,18 @@
 	\message{Colorspace: \csname pgfpl@cm@#1@colspace\endcsname^^JValues (\csname pgfpl@cm@#1@col@comps\endcsname\space components each): ^^J}%
 	\begingroup
 	\c@pgf@counta=0
-	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
-		\pgfmath@basic@multiply@{\the\c@pgf@counta}{\csname pgfpl@cm@#1@h\endcsname}%
-		\message{\#\the\c@pgf@counta=(\pgfmathresult)=(\elem);^^J}%
-		\advance\c@pgf@counta by1 %
+	\pgfplotscolormapifisuniform{#1}{%
+		\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
+			\pgfmath@basic@multiply@{\the\c@pgf@counta}{\csname pgfpl@cm@#1@h\endcsname}%
+			\message{\#\the\c@pgf@counta=(\pgfmathresult)=(\elem);^^J}%
+			\advance\c@pgf@counta by1 %
+		}%
+	}{%
+		\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
+			\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#1@X}\to\pgfmathresult
+			\message{\#\the\c@pgf@counta=(\pgfmathresult)=(\elem);^^J}%
+			\advance\c@pgf@counta by1 %
+		}%
 	}%
 	\message{^^J}%
 	\endgroup
@@ -587,7 +645,11 @@
 	\pgfplotsarrayforeach{pgfpl@cm@#2}\as\elem{%
 		\ifnum\pgfplots@eachnth@cur=0\relax
 			\gdef\pgfplots@eachnth@cur{0}%
-			\pgfmath@basic@multiply@{\pgfplotsarrayforeachindex}{\csname pgfpl@cm@#2@h\endcsname}%
+			\pgfplotscolormapifisuniform{#2}{%
+				\pgfmath@basic@multiply@{\pgfplotsarrayforeachindex}{\csname pgfpl@cm@#2@h\endcsname}%
+			}{%
+				\pgfplotsarrayselect\pgfplotsarrayforeachindex\of{pgfpl@cm@#1@X}\to\pgfmathresult
+			}%
 			\edef\pgfplots@loc@TMPa{{\elem}{#2}{\pgfplotsarrayforeachindex}{\pgfmathresult}}%
 			\expandafter\pgfplotscolormaptodatafile@elem\pgfplots@loc@TMPa
 			\ifx\pgfplotsretval\pgfutil@empty
@@ -613,7 +675,9 @@
 	\endgroup
 }
 
-% Defines \pgfplotsretval to contain the mesh width of colormap #1
+% Defines \pgfplotsretval to contain the mesh width of colormap #1.
+% If the color map has a non-uniform grid, it returns the SMALLEST
+% encountered mesh width.
 \def\pgfplotscolormapgetmeshwidth#1{%
 	\expandafter\let\expandafter\pgfplotsretval\csname pgfpl@cm@#1@h\endcsname%
 }%
@@ -621,11 +685,23 @@
 % defines macro #2 to contain a serialized variant of the color
 % components (only the color components!)
 \def\pgfplotscolormapserializecomponentstomacro#1#2{%
+	\pgfplotscolormapserialize@to@macro{pgfpl@cm@#1}{#2}%
+}
+\def\pgfplotscolormapserialize@to@macro#1#2{%
 	\pgfplotsapplistXnewempty\pgfplots@serialize@list@
-	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\elem{%
-		\expandafter\pgfplotsapplistXpushback\expandafter{\elem},\to\pgfplots@serialize@list@
+	\pgfplots@loc@tmptrue
+	\expandafter\pgfplotsarrayforeachungrouped\expandafter{#1}\as\elem{%
+		\ifpgfplots@loc@tmp
+			\expandafter\pgfplotsapplistXpushback\expandafter{\expandafter{\elem}}\to\pgfplots@serialize@list@
+			\pgfplots@loc@tmpfalse
+		\else
+			\expandafter\pgfplotsapplistXpushback\expandafter,\expandafter{\elem}\to\pgfplots@serialize@list@
+		\fi
 	}%
 	\pgfplotsapplistXlet#2=\pgfplots@serialize@list@
+}%
+\def\pgfplotscolormapserializeXtomacro#1#2{%
+	\pgfplotscolormapserialize@to@macro{pgfpl@cm@#1@X}{#2}%
 }%
 
 % Copies the contents of the colormap named '#1' into a macro '#2'.
@@ -636,6 +712,7 @@
 \def\pgfplotscolormapserializetomacro#1#2{%
 	\begingroup
 		\pgfplotscolormapserializecomponentstomacro{#1}\pgfplots@serialize@list
+		\pgfplotscolormapserializeXtomacro{#1}\pgfplots@serialize@list@X
 		\toks0={\expandafter\def\csname pgfpl@cm@#1@h\endcsname}%
 		\toks1={\expandafter\def\csname pgfpl@cm@#1@invh\endcsname}%
 		\toks2={%
@@ -651,6 +728,16 @@
 		\toks4=\expandafter{\expandafter\def\csname pgfpl@cm@#1@colspace\endcsname}%
 		\toks5=\expandafter{\expandafter\def\csname pgfpl@cm@#1@col@comps\endcsname}%
 		\toks6=\expandafter{\expandafter\def\csname pgfpl@cm@#1@lastindex\endcsname}%
+		\toks7={%
+			\pgfplotsarraynewempty{pgfpl@cm@#1@X}%
+			\expandafter\pgfplotsutilforeachcommasep\pgfplots@loc@TMPa\as\pgfplots@loc@TMPb{%
+				\ifx\pgfplots@loc@TMPb\pgfutil@empty
+				\else
+					\expandafter\pgfplotsarraypushback\pgfplots@loc@TMPb\to{pgfpl@cm@#1@X}%
+				\fi
+			}%
+		}%
+		\toks8=\expandafter{\pgfplots@serialize@list@X}%
 		\xdef\pgfplots@glob@TMPa{%
 			\the\toks0 {\csname pgfpl@cm@#1@h\endcsname}%
 			\the\toks1 {\csname pgfpl@cm@#1@invh\endcsname}%
@@ -659,6 +746,8 @@
 			\the\toks4 {\csname pgfpl@cm@#1@colspace\endcsname}%
 			\the\toks5 {\csname pgfpl@cm@#1@col@comps\endcsname}%
 			\the\toks6 {\csname pgfpl@cm@#1@lastindex\endcsname}%
+			\noexpand\def\noexpand\pgfplots@loc@TMPa{\the\toks8 }%
+			\the\toks7
 		}%
 	\endgroup
 	\let#2=\pgfplots@glob@TMPa
@@ -775,8 +864,13 @@
 			}%
 			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
 			\ifnum\c@pgf@counta<\c@pgf@countb\relax
-				\pgf@xa=\pgf@x
-				\multiply\pgf@xa by\c@pgf@counta\relax
+				\pgfplotscolormapifisuniform{#1}{%
+					\pgf@xa=\pgf@x
+					\multiply\pgf@xa by\c@pgf@counta\relax
+				}{%
+					\pgfplotsarrayselect{\c@pgf@counta}\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPc
+					\pgf@xa=\pgfplots@loc@TMPc\relax
+				}%
 				\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
 				\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
 				\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
@@ -797,6 +891,7 @@
 			>>
 		}%
 		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
+		% FIXME 
 		\pgf@xa=\pgf@x
 		\advance\c@pgf@counta by-1 %
 		\multiply\pgf@xa by\c@pgf@counta\relax
@@ -865,7 +960,12 @@
 	\c@pgf@counta=0
 	\let#3=\pgfutil@empty
 	\pgfplotsarrayforeachungrouped{pgfpl@cm@#1}\as\pgfplotscolormaptoshadingspec@TMP{%
-		\pgf@yb=\c@pgf@counta\pgf@ya
+		\pgfplotscolormapifisuniform{#1}{%
+			\pgf@yb=\c@pgf@counta\pgf@ya
+		}{%
+			\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPd
+			\pgf@yb=\pgfplots@loc@TMPd\relax
+		}%
 		\edef\pgfplots@colspace{\csname pgfpl@cm@#1@colspace\endcsname}%
 		% FIXME : PGF shadings accept only RGB!
 		\if1\pgfplotscolormaptoshadingspectorgb
@@ -952,17 +1052,22 @@
 }%
 \def\pgfplotscolormapfind@precomputed[#1:#2][#3]#4#5{%
 	\ifpgfplots@LUA@supported
-		\edef\pgfmathresult{%
-			\pgfplotsutil@directlua{%
-				pgfplots.texColorMapPrecomputed("#5", #1,#2,#4)
+		\pgfplotscolormapifisuniform{#5}{%
+			\edef\pgfmathresult{%
+				\pgfplotsutil@directlua{%
+					pgfplots.texColorMapPrecomputed("#5", #1,#2,#4)
+				}%
 			}%
-		}%
-		\ifx\pgfmathresult\pgfutil@empty
-			\pgfplotscolormapfind@precomputed@warn@LUA{#5}%
+			\ifx\pgfmathresult\pgfutil@empty
+				\pgfplotscolormapfind@precomputed@warn@LUA{#5}%
+				\pgfplotscolormapfind@precomputed@[#1:#2][#3]{#4}{#5}%
+			\else
+				%\message{LUA colormapfind[#1:#2](#4)(#5) = \pgfmathresult^^J}%
+			\fi
+		}{%
+			% FIXME : implement LUA for non-uniform colormaps
 			\pgfplotscolormapfind@precomputed@[#1:#2][#3]{#4}{#5}%
-		\else
-			%\message{LUA colormapfind[#1:#2](#4)(#5) = \pgfmathresult^^J}%
-		\fi
+		}%
 	\else
 		\pgfplotscolormapfind@precomputed@[#1:#2][#3]{#4}{#5}%
 	\fi
@@ -974,7 +1079,7 @@
 		\expandafter\gdef\csname pgfplotscolormapfind@precomputed@warn@LUA@#1\endcsname{1}%
 	\fi
 }%
-\def\pgfplotscolormapfind@@@[#1:#2][#3]#4#5{%
+\def\pgfplotscolormapfind@transform[#1:#2][#3]#4#5{%
 	% Step 0: compute #3 if it is missing and write it into
 	% \pgfplots@loc@TMPa.
 	\def\pgfplots@loc@TMPa{#3}%
@@ -1008,20 +1113,29 @@
 \def\pgfplotscolormapfind@precomputed@[#1:#2][#3]#4#5{%
 	\pgfplotscolormapassertexists{#5}%
 	\begingroup
-	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
+	\pgfplotscolormapfind@transform[#1:#2][#3]{#4}{#5}%
+	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
 	%
 	% Now, we have it in [0,1000]. Find the correct interval:
-	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
-	\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\csname pgfpl@cm@#5@invh\endcsname}%
-	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
-	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
-	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
-	% without '.0' suffix:
-	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
-	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
-	% Step 2: interpolate the desired RGB value using vector valued
-	% interpolation on the identified interval.
-	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+	\pgfplotscolormapifisuniform{#5}{%
+		\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\csname pgfpl@cm@#5@invh\endcsname}%
+		\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
+		\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
+		% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
+		% without '.0' suffix:
+		\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
+		\expandafter\pgfplots@discardperiod\pgfmathresult\relax
+		% Step 2: interpolate the desired RGB value using vector valued
+		% interpolation on the identified interval.
+		\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+	}{%
+		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx}{0}{\pgfplotscolormapsizeof{#5}}%
+		\c@pgf@counta=\pgfplotsretval\relax
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=-\c@pgf@counta
+			\advance\c@pgf@counta by-1
+		\fi
+	}%
 %\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
 	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
 	%
@@ -1123,7 +1237,7 @@
 \def\pgfplotscolormapfindpiecewiseconst@precomputed@[#1:#2][#3]#4#5{%
 	\pgfplotscolormapassertexists{#5}%
 	\begingroup
-	\pgfplotscolormapfind@@@[#1:#2][#3]{#4}{#5}%
+	\pgfplotscolormapfind@transform[#1:#2][#3]{#4}{#5}%
 	\let\pgfplotscolormapfind@transformedx=\pgfmathresult
 	%
 	% Now, we have it in [0,1000]. Find the correct interval:
@@ -1148,26 +1262,37 @@
 	% what I really need is:
 	%  1/H = N/1000 = (1000 h^{-1} +1)/ 1000 = h^{-1} + 1/1000
 	%
-	% compute 1/H here:
-	\pgfmathadd@{\csname pgfpl@cm@#5@invh\endcsname}{0.001}%
-	\let\pgfplots@piecewiseconst@invh=\pgfmathresult%
-	\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\pgfplots@piecewiseconst@invh}%
-	\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
-	\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
-	% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
-	% without '.0' suffix:
-	\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
-	\expandafter\pgfplots@discardperiod\pgfmathresult\relax
-	% Step 2: interpolate the desired RGB value using vector valued
-	% interpolation on the identified interval.
-	\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
-	%
-	\ifnum\c@pgf@counta=\pgfplotscolormapsizeof{#5}\relax
-		% we have artificially increased the "h" (see the comments
-		% above) -- meaning that this 'if' can happen. 
-		% ->Map the rightmost point to the rightmost interval:
-		\advance\c@pgf@counta by-1
-	\fi
+	\pgfplotscolormapifisuniform{#5}{%
+		%
+		% compute 1/H here:
+		\pgfmathadd@{\csname pgfpl@cm@#5@invh\endcsname}{0.001}%
+		\let\pgfplots@piecewiseconst@invh=\pgfmathresult%
+		\pgfmathmultiply@{\pgfplotscolormapfind@transformedx}{\pgfplots@piecewiseconst@invh}%
+		\let\pgfplotscolormapfind@transformedx@divh=\pgfmathresult
+		\expandafter\pgfmathfloor@\expandafter{\pgfmathresult}%
+		% assign \pgfplotscolormapfind@intervalno := \pgfmathresult
+		% without '.0' suffix:
+		\def\pgfplots@discardperiod##1.##2\relax{\def\pgfplotscolormapfind@intervalno{##1}}%
+		\expandafter\pgfplots@discardperiod\pgfmathresult\relax
+		% Step 2: interpolate the desired RGB value using vector valued
+		% interpolation on the identified interval.
+		\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+		%
+		\ifnum\c@pgf@counta=\pgfplotscolormapsizeof{#5}\relax
+			% we have artificially increased the "h" (see the comments
+			% above) -- meaning that this 'if' can happen. 
+			% ->Map the rightmost point to the rightmost interval:
+			\advance\c@pgf@counta by-1
+		\fi
+	}{%
+		% FIXME : extra interval!
+		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx}{0}{\pgfplotscolormapsizeof{#5}}%
+		\c@pgf@counta=\pgfplotsretval\relax
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=-\c@pgf@counta
+			\advance\c@pgf@counta by-1
+		\fi
+	}%
 	%
 %\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
 	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
