@@ -1169,6 +1169,13 @@
 		% Step 2: interpolate the desired RGB value using vector valued
 		% interpolation on the identified interval.
 		\c@pgf@counta=\pgfplotscolormapfind@intervalno\relax
+		% color^m(x) = ( (x-x_i)/(x_{i+1} - x_i) ) * (c_{i+1}^m - c_i^m ) + c_i^m
+		%            = ( x/h - i ) * ( c_{i+1}^m - c_{i}^m ) + c_i^m 
+		%            = s * c_{i+1}^m  + S * c_i^m
+		%
+		%  s= x_h / h -i 
+		\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
+		\let\pgfplots@loc@factor=\pgfmathresult
 	}{%
 		\pgfplotsarraybinarysearch{pgfpl@cm@#5@X}{\pgfplotscolormapfind@transformedx}{0}{\pgfplotscolormapsizeof{#5}}%
 		\c@pgf@counta=\pgfplotsretval\relax
@@ -1183,31 +1190,50 @@
 			% interval boundary!
 			\advance\c@pgf@counta by-1
 		\fi
+		%
+		% color^m(x) = ( (x-x_i)/(x_{i+1} - x_i) ) * (c_{i+1}^m - c_i^m ) + c_i^m
+		%            = s * c_{i+1}^m  + S * c_i^m
+		%
+		%  s = (x - x_i) / (x_{i+1} - x_i)
+		\begingroup
+		\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5@X}\to\pgfplotscolormapfind@rgb@X@left
+		\advance\c@pgf@counta by1
+		\ifnum\c@pgf@counta<\pgfplotsarraysizeof{pgfpl@cm@#5} %
+			% ok, we really have an interval
+			\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5@X}\to\pgfplotscolormapfind@rgb@X@right
+			%
+			\pgfmathsubtract@{\pgfplotscolormapfind@rgb@X@right}{\pgfplotscolormapfind@rgb@X@left}%
+			\let\pgfplotscolormapfind@h=\pgfmathresult
+			\pgfmathsubtract@{\pgfplotscolormapfind@transformedx}{\pgfplotscolormapfind@rgb@X@left}%
+			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfmathdivide@{\pgfplots@loc@TMPa}{\pgfplotscolormapfind@h}%
+			\let\pgfplots@loc@factor=\pgfmathresult
+		\else
+			% irrelevant (not used)
+			\def\pgfplots@loc@factor{1}%
+		\fi
+		\pgfmath@smuggleone\pgfplots@loc@factor
+		\endgroup
 	}%
+	% POSTCONDITION: \c@pgf@counta is the index of the LEFT interval
+	%                and \pgfplots@loc@factor is the factor for the linear interpolation.
+	%
 %\message{mapping [#1,#2] -> [0,\pgfplotscolormaprange]  yielded phi(#4) = \pgfplotscolormapfind@transformedx, situated in interval no \the\c@pgf@counta.^^J}%
 	\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@LEFT
 	%
 	% do the stuff which is specific to linear interpolation:
 	%
-	\pgfmathsubtract@{\pgfplotscolormapfind@transformedx@divh}{\pgfplotscolormapfind@intervalno}%
-	\let\pgfplots@loc@factor=\pgfmathresult
+	%  S = 1 - s
 	\pgfmathsubtract@{1}{\pgfplots@loc@factor}%
 	\let\pgfplots@loc@factor@two=\pgfmathresult
 	%
-	\pgfplotsarraysize{pgfpl@cm@#5}\to\c@pgf@countb
-	\advance\c@pgf@countb-1 %
-	\ifnum\c@pgf@counta<\c@pgf@countb
-		% Ah: (selected index < length-1)  . That means: we have an interval.
-		\advance\c@pgf@counta by1
+	\advance\c@pgf@counta by1 %
+	\ifnum\c@pgf@counta<\pgfplotsarraysizeof{pgfpl@cm@#5} %
+		% Ah: (selected index < length)  . That means: we have an interval.
 		\pgfplotsarrayselect\c@pgf@counta\of{pgfpl@cm@#5}\to\pgfplotscolormapfind@rgb@RIGHT
 %\message{After lookup: the corresponding RGB interval boundaries are [\pgfplotscolormapfind@rgb@LEFT: \pgfplotscolormapfind@rgb@RIGHT].^^J}%
 		%
 		%
-		% color^m(x) = ( x/h - i ) * ( c_{i+1}^m - c_{i}^m ) + c_i^m 
-		%            = s * c_{i+1}^m  + S * c_i^m
-		%
-		%  s= x_h / h -i 
-		%  S = 1 - s
 		\pgfplotscolorzero{\csname pgfpl@cm@#5@col@comps\endcsname}%
 		\pgfplotscoloraddweighted
 			{\csname pgfpl@cm@#5@col@comps\endcsname}
