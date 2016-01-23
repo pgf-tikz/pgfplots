@@ -360,9 +360,10 @@
 \def\pgfplots@createcolormap@special@process@single{%
 	\begingroup
 	\let\pgfplots@color@of@colormap@access=\pgfplots@colormap@access
-	\pgfkeysgetvalue{/pgfplots/of colormap/range}\pgfplotspointmetatransformed
-	\ifx\pgfplotspointmetatransformed\pgfutil@empty
-		\let\pgfplotspointmetatransformed=\pgfplotscolormaprange
+	\pgfkeysgetvalue{/pgfplots/of colormap/range}\pgfplotspointmetatransformedrange
+	\ifx\pgfplotspointmetatransformedrange\pgfutil@empty
+		% evaluated by \pgfplots@color@of@colormap@define...
+		\let\pgfplotspointmetatransformedrange=\pgfplotscolormaprange
 	\fi
 	%
 	\pgfkeysgetvalue{/pgfplots/of colormap/pos}\pgfplots@temp@pos
@@ -1180,6 +1181,8 @@
 % Expands to the transformed range's right end of every colormap. The left
 % end is fixed to '0'.
 \def\pgfplotscolormaprange{1000}
+\pgfmathfloatcreate{1}{1.0}{3}%
+\let\pgfplotscolormaprange@float=\pgfmathresult
 
 \def\pgfplotscolormapgetcolorspace#1{%
 	\edef\pgfplotsretval{\csname pgfpl@cm@#1@colspace\endcsname}%
@@ -1250,26 +1253,38 @@
 	\fi
 }%
 \def\pgfplotscolormapfind@transform[#1:#2][#3]#4#5{%
+	\edef\pgfplots@loc@TMPa{#1:#2}%
 	\edef\pgfplots@loc@samerange{0:\pgfplotscolormaprange}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@samerange
 		% we have phi(#4) = #4  because #4 in [0:1000].
 		\edef\pgfmathresult{#4}%
 	\else
 		% Step 0: compute #3 if it is missing and write it into \pgfplots@loc@TMPa.
+%\message{mapping '#4' into colormap '#5' with range [#1:#2] ... ^^J}%
+		\pgfmathfloatparsenumber{#1}%
+		\let\pgfplots@L=\pgfmathresult
+		%
 		\def\pgfplots@loc@TMPa{#3}%
 		\ifx\pgfplots@loc@TMPa\pgfutil@empty
-			\pgfmathsubtract@{#2}{#1}%
+			\pgfmathfloatparsenumber{#2}%
+			\let\pgfplots@R=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfplots@R}{\pgfplots@L}%
 			\let\pgfplots@loc@TMPb=\pgfmathresult
-			\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@loc@TMPb}%
-			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfmathfloatdivide@{\pgfplotscolormaprange@float}{\pgfplots@loc@TMPb}%
+		\else
+			\pgfmathfloatparsenumber{#3}%
 		\fi
-%\message{mapping '#4' into colormap '#5' ... ^^J}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		%
 		% Step 1: perform lookup. Map #4 into the colormap's range
 		% using the linear trafo
 		% phi(#4) = ( #4 - #1 ) / (#2-#1) * colormaprange(#5).
 		% This, determine the INTERVAL number into which #4 falls.
-		\pgfmathsubtract@{#4}{#1}%
-		\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+		\pgfmathfloatparsenumber{#4}%
+		\let\pgfplots@V=\pgfmathresult
+		\pgfmathfloatsubtract@{\pgfplots@V}{\pgfplots@L}%
+		\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPa}%
+		\pgfmathfloattofixed\pgfmathresult
 	\fi
 	\ifdim\pgfmathresult pt<0pt
 		\def\pgfmathresult{0}%
