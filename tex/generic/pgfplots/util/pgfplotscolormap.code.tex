@@ -274,16 +274,31 @@
 		\pgfkeys@spdef\pgfplotsretval{#1}%
 		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsretvalb
 	\fi
+	\let\pgfplots@createcolormap@special@split@@@=\pgfplotsretval
 	\pgfplots@createcolormap@special@ensure@source@cm{\pgfplotsretvalb}%
+	\let\pgfplotsretvalb=\pgfplotsretval
+	\let\pgfplotsretval=\pgfplots@createcolormap@special@split@@@
 }%
 \def\pgfplots@createcolormap@special@split@#1of #2\pgfplots@EOI{%
 	\pgfkeys@spdef\pgfplotsretval{#1}%
 	\pgfkeys@spdef\pgfplotsretvalb{#2}%
 }
+
+% Output: \pgfplotsretval will be populated with the resulting
+% colormap name.
 \def\pgfplots@createcolormap@special@ensure@source@cm#1{%
-	\pgfplotscolormapifdefined{#1}{%
-	}{%
-		\pgfplots@error{The argument '#1' is no valid colormap.}%
+	\edef\pgfplotsretval{#1}%
+	\pgfplotscolormapifdefined{#1}{}{%
+		% hm... the colormap does not exist? Perhaps someone used
+		% style 'colormap/cool'. Try to define it!
+		\pgfkeysifdefined{/pgfplots/#1/.@cmd}{%
+			\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@color@of@colormap@name@old
+			\pgfplotsset{#1}%
+			\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsretval
+			\pgfkeyslet{/pgfplots/colormap name}\pgfplots@color@of@colormap@name@old
+		}{%
+			\pgfplots@error{The argument '#1' is no valid colormap.}%
+		}%
 	}%
 }%
 
@@ -366,18 +381,6 @@
 					}%
 				}%
 				\pgfplots@loc@TMPa
-				%
-				\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@loc@TMPa
-				\ifx\pgfplots@loc@TMPa\pgfutil@empty
-					% default to a suitable selection (all):
-					\edef\pgfplots@loc@TMPa{%
-						\noexpand\pgfkeysalso{%
-							/pgfplots/of colormap/selection={0,...,\pgfplotscolormaplastindexof{\pgfkeyscurrentname}},%
-							/pgfplots/of colormap/indices,
-						}%
-					}%
-					\pgfplots@loc@TMPa
-				\fi
 			}{%
 				\pgfplots@error{Unknown key '\pgfkeyscurrentname'. Is this a colormap name? Maybe you need to write \string\pgfplotsset{\pgfkeyscurrentname} first?}%
 			}%
@@ -404,6 +407,8 @@
 	\fi
 }%
 
+% This is the main implementation of 'of colormap'. It is shared by
+% both cycle lists and colormaps.
 \def\pgfplots@of@colormap@getresult#1{%
 	\pgfkeysinterruptkeyfilter
 	\pgfqkeys{/pgfplots/of colormap}{#1}%
@@ -414,6 +419,19 @@
 		\pgfkeyslet{/pgfplots/colormap name}\pgfplots@loc@TMPa
 	\fi
 	\pgfplots@createcolormap@special@ensure@source@cm{\pgfkeysvalueof{/pgfplots/colormap name}}%
+	\pgfkeyslet{/pgfplots/colormap name}\pgfplotsretval
+	%
+	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% default to a suitable selection (all):
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfkeysalso{%
+				/pgfplots/of colormap/selection={0,...,\pgfplotscolormaplastindexof{\pgfkeysvalueof{/pgfplots/colormap name}}},%
+				/pgfplots/of colormap/indices,
+			}%
+		}%
+		\pgfplots@loc@TMPa
+	\fi
 	%
 	\pgfqkeys{/pgfplots/of colormap}{@define}%
 	\endpgfkeysinterruptkeyfilter
@@ -429,37 +447,44 @@
 		\let\pgfplotspointmetatransformedrange=\pgfplotscolormaprange
 	\fi
 	%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@color@of@colormap@define{\pgfkeysvalueof{/pgfplots/of colormap/selection}}%
+	}%
+	\pgfplots@loc@TMPa
+	%
+	\pgfplots@createcolormap@special@process@single@define
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+
+\def\pgfplots@createcolormap@special@process@single@define{%
 	\pgfkeysgetvalue{/pgfplots/of colormap/pos}\pgfplots@temp@pos
 	\ifx\pgfplots@temp@pos\pgfutil@empty
 	\else
 		\edef\pgfplots@temp@pos{(\pgfplots@temp@pos)}%
 	\fi
 	%
-	\edef\pgfplots@loc@TMPa{%
-		\noexpand\pgfplots@color@of@colormap@define{\pgfkeysvalueof{/pgfplots/of colormap/selection}}%
-	}%
-	\pgfplots@loc@TMPa
-	%
 	\edef\pgfplotsretval{%
 		\csname pgfpl@cm@\pgfkeysvalueof{/pgfplots/colormap name}@colspace\endcsname\pgfplots@temp@pos=(\pgfmathresult)%
 	}%
-	\pgfmath@smuggleone\pgfplotsretval
-	\endgroup
 }%
+\let\pgfplots@createcolormap@special@process@single@define@CM=\pgfplots@createcolormap@special@process@single@define%
+
 % PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
 \def\pgfplots@createcolormap@special@process@list{%
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@source
-	\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@sourcecm
 	%
 	\pgfplotsapplistXnewempty\pgfplots@createcolormap@special@process@result
 	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in }%
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@source}{%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@sourcecm}%
-		%
 		\pgfkeyslet{/pgfplots/of colormap/selection}\x
 		\pgfplots@createcolormap@special@process@single
-		\edef\pgfplotsretval{\pgfplotsretval\space}%
+		%
+		% append separator
+		\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@createcolormap@special@process@list@separator}%
+		\edef\pgfplotsretval{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
 		%
 		\expandafter\pgfplotsapplistXpushback\pgfplotsretval\to\pgfplots@createcolormap@special@process@result
 		%
@@ -471,6 +496,9 @@
 	\endgroup
 	\let\pgfplotsretval=\pgfplots@glob@TMPa
 }%
+
+\def\pgfplots@createcolormap@special@process@list@separator@CM{ }%
+\let\pgfplots@createcolormap@special@process@list@separator=\pgfplots@createcolormap@special@process@list@separator@CM
 %%%%%%%%%%
 
 \def\pgfplots@createcolormap@grabnext@complete{%
@@ -533,11 +561,14 @@
 		\pgfplotscolormap@key={\the\t@pgfplots@tokb},
 	}%
 	%
+	\let\pgfplots@createcolormap@special@process@single@define=\pgfplots@createcolormap@special@process@single@define@CM
+	\let\pgfplots@createcolormap@special@process@list@separator=\pgfplots@createcolormap@special@process@list@separator@CM
+	%
 	% finally, process the keys:
 	\expandafter\pgfplots@of@colormap@getresult\expandafter{%
 		\pgfplotscolormap@keyvalue,
 	}%
-\message{\pgfplotscolormap@key={\pgfplotscolormap@argument} -> '\pgfplotscolormap@keyvalue' -> \pgfplotsretval^^J}%
+%\message{\pgfplotscolormap@key={\pgfplotscolormap@argument} -> '\pgfplotscolormap@keyvalue' -> \pgfplotsretval^^J}%
 }%
 
 \def\pgfplots@createcolormap@grabnext@computenextposition{%

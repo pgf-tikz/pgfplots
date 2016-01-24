@@ -176,14 +176,13 @@
 % 		It accepts the following formats:
 % 		\pgfplotscreateplotcyclelist{name}{[of colormap]}%
 % 		\pgfplotscreateplotcyclelist{name}{[of colormap=<colormap name>]}%
-% 		\pgfplotscreateplotcyclelist{name}{[colors of colormap={<list>}{<colormap name>}]}%
-% 		\pgfplotscreateplotcyclelist{name}{[indices of colormap={<list>}{<colormap name>}]}%
+% 		\pgfplotscreateplotcyclelist{name}{[colors of colormap={<list> of <colormap name>}]}%
+% 		\pgfplotscreateplotcyclelist{name}{[indices of colormap={<list> of <colormap name>}]}%
+% 		\pgfplotscreateplotcyclelist{name}{[* of colormap as it is also available inside of colormap definitions]}
 % 		\pgfplotscreateplotcyclelist{name}{comma-separated-list}
 % 		\pgfplotscreateplotcyclelist{name}{'\\'-separated list(requires the last item to be terminated by '\\')}
 \def\pgfplotscreateplotcyclelist#1#2{%
-	\pgfkeysinterruptkeyfilter
 	\pgfplotscreateplotcyclelist@check@specials{#1}{#2}#2\pgfplots@EOI%
-	\endpgfkeysinterruptkeyfilter
 }%
 
 \def\pgfplotscreateplotcyclelist@check@specials#1#2{%
@@ -194,13 +193,39 @@
 	}%
 }%
 \def\pgfplotscreateplotcyclelist@check@specials@#1[#2]{%
-	\pgfqkeys{/pgfplots/@cycle}{result name={#1},#2}%
+	% the 'of colormap' feature uses the very same functionality as
+	% the related functionality in colormap definitions.
+	% We only replace two routines:
+	%
+	\begingroup
+	\let\pgfplots@createcolormap@special@process@single@define=\pgfplots@createcolormap@special@process@single@define@CYCLE
+	\let\pgfplots@createcolormap@special@process@list@separator=\pgfplots@createcolormap@special@process@list@separator@CYCLE
+	\pgfplots@of@colormap@getresult{#2}%
+	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
+	\endgroup
+	%
+	\t@pgfplots@tokb={#1}%
+	\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
+	\edef\pgfplots@loc@TMPa{\noexpand\pgfplotscreateplotcyclelist{\the\t@pgfplots@tokb}{\the\t@pgfplots@toka}}%
+%\message{#2->^^J \meaning\pgfplots@loc@TMPa^^J}%
+	\pgfplots@loc@TMPa
+		%
+		% FIXME implement:
+		%--------------------------------------------------
+		% \ifnum\pgfplots@glob@TMPb>\pgfkeysvalueof{/pgfplots/@cycle/max size} %
+		% 	% cycle lists have quadratic runtime. Use small ones!
+		% 	\pgfplotswarning{cycle list size limit reached}\pgfeov
+		% 	\breakforeach
+		% \fi
+		%-------------------------------------------------- 
+	%
 	\pgfutil@ifnextchar\pgfplots@EOI{%
 		\pgfplots@gobble@until@EOI
 	}{%
 		\pgfplotscreateplotcyclelist@check@specials@gobble@error{#2}%
 	}%
 }%
+
 \def\pgfplotscreateplotcyclelist@check@specials@gobble@error#1#2\pgfplots@EOI{%
 	\t@pgfplots@tokb={[#1]}%
 	\t@pgfplots@toka={#2}%
@@ -210,64 +235,8 @@
 	\expandafter\pgfplots@assign@list\csname pgfp@cyclist@\string#1@\endcsname{#2}%
 }
 
-\def\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion#1#2{%
-	\pgfplots@color@of@colormap@parse{#1}%
-	\begingroup
-	\gdef\pgfplots@glob@TMPa{}%
-	\gdef\pgfplots@glob@TMPb{0}%
-	\def\pgfplots@loc@TMPa{\foreach \x in }%
-	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@color@of@colormap@value}{%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@color@of@colormap@name}%
-		\edef\currentValue{#2=\x\space of \the\t@pgfplots@tokb}%
-		%
-		\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-		\t@pgfplots@tokb=\expandafter{\currentValue\\}%
-		\xdef\pgfplots@glob@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-		%
-		\pgfplotsutil@advancestringcounter@global\pgfplots@glob@TMPb
-		\ifnum\pgfplots@glob@TMPb>\pgfkeysvalueof{/pgfplots/@cycle/max size} %
-			% cycle lists have quadratic runtime. Use small ones!
-			\pgfplotswarning{cycle list size limit reached}\pgfeov
-			\breakforeach
-		\fi
-	}%
-	\endgroup
-	\pgfkeysgetvalue{/pgfplots/@cycle/result name}\pgfplots@color@of@colormap@name
-	\t@pgfplots@tokb=\expandafter{\pgfplots@color@of@colormap@name}%
-	\t@pgfplots@toka=\expandafter{\pgfplots@glob@TMPa}%
-	\edef\pgfplots@loc@TMPa{\noexpand\pgfplotscreateplotcyclelist{\the\t@pgfplots@tokb}{\the\t@pgfplots@toka}}%
-%\message{got \meaning\pgfplots@loc@TMPa^^J}%
-	\pgfplots@loc@TMPa
-}%
-
 \pgfqkeys{/pgfplots/@cycle}{%
-	result name/.initial=,
 	max size/.initial=80,
-	of colormap/.code={%
-		\pgfplotsutilifstringequal{#1}{\pgfkeysnovalue}{%
-			\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPa
-			\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
-			\edef\pgfplots@loc@TMPa{%
-				\noexpand\pgfkeysalso{indices of colormap={0,...,\pgfplotscolormaplastindexof{\pgfplots@loc@TMPa}} of {\the\t@pgfplots@toka}}%
-			}%
-			\pgfplots@loc@TMPa
-		}{%
-			\pgfplotscolormapifdefined{#1}{%
-				\pgfkeysalso{indices of colormap={0,...,\pgfplotscolormaplastindexof{#1}} of {#1}}%
-			}{%
-				\pgfplots@error{There is no such colormap '#1'. Maybe you need to write \string\pgfplotsset{#1} first?}%
-			}%
-		}%
-	},%
-	colors of colormap/.code={%
-		\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion{#1}{color of colormap}%
-	},
-	indices of colormap/.code={%
-		\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion{#1}{index of colormap}%
-	},
-	const colors of colormap/.code={%
-		\pgfplotscreateplotcyclelist@check@specials@process@colormap@conversion{#1}{const color of colormap}%
-	},
 }
 
 \pgfplotscreateplotcyclelist{black white}{%
@@ -714,6 +683,17 @@
 			\pgfplotscolormapgetindex{\pgfplots@color@of@colormap@value}{\pgfplots@color@of@colormap@name}%
 		\fi
 	\fi
+}%
+
+\def\pgfplots@createcolormap@special@process@list@separator@CYCLE{\\}%
+\def\pgfplots@createcolormap@special@process@single@define@CYCLE{%
+	\edef\pgfplotsretval{%
+		/tikz/color/.define=%
+				{.}%
+				{\csname pgfpl@cm@\pgfkeysvalueof{/pgfplots/colormap name}@colspace\endcsname}%
+				{\pgfmathresult},%
+		/tikz/color=.,%
+	}%
 }%
 \def\pgfplots@color@of@colormap#1{%
 	\pgfplots@color@of@colormap@define{#1}%
@@ -3982,6 +3962,13 @@
 		\pgfplots@color@of@colormap{#1}%
 	},%
 	/tikz/index of colormap/.style={/pgfplots/index of colormap={#1}},
+	%
+	% #1: the target color name
+	% #2: the color space (like 'rgb')
+	% #3: the color components
+	/tikz/color/.define/.code args={#1#2#3}{%
+		\pgfutil@definecolor{#1}{#2}{#3}%
+	},
 	%
 	%%
 	/pgfplots/scatter/.is choice,
