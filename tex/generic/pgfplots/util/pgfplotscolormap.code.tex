@@ -309,6 +309,27 @@
 	},
 	color list,
 	%
+	of colormap/.style={#1},
+	%
+	% 'color of colormap={#1}' is a style which boils down to
+	% '@delegate to@ of colormap={color}{#1}'.
+	%
+	% see its consumers:
+	% #1: how to interprete results. /pgfplots/of colormap/#1 must be
+	% a valid key (like 'color').
+	% #2: the argument which can be '<selection> of <name>' or '<selection>'.
+	@delegate to@ of colormap/.code 2 args={%
+		% Convert 'color of colormap={...}' and its variants into
+		% 'of colormap={<list of keys>}':
+		\pgfplots@createcolormap@special@split{#2}%
+		\edef\pgfplots@loc@TMPa{%
+			#1,%
+			selection={\pgfplotsretval},%
+			name={\pgfplotsretvalb},%
+		}%
+		\expandafter\pgfkeysalso\expandafter{\pgfplots@loc@TMPa}%
+	},
+	%
 	color/.style={%
 		/pgfplots/of colormap/interpolation=map,
 		/pgfplots/of colormap/single color,
@@ -366,8 +387,24 @@
 		}%
 	},
 }
+\pgfplotsinvokeforeach{%
+	color,%
+	index,%
+	const color,%
+	indices,%
+	colors,%
+	const colors,%
+}{%
+	\def\pgfplots@glob@TMPa{#1}%
+	\ifx\pgfplots@glob@TMPa\pgfutil@empty
+	\else
+		\pgfkeysdef{/pgfplots/of colormap/#1 of colormap}{%
+			\pgfkeysalso{/pgfplots/of colormap/@delegate to@ of colormap={#1}{##1}}%
+		}%
+	\fi
+}%
 
-\def\pgfplots@createcolormap@of@colormap@process@keys#1{%
+\def\pgfplots@of@colormap@getresult#1{%
 	\pgfkeysinterruptkeyfilter
 	\pgfqkeys{/pgfplots/of colormap}{#1}%
 	\pgfkeysgetvalue{/pgfplots/of colormap/name}\pgfplots@loc@TMPa
@@ -409,7 +446,7 @@
 	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
 }%
-% PRECONDITION: Must be invoked within \pgfplots@createcolormap@of@colormap@process@keys
+% PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
 \def\pgfplots@createcolormap@special@process@list{%
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@source
@@ -478,44 +515,29 @@
 	\pgfplots@loc@TMPd
 }%
 
+% INPUT: 
+%		\pgfplotscolormap@at
+%		\pgfplotscolormap@argument
+%		\pgfplotscolormap@key
+% OUTPUT:
+% 		The result of /pgfplots/of colormap/@define.
+% 		For the normal colormap definition, it populates
+% 		\pgfplotsretval with the color specifications as they should
+% 		be processed by the colormap definition code.
 \def\pgfplots@createcolormap@grabnext@complete@ofcolormap{%
-	\expandafter\pgfplots@createcolormap@split@accessmode@\pgfplotscolormap@key\pgfplots@EOI
-	% If you write 'color of colormap=(...)', accessmode is 'color'.
-	% It is the prefix before 'of colormap':
-	\let\pgfplotscolormap@accessmode=\pgfplotsretval
-	%
-	\ifx\pgfplotscolormap@accessmode\pgfutil@empty
-		% Ah, we have 'of colormap={<list of keys>}':
-		% keep the argument as-is.
-		\t@pgfplots@tokb=\expandafter{\pgfplotscolormap@argument}%
-		\edef\pgfplotscolormap@keyvalue{%
-			% position:
-			pos={\pgfplotscolormap@at},%
-			% ... but can be overriden here:
-			\the\t@pgfplots@tokb
-		}%
-	\else
-		% Convert 'color of colormap={...}' and its variants into
-		% 'of colormap={<list of keys>}':
-		\expandafter\pgfplots@createcolormap@special@split\expandafter{\pgfplotscolormap@argument}%
-		\edef\pgfplotscolormap@keyvalue{%
-			% position:
-			pos={\pgfplotscolormap@at},%
-			\pgfplotscolormap@accessmode,%
-			selection={\pgfplotsretval},%
-			name={\pgfplotsretvalb},%
-		}%
-	\fi
+	\t@pgfplots@tokb=\expandafter{\pgfplotscolormap@argument}%
+	\edef\pgfplotscolormap@keyvalue{%
+		% position:
+		pos={\pgfplotscolormap@at},%
+		% ... but can be overriden here:
+		\pgfplotscolormap@key={\the\t@pgfplots@tokb},
+	}%
 	%
 	% finally, process the keys:
-	\expandafter\pgfplots@createcolormap@of@colormap@process@keys\expandafter{%
+	\expandafter\pgfplots@of@colormap@getresult\expandafter{%
 		\pgfplotscolormap@keyvalue,
 	}%
-}%
-
-% 'colors of colormap' -> \pgfplotsretval = 'colors'
-\def\pgfplots@createcolormap@split@accessmode@#1of colormap\pgfplots@EOI{%
-	\pgfkeys@spdef\pgfplotsretval{#1}%
+\message{\pgfplotscolormap@key={\pgfplotscolormap@argument} -> '\pgfplotscolormap@keyvalue' -> \pgfplotsretval^^J}%
 }%
 
 \def\pgfplots@createcolormap@grabnext@computenextposition{%
