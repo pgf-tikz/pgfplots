@@ -264,8 +264,15 @@
 
 %%%%%%%%%%
 
-% defines \pgfplotsretval to contain the argument and \pgfplotsretvalb
-% to contain the colormap name.
+% Splits '<argument> of <name>*' into (\pgfplotsretval,
+% \pgfplotsretvalb).
+% 
+% The 'of' part is optional. If it is missing, '\pgfplotsretval'
+% contains the entire argument and '\pgfplotsretvalb' is the current
+% colormap.
+%
+% Note that '<name>*' is typically just a colormap name (i.e. without
+% '*'), but it _may_ contain key-value lists! They will be returned as-is.
 \def\pgfplots@createcolormap@special@split#1{%
 	\pgfutil@in@{of }{#1}%
 	\ifpgfutil@in@
@@ -274,10 +281,6 @@
 		\pgfkeys@spdef\pgfplotsretval{#1}%
 		\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplotsretvalb
 	\fi
-	\let\pgfplots@createcolormap@special@split@@@=\pgfplotsretval
-	\pgfplots@createcolormap@special@ensure@source@cm{\pgfplotsretvalb}%
-	\let\pgfplotsretvalb=\pgfplotsretval
-	\let\pgfplotsretval=\pgfplots@createcolormap@special@split@@@
 }%
 \def\pgfplots@createcolormap@special@split@#1of #2\pgfplots@EOI{%
 	\pgfkeys@spdef\pgfplotsretval{#1}%
@@ -337,8 +340,15 @@
 	%
 	% 'color of colormap={#1}' is a style which boils down to
 	% '@delegate to@ of colormap={color}{#1}'.
+	% The same is true for
+	%   colors of colormap
+	%   index of colormap
+	%   indices of colormap
+	%   samples of colormap
+	%   const color of colormap
+	%   const colors of colormap
 	%
-	% see its consumers:
+	% All use this implementation:
 	% #1: how to interprete results. /pgfplots/of colormap/#1 must be
 	% a valid key (like 'color').
 	% #2: the argument which can be '<selection> of <name>' or '<selection>'.
@@ -349,7 +359,11 @@
 		\edef\pgfplots@loc@TMPa{%
 			#1,%
 			selection={\pgfplotsretval},%
-			name={\pgfplotsretvalb},%
+			% \pgfplotsretvalb will contain the colormap name
+			% --- but it _can_ also contain further key-value pairs!
+			% Do not add braces here such that further key-value pairs
+			% can be found:
+			name=\pgfplotsretvalb,%
 		}%
 		\expandafter\pgfkeysalso\expandafter{\pgfplots@loc@TMPa}%
 	},
@@ -375,6 +389,7 @@
 		/pgfplots/of colormap/selection/.set if not empty={#1},
 	},
 	samples/.style={%
+		/pgfplots/of colormap/interpolation=map,% can be overridden if needed.
 		/pgfplots/of colormap/@define/.code={%
 			\pgfplots@createcolormap@special@process@list@sampled%
 		},
@@ -444,24 +459,14 @@
 	\pgfplots@createcolormap@special@ensure@source@cm{\pgfkeysvalueof{/pgfplots/colormap name}}%
 	\pgfkeyslet{/pgfplots/colormap name}\pgfplotsretval
 	%
-	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@loc@TMPa
-	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
-	\ifx\pgfplots@loc@TMPa\pgfutil@empty
-		% default to a suitable selection (all):
-		\edef\pgfplots@loc@TMPa{%
-			\noexpand\pgfkeysalso{%
-				/pgfplots/of colormap/selection={0,...,\pgfplotscolormaplastindexof{\pgfkeysvalueof{/pgfplots/colormap name}}},%
-				/pgfplots/of colormap/indices,
-			}%
-		}%
-		\pgfplots@loc@TMPa
-	\fi
-	%
 	\pgfqkeys{/pgfplots/of colormap}{@define}%
 	\endpgfkeysinterruptkeyfilter
 }%
 
 
+\def\pgfplots@createcolormap@special@process@single@error{%
+	\pgfplots@error{Did not find a suitable input selection in a 'of colormap' specification. Did you forget the 'selection'? It can be given as 'colors of colormap=(selection of name)' or 'of colormap=(selection=...,..)'}%
+}%
 \def\pgfplots@createcolormap@special@process@single{%
 	\begingroup
 	\let\pgfplots@color@of@colormap@access=\pgfplots@colormap@access
@@ -469,6 +474,12 @@
 	\ifx\pgfplotspointmetatransformedrange\pgfutil@empty
 		% evaluated by \pgfplots@color@of@colormap@define...
 		\let\pgfplotspointmetatransformedrange=\pgfplotscolormaprange
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfplots@createcolormap@special@process@single@error
 	\fi
 	%
 	\edef\pgfplots@loc@TMPa{%
@@ -494,20 +505,51 @@
 }%
 \let\pgfplots@createcolormap@special@process@single@define@CM=\pgfplots@createcolormap@special@process@single@define%
 
+\def\pgfplots@createcolormap@special@process@list@sanitize@selection{%
+	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@loc@TMPa
+	\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% default to a suitable selection.
+		\ifnum\pgfplots@pos@size<2
+			% We have either 0 positions or 1 position.
+			% This is clearly insufficient and we assume that this
+			% position argument merely gives the start point for the
+			% list.
+			%
+			% Select all of the input colormap:
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\pgfkeysalso{%
+					/pgfplots/of colormap/selection={0,...,\pgfplotscolormaplastindexof{\pgfkeysvalueof{/pgfplots/colormap name}}},%
+					/pgfplots/of colormap/indices,
+				}%
+			}%
+			\pgfplots@loc@TMPa
+		\else
+			% hm... we have no selection, but we have positions! In
+			% this case, we _sample_ selection uniformly with one
+			% sample for each position!
+			\pgfkeyslet{/pgfplots/of colormap/selection}\pgfplots@pos@size
+			\pgfplots@createcolormap@special@process@list@sampled@define
+		\fi
+	\fi
+}
+
 % PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
 \def\pgfplots@createcolormap@special@process@list{%
 	\begingroup
-	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@source
 	\pgfkeysgetvalue{/pgfplots/of colormap/pos}\pgfplots@loc@TMP
 	\expandafter\pgfplotsarraynew\expandafter\pgfplots@pos@array\expandafter{\pgfplots@loc@TMP}%
 	%
 	\pgfplotsapplistXnewempty\pgfplots@createcolormap@special@process@result
 	%
-	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in }%
-	%
 	\gdef\c@pgfplots@elem{0}%
 	\pgfplotsarraysizetomacro\pgfplots@pos@array\to\pgfplots@pos@size
 	%
+	\pgfplots@createcolormap@special@process@list@sanitize@selection
+	%
+	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@source
+	%
+	\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in }%
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@source}{%
 		%
 		\pgfkeyslet{/pgfplots/of colormap/selection}\x
@@ -537,6 +579,10 @@
 	\let\pgfplotsretval=\pgfplots@glob@TMPa
 }%
 \def\pgfplots@createcolormap@special@process@list@sampled{%
+	\pgfplots@createcolormap@special@process@list@sampled@define
+	\pgfplots@createcolormap@special@process@list
+}
+\def\pgfplots@createcolormap@special@process@list@sampled@define{%
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/selection}\pgfplots@source
 	%
@@ -545,11 +591,9 @@
 	\endgroup
 	\pgfkeyslet{/pgfplots/of colormap/selection}\pgfplotsretval
 	\pgfqkeys{/pgfplots/of colormap}{%
-		interpolation=map,%
 		range=0:1000,%
 	}%
-	\pgfplots@createcolormap@special@process@list
-}
+}%
 
 
 \def\pgfplots@createcolormap@special@process@list@separator@CM{ }%
