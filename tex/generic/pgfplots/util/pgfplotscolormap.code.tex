@@ -1147,6 +1147,7 @@
 		\pgfplots@error{Sorry, processing more than 4 color components (as required for color map #1) is unsupported in this context}%
 	\fi
 	%
+	\def\b@pgfplots@extra@interval{0}%
 	\if m\pgfplots@colormap@access
 		% colormap access=map
 		\def\pgfplots@order{1}%
@@ -1168,14 +1169,16 @@
 				% and 
 				% H = 1000 / (N-1) = 1000/n.
 				% Store H in \pgf@x:
-				\ifdim\csname pgfpl@cm@#1@X@scale@order@z\endcsname pt>0sp %
+				\expandafter\ifx\csname pgfpl@cm@#1@X@scale@order@z\endcsname\pgfutil@empty%
 					\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
 					%
 					\global\pgf@x=1000pt %
 					\global\divide\pgf@x by\c@pgf@countd
+					\def\b@pgfplots@extra@interval{1}%
 				\else
 					% DISABLE the extra interval!
 					\global\pgf@x=\csname pgfpl@cm@#1@h\endcsname pt %
+					\def\b@pgfplots@extra@interval{0}%
 				\fi
 			}{%
 				% the very same idea as for uniform colormaps applies
@@ -1192,6 +1195,12 @@
 				% see also
 				% \pgfplotscolormapfindpiecewiseconst@precomputed for
 				% comments
+				\ifdim\pgf@x>0sp %
+					\def\b@pgfplots@extra@interval{1}%
+				\else
+					% disable it
+					\def\b@pgfplots@extra@interval{0}%
+				\fi
 			}%
 			%
 			% interchange the sequence in the PDF function as it is
@@ -1238,7 +1247,7 @@
 						% colormap access=map
 						\pgf@xa=\pgfplots@loc@TMPc pt %
 					\else
-						\ifdim\pgf@x>0sp %
+						\if1\b@pgfplots@extra@interval
 							\pgf@xa=\pgfplots@loc@TMPc\pgf@x%
 						\else
 							% DISABLE additional interval!
@@ -1256,31 +1265,29 @@
 		\let\pgfplots@loc@TMPa=\cdata
 		\advance\c@pgf@counta by1
 	}%
-	\if 0\pgfplots@order
-		\ifdim\csname pgfpl@cm@#1@X@scale@order@z\endcsname pt>0sp %
-			% add an artificial interval.
-			\edef\pgfplots@loc@TMPd{%
-				<<
-					/FunctionType 2
-					/Domain [0 \pgfplotscolormappdfmax] 
-					/\pgfplots@C@left\space [\cdata] /\pgfplots@C@right\space [\cdata] 
-					/N \pgfplots@order
-				>>
-			}%
-			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
-			\advance\c@pgf@counta by-1 %
-			\pgfplotscolormapifisuniform{#1}{%
-				\pgf@xa=\pgf@x
-				\multiply\pgf@xa by\c@pgf@counta\relax
-			}{%
-				\pgfplotsarrayselect{\c@pgf@counta}\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPc
-				\pgf@xa=\pgfplots@loc@TMPc\pgf@x%
-			}%
-			\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
-			\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
-			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
-			\pgfplotsapplistXpushback{ 0 1}\to\pgfplots@encode@accum%
-		\fi
+	\if1\b@pgfplots@extra@interval
+		% add an artificial interval.
+		\edef\pgfplots@loc@TMPd{%
+			<<
+				/FunctionType 2
+				/Domain [0 \pgfplotscolormappdfmax] 
+				/\pgfplots@C@left\space [\cdata] /\pgfplots@C@right\space [\cdata] 
+				/N \pgfplots@order
+			>>
+		}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPd}\to\pgfplots@resultaccum
+		\advance\c@pgf@counta by-1 %
+		\pgfplotscolormapifisuniform{#1}{%
+			\pgf@xa=\pgf@x
+			\multiply\pgf@xa by\c@pgf@counta\relax
+		}{%
+			\pgfplotsarrayselect{\c@pgf@counta}\of{pgfpl@cm@#1@X}\to\pgfplots@loc@TMPc
+			\pgf@xa=\pgfplots@loc@TMPc\pgf@x%
+		}%
+		\divide\pgf@xa by1000 % we want [ 0 1 ] not [0 1000] as domain XXX : why!?
+		\edef\pgfplots@loc@TMPc{ \pgf@sys@tonumber\pgf@xa}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPc}\to\pgfplots@bounds@accum%
+		\pgfplotsapplistXpushback{ 0 1}\to\pgfplots@encode@accum%
 	\fi
 	\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@resultaccum
 	\pgfplotsapplistXlet\pgfplotsbounds=\pgfplots@bounds@accum
@@ -1691,7 +1698,7 @@
 	%
 	\pgfplotscolormapifisuniform{#5}{%
 		%
-		\ifdim\csname pgfpl@cm@#5@X@scale@order@z\endcsname pt>0pt
+		\expandafter\ifx\csname pgfpl@cm@#5@X@scale@order@z\endcsname\pgfutil@empty%
 			% compute 1/H here:
 			\pgfmathadd@{\csname pgfpl@cm@#5@invh\endcsname}{0.001}%
 			\let\pgfplots@piecewiseconst@invh=\pgfmathresult%
