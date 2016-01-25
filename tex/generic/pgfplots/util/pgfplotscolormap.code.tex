@@ -1095,6 +1095,66 @@
 	\let#2=\pgfplots@glob@TMPa
 }%
 
+% Defines \pgfplotsretval to contain an argument for use in \foreachlist
+% which results in all the positions.
+%
+% [#1:#2] : the desired output domain. The smallest position will be
+% mapped to #1, the largest to #2, and all in-between will be mapped
+% accordingly.
+% #3: the colormap name.
+%
+% Note that this switch depends on the current value of 'colormap
+% access': piecewise constant may use different positions.
+%
+% On output, \pgfplotsretval will contain the result.
+\def\pgfplotscolormapgetpositions[#1:#2]#3{%
+	\begingroup
+	\if d\pgfplots@colormap@access
+		\edef\pgfplotsretval{0,1,...,\pgfplotscolormaplastindexof{#3}}%
+	\else
+		\if m\pgfplots@colormap@access
+			\edef\pgfplots@H{\csname pgfpl@cm@#3@h\endcsname}%
+		\else
+			\if c\pgfplots@colormap@access
+				\pgfplotscolormap@piecewiseconst@prepare@scale{#3}%
+				\edef\pgfplots@H{\pgf@sys@tonumber\pgf@x}%
+			\fi
+		\fi
+		%
+		\pgfkeys{/pgf/fpu}%
+		\pgfplotscolormapifisuniform{#3}{%
+			\pgfmathparse{#1 + (#2-#1) * \pgfplots@H/1000}%
+			\edef\pgfplotsretval{#1,\pgfmathresult,...,#2}%
+		}{%
+			\pgfmathparse{(#2-#1)/1000}%
+			\let\pgfplots@scale=\pgfmathresult
+			\pgfplotsapplistXnewempty\pgfplots@resultaccum
+			\pgfplotsarrayforeachungrouped{pgfpl@cm@#3@X}\as\pgfplots@loc@TMPc{%
+				\if m\pgfplots@colormap@access
+					% colormap access=map
+					\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@scale}%
+				\else
+					\if1\b@pgfplots@extra@interval
+						\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@H* \pgfplots@scale}%
+					\else
+						% DISABLE additional interval!
+						% Means: use the input position as usual:
+						\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@scale}%
+					\fi
+				\fi
+				\ifnum\pgfplotsarrayforeachindex>0
+					\pgfplotsapplistXpushback,\to\pgfplots@resultaccum
+				\fi
+				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+				\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfplots@resultaccum
+			}%
+			\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@resultaccum
+		}%
+	\fi
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+
 % this is a CONSTANT! Do NOT change it!
 % Just read it -- just in case \pgfplotscolormaptopdffunction will use
 % a different upper bound in the future.
@@ -1115,6 +1175,58 @@
 		\csname pgfpl@cm@#1@lastindex\endcsname%
 	}{%
 		-1%
+	}%
+}%
+
+% POSTCONDITION:
+% 1. for uniform #1:
+%  \pgf@x contains the MODIFIED mesh width
+%  \b@pgfplots@extra@interval is 1 if and only if an extra interval
+%  should be added
+% 2. for non-uniform #1:
+% 	\pgf@x is a scaling factor to map input positions to MODIFIED
+% 	positions
+%  \b@pgfplots@extra@interval is 1 if and only if an extra interval
+\def\pgfplotscolormap@piecewiseconst@prepare@scale#1{%
+	% advance the number of intervals by 1.
+	\pgfplotscolormapifisuniform{#1}{%
+		% To this end, we have to compute 
+		% N = n+1
+		% and 
+		% H = 1000 / (N-1) = 1000/n.
+		% Store H in \pgf@x:
+		\expandafter\ifx\csname pgfpl@cm@#1@X@scale@order@z\endcsname\pgfutil@empty%
+			\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
+			%
+			\global\pgf@x=1000pt %
+			\global\divide\pgf@x by\c@pgf@countd
+			\def\b@pgfplots@extra@interval{1}%
+		\else
+			% DISABLE the extra interval!
+			\global\pgf@x=\csname pgfpl@cm@#1@h\endcsname pt %
+			\def\b@pgfplots@extra@interval{0}%
+		\fi
+	}{%
+		% the very same idea as for uniform colormaps applies
+		% for non-uniform maps as well: we create an
+		% artificial interval at the rightmost end.
+		% The idea is to think of a temporary map in the range
+		% [0,1000+ h] where h is the current colormap's
+		% mesh width. 
+		% Since the domain is [0,1000], we map [0,1000+h]
+		% linearly into [0,1000].
+		%
+		% This here is the scaling factor:
+		\global\pgf@x=\csname pgfpl@cm@#1@X@scale@order@z\endcsname pt %
+		% see also
+		% \pgfplotscolormapfindpiecewiseconst@precomputed for
+		% comments
+		\ifdim\pgf@x>0sp %
+			\def\b@pgfplots@extra@interval{1}%
+		\else
+			% disable it
+			\def\b@pgfplots@extra@interval{0}%
+		\fi
 	}%
 }%
 
@@ -1161,46 +1273,7 @@
 			% See comments in pgfplotscolormapfindpiecewiseconst@precomputed@
 			\def\pgfplots@order{0}%
 			%
-			% advance the number of intervals by 1.
-			\pgfplotscolormapifisuniform{#1}{%
-				% To this end, we have to compute 
-				% N = n+1
-				% and 
-				% H = 1000 / (N-1) = 1000/n.
-				% Store H in \pgf@x:
-				\expandafter\ifx\csname pgfpl@cm@#1@X@scale@order@z\endcsname\pgfutil@empty%
-					\c@pgf@countd=\pgfplotscolormapsizeof{#1}\relax
-					%
-					\global\pgf@x=1000pt %
-					\global\divide\pgf@x by\c@pgf@countd
-					\def\b@pgfplots@extra@interval{1}%
-				\else
-					% DISABLE the extra interval!
-					\global\pgf@x=\csname pgfpl@cm@#1@h\endcsname pt %
-					\def\b@pgfplots@extra@interval{0}%
-				\fi
-			}{%
-				% the very same idea as for uniform colormaps applies
-				% for non-uniform maps as well: we create an
-				% artificial interval at the rightmost end.
-				% The idea is to think of a temporary map in the range
-				% [0,1000+ h] where h is the current colormap's
-				% mesh width. 
-				% Since the domain is [0,1000], we map [0,1000+h]
-				% linearly into [0,1000].
-				%
-				% This here is the scaling factor:
-				\global\pgf@x=\csname pgfpl@cm@#1@X@scale@order@z\endcsname pt %
-				% see also
-				% \pgfplotscolormapfindpiecewiseconst@precomputed for
-				% comments
-				\ifdim\pgf@x>0sp %
-					\def\b@pgfplots@extra@interval{1}%
-				\else
-					% disable it
-					\def\b@pgfplots@extra@interval{0}%
-				\fi
-			}%
+			\pgfplotscolormap@piecewiseconst@prepare@scale{#1}%
 			%
 			% interchange the sequence in the PDF function as it is
 			% defined as 

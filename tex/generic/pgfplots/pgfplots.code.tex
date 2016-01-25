@@ -10081,7 +10081,7 @@
 \newif\ifpgfplotscolorbarCMYKworkaround
 \pgfplotscolorbarCMYKworkaroundtrue
 
-\def\pgfplots@colorbar@draw@{%
+\def\pgfplots@colorbar@draw@reconfigure@if@needed{%
 	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfplots@colorbar@draw@defaultimpl
 		% Ah-- the default colorbar implementation is active! We may need to substitute it by a better one.
@@ -10111,17 +10111,57 @@
 		\def\pgfplots@colorbar@extra@options{}%
 		\if c\pgfplots@colormap@access
 			% colormap access=piecewise constant
-			% In this case, we want a sampled colorbar. 2x2 samples are enough since "shader=interp"
-			% automatically handles the correct interpolation scheme:
+			% In this case, we want a sampled colorbar.
 			\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
-			\def\pgfplots@colorbar@extra@options{samples=2}
+			%
+			\def\pgfplots@colorbar@extra@options{%
+				% 2x2 samples are enough since "shader=interp"
+				% automatically handles the correct interpolation scheme:
+				samples=2,%
+				% ... but: just in case someone uses 'ytick={data}',
+				% we want the precise positions. Check that case right
+				% before 'colorbar addplot', and compute the positions
+				% if needed:
+				/utils/exec={%
+					\ifpgfplots@collect@firstplot@astick
+						% Oh! Someone wrote 'ytick=data'! Compute
+						% positions. This won't change the appearance
+						% anyway due to 'shader=interp'.
+						\pgfplots@colorbar@positions@to@samplesat
+					\fi
+				}%
+			}%
 		\fi
 		%
 		\if 1\b@pgfplots@colorbar@fallback@to@sampled
-			\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsset{colorbar sampled={surf,shader=interp,\pgfplots@colorbar@extra@options}}}%
+			\t@pgfplots@toka=\expandafter{\pgfplots@colorbar@extra@options}%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\pgfplotsset{%
+					colorbar sampled={%
+						surf,%
+						shader=interp,%
+						\the\t@pgfplots@toka
+					}%
+				}%
+			}%
 			\pgfplots@loc@TMPa
 		\fi
 	\fi
+}%
+
+\def\pgfplots@colorbar@positions@to@samplesat{%
+	\edef\pgfplots@loc@TMPb{%
+		\noexpand\pgfplotscolormapgetpositions
+			[\pgfkeysvalueof{/pgfplots/point meta min}:\pgfkeysvalueof{/pgfplots/point meta max}]%
+			{\pgfkeysvalueof{/pgfplots/colormap name}}%
+	}%
+	\pgfplots@loc@TMPb
+	\edef\pgfplots@loc@TMPa{samples at={\pgfplotsretval}}%
+	\expandafter\pgfplotsset\expandafter{\pgfplots@loc@TMPa}%
+}%
+
+\def\pgfplots@colorbar@draw@{%
+	\pgfplots@colorbar@draw@reconfigure@if@needed
 	%
 	% FIXME : the semicolon after ';' has a fixed catcode, namely
 	% the one assigned while pgfplots.code.tex has been read.
