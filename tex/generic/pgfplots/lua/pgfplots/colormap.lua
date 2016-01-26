@@ -32,14 +32,16 @@ ColorMap.range =1000
 -- h: mesh width between adjacent values
 -- colorspace: an instance of ColorSpace
 -- values: an array (1-based table) with color components. Each color component is supposed to be a table with K entries where K is colorspace:numComponents
-function ColorMap:constructor( h, colorspace, values)
-	if not h or not colorspace or not values then error("arguments must not be nil")end
+-- positions: either an empty array (in which case the colormap is uniform) or one position per value. Positions are in [0,1000]
+function ColorMap:constructor( h, colorspace, values, positions)
+	if not h or not colorspace or not positions or not values then error("arguments must not be nil")end
 
 	self.name = name
 	self.h = h
 	self.invh = 1/h
 	self.colorspace = colorspace
 	self.values = values
+	self.pos = positions
 
 	local numComponents = self.colorspace.numComponents
 	for i = 1,#self.values do
