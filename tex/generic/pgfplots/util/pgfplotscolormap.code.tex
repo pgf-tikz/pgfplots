@@ -71,8 +71,8 @@
 		% colormap uniform=if requested
 		\def\b@pgfplotscreatecolormap@isuniform{1}%
 	\fi
-	\def\pgfplots@createcolormap@MIN{0}% NORMALIZATION: assume that lower-end is 0pt.
-	\def\pgfplots@createcolormap@MAX{0}% To be computed.
+	\def\pgfplots@createcolormap@MIN{}% To be computed.
+	\def\pgfplots@createcolormap@MAX{}% To be computed.
 	\pgfplots@createcolormap@initcolorspace
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MIN
 	% PARSE IT:
@@ -91,8 +91,10 @@
 	\or
 		\pgfplots@error{Sorry, you need to provide at least two points of a colormap.}%
 	\fi
-	% Map the input range [0pt,MAX] linearly to [0,1000]
-	\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@createcolormap@MAX}%
+	% Map the input range [MIN,MAX] linearly to [0,1000]
+	\pgfmathsubtract@{\pgfplots@createcolormap@MAX}{\pgfplots@createcolormap@MIN}%
+	\let\pgfplots@loc@TMPb=\pgfmathresult
+	\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@loc@TMPb}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
 	\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@createcolormap@H}%
 	\let\pgfplots@createcolormap@H=\pgfmathresult
@@ -110,8 +112,9 @@
 		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPc}\as\pgfplots@loc@TMPc{%
 			\ifx\pgfplots@loc@TMPc\pgfutil@empty
 			\else
-				% apply the trafo [0pt,MAX] -> [0,1000] here as well:
-				\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPc}%
+				% apply the trafo [MIN,MAX] -> [0,1000] here as well:
+				\pgfmathsubtract@{\pgfplots@loc@TMPc}{\pgfplots@createcolormap@MIN}%
+				\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPb}%
 				\expandafter\pgfplotsarraypushback\expandafter{\pgfmathresult}\to{pgfpl@cm@#1@X}%
 			\fi
 		}%
@@ -694,7 +697,7 @@
 	% determine next step size automatically:
 	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 	\ifpgfplotsarrayempty
-		% first: must be at 0.
+		% first: just use 0.
 		\def\pgfmathresult{0sp}%
 	\else
 		% not first:
@@ -740,17 +743,19 @@
 	% compute 'h':
 	\pgfmathparse{#1}%
 	\let\pgfplots@createcolormap@MAX=\pgfmathresult
+	%
+	\ifx\pgfplots@createcolormap@MIN\pgfutil@empty
+		% it is the first.
+		\let\pgfplots@createcolormap@MIN=\pgfmathresult
+		\let\pgfplots@createcolormap@LAST=\pgfmathresult
+	\fi
+	%
 	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
 	\let\pgfplots@createcolormap@H@cur=\pgfmathresult
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MAX
 	\ifx\pgfplots@createcolormap@H\pgfutil@empty
 		\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 		\ifpgfplotsarrayempty
-			\ifdim\pgfplots@createcolormap@MAX pt=0pt
-			\else
-				\pgfplots@error{Sorry, the left end of a colormap (at 0pt) must be provided explicitly. You cannot start with \pgfplots@createcolormap@MAX pt. The error occured near `\pgfplots@createcolormap@context'}%
-				\def\pgfplots@createcolormap@MAX{0}%
-			\fi
 		\else
 			\let\pgfplots@createcolormap@H=\pgfplots@createcolormap@H@cur
 		\fi
@@ -1132,14 +1137,14 @@
 			\pgfplotsarrayforeachungrouped{pgfpl@cm@#3@X}\as\pgfplots@loc@TMPc{%
 				\if m\pgfplots@colormap@access
 					% colormap access=map
-					\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@scale}%
+					\pgfmathparse{#1 + \pgfplots@loc@TMPc * \pgfplots@scale}%
 				\else
 					\if1\b@pgfplots@extra@interval
-						\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@H* \pgfplots@scale}%
+						\pgfmathparse{#1 + \pgfplots@loc@TMPc * \pgfplots@H* \pgfplots@scale}%
 					\else
 						% DISABLE additional interval!
 						% Means: use the input position as usual:
-						\pgfmathparse{\pgfplots@loc@TMPc * \pgfplots@scale}%
+						\pgfmathparse{#1 + \pgfplots@loc@TMPc * \pgfplots@scale}%
 					\fi
 				\fi
 				\ifnum\pgfplotsarrayforeachindex>0
