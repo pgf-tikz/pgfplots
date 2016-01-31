@@ -80,7 +80,16 @@
 	\let\pgfplots@createcolormap@context=\pgfutil@empty
 	%%%%%%%%%%%%%%%%%%
 	% this does also init @H:
+	\pgflibraryfpuifactive{%
+		\def\pgfplots@createcolormap@restore@fpu{}%
+	}{%
+		\def\pgfplots@createcolormap@restore@fpu{\pgfkeys{/pgf/fpu=false}}%
+		\pgfkeys{/pgf/fpu=true}%
+	}%
 	\expandafter\pgfplots@createcolormap@startloop\pgfplots@loc@TMPa\pgfplots@EOI
+	%
+	\pgfplots@createcolormap@restore@fpu
+	%
 	%%%%%%%%%%%%%%%%%%
 	%
 	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
@@ -92,14 +101,17 @@
 		\pgfplots@error{Sorry, you need to provide at least two points of a colormap.}%
 	\fi
 	% Map the input range [MIN,MAX] linearly to [0,1000]
-	\pgfmathsubtract@{\pgfplots@createcolormap@MAX}{\pgfplots@createcolormap@MIN}%
+	\pgfmathfloatsubtract@{\pgfplots@createcolormap@MAX}{\pgfplots@createcolormap@MIN}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfmathdivide@{\pgfplotscolormaprange}{\pgfplots@loc@TMPb}%
+	\pgfmathfloatdivide@{\pgfplotscolormaprange@float}{\pgfplots@loc@TMPb}%
 	\let\pgfplots@loc@TMPb=\pgfmathresult
-	\pgfmathmultiply@{\pgfplots@loc@TMPb}{\pgfplots@createcolormap@H}%
-	\let\pgfplots@createcolormap@H=\pgfmathresult
-	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfplots@createcolormap@H
-	\pgfmathreciprocal@{\pgfplots@createcolormap@H}%
+	\pgfmathfloatmultiply@{\pgfplots@loc@TMPb}{\pgfplots@createcolormap@H}%
+	\let\pgfplots@loc@TMPd=\pgfmathresult
+	\pgfplots@createcolormap@normalize{\pgfmathresult}%
+	\expandafter\let\csname\pgfplots@createcolormap@name @h\endcsname=\pgfmathresult
+	%
+	\pgfmathfloatreciprocal@{\pgfplots@loc@TMPd}%
+	\pgfplots@createcolormap@normalize{\pgfmathresult}%
 	\expandafter\let\csname\pgfplots@createcolormap@name @invh\endcsname=\pgfmathresult
 	%
 	% ... and set up the X coordinates if the grid is not uniform:
@@ -113,8 +125,9 @@
 			\ifx\pgfplots@loc@TMPc\pgfutil@empty
 			\else
 				% apply the trafo [MIN,MAX] -> [0,1000] here as well:
-				\pgfmathsubtract@{\pgfplots@loc@TMPc}{\pgfplots@createcolormap@MIN}%
-				\expandafter\pgfmathmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPb}%
+				\pgfmathfloatsubtract@{\pgfplots@loc@TMPc}{\pgfplots@createcolormap@MIN}%
+				\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplots@loc@TMPb}%
+				\pgfplots@createcolormap@normalize{\pgfmathresult}%
 				\expandafter\pgfplotsarraypushback\expandafter{\pgfmathresult}\to{pgfpl@cm@#1@X}%
 			\fi
 		}%
@@ -136,6 +149,11 @@
 	\pgfplots@colormap@LUA@new{#1}%
 }
 
+\def\pgfplots@createcolormap@normalize#1{%
+	\pgfmathfloattofixed{#1}%
+	\pgf@xa=\pgfmathresult pt %
+	\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}% normalize number.
+}%
 \def\pgfplotscolormapsetadditionalintervalwidth#1#2{%
 	\pgfmathparse{#2}%
 	\pgfplotscolormapifisuniform{#1}{%
@@ -505,6 +523,8 @@
 		\fi
 	\fi
 	%
+	\pgflibraryfpuifactive{\pgfkeys{/pgf/fpu=false}}{}%
+	%
 	\edef\pgfplots@loc@TMPa{%
 		\noexpand\pgfplots@color@of@colormap@define{\pgfkeysvalueof{/pgfplots/of colormap/source pos}}%
 	}%
@@ -698,15 +718,16 @@
 	\expandafter\pgfplotsarraycheckempty\expandafter{\pgfplots@createcolormap@name}%
 	\ifpgfplotsarrayempty
 		% first: just use 0.
-		\def\pgfmathresult{0sp}%
+		\pgfmathfloatcreate{0}{0.0}{0}%
 	\else
 		% not first:
 		\ifx\pgfplots@createcolormap@H\pgfutil@empty
 			% ah; we really have to deduce something. We are at the
 			% second node:
-			\def\pgfmathresult{1cm}%
+			%\def\pgfmathresult{1cm}%
+			\pgfmathfloatcreate{1}{2.845274}{1}% 1cm=28.45274pt . Backw compat
 		\else
-			\pgfmathadd@\pgfplots@createcolormap@LAST\pgfplots@createcolormap@H
+			\pgfmathfloatadd@\pgfplots@createcolormap@LAST\pgfplots@createcolormap@H
 		\fi
 	\fi
 }%
@@ -750,7 +771,7 @@
 		\let\pgfplots@createcolormap@LAST=\pgfmathresult
 	\fi
 	%
-	\expandafter\pgfmathsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
+	\expandafter\pgfmathfloatsubtract@\expandafter{\pgfmathresult}{\pgfplots@createcolormap@LAST}%
 	\let\pgfplots@createcolormap@H@cur=\pgfmathresult
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MAX
 	\ifx\pgfplots@createcolormap@H\pgfutil@empty
@@ -760,8 +781,8 @@
 			\let\pgfplots@createcolormap@H=\pgfplots@createcolormap@H@cur
 		\fi
 	\else
-		\pgfmathapproxequalto@{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
-		\ifpgfmathcomparison
+		\pgfplots@createcolormap@compute@equalto{\pgfplots@createcolormap@H}{\pgfplots@createcolormap@H@cur}%
+		\ifpgfmathfloatcomparison
 		\else
 			\if2\b@pgfplotscreatecolormap@isuniform
 				% force reinterpolation:
@@ -770,7 +791,7 @@
 				% it is NOT uniform!
 				\def\b@pgfplotscreatecolormap@isuniform{0}%
 				%
-				\pgfplotsmathmin{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
+				\pgfmathfloatmintwo{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
 				\let\pgfplots@createcolormap@H=\pgfmathresult
 			\fi
 		\fi
@@ -784,13 +805,32 @@
 	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@createcolormap@name}%
 	\edef\pgfplots@createcolormap@last{#2}%
 }%
+
+\def\pgfplots@createcolormap@compute@equalto#1#2{%
+	%\begingroup
+	%\pgfmathfloatcreate{1}{1.0}{-4}%
+	%\let\pgfmathfloat@relthresh=\pgfmathresult
+	\pgfmathfloatequalto@{#1}{#2}%
+	%\xdef\pgfplots@glob@TMPa{%
+	%	\noexpand\def\noexpand\pgfmathresult{\pgfmathresult}%
+	%	\ifpgfmathfloatcomparison
+	%		\noexpand\pgfmathfloatcomparisontrue
+	%	\else
+	%		\noexpand\pgfmathfloatcomparisonfalse
+	%	\fi
+	%}%
+	%\endgroup
+	%\pgfplots@glob@TMPa
+	%\message{equalto (#1,#2) = \pgfmathresult^^J}%
+}%
 \def\pgfplotscreatecolormap@reinterpolate#1{%
-	\pgfmathdivide@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
+	\pgfmathfloatdivide@{\pgfplots@createcolormap@H@cur}{\pgfplots@createcolormap@H}%
 	% after this group, \pgfmathresult is
 	% - empty if no reinterpolation is possible,
 	% - non-empty if reinterpolation IS possible. In this
 	%   case, it contains the integer multiple of H.
 	\begingroup
+		\pgfmathfloattofixed{\pgfmathresult}%
 		\afterassignment\pgfplots@createcolormap@nextRGB@consider@reinterpolation
 		\c@pgf@counta=\pgfmathresult\relax
 		\pgfmath@smuggleone\pgfmathresult
@@ -806,12 +846,18 @@
 		% meshwidth explicitly at
 		% \pgfplotscreatecolormap{}{[1pt]}
 		\pgfplotsforeachungrouped \c@pgfplots@createcolormap in {1,2,...,\pgfplots@createcolormap@loop@end} {%
-			\ifdim\c@pgfplots@createcolormap pt=\pgfplots@createcolormap@loop@end pt %
+			\pgfmathfloatequalto@{\c@pgfplots@createcolormap}{\pgfplots@createcolormap@loop@end}%
+			\ifpgfmathfloatcomparison
 				% omit the last.
 			\else
 				\pgfmathparse{\c@pgfplots@createcolormap/\pgfplots@createcolormap@loop@end}%
 				\let\pgfplots@createcolormap@scale@current=\pgfmathresult
 				\pgfmathparse{1-\pgfplots@createcolormap@scale@current}%
+				\let\pgfplots@createcolormap@scale@last=\pgfmathresult
+				%
+				\pgfmathfloattofixed\pgfplots@createcolormap@scale@current
+				\let\pgfplots@createcolormap@scale@current=\pgfmathresult
+				\pgfmathfloattofixed\pgfplots@createcolormap@scale@last
 				\let\pgfplots@createcolormap@scale@last=\pgfmathresult
 				%
 				\pgfplotscolornormalizesequencezero
@@ -1572,7 +1618,8 @@
 	\edef\pgfplots@loc@samerange{0:\pgfplotscolormaprange}%
 	\ifx\pgfplots@loc@TMPa\pgfplots@loc@samerange
 		% we have phi(#4) = #4  because #4 in [0:1000].
-		\edef\pgfmathresult{#4}%
+		\pgfmathfloatparsenumber{#4}%
+		\pgfmathfloattofixed\pgfmathresult
 	\else
 		% Step 0: compute #3 if it is missing and write it into \pgfplots@loc@TMPa.
 %\message{mapping '#4' into colormap '#5' with range [#1:#2] ... ^^J}%
