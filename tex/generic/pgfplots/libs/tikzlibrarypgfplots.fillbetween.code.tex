@@ -71,56 +71,9 @@
 	},%
 	%
 	/pgfplots/execute at begin axis@@/.add={}{%
-		\gdef\pgfplotsfillbetween@list@of@layers@with@clippath{}%
 		\gdef\b@pgfplotsfillbetween@list@has@set@layers{0}%
 	},
-	/pgfplots/execute at end axis@@/.add={}{%
-		\ifx\pgfplotsfillbetween@list@of@layers@with@clippath\pgfutil@empty
-		\else
-		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotsfillbetween@list@of@layers@with@clippath}\as\pgfplots@loc@TMPa{%
-			\edef\pgfplots@loc@TMPb{%
-				\noexpand\pgfplotsextra{%
-					\noexpand\pgfplotsonlayer{\pgfplots@loc@TMPa}%
-					\noexpand\pgfsys@endscope
-					\noexpand\endpgfplotsonlayer
-				}%
-			}%
-			\pgfplots@loc@TMPb
-		}%
-		\fi
-	},
 }
-
-% #1: the value of /tikz/fill between/on layer
-\def\pgfplotsfillbetween@ensure@clipping@on@layer{%
-	\ifpgfplots@clip
-		\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
-		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
-		%
-		% check if 'pre main,' is inside of the already prepared layers:
-		\def\pgfplots@loc@TMPb{\expandafter\pgfutil@in@\expandafter{\pgfplots@loc@TMPa,}}%
-		\expandafter\pgfplots@loc@TMPb\expandafter{\pgfplotsfillbetween@list@of@layers@with@clippath}%
-		%
-		\ifpgfutil@in@
-			% ah - already prepared. Good, nothing left to do.
-		\else
-			\pgfplots@log3{fill between: found 'clip=true'. Preparing pgfplotsextra instruction with clip path for layer '\pgfplots@loc@TMPa'...}%
-			\xdef\pgfplotsfillbetween@list@of@layers@with@clippath{\pgfplots@loc@TMPa,\pgfplotsfillbetween@list@of@layers@with@clippath}%
-			%
-			\edef\pgfplots@loc@TMPb{%
-				\noexpand\pgfplotsextra{%
-					\noexpand\pgfplotsonlayer{\pgfplots@loc@TMPa}%
-					\noexpand\pgfsys@beginscope
-					\noexpand\pgfplotspathaxisoutline
-					\noexpand\pgfusepath{clip}%
-					\noexpand\endpgfplotsonlayer
-				}%
-			}%
-			\pgfplots@loc@TMPb
-			%
-		\fi
-	\fi
-}%
 
 % The options are from 
 % \addplot[#1] fill between[#2] #3;
@@ -141,6 +94,41 @@
 	}{%
 		% empty - this here is a TikZ instruction, not a "real" \addplot command
 	}{%
+		\def\b@pgfplots@fillbetween@clip@on@layer{0}%
+		\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
+		\edef\pgfplots@fillbetween@layer{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@fillbetween@layer\pgfutil@empty
+		\else
+			\ifpgfplots@clip
+				\def\b@pgfplots@fillbetween@clip@on@layer{1}%
+				% This here is messy: we have to clip on the other
+				% layer. I gave up to install this clip path once
+				% per axis, that's why I do it for each individual
+				% fillbetween - let us hope this is not too
+				% inefficient.
+				%
+				% I had to give up because the result appears to
+				% require a pattern of sorts
+				% \onlayer{L}
+				% \scope
+				% \clip ... ;
+				% \endonlayer
+				% ...
+				%
+				% \onlayer{L}
+				% \endscope
+				% \endonlayer
+				%
+				% which is forbidden in TeX -- and using
+				% \pgfsys@beginscope resulted in invalid PDF.
+				%
+				\pgfplotsonlayer{\pgfplots@loc@TMPa}%
+				\scope
+				\pgfplotspathaxisoutline
+				\pgfusepath{clip}%
+			\fi
+		\fi
+		%
 		% the path instruction:
 		\tikzfillbetween[#2]{%
 			/pgfplots/.search also=/tikz,%
@@ -148,6 +136,11 @@
 			/tikz/fill between/every last segment/.append style={/tikz/fill between/path after segment={#3}},%
 			#1%
 		}%
+		%
+		\if1\b@pgfplots@fillbetween@clip@on@layer
+			\endscope
+			\endpgfplotsonlayer%
+		\fi
 	}{%	
 		% post command.
 	}%
@@ -164,7 +157,6 @@
 }%
 
 % SIDE-EFFECT: modifies \b@pgfplotsfillbetween@list@has@set@layers and
-% \pgfplotsfillbetween@list@of@layers@with@clippath
 \def\pgfplotslibraryfillbetweenpreparecurrentlayer{%
 	\pgfkeysgetvalue{/tikz/fill between/on layer}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfutil@empty
@@ -174,7 +166,6 @@
 			\pgfplotssetlateoptions{fill between/@ensure layers}%
 			\gdef\b@pgfplotsfillbetween@list@has@set@layers{1}%
 		\fi
-		\pgfplotsfillbetween@ensure@clipping@on@layer%
 	\fi
 }
 
