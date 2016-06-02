@@ -146,7 +146,7 @@ cleanX:
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
 	@# touch diff.png in case the diff routine fails -- we want to see it in the error report counts
-	@./pdfdiff.sh $< references/$< $@ || touch $@.png
+	./pdfdiff.sh $< references/$< $@ || touch $@.png
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@ $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@.png; # no need to keep the images (the latter for multi-page mode). \
