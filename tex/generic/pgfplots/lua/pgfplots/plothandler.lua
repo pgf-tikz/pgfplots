@@ -15,7 +15,6 @@ local type=type
 local tostring=tostring
 local error=error
 local table=table
-local pgfmathparse = pgfplots.pgfluamathparser.pgfmathparse
 
 do
 -- all globals will be read from/defined in pgfplots:
@@ -555,7 +554,7 @@ function ExpressionPointMetaHandler:constructor(expression)
 end
 
 function ExpressionPointMetaHandler:assign(pt)
-	pt.meta = pgfmathparse(self.expression)
+	pt.meta = pgfluamathparser.pgfmathparse(self.expression)
 	if not pt.meta then
 		error("point meta=" .. self.expression .. ": expression has been rejected.")
     end
@@ -684,7 +683,7 @@ function Axis:filtercoord(dir, ptCoords, filterExpressionByDir)
 		end
 		local old = updatePseudoConstants(ptCoords)
 
-		result = pgfmathparse(filterExpressionByDir[dir])
+		result = pgfluamathparser.pgfmathparse(filterExpressionByDir[dir])
 
 		updatePseudoConstants(old)
 	end
