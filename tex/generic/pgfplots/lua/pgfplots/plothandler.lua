@@ -54,8 +54,6 @@ function Coord:__tostring()
     return result
 end
 
-local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
-
 -- a reference to a Coord which is returned by math expressions involving 'x', 'y', or 'z'
 -- see surveystart()
 local pseudoconstant_pt = nil
@@ -150,6 +148,10 @@ function Plothandler:constructor(name, axis, pointmetainputhandler)
 	self.hasUnboundedPointMeta = false
 	-- will be set before the visualization phase starts. At least.
 	self.plotIs3d = false
+
+	-- do not use the global one. It may be outdated.
+	self.stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
+
     return self
 end
 
@@ -204,13 +206,13 @@ end
 
 -- @see \pgfplotsplothandlersurveystart
 function Plothandler:surveystart()
-	stringToFunctionMap["x"] = pseudoconstant_x
-	stringToFunctionMap["y"] = pseudoconstant_y
-	stringToFunctionMap["z"] = pseudoconstant_z
-	stringToFunctionMap["rawx"] = pseudoconstant_rawx
-	stringToFunctionMap["rawy"] = pseudoconstant_rawy
-	stringToFunctionMap["rawz"] = pseudoconstant_rawz
-	stringToFunctionMap["meta"] = pseudoconstant_meta
+	self.stringToFunctionMap["x"] = pseudoconstant_x
+	self.stringToFunctionMap["y"] = pseudoconstant_y
+	self.stringToFunctionMap["z"] = pseudoconstant_z
+	self.stringToFunctionMap["rawx"] = pseudoconstant_rawx
+	self.stringToFunctionMap["rawy"] = pseudoconstant_rawy
+	self.stringToFunctionMap["rawz"] = pseudoconstant_rawz
+	self.stringToFunctionMap["meta"] = pseudoconstant_meta
 end
 
 -- @see \pgfplotsplothandlersurveyend
