@@ -1,1 +1,6 @@
-latex -interaction batchmode -halt-on-error "$@" && dvips -o "$@.ps" "$@.dvi" && ps2pdf "$@.ps"
+echo latex:
+latex -interaction batchmode -halt-on-error "$@" ||exit 1
+echo dvips:
+dvips -o "$@.ps" "$@.dvi" ||exit 1
+echo ps2pdf "$@.ps":
+ps2pdf "$@.ps"
