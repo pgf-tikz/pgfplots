@@ -74,6 +74,7 @@
 	\fi
 	\def\pgfplots@createcolormap@MIN{}% To be computed.
 	\def\pgfplots@createcolormap@MAX{}% To be computed.
+	\def\b@pgfplots@createcolormap@pos@mode{a}% [a]uto or [m]anual
 	\pgfplots@createcolormap@initcolorspace
 	\let\pgfplots@createcolormap@LAST=\pgfplots@createcolormap@MIN
 	% PARSE IT:
@@ -140,6 +141,13 @@
 	% clear temporary list:
 	\pgfplotsapplistXnewempty\pgfplots@createcolormap@X
 	%
+	\if m\b@pgfplots@createcolormap@pos@mode
+		% Ah - we have manually provided positions!
+		% DISABLE the extra interval. You have to enable it explicitly
+		% by means of 'colormap access/extra interval width=0.1'
+		\expandafter\def\csname\pgfplots@createcolormap@name @X@scale@order@z\endcsname{0}%
+	\fi
+	%
 	\endpgfplotscolornormalizesequence%
 	\expandafter\let\csname\pgfplots@createcolormap@name @colspace\endcsname=\pgfplotsretval
 	\expandafter\let\csname\pgfplots@createcolormap@name @col@comps\endcsname=\pgfplotsretvalb
@@ -165,38 +173,49 @@
 % interval. The value is relative to the total width and must be in
 % the range 0<=#2<=0.9
 \def\pgfplotscolormapsetadditionalintervalwidth#1#2{%
-	\pgfmathparse{#2}%
-	\pgfplotscolormapifisuniform{#1}{%
-		\ifdim\pgfmathresult pt>0pt
-			\pgfplots@error{Uniform colormaps support no configuration of the additional interval width for a colormap (although you can use 0 to turn it off). Please use a non-uniform colormap.}%
-		\else
-			% DISABLE the extra interval!
-			\expandafter\def\csname pgfpl@cm@#1@X@scale@order@z\endcsname{0}%
-		\fi
-	}{%
-		\ifdim\pgfmathresult pt>0pt
-			\ifdim\pgfmathresult pt>0.9pt
-				\pgfplots@error{Expected a number 0< X <= 0.9, not \pgfmathresult}%
+	\edef\pgfplots@loc@TMPd{#2}%
+	\def\pgfplots@loc@TMPc{h}%
+	\ifx\pgfplots@loc@TMPd\pgfplots@loc@TMPc
+		% 'h' means: mesh width:
+		\pgfplotscolormapifisuniform{#1}{%
+			\expandafter\let\csname pgfpl@cm@#1@X@scale@order@z\endcsname\pgfutil@empty%
+		}{%
+			\pgfplotscolormapsetadditionalintervalwidth@{#1}%
+		}%
+	\else
+		\pgfmathparse{#2}%
+		\pgfplotscolormapifisuniform{#1}{%
+			\ifdim\pgfmathresult pt>0pt
+				\pgfplots@error{Uniform colormaps support no configuration of the additional interval width for a colormap (although you can use 0 to turn it off). Please use a non-uniform colormap.}%
 			\else
-				% compute the 'h'.
-				%
-				% Note that 's:=#2' is a fraction 0<x<1 of the RESULTING
-				% range, i.e. s * 1000 = H where 0<=H<=1000. 
-				% but H = 1000/(1000+h) * 1000, and we need the 'h'.
-				% 
-				% -> h = 1000/s - 1000.
-				%  regarding the '1-#2': I did some mistake in my
-				%  computation and that fixed it :-/
-				\pgfmathparse{1000/(1-#2)-1000}%
-				\expandafter\let\csname pgfpl@cm@#1@h\endcsname=\pgfmathresult
-				\expandafter\let\csname pgfpl@cm@#1@invh\endcsname=\pgfutil@empty% unused!
-				\pgfplotscolormapsetadditionalintervalwidth@{#1}%
+				% DISABLE the extra interval!
+				\expandafter\def\csname pgfpl@cm@#1@X@scale@order@z\endcsname{0}%
 			\fi
-		\else
-			% DISABLE the extra interval!
-			\expandafter\def\csname pgfpl@cm@#1@X@scale@order@z\endcsname{0}%
-		\fi
-	}%
+		}{%
+			\ifdim\pgfmathresult pt>0pt
+				\ifdim\pgfmathresult pt>0.9pt
+					\pgfplots@error{Expected a number 0< X <= 0.9, not \pgfmathresult}%
+				\else
+					% compute the 'h'.
+					%
+					% Note that 's:=#2' is a fraction 0<x<1 of the RESULTING
+					% range, i.e. s * 1000 = H where 0<=H<=1000. 
+					% but H = 1000/(1000+h) * 1000, and we need the 'h'.
+					% 
+					% -> h = 1000/s - 1000.
+					%  regarding the '1-#2': I did some mistake in my
+					%  computation and that fixed it :-/
+					\pgfmathparse{1000/(1-#2)-1000}%
+					\expandafter\let\csname pgfpl@cm@#1@h\endcsname=\pgfmathresult
+					\expandafter\let\csname pgfpl@cm@#1@invh\endcsname=\pgfutil@empty% unused!
+					\pgfplotscolormapsetadditionalintervalwidth@{#1}%
+				\fi
+			\else
+				% DISABLE the extra interval!
+				\expandafter\def\csname pgfpl@cm@#1@X@scale@order@z\endcsname{0}%
+			\fi
+		}%
+	\fi
 }%
 
 % see \pgfplotscolormapsetadditionalintervalwidth
@@ -295,6 +314,7 @@
 }%
 \def\pgfplots@createcolormap@grabnext@read@pos@#1){%
 	\def\pgfplots@loc@TMPb{#1}% position
+	\def\b@pgfplots@createcolormap@pos@mode{m}% [m]anual
 	\pgfutil@ifnextchar\pgfplots@EOI{%
 		% OK
 		\pgfplots@gobble@until@EOI
@@ -709,8 +729,12 @@
 \def\pgfplots@createcolormap@grabnext@complete@ofcolormap{%
 	\t@pgfplots@tokb=\expandafter{\pgfplotscolormap@argument}%
 	\edef\pgfplotscolormap@keyvalue{%
-		% position:
-		target pos={\pgfplotscolormap@at},%
+		\if m\b@pgfplots@createcolormap@pos@mode
+			% ah - we have had manually provided positions before.
+			% Well, keep them. Otherwise, we will stay at the default
+			% placement.
+			target pos={\pgfplotscolormap@at},%
+		\fi
 		% ... but can be overriden here:
 		\pgfplotscolormap@key={\the\t@pgfplots@tokb},
 	}%
