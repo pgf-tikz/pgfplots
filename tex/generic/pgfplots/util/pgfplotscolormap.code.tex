@@ -370,12 +370,17 @@
 	}%
 }%
 
+\newif\ifpgfplots@createcolormap@target@pos@includes@limits
 
 % these keys are only evaluated inside of
 % \pgfplots@of@colormap@getresult :
 \pgfqkeys{/pgfplots/of colormap}{%
 	source name/.initial=,
 	target pos/.initial=,
+	target pos min/.initial=,
+	target pos max/.initial=,
+	target pos limit is position/.is if=pgfplots@createcolormap@target@pos@includes@limits,
+	target pos limit is position/.default=true,
 	source pos/.initial=,
 	source pos/.set if not empty/.code={%
 		\edef\pgfplots@loc@TMPa{#1}%
@@ -619,10 +624,105 @@
 		\fi
 	\fi
 }
+\def\pgfplots@createcolormap@special@process@list@limits{%
+	\begingroup
+	\pgfkeys{/pgf/fpu=true}%
+	%
+	\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@target
+	\ifx\pgfplots@target\pgfutil@empty
+	\else
+		\pgfkeysgetvalue{/pgfplots/of colormap/target pos min}\pgfplots@target@min
+		\pgfkeysgetvalue{/pgfplots/of colormap/target pos max}\pgfplots@target@max
+		\pgfplots@loc@tmpfalse
+		\ifx\pgfplots@target@min\pgfutil@empty
+		\else
+			\pgfmathparse\pgfplots@target@min
+			\let\pgfplots@target@min=\pgfmathresult
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifx\pgfplots@target@max\pgfutil@empty
+		\else
+			\pgfmathparse\pgfplots@target@max
+			\let\pgfplots@target@max=\pgfmathresult
+			\pgfplots@loc@tmptrue
+		\fi
+		\ifpgfplots@loc@tmp
+			% Ah - we _have_ limit constraints! Enforce them:
+			\def\b@pgfplots@isfirst{1}%
+			\pgfplotsapplistXnewempty\pgfplots@createcolormap@trg@accum
+			\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@target}{%
+				\pgfmathparse{\x}%
+				\let\x=\pgfmathresult
+				\ifx\pgfplots@target@min\pgfutil@empty
+				\else
+					\pgfmathfloatlessthan{\x}{\pgfplots@target@min}%
+					\ifpgfmathfloatcomparison
+						\let\x=\pgfutil@empty
+					\fi
+				\fi
+				\ifx\pgfplots@target@max\pgfutil@empty
+				\else
+					\ifx\x\pgfutil@empty
+					\else
+						\pgfmathfloatlessthan{\pgfplots@target@max}{\x}%
+						\ifpgfmathfloatcomparison
+							\let\x=\pgfutil@empty
+						\fi
+					\fi
+				\fi
+				%
+				\ifx\x\pgfutil@empty
+				\else
+					\if1\b@pgfplots@isfirst
+						\def\b@pgfplots@isfirst{0}%
+					\else
+						\edef\x{,\x}%
+					\fi
+					\expandafter\pgfplotsapplistXpushback\expandafter{\x}\to\pgfplots@createcolormap@trg@accum
+				\fi
+			}%
+			%
+			\ifpgfplots@createcolormap@target@pos@includes@limits
+				\ifx\pgfplots@target@max\pgfutil@empty
+				\else
+					\let\x=\pgfplots@target@max
+					\if1\b@pgfplots@isfirst
+						\def\b@pgfplots@isfirst{0}%
+					\else
+						\edef\x{,\x}%
+					\fi
+					\expandafter\pgfplotsapplistXpushback\expandafter{\x}\to\pgfplots@createcolormap@trg@accum
+				\fi
+			\fi
+			%
+			\pgfplotsapplistXlet\pgfplots@target=\pgfplots@createcolormap@trg@accum
+			%
+			\ifpgfplots@createcolormap@target@pos@includes@limits
+				\ifx\pgfplots@target@min\pgfutil@empty
+				\else
+					\let\x=\pgfplots@target@min
+					\if1\b@pgfplots@isfirst
+						\let\pgfplots@target=\x
+					\else
+						\edef\pgfplots@target{\x,\pgfplots@target}%
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	%
+	\global\let\pgfplots@glob@TMPb=\pgfplots@target
+	\endgroup
+%\message{limit application: \pgfkeysvalueof{/pgfplots/of colormap/target pos} ^^J -->\pgfplots@glob@TMPb^^J}%
+	\pgfkeyslet{/pgfplots/of colormap/target pos}\pgfplots@glob@TMPb
+}%
 
 % PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
 \def\pgfplots@createcolormap@special@process@list{%
 	\begingroup
+	\pgfplots@createcolormap@special@process@list@limits%
+	%
 	\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@loc@TMP
 	\expandafter\pgfplotsarraynew\expandafter\pgfplots@pos@array\expandafter{\pgfplots@loc@TMP}%
 	%
@@ -668,6 +768,11 @@
 	\pgfplots@createcolormap@special@process@list@sampled@define
 	\pgfplots@createcolormap@special@process@list
 }
+
+% Defines 
+% * 'source range', 
+% * 'source pos',
+% in a way such that it implements 'samples of colormap'
 \def\pgfplots@createcolormap@special@process@list@sampled@define{%
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/source pos}\pgfplots@source
