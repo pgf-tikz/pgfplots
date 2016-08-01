@@ -394,7 +394,8 @@
 	}%
 }%
 
-\newif\ifpgfplots@createcolormap@target@pos@includes@limits
+\newif\ifpgfplots@createcolormap@target@pos@includes@limits@min
+\newif\ifpgfplots@createcolormap@target@pos@includes@limits@max
 
 % these keys are only evaluated inside of
 % \pgfplots@of@colormap@getresult :
@@ -402,9 +403,17 @@
 	source name/.initial=,
 	target pos/.initial=,
 	target pos min/.initial=,
+	target pos min/insert/.is if=pgfplots@createcolormap@target@pos@includes@limits@min,
+	target pos min*/.style={%
+		/pgfplots/of colormap/target pos min={#1},
+		/pgfplots/of colormap/target pos min/insert=true,
+	},%
 	target pos max/.initial=,
-	target pos limit is position/.is if=pgfplots@createcolormap@target@pos@includes@limits,
-	target pos limit is position/.default=true,
+	target pos max*/.style={%
+		/pgfplots/of colormap/target pos max={#1},
+		/pgfplots/of colormap/target pos max/insert=true,
+	},%
+	target pos max/insert/.is if=pgfplots@createcolormap@target@pos@includes@limits@max,
 	source pos/.initial=,
 	source pos/.set if not empty/.code={%
 		\edef\pgfplots@loc@TMPa{#1}%
@@ -684,6 +693,8 @@
 		\ifpgfplots@loc@tmp
 			% Ah - we _have_ limit constraints! Enforce them:
 			\def\b@pgfplots@isfirst{1}%
+			\def\pgfplots@firstpos{}%
+			\def\pgfplots@lastpos{}%
 			\pgfplotsapplistXnewempty\pgfplots@createcolormap@trg@accum
 			\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in}%
 			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@target}{%
@@ -709,6 +720,10 @@
 				%
 				\ifx\x\pgfutil@empty
 				\else
+					\let\pgfplots@lastpos=\x
+					\ifx\pgfplots@firstpos\pgfutil@empty
+						\let\pgfplots@firstpos=\x
+					\fi
 					\if1\b@pgfplots@isfirst
 						\def\b@pgfplots@isfirst{0}%
 					\else
@@ -718,30 +733,36 @@
 				\fi
 			}%
 			%
-			\ifpgfplots@createcolormap@target@pos@includes@limits
+			\ifpgfplots@createcolormap@target@pos@includes@limits@max
 				\ifx\pgfplots@target@max\pgfutil@empty
 				\else
-					\let\x=\pgfplots@target@max
-					\if1\b@pgfplots@isfirst
-						\def\b@pgfplots@isfirst{0}%
-					\else
-						\edef\x{,\x}%
-					\fi
-					\expandafter\pgfplotsapplistXpushback\expandafter{\x}\to\pgfplots@createcolormap@trg@accum
+					\pgfmathfloatifapproxequalrel{\pgfplots@lastpos}{\pgfplots@target@max}{%
+					}{%
+						\let\x=\pgfplots@target@max
+						\if1\b@pgfplots@isfirst
+							\def\b@pgfplots@isfirst{0}%
+						\else
+							\edef\x{,\x}%
+						\fi
+						\expandafter\pgfplotsapplistXpushback\expandafter{\x}\to\pgfplots@createcolormap@trg@accum
+					}%
 				\fi
 			\fi
 			%
 			\pgfplotsapplistXlet\pgfplots@target=\pgfplots@createcolormap@trg@accum
 			%
-			\ifpgfplots@createcolormap@target@pos@includes@limits
+			\ifpgfplots@createcolormap@target@pos@includes@limits@min
 				\ifx\pgfplots@target@min\pgfutil@empty
 				\else
-					\let\x=\pgfplots@target@min
-					\if1\b@pgfplots@isfirst
-						\let\pgfplots@target=\x
-					\else
-						\edef\pgfplots@target{\x,\pgfplots@target}%
-					\fi
+					\pgfmathfloatifapproxequalrel{\pgfplots@firstpos}{\pgfplots@target@min}{%
+					}{%
+						\let\x=\pgfplots@target@min
+						\if1\b@pgfplots@isfirst
+							\let\pgfplots@target=\x
+						\else
+							\edef\pgfplots@target{\x,\pgfplots@target}%
+						\fi
+					}%
 				\fi
 			\fi
 		\fi
@@ -1402,13 +1423,24 @@
 		\fi
 		%
 		\pgfkeys{/pgf/fpu}%
+		\pgfplotsapplistXnewempty\pgfplots@resultaccum
 		\pgfplotscolormapifisuniform{#3}{%
 			\pgfmathparse{#1 + (#2-#1) * \pgfplots@H/1000}%
-			\edef\pgfplotsretval{#1,\pgfmathresult,...,#2}%
+			\let\next=\pgfmathresult
+			\pgfmathparse{#2}% + (#2-#1)/1000}%
+			%
+			\def\b@pgfplots@isfirst{1}%
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsforeachungrouped\noexpand \x in {#1,\next,...,\pgfmathresult}}%
+			\pgfplots@loc@TMPa{%
+				\if0\b@pgfplots@isfirst
+					\pgfplotsapplistXpushback,\to\pgfplots@resultaccum
+				\fi
+				\expandafter\pgfplotsapplistXpushback\expandafter{\x}\to\pgfplots@resultaccum
+				\def\b@pgfplots@isfirst{0}%
+			}%
 		}{%
 			\pgfmathparse{(#2-#1)/1000}%
 			\let\pgfplots@scale=\pgfmathresult
-			\pgfplotsapplistXnewempty\pgfplots@resultaccum
 			\pgfplotsarrayforeachungrouped{pgfpl@cm@#3@X}\as\pgfplots@loc@TMPc{%
 				\if m\pgfplots@colormap@access
 					% colormap access=map
@@ -1434,8 +1466,8 @@
 				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
 				\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfplots@resultaccum
 			\fi
-			\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@resultaccum
 		}%
+		\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@resultaccum
 	\fi
 	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
