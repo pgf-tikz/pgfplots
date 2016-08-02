@@ -1960,12 +1960,26 @@ save 'exporteddata.dat' data -ASCII
 {
 \label{sec:pgfplots:filled:contour}%
 \tikzset{external/figure name/.add={}{contour_}}%
+\pgfkeys{
+	/pdflinks/search key prefixes in/.add={}{,/pgfplots/contour/},
+	/pgfmanual/gray key prefixes/.add={/pgfplots/contour/,}{},
+}%
+\PGFPlots\ is able to generate |contour filled| plots with its builtin arithmetics. 
+
+\begin{plottype}[/pgfplots]{contour filled=\textcolor{black}{\marg{{\normalfont options with `\texttt{contour/}' prefix}}}}
 	\paragraph{Beware: Viewer Limitations} The following paragraph makes uses of \textsc{pdf} features which are unsupported by some free viewers (including |pdf.js| and |evince|). Please resort to a suitable viewer if you see unexpected results.
 
+	This plot handler visualizes patches or surfaces by means of filled segments: points on the surface will be colored based on their |point meta| value. The |point meta| value is mapped into a sequence of intervals, and each interval has its own color. The intervals, in turn, are part of a |colormap|.
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[colormap name=viridis,colorbar]
+	\addplot3[contour filled] {x^2*y};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The number of contour levels is defined by means of |contour/number|, just as for |contour external|:
 
-At the time of this writing, \PGFPlots\ comes with rudimentary support for filled contour plots. It is based on |colormap access=piecewise constant| combined with |shader=interp|:
-
-\tikzset{external/figure name/.add={}{contour_}}%
 \pgfplotsexpensiveexample
 \begin{codeexample}[]
 \begin{tikzpicture}
@@ -1973,27 +1987,146 @@ At the time of this writing, \PGFPlots\ comes with rudimentary support for fille
         title={$x \exp(-x^2-y^2)$},
         domain=-2:2,
         view={0}{90},
-		colormap={CM}{
-			samples of colormap=(14 of hot)},
-		colormap access=piecewise constant,
-		colorbar horizontal,
+        colorbar horizontal,
     ]
-   \addplot3[surf,shader=interp]
+   \addplot3[contour filled={number=14}]
           {exp(-x^2-y^2)*x};
     \end{axis}
 \end{tikzpicture}
 \end{codeexample}
 
-The key idea is to use a |colormap| which contains as much colors as we want different contour levels. In our example, we define a |colormap| called ``|CM|'' consisting of $14$~colors sampled from |colormap name=hot|. These $14$~colors resemble contour levels, and the filling is done by |colormap access=piecewise constant|. Note that |shader=interp| eliminates any rectangular interpolation artifacts due to its smooth color interpolation.
+	In addition to selecting a |number| of contour levels, you can select a predefined list of |levels|:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+	\begin{axis}[colormap/RdYlGn,colorbar, view={0}{90}]
+	\addplot3[domain=0:2*pi,trig format plots=rad,
+		contour filled={
+			levels={-0.4,-0.25,0,0.3,0.9}}]
+	{sin(x)*sin(y)};
+	\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	A filled contour plot merely affects the appearance of patch segments, so you can easily adopt axis options like |view|.
 
-This kind of filled contour plot has high quality and is a smooth vector graphics. However, the current version of \PGFPlots\ comes with limitations in this context:
-\begin{itemize}
-	\item Only uniform |colormap|s are available, meaning that only a uniform distance between adjacent contour levels is possible.
-	\item The only way to select individual contour levels is to use a suitable |colormap| definition, for example using |colors of colormap| as outlined in Section~\ref{sec:pgfplots:colormaps:based:on:others} on page~\pageref{sec:pgfplots:colormaps:based:on:others}. However, this approach only accepts \emph{mapped} numbers. These are typically in the range $[0,1000]$ (maybe up to $[0,16000]$) on input.
-	\item This approach offers no contour labels. One would need to overlay |contour gnuplot| in order to add contour labels.
-\end{itemize}
-There are plans to eliminate these limitations eventually.
+	The plot handler |contour filled| is almost the same as |surf|: it expects the very same input format (i.e.\ coordinates in matrix form from any supported coordinate input stream) and expects numeric |point meta|. In order to determine the correct color, \PGFPlots\ evaluates |point meta| for each encountered vertex in the input matrix and interpolates any values of |point meta| on mesh segments. The interpolation scheme is normally linear, but you can write |patch type=bilinear| if you want bilinear interpolation of |point meta| (higher quality, bigger output). Finally, each interpolated |point meta| is mapped into a |colormap| using |colormap access=const|. 
 
+	The |colormap| in question is specific to |contour filled|: it is defined after the survey phase and is called |internal:contourfilled|. It is created using the |of colormap| functionality (see |samples of colormap| and its variants for details). \PGFPlots\ uses |target pos min| and |target pos max| to ensure that the resulting |colormap| fits into the range |point meta min|$:$|point meta max|.
+
+	\begin{pgfplotskey}{contour/levels from colormap=\marg{colormap definition}}
+	Typically, |filled contour| will be customized either by means of a |number|
+	of contour lines or by selecting a list prescribed |levels|.
+
+	However, |levels from colormap| is another, highly flexible and more involved way of defining contour levels. It offers the most control over contour levels and the associated colors, namely by adding an entire \meta{colormap definition}. Such an argument must be a valid argument to |colormap=|\marg{name}\marg{colormap definition}. Suppose we have a water depth profile and we want to visualize it as |contour filled|. In this case, we want a clear separation of ``water'' and ``land'', but the water depth and the land height may be asymmetric. In order to use different color maps for water and for land, we can add the following \meta{colormap definition}:
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[view={0}{90},
+	colormap={whiteblue}{color=(blue) color=(white)},
+	colormap={gb}{color=(green) color=(yellow) 
+		color=(brown)},
+	colorbar horizontal,
+	colorbar style={minor x tick num=1},
+	y dir=reverse,
+]
+\addplot3[contour filled={
+	levels from colormap={
+		of colormap={
+			whiteblue, 
+			target pos max=,
+			target pos={-12000,-10000,-6000,-5000,
+				-3000,-1000,-750,-500,-250,-100,
+				-50,0}
+		}
+		of colormap={
+			gb, 
+			target pos min=,
+			target pos={10,100,200,500,1000,1100,1200,
+				1500,2000,4000,6000,8000}
+		}
+	},
+},
+]
+table {plotdata/heightmap.dat};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+	The example above re-uses the colormap already explained in the documentation for |target pos min|: it concatenates two |of colormap| specifications and assigns specific |target pos|itions. The data file is shipped with \PGFPlots.
+	The only special item here is that it \emph{clears} |target pos max| (the right end) for the first part of the definition and |target pos min| (the left end) for the second part of the definition. This is because \PGFPlots\ implicitly adds such limits in order to enforce the correct range. The colormap in question is essentially equivalent to
+
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={whiteblue}{color=(blue) 
+		color=(white)},
+	colormap={gb}{color=(green) 
+		color=(yellow) color=(brown)},
+	colorbar style={minor x tick num=1},
+	point meta min=-7052,
+	point meta max=2050,
+	of colormap/target pos min*=-7052,
+	of colormap/target pos max*=2050,
+	colormap access=const,
+	colormap={CM}{
+		of colormap={
+			whiteblue, 
+			target pos max=,
+			target pos={-12000,-10000,-6000,-5000,
+			  -3000,-1000,-750,-500,-250,-100,-50,0}
+		}
+		of colormap={
+			gb, 
+			target pos min=,
+			target pos={10,100,200,500,1000,1100,
+				1200,1500,2000,4000,6000,8000}
+		}
+	}]
+\end{codeexample}
+
+		Note that this specific colormap might benefit if each color has its specific legend. To this end, we could make use of |colorbar as legend|, i.e.\ using the following |colorbar|:
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={whiteblue}{color=(blue) 
+		color=(white)},
+	colormap={gb}{color=(green) 
+		color=(yellow) color=(brown)},
+	colorbar as legend,
+	colorbar style={ticklabel style={font=\tiny}},
+	point meta min=-7052,
+	point meta max=2050,
+	of colormap/target pos min*=-7052,
+	of colormap/target pos max*=2050,
+	colormap access=const,
+	colormap={CM}{
+		of colormap={
+			whiteblue, 
+			target pos max=,
+			target pos={-12000,-10000,-6000,-5000,
+			  -3000,-1000,-750,-500,-250,-100,-50,0}
+		}
+		of colormap={
+			gb, 
+			target pos min=,
+			target pos={10,100,200,500,1000,1100,
+				1200,1500,2000,4000,6000,8000}
+		}
+	}]
+\end{codeexample}
+	\end{pgfplotskey}
+
+	
+	A |contour filled| plot comes with the following ways to define the contour limit positions:
+	\begin{enumerate}
+		\item Defining the number of contour levels using |contour/number=|\marg{number},
+		\item Defining a prescribed list of |contour/levels=|\marg{list},
+		\item Defining the levels in |levels from colormap| in a suitable \meta{colormap definition},
+		\item Undefining all of the items above in which case \PGFPlots\ will use as many contour levels as there are distinct colors in the current colormap.
+	\end{enumerate}
+	
+This kind of filled contour plot has high quality and is a smooth vector graphics.
+
+\paragraph{Limitations:} |contour filled| supports no contour labels and no contour outlines. Furthermore, its contour lines differ from the contours computed by |contour gnuplot|.
+
+\end{plottype}
 }%
 
 

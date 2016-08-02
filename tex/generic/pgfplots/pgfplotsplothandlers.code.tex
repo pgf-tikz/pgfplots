@@ -1963,6 +1963,16 @@
 	contour prepared filled/.style={%
 		/pgfplots/contour prepared={draw color=mapped color!80!black,labels=false,filled=true},
 	},
+	contour filled/.code={%
+		\pgfqkeys{/pgfplots/contour}{%
+			every filled contour plot,%
+			/pgfplots/surf,%
+			/pgfplots/shader=interp,%
+			/pgfplots/colormap access=const,%
+			#1,%
+		}%
+		\let\tikz@plot@handler=\pgfplotsplothandlercontourfilled
+	},
 	% FIXME : should use \tikz@plot@handler instead of just the
 	% visualization thing!
 	contour/handler/.style={/tikz/sharp plot},
@@ -1978,12 +1988,18 @@
 	},%
 	contour/labels/.is if=pgfplotsplothandlercontour@labels,
 	contour/labels=true,
+	% 
+	% XXX : this here is dead code... it has been superseded by
+	% \pgfplotsplothandlercontourfilled:
 	contour/filled/.is if=pgfplotsplothandlercontour@filled,
 	contour/filled/.default=true,
 	% EXPERIMENTAL: WILL CHANGE EVENTUALLY!
 	% this is (only) used for contour filled:
 	% data limits={(xmin,ymin,zmin,cmin) (xmax,ymax,ymax,cmax}
 	contour/data limits/.initial=,% FIXME EXPERIMENTAL
+	contour/every filled contour plot/.style={
+		/pgfplots/area legend,
+	},
 	contour/every contour plot/.style={
 		/pgfplots/legend image post style={sharp plot},
 	},
@@ -2016,6 +2032,7 @@
 	%  Shared parameters:
 	contour/number/.initial=5,
 	contour/levels/.initial=,
+	contour/levels from colormap/.initial=,
 	%
 	%
 	contour/contour dir/.is choice,
@@ -2938,3 +2955,120 @@
 
 
 \input pgfplotsmeshplothandler.code.tex
+%
+%--------------------------------------------
+
+
+% Implementation of 'contour filled': it is actually just a small
+% wrapper around 'surf,shader=interp,colormap access=const' -- with
+% dedicated color map definitions.
+\def\pgfplotsplothandlercontourfilled{%
+	\pgfplotsplothandlermesh
+	\let\pgfplotsplothandlersurveyend@contourfilled@orig=\pgfplotsplothandlersurveyend
+	\def\pgfplotsplothandlersurveyend{%
+		\pgfplotsplothandlersurveyend@contourfilled@orig
+		\pgfplotsplothandlersurveyend@contourfilled
+	}%
+}%
+
+\def\pgfplotscontourfilledcolormap{internal:contourfilled}
+\pgfplotscreatecolormap{\pgfplotscontourfilledcolormap}{color=(black) color=(black)}
+
+\def\pgfplotsplothandlersurveyend@contourfilled{%
+	\pgfplotsplothandlersurveyaddoptions{
+		% ensure that the point meta of the contour makes its way into
+		% the colorbar and the associated color mapping.
+		%
+		% FIXME: that fails if there are more than one contours in the
+		% same axis (or someone else uses 'colorbar source')
+		colorbar source,%
+		%
+		% ensure that other plots to not "corrupt" our mapping:
+		point meta rel=per plot,%
+	}%
+	\def\pgfplots@contour@cm@options{%
+		colorbar style={%
+			/pgfplots/colormap access=const,
+		},%
+	}%
+	%
+	\pgfkeysgetvalue{/pgfplots/contour/levels}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% no levels. 
+		% Ok, check the other keys in the order of precedence:
+		\pgfkeysgetvalue{/pgfplots/contour/levels from colormap}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			% no 'levels from colormap'. 
+			% Ok, check the other keys in the order of precedence:
+			\pgfkeysgetvalue{/pgfplots/contour/number}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+				% not sure if this is a use-case...
+				\pgfplots@log3{contour plot: skipping definition of suitable colormap (none of 'number', levels', 'levels from colormap' is set)}%
+				\t@pgfplots@toka=\expandafter{\pgfplots@contour@cm@options}%
+				\edef\pgfplots@contour@cm@options{%
+					\the\t@pgfplots@toka%
+					% just copy the current colormap to ensure that it
+					% has the correct name:
+					colormap={\pgfplotscontourfilledcolormap}{of colormap={}},%
+				}%
+			\else
+				% Ah -- we have a number of samples!
+				\t@pgfplots@toka=\expandafter{\pgfplots@contour@cm@options}%
+				\edef\pgfplots@contour@cm@options{%
+					\the\t@pgfplots@toka%
+					colormap={\pgfplotscontourfilledcolormap}{samples of colormap={\pgfplots@loc@TMPa}},%
+				}%
+			\fi
+		\else
+			% Ah - we want to take levels from a colormap definition!
+			% We only need to ensure that the colormap definition fits
+			% into the range [metamin:metamax]. Do that here:
+			\t@pgfplots@toka=\expandafter{\pgfplots@contour@cm@options}%
+			\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPa}%
+			\edef\pgfplots@contour@cm@options{%
+				\the\t@pgfplots@toka%
+				/utils/exec={%
+					\noexpand\edef\noexpand\pgfplots@targetpos@restore{%
+						of colormap/target pos min=\pgfkeysvalueof{/pgfplots/of colormap/target pos min},%
+						of colormap/target pos max=\pgfkeysvalueof{/pgfplots/of colormap/target pos max},%
+						of colormap/target pos min/insert=\ifpgfplots@createcolormap@target@pos@includes@limits@min true\else false\fi,%
+						of colormap/target pos max/insert=\ifpgfplots@createcolormap@target@pos@includes@limits@max true\else false\fi,%
+					}%
+				},%
+				of colormap/target pos min*=\pgfplots@metamin,%
+				of colormap/target pos max*=\pgfplots@metamax,%
+				colormap={\pgfplotscontourfilledcolormap}{%
+					\the\t@pgfplots@tokb
+				},%
+				/utils/exec={%
+					\noexpand\expandafter
+					\noexpand\pgfkeysalso
+					\noexpand\expandafter{\noexpand\pgfplots@targetpos@restore}%
+				},%
+			}%
+		\fi
+	\else
+		% Ah - we have a list of positions for the contours!
+		\t@pgfplots@toka=\expandafter{\pgfplots@contour@cm@options}%
+		\edef\pgfplots@contour@cm@options{%
+			\the\t@pgfplots@toka%
+			colormap={\pgfplotscontourfilledcolormap}{%
+				of colormap={%
+					target pos min*=\pgfplots@metamin,
+					target pos max*=\pgfplots@metamax,
+					target pos={\pgfplots@loc@TMPa},
+				}%
+			},%
+		}%
+	\fi
+	%
+	\ifx\pgfplots@contour@cm@options\pgfutil@empty
+	\else
+		% move to "late options" such that we carry them outside of
+		% any \begingroup...\endgroup constructions:
+		\expandafter\pgfplotssetlateoptions\expandafter{\pgfplots@contour@cm@options}%
+%\message{contour filled: assembled options \meaning\pgfplots@contour@cm@options^^J}%
+	\fi
+}%
+
+
