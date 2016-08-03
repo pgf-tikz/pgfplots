@@ -3975,6 +3975,7 @@
 		\pgfkeysalso{#1}%
 		\pgfkeyslet{/pgfplots/colormap name}\pgfplots@ensure@old@cm
 	},
+	% a backwards compatibility switch:
 	/pgfplots/colormap uniform/.is choice,
 	/pgfplots/colormap uniform/always/.code={\def\pgfplots@colormap@uniform@choice{0}},
 	/pgfplots/colormap uniform/if requested/.code={\def\pgfplots@colormap@uniform@choice{1}},
@@ -4732,7 +4733,11 @@
 \def\pgfplots@tickwidth{\pgfkeysvalueof{/pgfplots/major tick length}}%
 \def\pgfplots@subtickwidth{\pgfkeysvalueof{/pgfplots/minor tick length}}%
 
-\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@colorbar@draw@defaultimpl
+\begingroup
+\pgfkeys{/pgfplots/colorbar pgfshading}
+\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
+\global\let\pgfplots@colorbar@draw@legacyimpl=\pgfplots@loc@TMPa
+\endgroup
 
 % call 
 %   \pgfkeyslet{.../.@cmd}\pgfplots@cant@set@in@this@context
@@ -10218,7 +10223,76 @@
 \newif\ifpgfplotscolorbarCMYKworkaround
 \pgfplotscolorbarCMYKworkaroundtrue
 
+\def\pgfplots@colorbar@draw@reconfigure@if@needed@legacy{%
+	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@colorbar@draw@legacyimpl
+		% Ah-- the default colorbar implementation is active! We may need to substitute it by a better one.
+		% Check that:
+		\def\b@pgfplots@colorbar@fallback@to@sampled{0}%
+		\ifpgfplotscolorbarCMYKworkaround
+			% the default implementation for colorbars is based on
+			% \pgfplotscolormaptoshadingspec.
+			% This, in turn, does NOT work for CMYK.
+			%
+			% This here detects that case and switches to the (visually)
+			% equivalent 'colorbar sampled={surf,shader=interp}' style.
+			\if1\pgfplotscolormaptoshadingspectorgb
+				\pgfkeysgetvalue{/pgfplots/colormap name}\pgfplots@loc@TMPb
+				\pgfplotscolormapgetcolorspace{\pgfplots@loc@TMPb}%
+				\def\pgfplots@loc@TMPa{cmyk}%
+				\ifx\pgfplots@loc@TMPa\pgfplotsretval
+					\pgfutil@ifundefined{pgfplots@colorbar@CMYK@\pgfplots@loc@TMPb}{%
+						\pgfplotswarning{colorbar CMYK unsupported}{\pgfplots@loc@TMPb}\pgfeov% 
+						\expandafter\gdef\csname pgfplots@colorbar@CMYK@\pgfplots@loc@TMPb\endcsname{1}%
+					}{}%
+					\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
+				\fi
+			\fi
+		\fi
+		%
+		\def\pgfplots@colorbar@extra@options{}%
+		\if c\pgfplots@colormap@access
+			% colormap access=piecewise constant
+			% In this case, we want a sampled colorbar.
+			\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
+			%
+			\def\pgfplots@colorbar@extra@options{%
+				% 2x2 samples are enough since "shader=interp"
+				% automatically handles the correct interpolation scheme:
+				samples=2,%
+				% ... but: just in case someone uses 'ytick={data}',
+				% we want the precise positions. Check that case right
+				% before 'colorbar addplot', and compute the positions
+				% if needed:
+				/utils/exec={%
+					\ifpgfplots@collect@firstplot@astick
+						% Oh! Someone wrote 'ytick=data'! Compute
+						% positions. This won't change the appearance
+						% anyway due to 'shader=interp'.
+						\pgfplots@colorbar@positions@to@samplesat
+					\fi
+				}%
+			}%
+		\fi
+		%
+		\if 1\b@pgfplots@colorbar@fallback@to@sampled
+			\t@pgfplots@toka=\expandafter{\pgfplots@colorbar@extra@options}%
+			\edef\pgfplots@loc@TMPa{%
+				\noexpand\pgfplotsset{%
+					colorbar sampled={%
+						surf,%
+						shader=interp,%
+						\the\t@pgfplots@toka
+					}%
+				}%
+			}%
+			\pgfplots@loc@TMPa
+		\fi
+	\fi
+}%
+
 \def\pgfplots@colorbar@draw@reconfigure@if@needed{%
+	\pgfplots@colorbar@draw@reconfigure@if@needed@legacy
 	\pgfplotsset{%
 		/pgfplots/every axis plot post/.append code={%
 			\ifpgfplots@collect@firstplot@astick
