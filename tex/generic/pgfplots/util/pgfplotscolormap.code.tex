@@ -510,6 +510,12 @@
 	},
 	colormap access/.style={/pgfplots/colormap access={#1}},
 	source range/.initial=0:1000,
+	%
+	sample for/.is choice,
+	sample for/default/.code={\def\pgfplots@ofcolorbar@sample@for@choice{m}},
+	sample for/const/.code={\def\pgfplots@ofcolorbar@sample@for@choice{c}},
+	sample for=default,
+	%
 	/pgfplots/of colormap/.unknown/.code={%
 		\pgfplotsutilifstringequal{#1}{\pgfkeysnovalue}{%
 			% This here allows to write 'of colormap={initial}' 
@@ -528,6 +534,12 @@
 			\expandafter\pgfkeys@code\pgfkeyscurrentvalue\pgfeov%
 		}%
 	},
+	%
+	% allow something like 'of colormap={colormap/PuBuGn}':
+	/pgfplots/of colormap/colormap/.unknown/.code={%
+		\edef\pgfplots@loc@TMPa{\noexpand\pgfplotsset{colormap/\pgfkeyscurrentname}}%
+		\pgfplots@loc@TMPa
+	},%
 }
 \pgfplotsinvokeforeach{%
 	color,% defines 'color of colormap'
@@ -670,11 +682,11 @@
 }
 \def\pgfplots@createcolormap@special@process@list@limits{%
 	\begingroup
-	\pgfkeys{/pgf/fpu=true}%
 	%
 	\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@target
 	\ifx\pgfplots@target\pgfutil@empty
 	\else
+		\pgfkeys{/pgf/fpu=true}%
 		\pgfkeysgetvalue{/pgfplots/of colormap/target pos min}\pgfplots@target@min
 		\pgfkeysgetvalue{/pgfplots/of colormap/target pos max}\pgfplots@target@max
 		\pgfplots@loc@tmpfalse
@@ -781,6 +793,7 @@
 % PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
 \def\pgfplots@createcolormap@special@process@list{%
 	\begingroup
+	\pgfkeys{/pgf/fpu=true}%
 	\pgfplots@createcolormap@special@process@list@limits%
 	%
 	\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@loc@TMP
@@ -823,6 +836,7 @@
 	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
 	\endgroup
 	\let\pgfplotsretval=\pgfplots@glob@TMPa
+%\message{of colormap with list functionality results in \meaning\pgfplotsretval^^J}%
 }%
 \def\pgfplots@createcolormap@special@process@list@sampled{%
 	\pgfplots@createcolormap@special@process@list@sampled@define
@@ -837,7 +851,55 @@
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/source pos}\pgfplots@source
 	%
-	\pgfplots@domain@to@foreach 0:1000\relax{\pgfplots@source}%
+	\def\b@pgfplots@special@interval{0}%
+	\if c\pgfplots@ofcolorbar@sample@for@choice%
+		% or colormap/sample for=const:
+		% sample one less and replicate the last color. This
+		% is to compensate for 'colormap access/extra interval width=0' 
+		% (which is the default for colormaps with positions)
+		\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@target
+		\ifx\pgfplots@target\pgfutil@empty
+			\def\b@pgfplots@special@interval{0}%
+		\else
+			\edef\pgfplots@target{\pgfplots@target}%
+			\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@target}%
+			\ifpgfutil@in@
+				% ah - we have at least 2 positions!
+				% XXX : this here runs before the positions are
+				% sanitized... is this correct?
+				\def\b@pgfplots@special@interval{1}%
+			\else
+				\def\b@pgfplots@special@interval{0}%
+			\fi
+		\fi
+	\else
+		\def\b@pgfplots@special@interval{0}%
+	\fi
+	%
+	\if1\b@pgfplots@special@interval
+		\c@pgf@counta=\pgfplots@source\relax
+		\advance\c@pgf@counta by-1
+		\edef\pgfplots@source{\the\c@pgf@counta}%
+		\pgfplots@domain@to@foreach 0:1000\relax{\pgfplots@source}%
+		%
+		\begingroup
+		\pgfplotsapplistXnewempty\pgfplots@createcolormap@trg@accum
+		\def\pgfplots@loc@TMPa{\pgfplotsforeachungrouped \x in}%
+		\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplotsretval}{%
+			\expandafter\pgfplotsapplistXpushback\expandafter{\x,}\to\pgfplots@createcolormap@trg@accum
+		}%
+		%
+		\pgfmathfloatcreate{1}{1.0}{3}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfplots@createcolormap@trg@accum
+		%
+		\pgfplotsapplistXlet\pgfplots@target=\pgfplots@createcolormap@trg@accum
+		\global\let\pgfplots@glob@TMPa=\pgfplots@target
+		\endgroup
+		%
+		\let\pgfplotsretval=\pgfplots@glob@TMPa
+	\else
+		\pgfplots@domain@to@foreach 0:1000\relax{\pgfplots@source}%
+	\fi
 	\pgfmath@smuggleone\pgfplotsretval
 	\endgroup
 	\pgfkeyslet{/pgfplots/of colormap/source pos}\pgfplotsretval

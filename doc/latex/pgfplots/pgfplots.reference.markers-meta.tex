@@ -1039,18 +1039,7 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 	colormap access=map]
 \end{codeexample}
 
-	The argument can be surrounded by round braces or curly braces, both is accepted. Since \PGFPlots\ also accepts a sequence of options inside of the argument, the curly braces are best applied if options are needed:
-\begin{codeexample}[]
-\pgfplotscolorbardrawstandalone[
-	colormap={example}{%
-		samples of colormap={
-			5 of viridis,
-			target pos={-10,-3,0,1,2}
-		}
-	},
-	colorbar horizontal,
-	colormap access=const]
-\end{codeexample}
+	The argument can be surrounded by round braces or curly braces, both is accepted. \PGFPlots\ also accepts a sequence of options inside of the argument and curly braces are best applied if options are needed:
 \begin{codeexample}[]
 \pgfplotscolorbardrawstandalone[
 	colormap={example}{%
@@ -1062,7 +1051,6 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 	colorbar horizontal,
 	colormap access=map]
 \end{codeexample}
-\noindent The example above shows how curly braces can simplify the color map definition. It also shows that the absolute values of the positions are meaningless as they are mapped to $[0,1000]$ anyway -- but their relative positions are of importance. If you add |point meta min| and |point meta max|, you can see how they are mapped.
 \begin{codeexample}[]
 \pgfplotscolorbardrawstandalone[
 	colormap={example}{%
@@ -1071,12 +1059,45 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 			target pos={-10,-3,0,1,2}
 		}
 	},
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+	\noindent One thing in this context needs \emph{special attention}: we told the system to use $5$~colors, but the case |colormap access=const| merely shows~$4$ colors! This is due to the fact that |colormap access=const| defines colors for entire \emph{intervals} whereas |colormap access=map| defines colors for \emph{single positions}. \PGFPlots\ tries hard to get the most out of this difference, and the details are documented for the key |of colormap/sample for|.
+	The consequence is that |colormap access=const| requires you to decide:
+	\begin{enumerate}
+		\item Either accept that a color is dropped (default),
+		\item or use |sample for=const| and accept that the colors are somewhat resampled,
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+			target pos={-10,-3,0,1,2},
+			sample for=const,
+		}
+	},
 	point meta min=-10,point meta max=2,
 	colorbar horizontal,
 	colormap access=const]
 \end{codeexample}
+		\item or use |colormap access/extra interval width=h| and accept that the positions are rescaled:
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+			target pos={-10,-3,0,1,2},
+		}
+	},
+	colormap access/extra interval width=h,
+	point meta min=-10,point meta max=2,
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+	\end{enumerate}
+	
+\noindent The previous examples above shows how curly braces can simplify the color map definition. They also shows that the absolute values of the positions are meaningless as they are mapped to $[0,1000]$ anyway -- but their relative positions are of importance. Adding  |point meta min| and |point meta max| shows the desired ranges.
 
-	One thing in this context needs \emph{special attention}: we told the system to use $5$~colors, but the case |colormap access=const| merely shows~$4$ colors! The visualization of colormaps with positions combined with |colormap access=const| is special, see also |colormap access/extra interval width| for details regarding the presence of an artificial interval for |colormap access=const|.
 		
 	Note that a |colorbar| can be configured to show the |target pos|itions if you add |xtick=data| to its option list:
 \begin{codeexample}[]
@@ -1084,7 +1105,8 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 	colormap={example}{%
 		samples of colormap={
 			5 of viridis,
-			target pos={-10,-3,0,1,2}
+			target pos={-10,-3,0,1,2},
+			sample for=const,
 		}
 	},
 	point meta min=-10,point meta max=2,
@@ -1191,6 +1213,78 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 	Attention for |colormap access=const|: A non-empty value for |target pos| implies |colormap access/extra interval width=0| as default in order to keep the precise positions provided by the end user. An empty value means ``automatically compute positions'' and defaults to |colormap access/extra interval width=h|. 
 \end{pgfplotskey}
 
+\begin{pgfplotskey}{of colormap/sample for=\mchoice{default,const} (initially default)}
+	This key allows to configure |samples of colormap| such that the resulting |colormap| is suitable for a dedicated values of |colormap access|. 
+
+	In particular, it allows to optimize \meta{colormap definitions} which rely on \emph{sampling} for the case |colormap access=const|.
+
+	Note that the case |colormap access|$\neq$|const| typically requires no modification to this key and works best with the defaults.
+
+	The strategy |colormap access=const| means that colors are associated with entire \emph{intervals} and no longer with single positions in the |colormap|. That comes with the following consequences:
+	\begin{itemize}
+		\item In general, a |colormap| can be used with any value of |colormap access|. If there are no positions in the \meta{colormap definition} (neither in round braces nor in |target pos|), this works out of the box without any special attention.
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+		}
+	},
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+		\item As soon as there are positions, \PGFPlots\ has a conflict if the colormap is used in a context with |colormap access=const|: it cannot enlarge the displayed limit, but it cannot respect both the given positions \emph{and} the required number of colors! It has the choice to either omit one color, or to add an artifical position and rescale all other positions.
+		\item The default strategy in \PGFPlots\ in the presence of |colormap access=const| and input positions is: \PGFPlots\ chooses to keep the input positions and omit one color.
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+			target pos={0,500,850,950,1000},
+		}
+	},
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+
+		Technically, this means that if implicitly sets |colormap access/extra interval width=0| (the default is |colormap access/extra interval width=h|).
+
+		Restoring |colormap access/extra interval width=h| results in rescaled positions:
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+			target pos={0,500,850,950,1000},
+		}
+	},
+	colormap access/extra interval width=h,
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+		\item Finally, \PGFPlots\ offers |sample for=const|:
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={example}{%
+		samples of colormap={
+			5 of viridis,
+			target pos={0,500,850,950,1000},
+			sample for=const,
+		}
+	},
+	colorbar horizontal,
+	colormap access=const]
+\end{codeexample}
+		This results in correctly respected positions and a fully respected range of the input colormap (at the expense of a slightly modified sampling procedure).
+	
+		In this case, the resulting |colormap| looks odd when used in conjunction with |colormap access=map|, but is fine together with |colormap access=const|.
+	\end{itemize}
+
+	The key |sample for| applies whenever |of colorbar| involves sampling. It does not apply for explicitly fixed colors.
+
+	See also |colormap access/extra interval width|.
+\end{pgfplotskey}
+
 \begin{pgfplotskey}{of colormap/colormap access=\marg{argument}}
 	 An alias for |/pgfplots/colormap access=|\marg{argument}.
 \end{pgfplotskey}
@@ -1235,7 +1329,8 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 \pgfplotscolorbardrawstandalone[
 	colormap={example}{%
 	  of colormap={viridis, 
-	  	target pos={0,10,200,700,750,800,1000}
+	  	target pos={0,10,200,700,750,800,1000},
+		sample for=const,
 	  }
 	},
 	colorbar horizontal,
@@ -1255,12 +1350,14 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 		of colormap={
 			whiteblue, 
 			target pos={-7046,-6000,-5000,-3000,
-				-1000,-750,-500,-250,-100,-50,0}
+				-1000,-750,-500,-250,-100,-50,0},
+			sample for=const,
 		}
 		of colormap={
 			gb, 
 			target pos={10,100,200,500,1000,1100,
-				1200,1500,2000,2050}
+				1200,1500,2000,2050},
+			sample for=const,
 		}
 	},
     colorbar horizontal,
@@ -1302,6 +1399,7 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 			target pos min*=
 			 \pgfkeysvalueof{/pgfplots/point meta min},
 			target pos max=0,
+			sample for=const,
 		}
 		of colormap={
 			gb, 
@@ -1309,6 +1407,7 @@ A colormap definition of sorts |colormap=|\marg{name}\marg{color specification} 
 			target pos min=0.1,
 			target pos max*=
 			 \pgfkeysvalueof{/pgfplots/point meta max},
+			sample for=const,
 		}
 	},
     colorbar horizontal,
@@ -2765,6 +2864,24 @@ fclose(fid);
 		/pgf/number format/precision=0},
 	colormap access=const]
 \end{codeexample}
+
+	The last example relies on |of colormap| and a \emph{sampling} procedure. In this context, \PGFPlots\ offers |sample for=const| which results in the expected look:
+\begin{codeexample}[]
+\pgfplotscolorbardrawstandalone[
+	colormap={nonuniform}{
+		of colormap={
+			viridis,
+			target pos={0,200,300,500,700,1000},
+			sample for=const,
+		}
+	},
+	colorbar horizontal,
+	colormap access=const,
+	colorbar style={xtick=data,font=\tiny,
+		/pgf/number format/precision=0},
+	colormap access=const]
+\end{codeexample}
+	Please refer to the documentation of |sample for|.
 	
 	The default width of this interval is the mesh width of the color map (the value \declaretext{h}), i.e.\ it will always be as large as the other intervals. If the color map has non-uniform distances, the smallest encountered mesh width is used for the extra interval. This can be seen if we omit the key and add some artifical color at the right end manually -- we only need to ensure that the rightmost interval has the correct length. In our example above, the smallest mesh width is $100$, so we can generate an equivalent result by means of
 	\index{Color maps!Non uniform}
@@ -2783,7 +2900,7 @@ fclose(fid);
         /pgf/number format/precision=0},
     colormap access=const]
 \end{codeexample}
-	\noindent As already mentioned, |colormap access=const| ignores the rightmost color (``|red|'').
+	\noindent As already mentioned, |colormap access=const| ignores the rightmost color (``|red|''). Note that this approach is almost the same as the internal implementation of |sample for=const|.
 
 	The value of |colormap access/extra interval width=|\meta{fraction} can also be used to customize the width of the artifical interval: it is a fraction of the total width and accepted values are $0\le $\meta{fraction}$\le 0.9$ where $0$ disables the extra interval and $0.9$ corresponds to $90\%$ of the resulting width. 
 	Any non-$0$ value for \meta{fraction} creates an extra interval and its width is \meta{fraction} percent of the entire color map.
