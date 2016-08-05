@@ -739,10 +739,8 @@
 					\ifx\x\pgfutil@empty
 					\else
 						\let\pgfplots@lastpos=\x
-						\ifx\pgfplots@firstpos\pgfutil@empty
-							\let\pgfplots@firstpos=\x
-						\fi
 						\if1\b@pgfplots@isfirst
+							\let\pgfplots@firstpos=\x
 							\def\b@pgfplots@isfirst{0}%
 						\else
 							\edef\x{,\x}%
@@ -793,19 +791,35 @@
 	\pgfkeyslet{/pgfplots/of colormap/target pos}\pgfplots@glob@TMPb
 }%
 
-% PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
-\def\pgfplots@createcolormap@special@process@list{%
-	\begingroup
-	\pgfkeys{/pgf/fpu=true}%
+\def\pgfplots@createcolormap@special@process@list@define@target@array{%
 	\pgfplots@createcolormap@special@process@list@limits%
 	%
 	\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@loc@TMP
 	\expandafter\pgfplotsarraynew\expandafter\pgfplots@pos@array\expandafter{\pgfplots@loc@TMP}%
 	%
+	\pgfplotsarraysizetomacro\pgfplots@pos@array\to\pgfplots@pos@size
+}%
+
+% PRECONDITION: Must be invoked within \pgfplots@of@colormap@getresult
+\def\pgfplots@createcolormap@special@process@list{%
+	\begingroup
+	\pgfkeys{/pgf/fpu=true}%
+	\pgfplots@createcolormap@special@process@list@define@target@array
+	%
 	\pgfplotsapplistXnewempty\pgfplots@createcolormap@special@process@result
 	%
 	\gdef\c@pgfplots@elem{0}%
-	\pgfplotsarraysizetomacro\pgfplots@pos@array\to\pgfplots@pos@size
+	%
+	\def\pgfplots@createcolormap@special@process@list@append{%
+		\pgfplots@createcolormap@special@process@single
+		%
+		% append separator
+		\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@createcolormap@special@process@list@separator}%
+		\edef\pgfplotsretval{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		%
+		\expandafter\pgfplotsapplistXpushback\pgfplotsretval\to\pgfplots@createcolormap@special@process@result
+	}%
 	%
 	\pgfplots@createcolormap@special@process@list@sanitize@selection
 	%
@@ -824,17 +838,22 @@
 			\pgfkeyslet{/pgfplots/of colormap/target pos}\pgfutil@empty
 		\fi
 		%
-		\pgfplots@createcolormap@special@process@single
-		%
-		% append separator
-		\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
-		\t@pgfplots@tokb=\expandafter{\pgfplots@createcolormap@special@process@list@separator}%
-		\edef\pgfplotsretval{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
-		%
-		\expandafter\pgfplotsapplistXpushback\pgfplotsretval\to\pgfplots@createcolormap@special@process@result
+		\pgfplots@createcolormap@special@process@list@append
 		%
 		\pgfplotsutil@advancestringcounter@global\c@pgfplots@elem
 	}%
+	%
+	\pgfutil@loop
+	\ifnum\c@pgfplots@elem<\pgfplots@pos@size\relax
+		\pgfplotsarrayselect\c@pgfplots@elem\of\pgfplots@pos@array\to\pgfplots@loc@TMPa
+		\pgfkeyslet{/pgfplots/of colormap/target pos}\pgfplots@loc@TMPa
+		%
+		% simply replicate the last encountered color
+		\pgfplots@createcolormap@special@process@list@append
+		%
+		\pgfplotsutil@advancestringcounter@global\c@pgfplots@elem
+	\pgfutil@repeat
+	%
 	\pgfplotsapplistXlet\pgfplotsretval=\pgfplots@createcolormap@special@process@result
 	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
 	\endgroup
@@ -842,8 +861,15 @@
 %\message{of colormap with list functionality results in \meaning\pgfplotsretval^^J}%
 }%
 \def\pgfplots@createcolormap@special@process@list@sampled{%
+	\begingroup
+	\pgfkeys{/pgf/fpu=true}%
+	\pgfplots@createcolormap@special@process@list@define@target@array
+	%
 	\pgfplots@createcolormap@special@process@list@sampled@define
 	\pgfplots@createcolormap@special@process@list
+	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
+	\endgroup
+	\let\pgfplotsretval=\pgfplots@glob@TMPa
 }
 
 % Defines 
@@ -860,20 +886,18 @@
 		% sample one less and replicate the last color. This
 		% is to compensate for 'colormap access/extra interval width=0' 
 		% (which is the default for colormaps with positions)
-		\pgfkeysgetvalue{/pgfplots/of colormap/target pos}\pgfplots@target
-		\ifx\pgfplots@target\pgfutil@empty
-			\def\b@pgfplots@special@interval{0}%
-		\else
-			\edef\pgfplots@target{\pgfplots@target}%
-			\expandafter\pgfutil@in@\expandafter,\expandafter{\pgfplots@target}%
-			\ifpgfutil@in@
-				% ah - we have at least 2 positions!
-				% XXX : this here runs before the positions are
-				% sanitized... is this correct?
-				\def\b@pgfplots@special@interval{1}%
-			\else
+		\ifnum\pgfplots@pos@size>1
+			% ah - we have at least 2 positions and 'extra interval width=0' applies!
+			\ifnum\pgfplots@pos@size>\pgfplots@source\relax
+				% ok, but we have so many positions-- the last source
+				% sample will be replicated anyway. No need to apply
+				% 'sample for=const':
 				\def\b@pgfplots@special@interval{0}%
+			\else
+				\def\b@pgfplots@special@interval{1}%
 			\fi
+		\else
+			\def\b@pgfplots@special@interval{0}%
 		\fi
 	\else
 		\def\b@pgfplots@special@interval{0}%
