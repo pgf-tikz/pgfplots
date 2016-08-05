@@ -265,6 +265,25 @@
 		}%
 	}%
 }
+
+% Executes '#1' if there are more tokens and '#2' if not.
+\def\pgfplots@createcolormap@ifhasmorecolors#1#2{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		#2% no more tokens.
+	}{%
+		\pgfutil@ifnextchar;{\pgfplots@createcolormap@grabsemicolon@hasnext{#1}{#2}}%
+		{%
+			\pgfutil@ifnextchar,{\pgfplots@createcolormap@grabcomma@hasnext{#1}{#2}}%
+			{
+				\expandafter\pgfutil@ifnextchar\pgfplots@activesemicolon{\pgfplots@createcolormap@grabsemicolon@active@hasnext{#1}{#2}}%
+				{%
+					#1% has more.
+				}%
+			}%
+		}%
+	}%
+}%
+
 \def\pgfplots@createcolormap@error#1#2\pgfplots@EOI{%
 	{%
 		\t@pgfplots@toka={#1#2}%
@@ -897,7 +916,13 @@
 				% 'sample for=const':
 				\def\b@pgfplots@special@interval{0}%
 			\else
-				\def\b@pgfplots@special@interval{1}%
+				\if1\b@pgfplots@createcolormap@found@more@colors
+					% there are more positions/colors!? Ok, no need to
+					% apply it here:
+					\def\b@pgfplots@special@interval{0}%
+				\else
+					\def\b@pgfplots@special@interval{1}%
+				\fi
 			\fi
 		\else
 			\def\b@pgfplots@special@interval{0}%
@@ -943,25 +968,22 @@
 \let\pgfplots@createcolormap@special@process@list@separator=\pgfplots@createcolormap@special@process@list@separator@CM
 %%%%%%%%%%
 
+\def\b@pgfplots@createcolormap@found@more@colors{0}%
+
 \def\pgfplots@createcolormap@grabnext@complete{%
 	\edef\pgfplots@loc@TMPd{%
 		\noexpand\pgfutil@in@{of color}{\pgfplots@loc@TMPa}%
 	}%
 	\pgfplots@loc@TMPd
 	\ifpgfutil@in@
-		% ah - a special one based on another colormap!
-		% convert it into the standard format:
-		\begingroup
-		\let\pgfplotscolormap@at=\pgfplots@loc@TMPb
-		\let\pgfplotscolormap@argument=\pgfplots@loc@TMPc
-		\let\pgfplotscolormap@key=\pgfplots@loc@TMPa
-		%
-		\pgfplots@createcolormap@grabnext@complete@ofcolormap
-		\pgfmath@smuggleone\pgfplotsretval
-		\endgroup
-		%
 		\def\pgfplots@loc@TMPd{%
-			\expandafter\pgfplots@createcolormap@\pgfplotsretval
+			\pgfplots@createcolormap@ifhasmorecolors{%
+				\def\b@pgfplots@createcolormap@found@more@colors{1}%
+				\pgfplots@createcolormap@grabnext@complete@of@colormap
+			}{%
+				\def\b@pgfplots@createcolormap@found@more@colors{0}%
+				\pgfplots@createcolormap@grabnext@complete@of@colormap
+			}%
 		}%
 	\else
 		% ok, this is a 'normal' color specification with position,
@@ -983,6 +1005,21 @@
 	%
 	% continue loop:
 	\pgfplots@loc@TMPd
+}%
+
+\def\pgfplots@createcolormap@grabnext@complete@of@colormap{%
+	% ah - a special one based on another colormap!
+	% convert it into the standard format:
+	\begingroup
+	\let\pgfplotscolormap@at=\pgfplots@loc@TMPb
+	\let\pgfplotscolormap@argument=\pgfplots@loc@TMPc
+	\let\pgfplotscolormap@key=\pgfplots@loc@TMPa
+	%
+	\pgfplots@createcolormap@grabnext@complete@ofcolormap
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+	%
+	\expandafter\pgfplots@createcolormap@\pgfplotsretval
 }%
 
 % INPUT: 
@@ -1039,9 +1076,13 @@
 \def\pgfplots@createcolormap@grabsemicolon;{\pgfplots@createcolormap@}%
 \def\pgfplots@createcolormap@grabcomma,{\pgfplots@createcolormap@}%
 
+\def\pgfplots@createcolormap@grabsemicolon@hasnext#1#2;{\pgfplots@createcolormap@ifhasmorecolors{#1}{#2}}%
+\def\pgfplots@createcolormap@grabcomma@hasnext#1#2,{\pgfplots@createcolormap@ifhasmorecolors{#1}{#2}}%
+
 {
 	\catcode`\;=13
 	\gdef\pgfplots@createcolormap@grabsemicolon@active;{\pgfplots@createcolormap@}%
+	\gdef\pgfplots@createcolormap@grabsemicolon@active@hasnext#1#2;{\pgfplots@createcolormap@ifhasmorecolors{#1}{#2}}%
 }
 
 \def\pgfplots@createcolormap@nextcolor@tostring#1=#2\pgfplots@EOI#3{%
