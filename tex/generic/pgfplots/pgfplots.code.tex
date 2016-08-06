@@ -1147,10 +1147,6 @@
 			xmax=1,
 			ymin=\pgfkeysvalueof{/pgfplots/point meta min},
 			ymax=\pgfkeysvalueof{/pgfplots/point meta max},
-			plot graphics/xmin=0,%
-			plot graphics/xmax=1,
-			plot graphics/ymin=\pgfkeysvalueof{/pgfplots/point meta min},
-			plot graphics/ymax=\pgfkeysvalueof{/pgfplots/point meta max},
 			height=\pgfkeysvalueof{/pgfplots/parent axis height},%
 			width=\pgfkeysvalueof{/pgfplots/colorbar/width},
 			xtick=\empty,
@@ -1180,10 +1176,6 @@
 			ymax=1,
 			xmin=\pgfkeysvalueof{/pgfplots/point meta min},
 			xmax=\pgfkeysvalueof{/pgfplots/point meta max},
-			plot graphics/ymin=0,%
-			plot graphics/ymax=1,
-			plot graphics/xmin=\pgfkeysvalueof{/pgfplots/point meta min},
-			plot graphics/xmax=\pgfkeysvalueof{/pgfplots/point meta max},
 			width=\pgfkeysvalueof{/pgfplots/parent axis width},%
 			height=\pgfkeysvalueof{/pgfplots/colorbar/width},
 			xticklabel pos=left,
@@ -1211,6 +1203,10 @@
 		% with '.append style'. This here is a work-around which works.
 		/pgfplots/colorbar vertical/lowlevel/.style={%
 			/pgfplots/colorbar addplot=\addplot graphics {};,
+			plot graphics/xmin=0,%
+			plot graphics/xmax=1,
+			plot graphics/ymin=\pgfkeysvalueof{/pgfplots/point meta min},
+			plot graphics/ymax=\pgfkeysvalueof{/pgfplots/point meta max},
 			plot graphics/lowlevel draw/.code 2 args={%
 				\if\pgfkeysvalueof{/pgfplots/y dir/value}n%
 					\pgfplotscolormaptoshadingspec{\pgfkeysvalueof{/pgfplots/colormap name}}{####2}\pgfplots@loc@TMPa
@@ -1224,6 +1220,10 @@
 		},
 		/pgfplots/colorbar horizontal/lowlevel/.style={%
 			/pgfplots/colorbar addplot=\addplot graphics {};,
+			plot graphics/ymin=0,%
+			plot graphics/ymax=1,
+			plot graphics/xmin=\pgfkeysvalueof{/pgfplots/point meta min},
+			plot graphics/xmax=\pgfkeysvalueof{/pgfplots/point meta max},
 			plot graphics/lowlevel draw/.code 2 args={%
 				\if\pgfkeysvalueof{/pgfplots/x dir/value}n%
 					\pgfplotscolormaptoshadingspec{\pgfkeysvalueof{/pgfplots/colormap name}}{####1}\pgfplots@loc@TMPa
@@ -4593,8 +4593,11 @@
 	/pgfplots/compat/general/1.14/.style=	{%
 		/pgfplots/compat/general/1.13,
 		/pgfplots/colormap uniform=if requested,
-		/pgfplots/colorbar sampled={surf,shader=interp,samples=2},
-		/pgfplots/colorbar=false,
+		% no -- do _not_ activate that here: it is correct and
+		% simplifies the code, but many viewers (pdf.js, evince,
+		% sumatrapdf) are better off with pgfshadings:
+		%/pgfplots/colorbar sampled={surf,shader=interp,samples=2},
+		%/pgfplots/colorbar=false,
 	},%
 	/pgfplots/compat/general/default/.style={/pgfplots/compat/general/1.11},
 	%
@@ -10241,9 +10244,28 @@
 \def\pgfplots@colorbar@draw@reconfigure@if@needed@legacy{%
 	\pgfkeysgetvalue{/pgfplots/colorbar/draw/.@cmd}\pgfplots@loc@TMPa
 	\ifx\pgfplots@loc@TMPa\pgfplots@colorbar@draw@legacyimpl
+		\begingroup
+			\pgfkeysalso{/pgfplots/.search also=/tikz}%
+			\pgfplotsset{every colorbar}%
+			\pgfplots@init@collect@firstplotastick%
+			\xdef\pgfplots@glob@TMPa{%
+				\ifpgfplots@collect@firstplot@astick
+					1%
+				\else
+					0%
+				\fi
+			}%
+		\endgroup
 		% Ah-- the default colorbar implementation is active! We may need to substitute it by a better one.
 		% Check that:
 		\def\b@pgfplots@colorbar@fallback@to@sampled{0}%
+		%
+		\if1\pgfplots@glob@TMPa
+			% xtick={data} requires samples:
+			% see also call hierarchy of \pgfplots@colorbar@positions@to@samplesat
+			\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
+		\fi
+		%
 		\ifpgfplotscolorbarCMYKworkaround
 			% the default implementation for colorbars is based on
 			% \pgfplotscolormaptoshadingspec.
@@ -10265,39 +10287,22 @@
 			\fi
 		\fi
 		%
-		\def\pgfplots@colorbar@extra@options{}%
 		\if c\pgfplots@colormap@access
 			% colormap access=piecewise constant
 			% In this case, we want a sampled colorbar.
 			\def\b@pgfplots@colorbar@fallback@to@sampled{1}%
 			%
-			\def\pgfplots@colorbar@extra@options{%
-				% 2x2 samples are enough since "shader=interp"
-				% automatically handles the correct interpolation scheme:
-				samples=2,%
-				% ... but: just in case someone uses 'ytick={data}',
-				% we want the precise positions. Check that case right
-				% before 'colorbar addplot', and compute the positions
-				% if needed:
-				/utils/exec={%
-					\ifpgfplots@collect@firstplot@astick
-						% Oh! Someone wrote 'ytick=data'! Compute
-						% positions. This won't change the appearance
-						% anyway due to 'shader=interp'.
-						\pgfplots@colorbar@positions@to@samplesat
-					\fi
-				}%
-			}%
 		\fi
 		%
 		\if 1\b@pgfplots@colorbar@fallback@to@sampled
-			\t@pgfplots@toka=\expandafter{\pgfplots@colorbar@extra@options}%
 			\edef\pgfplots@loc@TMPa{%
 				\noexpand\pgfplotsset{%
 					colorbar sampled={%
 						surf,%
 						shader=interp,%
-						\the\t@pgfplots@toka
+						% 2x2 samples are enough since "shader=interp"
+						% automatically handles the correct interpolation scheme:
+						samples=2,%
 					}%
 				}%
 			}%
@@ -10846,6 +10851,29 @@
 	\pgfkeysgetvalue{/pgfplots/ztickmin}{\pgfplots@ztickmin}%
 	\pgfkeysgetvalue{/pgfplots/ztickmax}{\pgfplots@ztickmax}%
 	%
+	\pgfplots@init@collect@firstplotastick
+	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
+	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
+	\pgfkeysalso{/pgfplots/.search also=/tikz}%
+	%
+	\pgfkeysifdefined{/tikz/on layer}{}{%
+		% make sure assignments 'on layer' in the /tikz/ prefix
+		% doesn't hurt.
+		% this may happen, for example with 
+		% 'x grid style={on layer=...}'
+		% because 'x grid style' is not processed by the key filtering
+		% above (it is extracted later).
+		\pgfkeyslet{/tikz/on layer}\pgfutil@empty%
+	}%
+	%
+	\pgfplots@set@patched@options
+	%
+	\pgfplots@set@options@sanitize
+	\pgfplots@notify@options@are@set
+}
+
+\def\pgfplots@init@collect@firstplotastick{%
 	\def\pgfplots@loc@TMPa{data}%
 	\pgfplots@collect@firstplot@astickfalse
 	\ifx\pgfplots@xtick\pgfplots@loc@TMPa
@@ -10869,26 +10897,7 @@
 	\ifx\pgfplots@loc@TMPb\pgfplots@loc@TMPa
 		\pgfplots@collect@firstplot@asticktrue
 	\fi
-	\global\let\pgfplots@firstplot@coords@x=\pgfutil@empty
-	\global\let\pgfplots@firstplot@coords@y=\pgfutil@empty
-	\global\let\pgfplots@firstplot@coords@z=\pgfutil@empty
-	\pgfkeysalso{/pgfplots/.search also=/tikz}%
-	%
-	\pgfkeysifdefined{/tikz/on layer}{}{%
-		% make sure assignments 'on layer' in the /tikz/ prefix
-		% doesn't hurt.
-		% this may happen, for example with 
-		% 'x grid style={on layer=...}'
-		% because 'x grid style' is not processed by the key filtering
-		% above (it is extracted later).
-		\pgfkeyslet{/tikz/on layer}\pgfutil@empty%
-	}%
-	%
-	\pgfplots@set@patched@options
-	%
-	\pgfplots@set@options@sanitize
-	\pgfplots@notify@options@are@set
-}
+}%
 
 \def\pgfplots@set@options@of@layered@graphics{%
 	\ifpgfplots@axis@on@top
