@@ -700,7 +700,7 @@
 			% this case, we _sample_ source pos uniformly with one
 			% sample for each position!
 			\pgfkeyslet{/pgfplots/of colormap/source pos}\pgfplots@pos@size
-			\pgfplots@createcolormap@special@process@list@sampled@define
+			\pgfplots@createcolormap@special@process@list@sampled@define{P}%
 		\fi
 	\fi
 }
@@ -867,17 +867,8 @@
 	\pgfutil@loop
 	\ifnum\c@pgfplots@elem<\pgfplots@pos@size\relax
 		\pgfplotsarrayselect\c@pgfplots@elem\of\pgfplots@pos@array\to\pgfplots@loc@TMPa
-		\pgfkeyslet{/pgfplots/of colormap/target pos}\pgfplots@loc@TMPa
 		\pgfkeysgetvalue{/pgfplots/of colormap/source pos}\x
-		\ifx\x\pgfutil@empty
-			\pgfplotswarning{too many colormap positions}{no \c@pgfplots@elem\space (\pgfkeysvalueof{/pgfplots/of colormap/target pos})}\pgfeov%
-		\else
-			%
-			% simply replicate the last encountered color
-			\pgfplots@createcolormap@special@process@list@append
-			%
-			\pgfkeyslet{/pgfplots/of colormap/source pos}\pgfutil@empty
-		\fi
+		\pgfplotswarning{too many colormap positions}{index \c@pgfplots@elem\space (value \pgfplots@loc@TMPa)}\pgfeov%
 		\pgfplotsutil@advancestringcounter@global\c@pgfplots@elem
 		%
 	\pgfutil@repeat
@@ -896,7 +887,7 @@
 	% no need to reapply it in \pgfplots@createcolormap@special@process@list:
 	\let\pgfplots@createcolormap@special@process@list@define@target@array=\relax
 	%
-	\pgfplots@createcolormap@special@process@list@sampled@define
+	\pgfplots@createcolormap@special@process@list@sampled@define{S}%
 	\pgfplots@createcolormap@special@process@list
 	\global\let\pgfplots@glob@TMPa=\pgfplotsretval
 	\endgroup
@@ -907,11 +898,14 @@
 % * 'source range', 
 % * 'source pos',
 % in a way such that it implements 'samples of colormap'
-\def\pgfplots@createcolormap@special@process@list@sampled@define{%
+% #1: 'S' if it _must_ satisfy the number of samples and 'P' if it
+% _must_ satisfy the positions
+\def\pgfplots@createcolormap@special@process@list@sampled@define#1{%
 	\begingroup
 	\pgfkeysgetvalue{/pgfplots/of colormap/source pos}\pgfplots@source
 	%
 	\def\b@pgfplots@special@interval{0}%
+	\def\b@pgfplots@special@interval@additional{0}%
 	\if c\pgfplots@ofcolorbar@sample@for@choice%
 		% or colormap/sample for=const:
 		% sample one less and replicate the last color. This
@@ -919,12 +913,23 @@
 		% (which is the default for colormaps with positions)
 		\ifnum\pgfplots@pos@size>1
 			% ah - we have at least 2 positions and 'extra interval width=0' applies!
-			\ifnum\pgfplots@pos@size>\pgfplots@source\relax
-				% ok, but we have so many positions-- the last source
-				% sample will be replicated anyway. No need to apply
-				% 'sample for=const':
-				\def\b@pgfplots@special@interval{0}%
+			\if S#1%
+				\c@pgf@counta=\pgfplots@source\relax
+				\advance\c@pgf@counta by1 %
+				\ifnum\pgfplots@pos@size=\c@pgf@counta
+				\else
+					\pgfplotsthrow{too few colormap positions}{\pgfplots@pos@size}{There is an unexpected number of arguments to 'target pos' for 'samples of colormap=(\pgfplots@source)'. Please provide \the\c@pgf@counta\space positions, not \pgfplots@pos@size}\pgfeov%
+				\fi
+			\fi
+			\if S#1%
+				% this is the case
+				%   samples of colormap={5, target pos={<6 positions>}}
+				% -> we need to replicate the last color such that we see the rightmost color of the input map
+				\def\b@pgfplots@special@interval{1}%
+				% -> we also need one more sample point (one for each position):
+				\def\b@pgfplots@special@interval@additional{1}%
 			\else
+				% we have pgfplots@pos@size=pgfplots@source.
 				\if1\b@pgfplots@createcolormap@found@more@colors
 					% there are more positions/colors!? Ok, no need to
 					% apply it here:
@@ -938,8 +943,22 @@
 		\fi
 	\else
 		\def\b@pgfplots@special@interval{0}%
+		\ifnum\pgfplots@pos@size>1
+			% ah - we have at least 2 positions
+			\if S#1%
+				\ifnum\pgfplots@pos@size=\pgfplots@source
+				\else
+					\pgfplotsthrow{too few colormap positions}{\pgfplots@pos@size}{There is an unexpected number of arguments to 'target pos' for 'samples of colormap=(\pgfplots@source)'. Please provide \pgfplots@source\space positions, not \pgfplots@pos@size}\pgfeov%
+				\fi
+			\fi
+		\fi
 	\fi
 	%
+	\if1\b@pgfplots@special@interval@additional
+		\c@pgf@counta=\pgfplots@source\relax
+		\advance\c@pgf@counta by+1
+		\edef\pgfplots@source{\the\c@pgf@counta}%
+	\fi
 	\if1\b@pgfplots@special@interval
 		\begingroup
 		\c@pgf@counta=\pgfplots@source\relax
@@ -976,6 +995,7 @@
 	\pgfqkeys{/pgfplots/of colormap}{%
 		source range=0:1000,%
 	}%
+%\message{define sample positions(#1) = \pgfplotsretval^^J}%
 }%
 
 
