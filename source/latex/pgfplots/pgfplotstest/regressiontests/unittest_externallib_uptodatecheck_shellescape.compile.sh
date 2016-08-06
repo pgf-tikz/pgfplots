@@ -5,7 +5,7 @@ INFILE=$@.tex
 if [ ! -f $INFILE ]; then
 	INFILE=../$INFILE
 fi
-if [ -z "$EXECUTABLE"]; then
+if [ -z "$EXECUTABLE" ]; then
 	EXECUTABLE="pdflatex -interaction batchmode -halt-on-error -shell-escape "
 fi
 
