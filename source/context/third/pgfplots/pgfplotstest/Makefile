@@ -6,5 +6,5 @@ mkii:
 	for A in gnuplot/*.gnuplot; do gnuplot <$$A; done
 
 mkiv:
-	. ~/context/tex/setuptex && context --once pgfplotstest_mkiv
+	context --once pgfplotstest_mkiv
 	for A in gnuplot/*.gnuplot; do gnuplot <$$A; done
