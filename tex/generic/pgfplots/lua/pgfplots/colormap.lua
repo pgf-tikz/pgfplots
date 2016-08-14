@@ -13,6 +13,8 @@ local table=table
 do
 -- all globals will be read from/defined in pgfplots:
 local _ENV = pgfplots
+
+local pgftonumber = pgfluamathfunctions.tonumber
 -----------------------------------
 
 ColorSpace = newClass()
@@ -33,7 +35,8 @@ ColorMap.range =1000
 -- colorspace: an instance of ColorSpace
 -- values: an array (1-based table) with color components. Each color component is supposed to be a table with K entries where K is colorspace:numComponents
 -- positions: either an empty array (in which case the colormap is uniform) or one position per value. Positions are in [0,1000]
-function ColorMap:constructor( h, colorspace, values, positions)
+-- scaleOrderZ the specific scaling factor used for 'colormap access=const' (or negative or the empty string if this is disabled)
+function ColorMap:constructor( h, colorspace, values, positions, scaleOrderZ)
 	if not h or not colorspace or not positions or not values then error("arguments must not be nil")end
 
 	self.name = name
@@ -42,6 +45,7 @@ function ColorMap:constructor( h, colorspace, values, positions)
 	self.colorspace = colorspace
 	self.values = values
 	self.pos = positions
+	self:setScaleOrderZ(scaleOrderZ)
 
 	local numComponents = self.colorspace.numComponents
 	for i = 1,#self.values do
@@ -52,7 +56,26 @@ function ColorMap:constructor( h, colorspace, values, positions)
 	end
 end
 
-function ColorMap:findPrecomputed(inMin, inMax, x)
+function ColorMap:isUniform()
+	if #self.pos == 0 then
+		return true
+	else
+		return false
+	end
+end
+
+function ColorMap:setScaleOrderZ(scaleOrderZ)
+	if type(scaleOrderZ) == "number" then
+		self.scaleOrderZ = scaleOrderZ
+	elseif #scaleOrderZ == 0 or type(scaleOrderZ) == "string" and scaleOrderZ == "h" then
+		-- special case which means "h"
+		self.scaleOrderZ = "h"
+	else
+		self.scaleOrderZ = pgftonumber(scaleOrderZ)
+	end
+end
+
+function ColorMap:_transform(inMin, inMax, x)
 	local transformed
 	if inMin == 0 and inMax == ColorMap.range then
 		transformed = x
@@ -63,6 +86,11 @@ function ColorMap:findPrecomputed(inMin, inMax, x)
 	end
 	transformed = math.max(0, transformed)
 	transformed = math.min(ColorMap.range, transformed)
+	return transformed
+end
+
+function ColorMap:findPrecomputed(inMin, inMax, x)
+	local transformed = self:_transform(inMin, inMax, x)
 	
 	local divh = transformed * self.invh
 	local intervalno = math.floor(divh)
@@ -88,6 +116,34 @@ function ColorMap:findPrecomputed(inMin, inMax, x)
 	end
 
 	return result
+end
+
+function ColorMap:findPiecewiseConst(inMin, inMax, x)
+	-- see docs in \pgfplotscolormapfindpiecewiseconst@precomputed@ for details
+	
+	local transformed = self:_transform(inMin, inMax, x)
+	local intervalno =-1
+	if self:isUniform() then
+		if self.scaleOrderZ == "h" then
+			invh = self.invh + 0.001
+		else
+			-- disable the extra interval
+			invh = self.invh
+		end
+		
+		local divh = transformed * invh
+		intervalno = math.floor(divh)
+	else
+	 	-- FIXME : IMPLEMENT
+	end
+
+	if intervalno+1 == #self.values then
+		-- we have artificially increased the "h" (see the comments
+		-- above) -- meaning that this 'if' can happen. 
+		-- ->Map the rightmost point to the rightmost interval:
+		return self.values[#self.values]
+	end
+	return self.values[intervalno+1]
 end
 
 -----------------------------------

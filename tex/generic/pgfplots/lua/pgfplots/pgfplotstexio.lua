@@ -243,11 +243,36 @@ function texGetSurveyedCoordsToPgfplots()
     tex.sprint(LOAD_TIME_CATCODETABLE, currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end
 
+function texColorMapSetScaleOrderZ(mapName, scaleOrderZ)
+	local colormap = ColorMaps[mapName];
+	if colormap then
+		colormap:setScaleOrderZ(scaleOrderZ)
+	end
+end
+
 -- Performance optimization: computes the colormap lookup.
 function texColorMapPrecomputed(mapName, inMin, inMax, x)
 	local colormap = ColorMaps[mapName];
 	if colormap then
 		local result = colormap:findPrecomputed(
+			pgftonumber(inMin),
+			pgftonumber(inMax),
+			pgftonumber(x))
+
+		local str = ""
+		for i = 1,#result do
+			if i>1 then str = str .. "," end
+			str = str .. tostringfixed(result[i])
+		end
+		tex.sprint(LOAD_TIME_CATCODETABLE, str)
+	end
+end
+
+-- Performance optimization: computes the colormap lookup.
+function texColorMapFindPiecewiseConst(mapName, inMin, inMax, x)
+	local colormap = ColorMaps[mapName];
+	if colormap then
+		local result = colormap:findPiecewiseConst(
 			pgftonumber(inMin),
 			pgftonumber(inMax),
 			pgftonumber(x))
