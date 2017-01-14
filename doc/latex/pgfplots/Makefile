@@ -12,7 +12,7 @@ todo: pgfplotstodo.pdf
 pgfplots: pgfplots.pdf
 pgfplotstable: pgfplotstable.pdf
 
-# was: 
+# was:
 # export TEXMFCNF=.:
 # but it seems as if that is ignored for some reason
 TEXMFCNF_FOR_MEMLIMITS=export TEXMFCNF=~/texmf/mytexcnf:
@@ -55,7 +55,7 @@ html: FORCE
 		make -k -f pgfplots.makefile
 	@cd html && \
 		htlatex pgfplots.tex "../pgfplots.tex4ht.cfg"
-		
+	
 # This _needs_ pdflatex:
 pgfplotstodo.pdf: revisionfile FORCE
 	mkdir -p gnuplot
@@ -69,7 +69,7 @@ pgfplots.pdf: $(ALL_FIGURES)
 
 pgfplots.makefile:
 	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) pgfplots
-	
+
 clean:
 	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.makefile pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
 

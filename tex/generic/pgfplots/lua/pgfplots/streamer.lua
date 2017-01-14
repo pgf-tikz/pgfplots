@@ -49,7 +49,7 @@ function AddplotExpressionCoordinateGenerator:constructor(coordoutputstream, exp
 	self.domainMax = domainMax
 	self.samples = samples
 	self.variableNames = variableNames
-	
+
 	-- log("initialized " .. tostring(self) .. "\n")
 end
 
@@ -57,7 +57,7 @@ end
 -- this method is a replicate of \pgfplots@addplotimpl@expression@@
 function AddplotExpressionCoordinateGenerator:generateCoords()
 	local stringToFunctionMap = pgfluamathfunctions.stringToFunctionMap
-	-- create a backup of the 'x' and 'y' math expressions which 
+	-- create a backup of the 'x' and 'y' math expressions which
 	-- have been defined in \pgfplots@coord@stream@start:
 	local old_global_function_x = stringToFunctionMap["x"]
 	local old_global_function_y = stringToFunctionMap["y"]
@@ -78,10 +78,10 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 	end
 
 	local variableNames = self.variableNames
-	
+
 	local x,y
 	local sampleLine = #samples==1
-	
+
 	local function pseudoconstantx() return x end
 	local pseudoconstanty
 	if sampleLine then
@@ -126,7 +126,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		if is3d then
 			Z = pgfmathparse(zExpr)
 		end
-		
+
 		local pt = Coord.new()
 		pt.x = { X, Y, Z}
 
@@ -137,7 +137,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 
 		coordoutputstream:coord(pt)
 	end
-	
+
 	if not sampleLine then
 		local xmin = domainMin[1]
 		local ymin = domainMin[2]
@@ -167,7 +167,7 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 			computeXYZ()
 		end
 	end
-	
+
 	stringToFunctionMap[variableNames[1]] = nil
 	stringToFunctionMap[variableNames[2]] = nil
 	return true
@@ -181,10 +181,10 @@ function AddplotExpressionCoordinateGenerator:__tostring()
 		result = result .. self.expressions[i] ..", "
 	end
 	result = result .. "\n  domain=" .. self.domainMin[1] .. ":" .. self.domainMax[1]
-	result = result .. "\n  samples=" .. self.samples[1] 
+	result = result .. "\n  samples=" .. self.samples[1]
 	if #self.domainMin == 2 then
 		result = result .. "\n  domain y=" .. self.domainMin[2] .. ":" .. self.domainMax[2]
-		result = result .. "\n  samples y=" .. self.samples[2] 
+		result = result .. "\n  samples y=" .. self.samples[2]
 	end
 	result = result .. "]"
 	return result

@@ -80,7 +80,7 @@ function ColorMap:_transform(inMin, inMax, x)
 	if inMin == 0 and inMax == ColorMap.range then
 		transformed = x
 	else
-		local scale = ColorMap.range / (inMax - inMin) 
+		local scale = ColorMap.range / (inMax - inMin)
 
 		transformed = (x - inMin) * scale
 	end
@@ -91,13 +91,13 @@ end
 
 function ColorMap:findPrecomputed(inMin, inMax, x)
 	local transformed = self:_transform(inMin, inMax, x)
-	
+
 	local divh = transformed * self.invh
 	local intervalno = math.floor(divh)
 	local factor = divh - intervalno
 	local factor_two = 1-factor
 
-	
+
 	-- Step 2: interpolate the desired RGB value using vector valued interpolation on the identified interval
 	if intervalno+1 == #self.values then
 		-- ah- we are at the right end!
@@ -120,7 +120,7 @@ end
 
 function ColorMap:findPiecewiseConst(inMin, inMax, x)
 	-- see docs in \pgfplotscolormapfindpiecewiseconst@precomputed@ for details
-	
+
 	local transformed = self:_transform(inMin, inMax, x)
 	local intervalno =-1
 	if self:isUniform() then
@@ -130,7 +130,7 @@ function ColorMap:findPiecewiseConst(inMin, inMax, x)
 			-- disable the extra interval
 			invh = self.invh
 		end
-		
+
 		local divh = transformed * invh
 		intervalno = math.floor(divh)
 	else
@@ -139,7 +139,7 @@ function ColorMap:findPiecewiseConst(inMin, inMax, x)
 
 	if intervalno+1 == #self.values then
 		-- we have artificially increased the "h" (see the comments
-		-- above) -- meaning that this 'if' can happen. 
+		-- above) -- meaning that this 'if' can happen.
 		-- ->Map the rightmost point to the rightmost interval:
 		return self.values[#self.values]
 	end

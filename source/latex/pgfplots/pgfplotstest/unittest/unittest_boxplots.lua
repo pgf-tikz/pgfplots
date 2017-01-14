@@ -14,7 +14,7 @@ end
 do
 -- This is the case which was shipped and tested with pgfplots:
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -30,7 +30,7 @@ end
 do
 -- R1
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -46,7 +46,7 @@ end
 do
 -- R2
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -62,7 +62,7 @@ end
 do
 -- R3
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -78,7 +78,7 @@ end
 do
 -- R4
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -94,7 +94,7 @@ end
 do
 -- R5
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -110,7 +110,7 @@ end
 do
 -- R6
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -126,7 +126,7 @@ end
 do
 -- R7 (excel)
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -142,7 +142,7 @@ end
 do
 -- R8
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -158,7 +158,7 @@ end
 do
 -- R9
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -172,14 +172,14 @@ assertEquals(response.median, 7.5, "0.5 with " .. tostring(request.estimator))
 end
 
 
--------- Test border cases: 
+-------- Test border cases:
 
 local candidates = { "legacy", "R1","R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9" }
 
 -- Array of length 1:
 for i = 1,#candidates do
 	local request =
-		pgfplots.BoxPlotRequest.new( 
+		pgfplots.BoxPlotRequest.new(
 			"0.25",
 			"0.75",
 			"1.5",
@@ -196,7 +196,7 @@ end
 do
 -- This is the case which was shipped and tested with pgfplots:
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -212,7 +212,7 @@ end
 do
 -- R1
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -228,7 +228,7 @@ end
 do
 -- R2
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -244,7 +244,7 @@ end
 do
 -- R3
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -260,7 +260,7 @@ end
 do
 -- R4
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -276,7 +276,7 @@ end
 do
 -- R5
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -292,7 +292,7 @@ end
 do
 -- R6
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -308,7 +308,7 @@ end
 do
 -- R7 (excel)
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -324,7 +324,7 @@ end
 do
 -- R8
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -340,7 +340,7 @@ end
 do
 -- R9
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",
@@ -360,7 +360,7 @@ end
 do
 -- R7 (excel)
 local request =
-	pgfplots.BoxPlotRequest.new( 
+	pgfplots.BoxPlotRequest.new(
 		"0.25",
 		"0.75",
 		"1.5",

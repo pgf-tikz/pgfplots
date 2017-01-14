@@ -1,10 +1,10 @@
 // I wrote this file to find a bug in the shader=interp  output.
-// 
+//
 // Since it might be handy later, I included it into the git repository.
 //
 // Its more or less hackery! Handle at own risk.
 //
-// Use 
+// Use
 //
 // vim -b <result.pdf>
 // and
@@ -12,12 +12,12 @@
 // (I suppose the 'byte %o' is the relevant one) to find the offsets.
 // Or use a hex editor.
 //
-// compile with 
+// compile with
 // g++ <file>.cc
 //
 // Also enable the \message's in the surf shading .code.tex file.
 //
-// Ah -- use 
+// Ah -- use
 // \pdfcompresslevel=0
 // for the test .tex file!
 #include <iostream>
@@ -101,7 +101,7 @@ int main(int argc, char** argv)
 	size_t x_encoded_MAX = (size_t(1) << BitsPerCoordinate) -1;
 	size_t y_encoded_MAX = (size_t(1) << BitsPerCoordinate) -1;
 	size_t c_encoded_MAX = (size_t(1) << BitsPerComponent) -1;
-	cout << 
+	cout <<
 		"x_encoded_MAX = " <<x_encoded_MAX << "\n"
 		"y_encoded_MAX = " <<y_encoded_MAX << "\n"
 		"c_encoded_MAX = " <<c_encoded_MAX << "\n"
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 			double y = ymin + double(yi)*(ymax-ymin)/y_encoded_MAX;
 			double c = cmin + double(ci)*(cmax-cmin)/c_encoded_MAX;
 			double cc = 0. + double(ci)*1000./c_encoded_MAX;
-			std::cout << 
+			std::cout <<
 					"\tx = " << x << ";\n"
 					"\ty = " << y << ";\n"
 					"\tc = " << c << "\t(=" <<cc << "\tin [0,1000]);\n";
@@ -138,8 +138,8 @@ int main(int argc, char** argv)
 		}
 	}
 	cout << " All points are in their respective number ranges." << endl;
-	
-	
+
+
 	return 0;
 }
 

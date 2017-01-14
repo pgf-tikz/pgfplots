@@ -6,7 +6,7 @@
 -- pgfplots.Axis
 -- pgfplots.Coord
 -- pgfplots.Plothandler
--- 
+--
 -- and some related classes.
 
 local math=math
@@ -43,11 +43,11 @@ function Coord:copy(other)
 end
 
 function Coord:__tostring()
-    local result = '(' .. stringOrDefault(self.x[1], "--") .. 
-        ',' .. stringOrDefault(self.x[2], "--") .. 
-        ',' .. stringOrDefault(self.x[3], "--") .. 
+    local result = '(' .. stringOrDefault(self.x[1], "--") ..
+        ',' .. stringOrDefault(self.x[2], "--") ..
+        ',' .. stringOrDefault(self.x[3], "--") ..
         ') [' .. stringOrDefault(self.meta, "--") .. ']'
-    
+
     if not self.x[1] and self.unfiltered then
         result = result .. "(was " .. tostring(self.unfiltered) .. ")"
     end
@@ -109,15 +109,15 @@ function PointMetaMap:map(meta)
         result = math.min(1000, result)
         return result
     else
-        if self.warnForfilterDiscards then  
+        if self.warnForfilterDiscards then
             log("The per point meta data '" .. tostring(meta) .. " (and probably others as well) is unbounded - using the minimum value instead.\n")
             self.warnForfilterDiscards=false
         end
         return 0
     end
 end
-    
-    
+
+
 
 -------------------------------------------------------
 
@@ -240,7 +240,7 @@ function Plothandler:surveypoint(pt)
 		end
     end
     self.axis:datapointsurveyed(current, self)
-    
+
     self.coordindex = self.coordindex + 1;
 end
 
@@ -271,11 +271,11 @@ function Plothandler:getCoordsInTeXFormat(axis, coords, extraSerializer)
     return table.concat(result)
 end
 
--- PRIVATE 
+-- PRIVATE
 --
 -- does the same as \pgfplotsplothandlerserializepointto
 function Plothandler:serializeCoordToPgfplots(pt)
-    return 
+    return
         toTeXstring(pt.x[1]) .. "," ..
         toTeXstring(pt.x[2]) .. "," ..
         toTeXstring(pt.x[3])
@@ -321,7 +321,7 @@ function Plothandler:sortCoordinatesByViewDepth()
 		local vertexDepth = getVertexDepth(axis,coords[i])
 		coords[i].vertexDepth = vertexDepth
 	end
-	
+
 	-- Step 2: sort (inplace)
 	local comparator = function(ptA, ptB)
 		return ptA.vertexDepth > ptB.vertexDepth
@@ -372,7 +372,7 @@ end
 -- * visualize just plot marks at each of the collected coordinates
 -- * visualize just error bars at each collected coordinate
 -- * ...
--- 
+--
 
 -- this class offers basic visualization support. "Basic" means that it will merely transform and finalize input coordinates.
 PlotVisualizer = newClass()
@@ -392,7 +392,7 @@ end
 --
 -- @return any results. The format of the results is currently a list of Coord, but I am unsure of whether it will stay this way.
 --
--- Note that a PlotVisualizer does _not_ modify self.sourcePlotHandler.coords 
+-- Note that a PlotVisualizer does _not_ modify self.sourcePlotHandler.coords
 function PlotVisualizer:getVisualizationOutput()
 	local result = {}
 	local coords = self.sourcePlotHandler.coords
@@ -407,7 +407,7 @@ function PlotVisualizer:getVisualizationOutput()
 		local result_i
 		local result_i = Coord.new()
 		result_i:copy(coords[i])
-		
+
 		if result_i.x[1] ~= nil then
 			self:visphasegetpoint(result_i)
 		else
@@ -422,7 +422,7 @@ end
 
 -- PROTECTED
 -- resembles \pgfplotsplothandlervisualizejump -- or at least that part which can be done in LUA.
--- It does not visualize anything, but it can be used to modify the coordinate 
+-- It does not visualize anything, but it can be used to modify the coordinate
 function PlotVisualizer:notifyJump(pt)
 	-- do nothing.
 end
@@ -486,7 +486,7 @@ end
 --		- the other input coordinates are already read.
 --	POSTCONDITION for '@assign':
 --		- \pgfplots@current@point@meta is ready for use:
---		- EITHER a parsed floating point number 
+--		- EITHER a parsed floating point number
 --		- OR an empty string,
 --		- OR a symbolic string (if the issymbolic boolean is true)
 --	The default implementation is
@@ -521,7 +521,7 @@ CoordAssignmentPointMetaHandler = newClassExtends( PointMetaHandler )
 function CoordAssignmentPointMetaHandler:constructor(dir)
     PointMetaHandler.constructor(self, false,false)
     if not dir then error "nil argument for 'dir' is unsupported." end
-    self.dir=dir 
+    self.dir=dir
 end
 
 function CoordAssignmentPointMetaHandler:assign(pt)
@@ -561,7 +561,7 @@ function ExpressionPointMetaHandler:assign(pt)
 		error("point meta=" .. self.expression .. ": expression has been rejected.")
     end
 end
-	
+
 
 -------------------------------------------------------
 
@@ -580,7 +580,7 @@ end
 
 -------------------------------------------------------
 
--- An axis. 
+-- An axis.
 Axis = newClass()
 
 function Axis:constructor()
@@ -618,7 +618,7 @@ function Axis:getVertexDepth(pt)
 	end
 
 	if #vertex ~=3 then
-		error("Cannot compute vertex depth of " .. tostring(pt) .. ": expected a 3d point but got " .. tostring(#vertex)) 
+		error("Cannot compute vertex depth of " .. tostring(pt) .. ": expected a 3d point but got " .. tostring(#vertex))
 	end
 	if not viewdir or #viewdir~=3 then error("got unexpected view dir " ..tostring(viewdir) ) end
 
@@ -704,7 +704,7 @@ end
 function Axis:validatecoord(dir, point)
     if not dir or not point then error("arguments must not be nil") end
     local result = pgftonumber(point.x[dir])
-    
+
     if result == nil then
         result = nil
     elseif result == pgfplotsmath.infty or result == -pgfplotsmath.infty or pgfplotsmath.isnan(result) then
@@ -728,9 +728,9 @@ function Axis:parsecoordinate(pt, filterExpressionByDir)
     if pt.x[3] ~= nil then
         self.is3d = true
     end
-    
+
     local result = Coord.new()
-    
+
     local unfiltered = Coord.new()
     unfiltered.x = {}
     unfiltered.meta = pt.meta
@@ -754,7 +754,7 @@ function Axis:parsecoordinate(pt, filterExpressionByDir)
     for i = 1,self:loopMax() do
         self:validatecoord(i, result)
     end
-    
+
     local resultIsBounded = true
     for i = 1,self:loopMax() do
         if result.x[i] == nil then
@@ -766,7 +766,7 @@ function Axis:parsecoordinate(pt, filterExpressionByDir)
         result.x = { nil, nil, nil}
     end
 
-    return result    
+    return result
 end
 
 -- PROTECTED
@@ -802,15 +802,15 @@ function Axis:updatelimitsforcoordinate(pt)
             if not self.autocomputeMax[i] then
                 isClipped = isClipped or pt.x[i] > self.max[i]
             end
-        end                
+        end
     end
-    
+
     if not isClipped then
         for i = 1,self:loopMax(),1 do
             if self.autocomputeMin[i] then
                 self.min[i] = math.min(pt.x[i], self.min[i])
             end
-            
+
             if self.autocomputeMax[i] then
                 self.max[i] = math.max(pt.x[i], self.max[i])
             end
@@ -833,14 +833,14 @@ end
 --
 -- unfinished, see its fixmes
 function Axis:addVisualizationDependencies(pt)
-    -- FIXME : 'visualization depends on' 
+    -- FIXME : 'visualization depends on'
     -- FIXME : 'execute for finished point'
     return pt
 end
 
 -- PROTECTED
 --
--- indicates that a data point has been surveyed by the axis and that it can be consumed 
+-- indicates that a data point has been surveyed by the axis and that it can be consumed
 function Axis:datapointsurveyed(pt, plothandler)
     if not pt or not plothandler then error("arguments must not be nil") end
     if pt.x[1] ~= nil then
@@ -882,7 +882,7 @@ function Axis:datapointsurveyed(pt, plothandler)
             end
         end
     end
-    
+
     -- note that the TeX variant would increase the coord index here.
     -- We do it it surveypoint.
 end
@@ -905,7 +905,7 @@ local function toTeXxyzCoord(namePrefix, pt )
 	local x = toTeXstring(pt.x[1])
 	local y = toTeXstring(pt.x[2])
 	local z = toTeXstring(pt.x[3])
-	return 
+	return
 		"\\gdef" .. namePrefix .. "@x{" .. x .. "}" ..
 		"\\gdef" .. namePrefix .. "@y{" .. y .. "}" ..
 		"\\gdef" .. namePrefix .. "@z{" .. z .. "}";
@@ -942,8 +942,8 @@ function Axis:surveyToPgfplots(plothandler)
     local firstCoord = findFirstValidCoord(plothandler.coords) or Coord.new()
     local lastCoord = findLastValidCoord(plothandler.coords) or Coord.new()
 
-    local result = 
-		plothandlerResult .. 
+    local result =
+		plothandlerResult ..
 		toTeXxyzCoord("\\pgfplots@currentplot@firstcoord", firstCoord) ..
 		toTeXxyzCoord("\\pgfplots@currentplot@lastcoord", lastCoord) ..
         axisLimitToTeXString("\\pgfplots@metamin", plothandler.metamin) ..
@@ -959,21 +959,21 @@ function Axis:surveyToPgfplots(plothandler)
         axisLimitToTeXString("\\pgfplots@zmax", self.max[3]) ..
 		"\\global\\pgfplots@threedimtrue ";
 	end
-    if plothandler.plotHasJumps then 
+    if plothandler.plotHasJumps then
 		result = result ..
 		"\\def\\pgfplotsaxisplothasjumps{1}"
 	else
 		result = result ..
 		"\\def\\pgfplotsaxisplothasjumps{0}"
 	end
-    if plothandler.hasUnboundedPointMeta then 
+    if plothandler.hasUnboundedPointMeta then
 		result = result ..
 		"\\def\\pgfplotsaxisplothasunboundedpointmeta{1}"
 	else
 		result = result ..
 		"\\def\\pgfplotsaxisplothasunboundedpointmeta{0}"
 	end
-    if plothandler.filteredCoordsAway then 
+    if plothandler.filteredCoordsAway then
 		result = result ..
 		"\\def\\pgfplotsaxisfilteredcoordsaway{1}"
 	else
