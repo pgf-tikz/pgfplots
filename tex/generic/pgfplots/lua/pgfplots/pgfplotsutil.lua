@@ -65,7 +65,7 @@ pgfplotsmath.infty = infty
 local nan = math.sqrt(-1)
 pgfplotsmath.nan = nan
 
---------------------------------------- 
+---------------------------------------
 --
 
 
@@ -97,7 +97,7 @@ end
 
 
 
--- Create a new class that inherits from a base class 
+-- Create a new class that inherits from a base class
 --
 -- base = pgfplots.newClass()
 -- function base:constructor()

@@ -9,10 +9,10 @@
 -- * TeX can call LUA methods in order to "do something". The reverse direction is not true: LUA cannot call TeX methods.
 --
 -- * the only way that LUA can read TeX input values or write TeX output values is the top layer (at the time of this writing: only pgfplotstexio.lua ).
--- 
--- * The LUA backend has one main purpose: scalability and performance. 
+--
+-- * The LUA backend has one main purpose: scalability and performance.
 --   Its purpose is _not_ to run a standalone visualization.
---   
+--
 --   The precise meaning of "scalability" is: the LUA backend should do as much
 --   as possible which is done for single coordinates. Coordinates constitute
 --   "scalability": the number of coordinates can become arbitrarily large.
@@ -20,13 +20,13 @@
 --   "Performance" is related to scalability. But it is more: some dedicated
 --   utility function might have a TeX backend and will be invoked whenever it
 --   is needed. Candidates are colormap functions, z buffer arithmetics etc.
---   
+--
 --   Thus, the best way to ensure "scalability" is to move _everything_ which is to be done for a single coordinate to LUA.
 --
---   Sometimes, this will be impossible or too expensive. 
+--   Sometimes, this will be impossible or too expensive.
 --	 Here, "Performance" might still be optimized by some dedicated LUA function.
 --
--- 
+--
 -- Unfortunately, the LUA backend does not simplify the code base - it makes it more complicated.
 -- This is due to the way it is used: one needs to know when the TeX backend
 -- delegates all its work to LUA. It is also due to the fact that it
@@ -40,7 +40,7 @@
 --
 -- * \begin{axis}. It invokes \pgfplots@prepare@LUA@api .
 --     The purpose is to define the global pgfplots.gca "_g_et _c_urrent _a_xis" and to transfer some key presets.
---  
+--
 --     Log message: "lua backend=true: Activating LUA backend for axis."
 --
 -- * \end{axis}. It invokes \pgfplots@LUA@visualization@update@axis .
@@ -73,7 +73,7 @@
 --      entire processing to the LUA backend. If it succeeds, it will do
 --      nothing on the TeX side.
 --
---      Both PARTIAL MODE and COMPLETE MODE call 
+--      Both PARTIAL MODE and COMPLETE MODE call
 --        \pgfplots@LUA@survey@start : transfer plot type and current axis arguments to LUA
 --      and
 --        \pgfplots@LUA@survey@end : copy LUA axis arguments back to TeX.
@@ -114,7 +114,7 @@ function texSurveyPoint(x,y,z,meta)
 	pt.x[2] = y
 	pt.x[3] = z
 	pt.meta = meta
-	
+
 	gca.currentPlotHandler:surveypoint(pt)
 end
 
@@ -125,7 +125,7 @@ function texSurveyAddJump()
 	pt.x[2] = nil
 	pt.x[3] = nil
 	pt.meta = nil
-	
+
 	gca:addSurveyedJump(gca.currentPlotHandler, pt)
 end
 
@@ -134,7 +134,7 @@ end
 function texSurveyEnd()
 	local result = gca:surveyToPgfplots(gca.currentPlotHandler, true)
 	--log("returning " .. result .. "\n\n")
-    
+
 	tex.sprint(LOAD_TIME_CATCODETABLE, result);
 	gca.currentPlotHandler=nil
 end
@@ -156,14 +156,14 @@ function texVisualizationInit(plotNum, plotIs3d)
 	if not plotNum or plotIs3d==nil then error("arguments must not be nil") end
 
     local currentPlotHandler = gca.plothandlers[plotNum+1]
-    gca.currentPlotHandler = currentPlotHandler; 
+    gca.currentPlotHandler = currentPlotHandler;
     if currentPlotHandler then
 		currentPlotHandler.plotIs3d = plotIs3d
         currentPlotHandler:visualizationPhaseInit();
-        tex.sprint("1") 
+        tex.sprint("1")
     else
         -- ok, this plot has no LUA support.
-        tex.sprint("0") 
+        tex.sprint("0")
     end
 end
 
@@ -200,46 +200,46 @@ end
 function texApplyZBufferReverseScanline(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
-    
+
     currentPlotHandler:reverseScanline(scanLineLength)
-end 
+end
 
 -- Modifies the Surveyed coordinate list.
 -- Expands to nothing
 function texApplyZBufferReverseTransposed(scanLineLength)
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
-    
+
     currentPlotHandler:reverseTransposed(scanLineLength)
-end 
+end
 
 -- Modifies the Surveyed coordinate list.
 -- Expands to nothing
 function texApplyZBufferReverseStream()
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
-    
+
     currentPlotHandler:reverseStream(scanLineLength)
-end 
+end
 
 -- Modifies the Surveyed coordinate list.
--- 
+--
 -- Note that this is UNRELATED to mesh/surface plots! They have their own (patch-based) z buffer.
 --
 -- Expands to nothing
 function texApplyZBufferSort()
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
-    
+
    currentPlotHandler:sortCoordinatesByViewDepth()
-end 
+end
 
 -- Modifies the Surveyed coordinate list.
 -- Expands to the resulting coordinates
 function texGetSurveyedCoordsToPgfplots()
     local currentPlotHandler = gca.currentPlotHandler
     if not currentPlotHandler then error("This function cannot be used in the current context") end
-    
+
     tex.sprint(LOAD_TIME_CATCODETABLE, currentPlotHandler:surveyedCoordsToPgfplots(gca))
 end
 
@@ -368,7 +368,7 @@ do
 			local domainMin = arg1
 			local h = arg2-arg1
 			local domainMax = arg3
-			
+
 			-- round to the nearest integer (using +0.5, should be ok)
 			local samples = math.floor((domainMax - domainMin)/h + 0.5) + 1
 
@@ -384,32 +384,32 @@ end
 -- generates TeX output '1' on success and '0' on failure
 -- @param debugMode one of a couple of strings: "off", "verbose", or "compileerror"
 function texAddplotExpressionCoordinateGenerator(
-	is3d, 
-	xExpr, yExpr, zExpr, 
-	sampleLine, 
-	domainxmin, domainxmax, 
-	domainymin, domainymax, 
-	samplesx, samplesy, 
-	variablex, variabley, 
+	is3d,
+	xExpr, yExpr, zExpr,
+	sampleLine,
+	domainxmin, domainxmax,
+	domainymin, domainymax,
+	samplesx, samplesy,
+	variablex, variabley,
 	samplesAt,
 	debugMode
 )
 	local plothandler = gca.currentPlotHandler
 	local coordoutputstream = SurveyCoordOutputStream.new(plothandler)
-	
+
 	if samplesAt and string.len(samplesAt) >0 then
 		-- "samples at" has higher priority than domain.
 		-- Use it!
 
 		domainxmin, domainxmax, samplesx = samplesAtToDomain(samplesAt)
 		if not domainxmin then
-			-- FAILURE: could not convert "samples at". 
+			-- FAILURE: could not convert "samples at".
 			-- Fall back to a TeX based survey.
 			log("log", "LUA survey failed: The value of 'samples at= " .. tostring(samplesAt) .. "' is unsupported by the LUA backend (currently, only 'samples at={a,b,...,c}' is supported).\n")
 			tex.sprint("0")
 			return
 		end
-			
+
 	else
 		domainxmin= pgftonumber(domainxmin)
 		domainxmax= pgftonumber(domainxmax)
@@ -446,7 +446,7 @@ function texAddplotExpressionCoordinateGenerator(
 	removeSurroundingBraces(expressions)
 
 	local generator = AddplotExpressionCoordinateGenerator.new(
-		coordoutputstream, 
+		coordoutputstream,
 		expressions,
 		domainMin, domainMax,
 		samples,
@@ -466,7 +466,7 @@ function texAddplotExpressionCoordinateGenerator(
 	else
 		error("Got unknown debugMode = " .. debugMode )
 	end
-	
+
 	local success
 	if compileErrorOnFailure then
 		success = generator:generateCoords()

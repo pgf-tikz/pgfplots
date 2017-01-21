@@ -90,7 +90,7 @@ function MeshPlothandler:reverseScanline(scanLineLength)
             tmp = coords[1+scanlineOff+i]
             coords[1+scanlineOff+i] = coords[reverseindex]
             coords[reverseindex] = tmp
-            
+
             reverseindex = reverseindex-1
         end
     end
@@ -192,7 +192,7 @@ function MeshVisualizer:getVisualizationOutput()
 	if self.isZBufferSort then
 		result = self:applyZBufferSort(result)
 	end
-	
+
 	return result
 end
 
@@ -200,7 +200,7 @@ end
 function MeshVisualizer:applyZBufferSort(coords)
 	-- in order to sort this thing, we need to compute the sort key (view depth) for each coord.
 	-- furthermore, each list entry must be single patch... that means we need a (huge?) temporary table.
-	
+
 	local patchType = self.patchType
 	local numVertices = patchType.numVertices
 
@@ -225,7 +225,7 @@ function MeshVisualizer:applyZBufferSort(coords)
 	-- STEP 2: assign the sort key: the "element depth".
 	--
 	-- the "element depth" is defined to be the MEAN of all
-	-- vertex depths. 
+	-- vertex depths.
 	-- And since the mean is 1/n * sum_{i=1}^n V_i, we can
 	-- directly omit the 1/n --- it is the same for every
 	-- vertex anyway, and we only want to compare the depth
@@ -241,7 +241,7 @@ function MeshVisualizer:applyZBufferSort(coords)
 			local vertex = patchcoords[j]
 
 			local vertexDepth = getVertexDepth(axis,vertex)
-			
+
 			sumOfVertexDepth = sumOfVertexDepth + vertexDepth
 		end
 		patch.elementDepth = sumOfVertexDepth
@@ -270,7 +270,7 @@ end
 
 function MeshVisualizer:decodeIntoPatches(coords)
 	local result = {}
-	
+
 	local scanLineLength = self.scanLineLength
 	local length = #coords
 

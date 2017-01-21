@@ -42,7 +42,7 @@ function PercentileEstimator:getIndex(data, i)
 	end
 	return result
 end
-	
+
 
 -- @param percentile the requested percentile. Use 0.5 for the median, 0.25 for the first quartile, 0.95 for the 95% percentile etc.
 function PercentileEstimator:getValue(percentile, data)
@@ -65,8 +65,8 @@ function LegacyPgfplotsPercentileEstimator:getValue(percentile, data)
 	local offset_low = mathfloor(h)
 	local isInt = ( h==offset_low )
 
-	local offset_high = offset_low+1 
-	
+	local offset_high = offset_low+1
+
 	local x_low = self:getIndex(data, offset_low)
 	local x_up = self:getIndex(data, offset_high)
 	local res = x_low
@@ -92,8 +92,8 @@ function LegacyBadPgfplotsPercentileEstimator:getValue(percentile, data)
 	local offset_low = mathfloor(h)
 	local isInt = ( h==offset_low )
 
-	local offset_high = offset_low+1 
-	
+	local offset_high = offset_low+1
+
 	local x_low = self:getIndex(data, offset_low+1)
 	local x_up = self:getIndex(data, offset_high+1)
 	local res = x_low
@@ -122,39 +122,39 @@ function ParameterizedPercentileEstimator:constructor( typeFlag )
 		local x_up = getIndex(self, data, h_low +1 )
 		return x_low + (h - h_low) * (x_up - x_low)
 	end
-	
+
 	if typeFlag == 1 then
-		-- R1 
+		-- R1
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile
 			return getIndex(self, data, mathceil(h) )
 		end
 	elseif typeFlag == 2 then
-		-- R2 
+		-- R2
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile + 0.5
 			return 0.5*(getIndex(self, data, mathceil(h-0.5)) + getIndex(self, data, mathfloor(h+0.5) ) )
 		end
 	elseif typeFlag == 3 then
-		-- R3 
+		-- R3
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile
 			return getIndex(self, data, pgfluamathfunctions.round(h) )
 		end
 	elseif typeFlag == 4 then
-		-- R4 
+		-- R4
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile
 			return stdLookup(data,h)
 		end
 	elseif typeFlag == 5 then
-		-- R5 
+		-- R5
 		self.getValue = function(self, percentile, data)
 			local h= #data * percentile + 0.5
 			return stdLookup(data,h)
 		end
 	elseif typeFlag == 6 then
-		-- R6 
+		-- R6
 		self.getValue = function(self, percentile, data)
 			local h= (#data +1) * percentile
 			return stdLookup(data,h)
@@ -166,13 +166,13 @@ function ParameterizedPercentileEstimator:constructor( typeFlag )
 			return stdLookup(data,h)
 		end
 	elseif typeFlag == 8 then
-		-- R8 
+		-- R8
 		self.getValue = function(self, percentile, data)
 			local h= (#data + 1/3) * percentile + 1/3
 			return stdLookup(data,h)
 		end
 	elseif typeFlag == 9 then
-		-- R9 
+		-- R9
 		self.getValue = function(self, percentile, data)
 			local h= (#data + 1/4) * percentile + 3/8
 			return stdLookup(data,h)
@@ -183,7 +183,7 @@ function ParameterizedPercentileEstimator:constructor( typeFlag )
 end
 
 
-getPercentileEstimator = function(estimatorName) 
+getPercentileEstimator = function(estimatorName)
 	if estimatorName == "legacy" then
 		return LegacyPgfplotsPercentileEstimator.new()
 	elseif estimatorName == "legacy*" then
@@ -251,7 +251,7 @@ end
 -- @return an instance of BoxPlotResponse
 function boxPlotCompute(boxPlotRequest, data)
 	if not boxPlotRequest or not data then error("Arguments must not be nil") end
-	
+
 	for i = 1,#data do
 		local data_i = data[i]
 		if data_i == nil or type(data_i) ~= "number" then
@@ -265,7 +265,7 @@ function boxPlotCompute(boxPlotRequest, data)
 	for i = 1,#data do
 		sum = sum + data[i]
 	end
-	
+
 	local numCoords = #data
 
 	local lowerWhisker
@@ -321,7 +321,7 @@ function boxPlotCompute(boxPlotRequest, data)
 end
 
 -------------------------------------------------------
--- Replicates the survey phase of \pgfplotsplothandlerboxplot 
+-- Replicates the survey phase of \pgfplotsplothandlerboxplot
 BoxPlotPlothandler = newClassExtends(Plothandler)
 
 -- drawDirection : either "x" or "y".
@@ -355,17 +355,17 @@ function BoxPlotPlothandler:surveyend()
 
 	local computed = boxPlotCompute( self.boxPlotRequest, self.boxplotInput )
 
-	local texResult = 
+	local texResult =
 		"\\pgfplotsplothandlersurveyend@boxplot@set{lower whisker}{"  .. toTeXstring(computed.lowerWhisker) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{lower quartile}{" .. toTeXstring(computed.lowerQuartile) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{median}{"         .. toTeXstring(computed.median) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper quartile}{" .. toTeXstring(computed.upperQuartile) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{upper whisker}{"  .. toTeXstring(computed.upperWhisker) .. "}" ..
 		"\\pgfplotsplothandlersurveyend@boxplot@set{sample size}{"    .. toTeXstring(# self.boxplotInput) .. "}"
-		
+
 	self.boxplotInput = nil
 	Plothandler.surveystart(self)
-	
+
 	local outliers = computed.outliers
 	for i =1,#outliers do
 		local outlier = outliers[i]

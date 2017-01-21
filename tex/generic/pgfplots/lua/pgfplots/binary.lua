@@ -12,7 +12,7 @@ else
 	pgfplotsUnpack = unpack;
 end
 
--- Takes a table containing an arbitrary number of integers in the range 0..255 and converts it 
+-- Takes a table containing an arbitrary number of integers in the range 0..255 and converts it
 -- into a binary stream of the corresponding binary chars.
 --
 -- @param charIndices a table containing 0...N arguments; each in the range 0..255
