@@ -75,7 +75,9 @@ else
 		compare -metric MAE $PDFFILE[$SELECTED_PAGE_ZERO_BASED] $REFERENCE_PDFFILE[$SELECTED_PAGE_ZERO_BASED] $DIFF_IMAGE 2>$METRIC_FILE; 
 	fi
 fi; 
-if [ $? -ne 0 ]; then 
+
+# exitcode 2 means error; 1 means "not similar"
+if [ $? -eq 2 ]; then 
 	# error recovery:
 	cat $METRIC_FILE; 
 	rm $METRIC_FILE; 
