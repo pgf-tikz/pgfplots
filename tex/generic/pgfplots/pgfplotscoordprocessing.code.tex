@@ -3061,7 +3061,9 @@
 \def\pgfplotsscanlinelength@nan@initzero{%
 	\def\pgfplotsscanlinelength@nan@isfirst{1}%
 	\let\pgfplotsscanlinelength@nan@pendingwork=\relax
-	\pgfplotsifinaxis{}{\let\pgfplotsaxisserializedatapoint=\relax}%
+	\pgfplotsifinplotsurvey{}{%
+		\let\pgfplotsaxisserializedatapoint=\relax
+	}%
 }%
 \def\pgfplotsscanlinelength@nan@increase{%
 	\def\pgfplotsscanlinelength@nan@isfirst{0}%
@@ -3070,26 +3072,30 @@
 \def\pgfplotsscanlinelength@nan@complete{%
 	\if1\pgfplotsscanlinelength@nan@isfirst
 	\else
-		\def\pgfplotsscanlinelength@nan@pendingwork{%
-			\ifpgfplots@LUA@backend@supported
-				\pgfplotsutil@directlua{pgfplots.texSurveyAddJump()}%
-			\else
-				% this will be executed when the next point has been
-				% found.
-				\def\pgfplots@current@point@x{}%
-				\def\pgfplots@current@point@y{}%
-				\def\pgfplots@current@point@z{}%
-				% simply serialize an empty point. That works -- the
-				% visualization phase checks if the coordinates are empty and
-				% visualizes them as "jump"
+		\pgfplotsifinplotsurvey{%
+			\def\pgfplotsscanlinelength@nan@pendingwork{%
+				\ifpgfplots@LUA@backend@supported
+					\pgfplotsutil@directlua{pgfplots.texSurveyAddJump()}%
+				\else
+					% this will be executed when the next point has been
+					% found.
+					\def\pgfplots@current@point@x{}%
+					\def\pgfplots@current@point@y{}%
+					\def\pgfplots@current@point@z{}%
+					% simply serialize an empty point. That works -- the
+					% visualization phase checks if the coordinates are empty and
+					% visualizes them as "jump"
+					%
+					% Note that \pgfplotsplothandlersurveypoint is not a good
+					% choice here unless one employs its 'unbounded coords=jump'
+					% feature
+					\def\pgfplotsaxisplothasjumps{1}%
+					\pgfplotsaxisserializedatapoint
+				\fi
 				%
-				% Note that \pgfplotsplothandlersurveypoint is not a good
-				% choice here unless one employs its 'unbounded coords=jump'
-				% feature
-				\def\pgfplotsaxisplothasjumps{1}%
-				\pgfplotsaxisserializedatapoint
-			\fi
-			%
+				\let\pgfplotsscanlinelength@nan@pendingwork=\relax
+			}%
+		}{%
 			\let\pgfplotsscanlinelength@nan@pendingwork=\relax
 		}%
 	\fi
@@ -3104,6 +3110,19 @@
 \def\pgfplotsaxisplothasjumps{0}%
 \def\pgfplotsaxisplothasunboundedpointmeta{0}%
 \newif\ifpgfplotsaxisparsecoordinateok
+
+% Possibly values:
+% N = none, is not in \addplot
+% S = survey
+\def\pgfplotsaxisplotphase{N}
+
+\def\pgfplotsifinplotsurvey#1#2{%
+	\if S\pgfplotsaxisplotphase
+		#1%
+	\else
+		#2%
+	\fi
+}%
 
 % Initialises
 % \pgfplots@coord@stream@start
@@ -3164,6 +3183,7 @@
 %
 % @see the detailed documentation in pgfplotsplothandlers.code.tex
 \long\def\pgfplots@PREPARE@COORD@STREAM#1{%
+	\def\pgfplotsaxisplotphase{S}% "in survey"
 	\ifpgfplots@curplot@threedim
 		\global\pgfplots@threedimtrue
 	\fi
