@@ -5477,6 +5477,29 @@
 	\def\pgfplots@addplotimpl@expression@hasuniform@y{0}%
 	%
 	%
+	%
+	% if(
+	% 	x is logarithmic &&
+	% 	#1 == '\x' &&
+	% 	the 'samples at' key has not been used )
+	%  -> sample logarithmically!
+	\def\pgfplots@samples@logarithmically@x{0}%
+	\ifpgfplots@xislinear
+	\else
+		\if\pgfplots@addplotimpl@expression@hasuniform@x1%
+			\ifx\pgfplots@plot@samples@at\pgfutil@empty
+				% we don't have 'samples at' -> use domain!
+				\def\pgfplots@samples@logarithmically@x{1}%
+			\fi
+		\fi
+	\fi
+	\ifpgfplots@curplot@threedim
+		\ifpgfplots@threedim@log@sampling
+		\else
+			\def\pgfplots@samples@logarithmically@x{0}%
+		\fi
+	\fi
+	%
 	% Now, prepare the loops.
 	%
 	% I am using \pgfplotsforeachungrouped in favor of
@@ -5493,13 +5516,16 @@
 		}%
 		\pgfplots@addplotimpl@expression@split@yz#2\pgfplots@EOI%
 		%
-		\ifx\pgfplots@plot@samples@at\pgfutil@empty
-			% we don't have 'samples at' -> use domain!
-			\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
-			\let\pgfplots@expression@xdomain=\pgfplotsretval
+		\if\pgfplots@samples@logarithmically@x1%
 		\else
-			% use 'samples at':
-			\let\pgfplots@expression@xdomain=\pgfplots@plot@samples@at
+			\ifx\pgfplots@plot@samples@at\pgfutil@empty
+				% we don't have 'samples at' -> use domain!
+				\expandafter\pgfplots@domain@to@foreach\pgfplots@plot@domain\relax{\pgfplots@plot@samples}%
+				\let\pgfplots@expression@xdomain=\pgfplotsretval
+			\else
+				% use 'samples at':
+				\let\pgfplots@expression@xdomain=\pgfplots@plot@samples@at
+			\fi
 		\fi
 		%
 		% do we have '\y' as y coordinate?
@@ -5531,26 +5557,64 @@
 			% 	\foreach \y in {-5,-4.6,...,5} {##1};
 			% 		\foreach \x in {-5,-4.6,...,5}
 			%  macro:
-			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain}
-					{%
-						\pgfplots@plot@data@notify@next@y
-						\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
-							\pgfplots@plot@data@notify@next@x
-							##1%
+			\if\pgfplots@samples@logarithmically@x1%
+				% FIXME : implementation UNFINISHED: also support log
+				% sampling in 'y'! (see FIXME in \pgfplotsforeachlogarithmicungrouped)
+				%
+				%
+				\def\pgfplotsforeachlogarithmicmathid{x}% use \pgfplotscoordmath{x}
+				% sample logarithmically:
+				\edef\pgfplots@plot@data##1{%
+					\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain}
+						{%
+							\pgfplots@plot@data@notify@next@y
+							%
+							\noexpand\pgfplotsforeachlogarithmicungrouped[\pgfplots@plot@samples]
+								\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log
+								in {\pgfplots@plot@domain}%
+							{%
+								\pgfplots@plot@data@notify@next@x
+								##1%
+							}%
+							\noexpand\pgfplotsplothandlernotifyscanlinecomplete
 						}%
-						\noexpand\pgfplotsplothandlernotifyscanlinecomplete
 					}%
-				}%
+			\else
+				\edef\pgfplots@plot@data##1{%
+					\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\pgfplots@plot@var@y in {\pgfplots@expression@ydomain}
+						{%
+							\pgfplots@plot@data@notify@next@y
+							\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
+								\pgfplots@plot@data@notify@next@x
+								##1%
+							}%
+							\noexpand\pgfplotsplothandlernotifyscanlinecomplete
+						}%
+					}%
+			\fi
 		\else
 			% sample a line:
 			\def\pgfplots@plot@ydomain{0:0}%
-			\edef\pgfplots@plot@data##1{%
-				\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
-					\pgfplots@plot@data@notify@next@x
-					##1%
+			\if\pgfplots@samples@logarithmically@x1%
+				\def\pgfplotsforeachlogarithmicmathid{x}% use \pgfplotscoordmath{x}
+				% sample logarithmically:
+				\edef\pgfplots@plot@data##1{%
+					\noexpand\pgfplotsforeachlogarithmicungrouped[\pgfplots@plot@samples]
+					\expandafter\noexpand\tikz@plot@var/\noexpand\pgfplots@current@point@x@log
+						in {\pgfplots@plot@domain}%
+					{%
+						\pgfplots@plot@data@notify@next@x
+						##1%
+					}%
 				}%
-			}%
+			\else
+				\edef\pgfplots@plot@data##1{%
+					\noexpand\pgfplotsforeachungrouped\expandafter\noexpand\tikz@plot@var in {\pgfplots@expression@xdomain} {%
+						\pgfplots@plot@data@notify@next@x
+						##1%
+					}%
+				}%
+			\fi
 			%
 			% If we have (\x,\y,f(x)), use (\x,0,f(x)) instead and
 			% suppress the error message which would occur for \y.
@@ -5564,24 +5628,7 @@
 	\else
 		% Assemble a
 		% \pgfplots@plot@data##1 -> \foreach \x in {-5,-4.6,...,5} {##1} macro:
-		%
-		%
-		% if(
-		% 	x is logarithmic &&
-		% 	#1 == '\x' &&
-		% 	the 'samples at' key has not been used )
-		%  -> sample logarithmically!
-		\def\pgfplots@samples@logarithmically{0}%
-		\ifpgfplots@xislinear
-		\else
-			\if\pgfplots@addplotimpl@expression@hasuniform@x1%
-				\ifx\pgfplots@plot@samples@at\pgfutil@empty
-					% we don't have 'samples at' -> use domain!
-					\def\pgfplots@samples@logarithmically{1}%
-				\fi
-			\fi
-		\fi
-		\if\pgfplots@samples@logarithmically1%
+		\if\pgfplots@samples@logarithmically@x1%
 			\def\pgfplotsforeachlogarithmicmathid{x}% use \pgfplotscoordmath{x}
 			% sample logarithmically:
 			\edef\pgfplots@plot@data##1{%
@@ -5593,26 +5640,6 @@
 					##1%
 				}%
 			}%
-			%  we have a logarithmic sampling sequence,
-			% \pgfplots@current@point@x@log is already available
-			% logarithmic! We can safe time and accuracy for the x
-			% coordinate by using that one instead of computing
-			% log(exp(\x)) numerically:
-			\pgfplots@disablelogfilter@xtrue
-			\def\pgfplots@addplotimpl@expression@prepare@x{%
-				\let\pgfplots@current@point@x=\pgfplots@current@point@x@log
-			}%
-			\pgflibraryfpuifactive
-				{\relax}
-				{%
-					% ok, if the FPU is NOT active, we should return
-					% results as fixed points.
-					% We need to configure that for
-					% \pgfplotsforeachlogarithmicungrouped manually:
-					\pgfplotsforeachlogarithmicformatresultwith{%
-						\pgfmathfloattofixed{\pgfmathresult}%
-					}%
-				}%
 		\else
 			\ifx\pgfplots@plot@samples@at\pgfutil@empty
 				% we don't have 'samples at' -> use domain!
@@ -5637,6 +5664,28 @@
 	\fi
 	%
 	%
+	\if\pgfplots@samples@logarithmically@x1%
+		%  we have a logarithmic sampling sequence,
+		% \pgfplots@current@point@x@log is already available
+		% logarithmic! We can safe time and accuracy for the x
+		% coordinate by using that one instead of computing
+		% log(exp(\x)) numerically:
+		\pgfplots@disablelogfilter@xtrue
+		\def\pgfplots@addplotimpl@expression@prepare@x{%
+			\let\pgfplots@current@point@x=\pgfplots@current@point@x@log
+		}%
+		\pgflibraryfpuifactive
+			{\relax}
+			{%
+				% ok, if the FPU is NOT active, we should return
+				% results as fixed points.
+				% We need to configure that for
+				% \pgfplotsforeachlogarithmicungrouped manually:
+				\pgfplotsforeachlogarithmicformatresultwith{%
+					\pgfmathfloattofixed{\pgfmathresult}%
+				}%
+			}%
+	\fi
 	% START:
 	%  (NOTE: this does also define 'x', 'y', and 'z' math
 	%  expressions!)
