@@ -794,16 +794,16 @@ end
 -- @param pt an instance of Coord
 function Axis:updatelimitsforcoordinate(pt)
     local isClipped = false
-	for i = 1,self:loopMax(),1 do
-		if self.clipLimits[i] then
+    for i = 1,self:loopMax(),1 do
+        if self.clipLimits[i] then
             if not self.autocomputeMin[i] then
                 isClipped = isClipped or pt.x[i] < self.min[i]
             end
             if not self.autocomputeMax[i] then
                 isClipped = isClipped or pt.x[i] > self.max[i]
             end
-		end
-	end
+        end
+    end
 
     if not isClipped then
         for i = 1,self:loopMax(),1 do
