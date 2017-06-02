@@ -146,30 +146,32 @@ cleanX:
 %.diff: %.pdf references/%.pdf
 	@echo "$<: diffing --> $@ ..."
 	@# touch diff.png in case the diff routine fails -- we want to see it in the error report counts
-	./pdfdiff.sh $< references/$< $@ || touch $@.png
+	@./pdfdiff.sh $< references/$< $@ || touch $@.png
 	@if [ "`cat $@`" = "0 (0)" ]; then \
 		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
 		rm -f $@.png $<.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@ $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
 		#echo "$<: found nonzero pixel differences `cat $@`."; \
 		sed -e 's/.*(\(.*\)).*/\1/' < $@  > $@.normalized || exit 1; \
+		\
+		ACCEPTED_ERROR=$(ACCEPTED_NORMALIZED_ERROR); \
+		if [ -f "$@.accepted" ]; then \
+			sed -e 's/.*(\(.*\)).*/\1/' < "$@.accepted"  > $@.accepted.normalized || exit 1; \
+			ACCEPTED_ERROR=`cat "$@.accepted.normalized"`; \
+			rm -f "$@.accepted.normalized"; \
+		fi;\
+		\
 		NORMALIZED=`cat $@.normalized`; \
 		rm -f $@.normalized; \
-		calc -p "$$NORMALIZED < $(ACCEPTED_NORMALIZED_ERROR)" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
-		if [ ! -f $@.accepted -a "`cat $@.isaccepted`" = "1" ]; then \
-			echo "  PASSED: only approved differences `cat $@` detected and no *.accepted (less than $(ACCEPTED_NORMALIZED_ERROR); moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
-			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
-			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
-			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
-			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
-		elif [ -f $@.accepted -a "`cat $@`" = "`cat $@.accepted`" ]; then \
-			echo "  PASSED: only manually approved differences `cat $@` detected (moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+		calc -p "$$NORMALIZED <= $$ACCEPTED_ERROR" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
+		if [ "`cat $@.isaccepted`" = "1" ]; then \
+			echo "  PASSED: only approved differences $$NORMALIZED <= $$ACCEPTED_ERROR detected; moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
 			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			rm -f $@.png $<.png; # no need to keep the images (the latter for multi-page mode). \
 		else \
-			echo "  FAILURE: found pixel differences for $<: " `cat $@`; \
+			echo "  FAILURE: pixel differences for $<: $$NORMALIZED > $$ACCEPTED_ERROR"; \
 			echo "  (if not a bug: 'echo \"`cat $@`\" > $@.accepted')"; \
 			echo "  Call './displayDiff.sh $@.png' (see summarize of regressions.sh)"; \
 			rm $@; # make sure it will be recomputed! \
