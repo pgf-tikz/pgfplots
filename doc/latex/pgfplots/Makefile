@@ -59,7 +59,7 @@ html: FORCE
 # This _needs_ pdflatex:
 pgfplotstodo.pdf: revisionfile FORCE
 	mkdir -p gnuplot
-	@$(TEXMFCNF_FOR_MEMLIMITS) && pdflatex -shell-escape $(@:.pdf=.tex)
+	@$(TEXMFCNF_FOR_MEMLIMITS) && lualatex -shell-escape $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
 	@echo ""
