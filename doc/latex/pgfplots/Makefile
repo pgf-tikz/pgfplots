@@ -1,8 +1,8 @@
 # needs (at least):
 # $ tlmgr install zapfding symbol units
 
-# PDFLATEX=pdflatex -shell-escape
-PDFLATEX=lualatex -shell-escape
+# LATEX=pdflatex -shell-escape
+LATEX=lualatex -shell-escape
 
 all: pgfplots.pdf pgfplotstable.pdf TeX-programming-notes.pdf pgfplotstodo.pdf
 	@echo "$^ have been compiled successfully. I did NOT check for references, so you may need to rerun make several times."
@@ -35,7 +35,7 @@ TeX-programming-notes.pdf: revisionfile FORCE
 
 %.pdf: revisionfile FORCE
 	mkdir -p gnuplot
-	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) $(@:.pdf=.tex)
+	@$(TEXMFCNF_FOR_MEMLIMITS) && $(LATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
 	@echo ""
@@ -49,26 +49,17 @@ html: FORCE
 	cd html && ln -f -s ../*.tex ../*.sty ../*.dat ../plotdata .
 	cd html/figures && ln -f -s `find ../../figures ! -name 'expensive*' -type f` .
 	@cd html && \
-		$(PDFLATEX) '\def\pgfplotsmanualhtlatexmode{1} \input pgfplots.tex'
+		$(LATEX) '\def\pgfplotsmanualhtlatexmode{1} \input pgfplots.tex'
 	@cd html && \
 		$(TEXMFCNF_FOR_MEMLIMITS) && \
 		make -k -f pgfplots.makefile
 	@cd html && \
 		htlatex pgfplots.tex "../pgfplots.tex4ht.cfg"
 	
-# This _needs_ pdflatex:
-pgfplotstodo.pdf: revisionfile FORCE
-	mkdir -p gnuplot
-	@$(TEXMFCNF_FOR_MEMLIMITS) && lualatex -shell-escape $(@:.pdf=.tex)
-	@bibtex $(@:.pdf=) || exit 0
-	@makeindex $(@:.pdf=) || exit 0
-	@echo ""
-	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
-
 pgfplots.pdf: $(ALL_FIGURES)
 
 pgfplots.makefile:
-	@$(TEXMFCNF_FOR_MEMLIMITS) && $(PDFLATEX) pgfplots
+	@$(TEXMFCNF_FOR_MEMLIMITS) && $(LATEX) pgfplots
 
 clean:
 	rm -f *.aux *.ind *.idx *.toc *.out *.log *.ilg *.dvi pgfplots.makefile pgfplots.pdf pgfplotstable.pdf *.djs *.bbl *.blg figures/expensiveexample*
