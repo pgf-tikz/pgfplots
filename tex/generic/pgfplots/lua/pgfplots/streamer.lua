@@ -125,6 +125,8 @@ function AddplotExpressionCoordinateGenerator:generateCoords()
 		local Z = nil
 		if is3d then
 			Z = pgfmathparse(zExpr)
+		else
+			-- FIXME BUG: we need to do something else with 'Z' if this is a 2d plot inside of a 3d axis!
 		end
 
 		local pt = Coord.new()
