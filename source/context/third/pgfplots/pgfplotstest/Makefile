@@ -1,3 +1,4 @@
+# ATTENTION: this may need ~/context/tex/setuptex in advance
 
 all: mkii mkiv
 
