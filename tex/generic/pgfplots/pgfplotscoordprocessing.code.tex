@@ -7628,9 +7628,26 @@
 % /data point/z
 % /data point/meta
 \def\pgfplotspointgetcoordinates{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplotspointgetcoordinates@frompgfpoint
+	}{%	
+		\pgfplotspointgetcoordinates@currentpoint
+	}%
+}%
+\def\pgfplotspointgetcoordinates@frompgfpoint#1{%
+	\pgfplotspointgetnormalizedcoordinates{#1}%
+	\pgfplotspointgetcoordinatesfromnormalized
+}%
+\def\pgfplotspointgetcoordinates@currentpoint{%
 	\pgfplotspointgetnormalizedcoordinates
 	\pgfplotspointgetcoordinatesfromnormalized
 }%
+
+\def\pgfplotspointgetnormalizedcoordinates@@@x{undefined}
+\def\pgfplotspointgetnormalizedcoordinates@@@y{undefined}
+\def\pgfplotspointgetnormalizedcoordinates@@@z{undefined}
+\let\pgfplotspointgetnormalizedcoordinates@@@index=\pgfutil@empty
+\let\pgfplotspointgetnormalizedcoordinates@@@meta=\pgfutil@empty
 
 % PRECONDITION: \pgfplots@current@point@x and its variants is given in
 % TRANSFORMED format, i.e. we assume that we are in the visualization
@@ -7643,7 +7660,7 @@
 	% computation due to the LUA backend in which case remembering it
 	% leads to extensive (=expensive?) communication between lua and
 	% TeX. Does it hurt here? Scatter plots compute this stuff...
-	\expandafter\let\expandafter\pgfplotsretval\csname pgfplots@current@point@#1\endcsname
+	\expandafter\let\expandafter\pgfplotsretval\csname pgfplotspointgetnormalizedcoordinates@@@#1\endcsname
 	\ifx\pgfplotsretval\pgfutil@empty
 	\else
 		\pgfplots@if{pgfplots@apply@datatrafo@#1}{%
@@ -7656,6 +7673,34 @@
 % Same as \pgfplotspointgetcoordinates, but the resulting values are
 % for use in 'normalized axis cs'.
 \def\pgfplotspointgetnormalizedcoordinates{%
+	\pgfutil@ifnextchar\bgroup{%
+		\pgfplotspointgetnormalizedcoordinates@frompgfpoint
+	}{%
+		\pgfplotspointgetnormalizedcoordinates@currentpoint
+	}%
+}
+\def\pgfplotspointgetnormalizedcoordinates@frompgfpoint#1{%
+	\pgf@process{#1}%
+	\pgfplotsconvertunittocoordinate{x}{\pgf@x}%
+	\let\pgfplotspointgetnormalizedcoordinates@@@x=\pgfmathresult
+	\pgfplotsconvertunittocoordinate{y}{\pgf@y}%
+	\let\pgfplotspointgetnormalizedcoordinates@@@y=\pgfmathresult
+	\let\pgfplotspointgetnormalizedcoordinates@@@z=\pgfutil@empty
+	\let\pgfplotspointgetnormalizedcoordinates@@@index=\pgfutil@empty
+	\let\pgfplotspointgetnormalizedcoordinates@@@meta=\pgfutil@empty
+	%
+	\pgfplotspointgetnormalizedcoordinates@internal%
+}%
+
+\def\pgfplotspointgetnormalizedcoordinates@currentpoint{%
+	\let\pgfplotspointgetnormalizedcoordinates@@@x=\pgfplots@current@point@x
+	\let\pgfplotspointgetnormalizedcoordinates@@@y=\pgfplots@current@point@y
+	\let\pgfplotspointgetnormalizedcoordinates@@@z=\pgfplots@current@point@z
+	\let\pgfplotspointgetnormalizedcoordinates@@@meta=\pgfplots@current@point@meta
+	\let\pgfplotspointgetnormalizedcoordinates@@@index=\pgfplots@current@point@coordindex
+	\pgfplotspointgetnormalizedcoordinates@internal
+}
+\def\pgfplotspointgetnormalizedcoordinates@internal{%
 	\pgfplotspointgetnormalizedcoordinates@ x%
 	\pgfkeyslet{/data point/x}\pgfplotsretval
 	%
@@ -7669,8 +7714,8 @@
 		\pgfkeyslet{/data point/z}\pgfutil@empty
 	\fi
 	%
-	\pgfkeyslet{/data point/meta}\pgfplots@current@point@meta
-	\edef\pgfplots@loc@TMPa{\pgfplots@current@point@coordindex}%
+	\pgfkeyslet{/data point/meta}\pgfplotspointgetnormalizedcoordinates@@@meta
+	\edef\pgfplots@loc@TMPa{\pgfplotspointgetnormalizedcoordinates@@@index}%
 	\pgfkeyslet{/data point/index}\pgfplots@loc@TMPa
 }%
 
@@ -7725,14 +7770,18 @@
 	\pgfplots@glob@TMPa
 }%
 \def\pgfplotspointgetcoordinatesfromnormalized@transform#1#2{%
-	\pgfplots@if{pgfplots@#1islinear}{%
-		\pgfplotscoordmath{#1}{tofixed}{#2}%
-	}{%
-		\pgfplotscoordmath{#1}{exp}{#2}%
-	}%
-	\let#2=\pgfmathresult
-	\pgfplots@coord@inv@trafo@apply{#1}{#2}%
-	\let#2=\pgfmathresult
+	\edef\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfplots@if{pgfplots@#1islinear}{%
+			\pgfplotscoordmath{#1}{tofixed}{#2}%
+		}{%
+			\pgfplotscoordmath{#1}{exp}{#2}%
+		}%
+		\let#2=\pgfmathresult
+		\pgfplots@coord@inv@trafo@apply{#1}{#2}%
+		\let#2=\pgfmathresult
+	\fi
 }%
 
 % Defines an optimized and matching \pgfplotsaxisvisphasetransformcoordinate
