@@ -61,6 +61,12 @@
 	%
 	% 'end' has no arguments.
 	/pgf/fill between/result stream/end/.code=,%
+	%
+	/pgf/fill between/omit empty segments/.is choice,
+	/pgf/fill between/omit empty segments/.default=true,
+	/pgf/fill between/omit empty segments/false/.code=\def\pgfpathfillbetween@omit@empty@segments{0},%
+	/pgf/fill between/omit empty segments/true/.code=\def\pgfpathfillbetween@omit@empty@segments{1},%
+	/pgf/fill between/omit empty segments/true,
 }%
 
 % \pgfpathfillbetween[<options>]{<first path>}{<second path>}
@@ -282,22 +288,79 @@
 		\pgferror{Illegal internal state encountered: the number segments induced by the intersection points of the two paths DIFFER between the first and the second path: first path has \pgfpathfilled@a@segments\space whereas the second has \pgfpathfilled@b@segments.}%
 	\fi
 	%
-	\pgfkeys{/pgf/fill between/result stream/begin=\pgfpathfilled@a@segments}%
-	% Recombine the pairs of segments (a_i, b_i), i = 0,..., N-1 in a
-	% filled way:
+	% STEP 1: find out if there are empty segments. Numerical
+	% inaccuracies occasionally result in such segments; we silently
+	% skip them.
+	\def\c@pgfpathfilled@nonemptysegments{0}%
 	\def\c@pgfpathfilled@counter{0}%
 	\pgfmathloop
 	\ifnum\c@pgfpathfilled@counter<\pgfpathfilled@a@segments\relax
 		\expandafter\let\expandafter\pgf@loc@path@a\csname pgf@intersect@path@split@a@\c@pgfpathfilled@counter\endcsname
 		\expandafter\let\expandafter\pgf@loc@path@b\csname pgf@intersect@path@split@b@\c@pgfpathfilled@counter\endcsname
 		%
-		\pgfpathfillbetween@compute{\pgf@loc@path@a}{\pgf@loc@path@b}%
-		% report to the result stream. It knows how to deal with it:
-		\pgfpathfillbetween@invoke{result stream/next ready}%
+		\if1\pgfpathfillbetween@omit@empty@segments
+			\pgfpathfillbetween@compute@checkempty{\pgf@loc@path@a}%
+			% A segment is empty if BOTH of its input segments are empty:
+			\if1\pgfretval
+				\pgfpathfillbetween@compute@checkempty{\pgf@loc@path@b}%
+				\if1\pgfretval
+					\pgfutil@IfUndefined{pgfplots@log}{}{%
+						\pgfplots@log4{fillbetween: skipping empty intersection segment no \c@pgfpathfilled@counter}%
+					}%
+					\expandafter\def\csname pgf@interset@path@empty@\c@pgfpathfilled@counter\endcsname{1}%
+				\else
+					\expandafter\def\csname pgf@interset@path@empty@\c@pgfpathfilled@counter\endcsname{0}%
+					\pgfutil@advancestringcounter\c@pgfpathfilled@nonemptysegments
+				\fi
+			\else
+				\expandafter\def\csname pgf@interset@path@empty@\c@pgfpathfilled@counter\endcsname{0}%
+				\pgfutil@advancestringcounter\c@pgfpathfilled@nonemptysegments
+			\fi
+		\else
+			\expandafter\def\csname pgf@interset@path@empty@\c@pgfpathfilled@counter\endcsname{0}%
+			\pgfutil@advancestringcounter\c@pgfpathfilled@nonemptysegments
+		\fi
 		%
 		\pgfutil@advancestringcounter\c@pgfpathfilled@counter
 	\repeatpgfmathloop
-	\pgfpathfillbetween@invoke{result stream/end}%
+	%
+	\ifnum\c@pgfpathfilled@nonemptysegments=0
+	\else
+		\pgfkeys{/pgf/fill between/result stream/begin=\c@pgfpathfilled@nonemptysegments}%
+		% Recombine the pairs of segments (a_i, b_i), i = 0,..., N-1 in a
+		% filled way:
+		\def\c@pgfpathfilled@counter{0}%
+		\pgfmathloop
+		\ifnum\c@pgfpathfilled@counter<\pgfpathfilled@a@segments\relax
+			\if0\csname pgf@interset@path@empty@\c@pgfpathfilled@counter\endcsname
+				\expandafter\let\expandafter\pgf@loc@path@a\csname pgf@intersect@path@split@a@\c@pgfpathfilled@counter\endcsname
+				\expandafter\let\expandafter\pgf@loc@path@b\csname pgf@intersect@path@split@b@\c@pgfpathfilled@counter\endcsname
+				%
+				\pgfpathfillbetween@compute{\pgf@loc@path@a}{\pgf@loc@path@b}%
+				% report to the result stream. It knows how to deal with it:
+				\pgfpathfillbetween@invoke{result stream/next ready}%
+				%
+			\fi
+			\pgfutil@advancestringcounter\c@pgfpathfilled@counter
+		\repeatpgfmathloop
+		\pgfpathfillbetween@invoke{result stream/end}%
+	\fi
+}
+
+\def\pgflibraryfillbetweenemptysegmenttolerance{1pt}
+
+\def\pgfpathfillbetween@compute@checkempty#1{%
+	\def\pgfretval{0}%
+	\pgf@compute@BB{#1}%
+	\advance\pgf@xb by-\pgf@xa
+	\advance\pgf@yb by-\pgf@ya
+	% if one of the dimensions is empty, the segment is empty:
+	\ifdim\pgf@xb<\pgflibraryfillbetweenemptysegmenttolerance\relax
+		\def\pgfretval{1}%
+	\fi
+	\ifdim\pgf@yb<\pgflibraryfillbetweenemptysegmenttolerance\relax
+		\def\pgfretval{1}%
+	\fi
 }
 
 \def\pgfpathfillbetween@compute#1#2{%
@@ -369,6 +432,37 @@
 \def\pgfpathfillbetween@get@first@coord#1#2#3#4\pgf@stop{%
 	\def\pgfretval{{#2}{#3}}%
 }%
+
+% assigns the bounding box of path #1 to 
+% (pgf@xa , pgf@ya) = (minx,miny)
+% (pgf@xb , pgf@yb) = (maxx,maxy)
+\def\pgf@compute@BB#1{%
+	\begingroup
+	\dimendef\pgf@pathmaxx=0 %
+	\dimendef\pgf@pathminx=1 %
+	\dimendef\pgf@pathmaxy=2 %
+	\dimendef\pgf@pathminy=3 %
+	\pgf@pathmaxx=-16000pt\relax%
+	\pgf@pathminx=16000pt\relax%
+	\pgf@pathmaxy=-16000pt\relax%
+	\pgf@pathminy=16000pt\relax%
+	\let\pgf@protocolsizes=\pgf@compute@BB@protocol@sizes
+	\expandafter\pgfsetpath@loop#1\pgf@stop
+	\xdef\pgf@marshal{%
+		\pgf@xa=\the\pgf@pathminx\relax
+		\pgf@ya=\the\pgf@pathminy\relax
+		\pgf@xb=\the\pgf@pathmaxx\relax
+		\pgf@yb=\the\pgf@pathmaxy\relax
+	}%
+	\endgroup
+	\pgf@marshal
+}%
+\def\pgf@compute@BB@protocol@sizes#1#2{%
+  \ifdim#1<\pgf@pathminx\pgf@pathminx#1\fi%
+  \ifdim#1>\pgf@pathmaxx\pgf@pathmaxx#1\fi%
+  \ifdim#2<\pgf@pathminy\pgf@pathminy#2\fi%
+  \ifdim#2>\pgf@pathmaxy\pgf@pathmaxy#2\fi%
+}
 
 % A utility function like \pgfsetpath which calls \pgfsetpath *and* protocols
 % the size of each path segment (i.e. compute the bounding box).
