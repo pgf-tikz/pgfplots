@@ -1775,6 +1775,10 @@
 		\edef\pgfplots@RHS{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
 		%
 		\pgfutilsolvetwotwoleq{\pgfplots@LEQ}{\pgfplots@RHS}%
+		\ifx\pgfmathresult\pgfutil@empty
+			\pgfplots@error{Singular matrix encountered while computing boundary anchor. Please choose different values.}%
+			\def\pgfmathresult{0}{0}%
+		\fi
 		\def\pgfplots@extract##1##2{%
 			\def\pgfplots@r{##1}%
 		}%
@@ -7441,8 +7445,28 @@
 % #1 the target which will contain the filter
 % #2 a math expression.
 \def\pgfplots@install@filter@expression#1#2{%
-	\pgfkeysdef{/pgfplots/#1}{\pgfplots@filter@expression{#1}}%
+	\pgfkeysdef{/pgfplots/#1}{%
+		% DO NOT MODIFY THIS VALUE without also modifying 
+		%  \pgfplots@ifisfilterexpression!
+		\pgfplots@filter@expression{#1}%
+	}%
+	%
+	% remember for lua backend:
 	\pgfkeyssetvalue{/pgfplots/#1/@expressionvalue}{#2}%
+}%
+% #1 the target which will contain the filter
+% #2 a math expression.
+\def\pgfplots@install@filter@expression@append#1#2{%
+	\pgfkeysgetvalue{/pgfplots/#1/.@cmd}\pgfplots@loc@TMPc
+	\ifx\pgfplots@loc@TMPc\pgfplots@empty@command@key
+		% ok, this is the first filter. Make sure it can also be
+		% processed by the lua backend
+		\pgfplots@install@filter@expression{#1}{#2}%
+	\else
+		% there is a subtle difference to /.expression: this here CANNOT
+		% be processed by the lua backend!
+		\pgfkeysalso{/pgfplots/#1/.append code={\pgfplots@filter@expression@{#1}{#2}}}%
+	\fi
 }%
 
 % Executes #2 if the filter key was defined by
@@ -7461,14 +7485,18 @@
 	\fi
 }%
 
-% the key name (example: 'x filter')
+% #1 the key name (example: 'x filter')
 \def\pgfplots@filter@expression#1{%
+	\pgfplots@filter@expression@{#1}{\pgfkeysvalueof{/pgfplots/#1/@expressionvalue}}%
+}%
+% #1 the key name (example: 'x filter')
+% #2 the expression
+\def\pgfplots@filter@expression@#1#2{%
 	\begingroup
 	\pgfkeys{/pgf/fpu=true,%
 		/pgf/fpu/output format=float,%
 	}%
-	\pgfkeysgetvalue{/pgfplots/#1/@expressionvalue}\pgfplots@loc@TMPa
-	\pgfmathparse{\pgfplots@loc@TMPa}%
+	\pgfmathparse{#2}%
 	\pgfmath@smuggleone\pgfmathresult
 	\endgroup
 }%
