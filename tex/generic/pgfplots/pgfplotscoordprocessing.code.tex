@@ -2844,6 +2844,7 @@
 	\let\pgfplots@current@point@y=\pgfutil@empty
 	\let\pgfplots@current@point@z=\pgfutil@empty
 	\let\pgfplots@current@point@meta=\pgfutil@empty
+	\let\pgfplots@current@point@coordinatestyle=\pgfutil@empty
 	\let\pgfplots@current@point@error@x@plus=\pgfutil@empty
 	\let\pgfplots@current@point@error@x@minus=\pgfutil@empty
 	\let\pgfplots@current@point@error@y@plus=\pgfutil@empty
@@ -3284,6 +3285,10 @@
 			%
 			\ifpgfplots@errorbars@enabled
 				\E\pgfplots@errorbars@survey@point
+			\fi
+			%
+			\if1\b@has@pgfplots@colordinate@style
+				\E\pgfplots@get@matching@coordinate@styles@surveyphase
 			\fi
 			%
 			\ifpgfplots@collect@firstplot@astick
@@ -4179,7 +4184,12 @@
 	\let\protect=\pgfplots@oldprotect
 	\t@pgfplots@toka=\expandafter{\pgfplotsaxisserializedatapoint@val}%
 	\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
-	\edef\pgfplotsretval{{\the\t@pgfplots@tokb;\the\t@pgfplots@toka}}%
+	\if1\b@has@pgfplots@colordinate@style
+		\t@pgfplots@tokc\expandafter{\expandafter{\pgfplots@current@point@coordinatestyle}}%
+	\else
+		\t@pgfplots@tokc={}%
+	\fi
+	\edef\pgfplotsretval{{\the\t@pgfplots@tokb;\the\t@pgfplots@tokc\the\t@pgfplots@toka}}%
 }%
 
 \def\pgfplotsaxisserializedatapoint{%
@@ -4200,7 +4210,15 @@
 % parts which can be read with
 % \pgfplotsaxisdeserializedatapointfrom@private)
 \def\pgfplotsaxisdeserializedatapointfrom#1{%
-	\expandafter\pgfplotsaxisdeserializedatapointfrom@#1\pgfplots@EOI
+	\if1\b@has@pgfplots@colordinate@style
+		\expandafter\pgfplotsaxisdeserializedatapointfrom@@#1\pgfplots@EOI
+	\else
+		\expandafter\pgfplotsaxisdeserializedatapointfrom@#1\pgfplots@EOI
+	\fi	
+}%
+\def\pgfplotsaxisdeserializedatapointfrom@@#1;#2#3\pgfplots@EOI{%
+	\pgfplotsaxisdeserializedatapointfrom@{#1};{#3}\pgfplots@EOI
+	\def\pgfplots@current@point@coordinatestyle{#2}%
 }%
 \def\pgfplotsaxisdeserializedatapointfrom@#1;#2\pgfplots@EOI{%
 	\def\pgfplotsaxisdeserializedatapointfrom@private@lastvalue{#1}%
@@ -9718,4 +9736,43 @@
     \immediate\closeout\pgf@shellwrite%
     \pgfplots@shellescape{sh #1.sh > #1.out}
   \fi%
+}
+
+% Defines \pgfplots@current@point@coordinatestyle to be the list of options resulting from the evaluation of all matching 'coordinate style' expressions.
+\def\pgfplots@get@matching@coordinate@styles@surveyphase{%
+	\let\pgfplots@current@point@coordinatestyle=\pgfutil@empty
+	% ##1: operation mode
+	% ##2: key
+	% ##3: value
+	\def\pgfplots@coordinate@style@process##1##2##3{%
+		\if E##1% Ah : an expression.
+			\pgfmathifexpression{##2}{%
+				\expandafter\def\expandafter\pgfplots@current@point@coordinatestyle\expandafter{\pgfplots@current@point@coordinatestyle,%
+					##3%
+				}%
+			}{}%
+		\else
+			\if V##1% Ah : an .from
+				\edef\pgfplots@loc@TMPc{##2}%
+				\t@pgfplots@toka=\expandafter{\pgfplots@current@point@coordinatestyle}%
+				\t@pgfplots@tokb=\expandafter{\pgfplots@loc@TMPc}%
+				\edef\pgfplots@current@point@coordinatestyle{%
+					\the\t@pgfplots@toka,%
+					\the\t@pgfplots@tokb
+				}%
+			\else
+				\pgfplots@get@matching@coordinate@styles@surveyphase@err{##1}%
+			\fi
+		\fi
+	}%
+	\pgfplotsapplistXlet\pgfplots@loc@TMPb=\pgfplots@coordinate@style@list
+	\expandafter\pgfplotsutilforeachcommasep\pgfplots@loc@TMPb\as\pgfplots@loc@TMPa{%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\expandafter\pgfplots@coordinate@style@process\pgfplots@loc@TMPa
+		\fi
+	}%
+}%
+\def\pgfplots@get@matching@coordinate@styles@surveyphase@err#1#2#3{%
+	\pgfplots@error{Encountered unexpected internal value of 'coordinate style: #1}%
 }
