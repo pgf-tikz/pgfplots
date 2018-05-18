@@ -62,6 +62,7 @@
 \newif\ifpgfplots@tableread@to@listener
 \newif\ifpgfplots@tableread@use@begingroup
 \newif\ifpgfplotstable@trimcells
+\newif\ifpgfplotstable@percent@is@letter
 \newif\ifpgfplotstable@search@path@implicit@CWD
 
 \pgfkeys{%
@@ -146,6 +147,7 @@
 	/pgfplots/table/ignore chars/.initial=,
 	/pgfplots/table/white space chars/.initial=,
 	/pgfplots/table/text special chars/.initial=,
+	/pgfplots/table/percent is letter/.is if=pgfplotstable@percent@is@letter,
 	/pgfplots/table/comment chars/.initial=,
 	/pgfplots/table/skip first n/.initial=0,
 	/pgfplots/table/trim cells/.is if=pgfplotstable@trimcells,
@@ -156,6 +158,7 @@
 	/pgfplots/table/read completely/auto/.code=\pgfplots@addplotimpl@readcompletelyfalse\def\pgfplots@addplotimpl@readcompletely@auto{1},
 	/pgfplots/table/read completely/.default=true,
 	/pgfplots/table/read completely=auto,
+	/pgfplots/table/text indicator/.initial=,
 	/pgfplots/table/col sep/.is choice,
 	/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},
 	/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},
@@ -651,6 +654,7 @@
 			\noexpand\catcode`\noexpand\ =\the\catcode`\ \noexpand\space
 			\noexpand\catcode`\noexpand\;=\the\catcode`\;\noexpand\space
 			\noexpand\catcode`\noexpand\:=\the\catcode`\:\noexpand\space
+			\noexpand\catcode`\noexpand\%=\the\catcode`\%\noexpand\space
 			\noexpand\catcode`\noexpand\^^I=\the\catcode`\^^I\noexpand\space
 			\noexpand\let\noexpand\pgfplotstablereadrestorecatcodes=\noexpand\relax
 		}%
@@ -664,6 +668,10 @@
 	\fi
 }
 \let\pgfplotstablereadrestorecatcodes=\relax
+
+% ATTENTION: the following catcodes are ONLY useful for <inline tables>!
+% tables read from file need catcode adoptions as well; this is done
+% elsewhere!
 \def\pgfplotstablereadpreparecatcodes@{%
 	\if0\pgfplotstableread@ROWSEP@CASE\relax
 		% row sep = newline
@@ -1052,6 +1060,10 @@
 		\else
 			\pgfplotstableinstallignorechars@\pgfplotstable@loc@TMPa{12}%
 		\fi
+		\ifpgfplotstable@percent@is@letter
+			\def\pgfplotstable@loc@TMPa{\%}%
+			\pgfplotstableinstallignorechars@\pgfplotstable@loc@TMPa{12}%
+		\fi
 		\ifx\pgfplotstableuninstallignorechars\pgfutil@empty
 		\else
 			\expandafter\def\expandafter\pgfplotstableuninstallignorechars\expandafter{%
@@ -1115,6 +1127,8 @@
 	\pgfplotstableread@countreset\pgfplotstableread@curcol
 	%
 	\pgfplotstableread@impl@prepare@DO
+	\pgfplotstableread@impl@prepare@DO@textindicator
+	%
 	\def\pgfplotstableread@isgnuplotformat{0}%
 	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
 	\pgfplotsscanlinelengthinitzero
@@ -1218,6 +1232,7 @@
 %\pgfplots@message{EOF}%
 	\else
 		\read\r@pgfplots@reada to\pgfplotstable@LINE
+%\message{read with \the\catcode`\%: \meaning\pgfplotstable@LINE^^J}%
 		\ifeof\r@pgfplots@reada
 		\else
 			\pgfplotstableread@loop@processnextline
@@ -1310,7 +1325,10 @@
 		\fi
 		\ifnum\pgfplotstableread@curcol=\pgfplotstableread@numcols\relax
 		\else
-			\pgfplotsthrow{table columns unbalanced}{input table '\pgfplotstableread@filename' has an unbalanced number  of columns in row '\thepgfplotstableread@lineno' (expected '\thepgfplotstableread@numcols' cols; got '\thepgfplotstableread@curcol'). Maybe the input table is corrupted? If you need unbalanced data, consider using 'nan' in empty cells (perhaps combined with 'unbounded coords=jump')}\pgfeov%
+			\begingroup
+			\t@pgfplots@tokc=\expandafter{\pgfplotstable@LINE}%
+			\pgfplotsthrow{table columns unbalanced}{input table '\pgfplotstableread@filename' has an unbalanced number  of columns in row '\thepgfplotstableread@lineno' (expected '\thepgfplotstableread@numcols' cols; got '\thepgfplotstableread@curcol'). Maybe the input table is corrupted? If you need unbalanced data, consider using 'nan' in empty cells (perhaps combined with 'unbounded coords=jump'). The offending line is \the\t@pgfplots@tokc}\pgfeov%
+			\endgroup
 		\fi
 		\ifpgfplots@tableread@to@listener
 			\ifpgfplotstableread@curline@contains@colnames
@@ -1437,8 +1455,10 @@
 	\else
 		\let\pgfplotstableread@impl@ITERATE@NEXT@=#1\relax
 	\fi
+	%
 	\expandafter\pgfplotstableread@impl@DO@\expandafter{#2}%
 }
+
 {%
 	\catcode`\ =10
 	\catcode`\;=12
@@ -1480,6 +1500,53 @@
 		\fi
 	}%
 }%
+\def\pgfplotstableread@impl@prepare@DO@textindicator{%
+	%
+	\pgfkeysgetvalue{/pgfplots/table/text indicator}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% ok, nothing special.
+	\else
+		% protect the text indicator such that it won't be expanded:
+		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+		%
+		% compile macros which handle 'text indicator':
+		\let\pgfplotstableread@impl@ITERATE@NEXT@aftertextindicator=\pgfplotstableread@impl@ITERATE@NEXT
+		\edef\pgfplotstableread@impl@ITERATE@NEXT{%
+			% check if the cell starts with a text indicator:
+			\noexpand\pgfplotstableread@impl@ITERATE@NEXT@checkindicator{\the\t@pgfplots@tokc}%
+		}%
+		\edef\pgfplots@loc@TMPb{%
+			% compile this macro which reads everything up to the next
+			% text indicator char:
+			\noexpand\def\noexpand\pgfplotstableread@impl@ITERATE@NEXT@collect@text####1\the\t@pgfplots@tokc{%
+				% append. we assume that 'tokc' has been reset before
+				% starting to collect the cell content.
+				\t@pgfplots@tokc=\noexpand\expandafter{\noexpand\the\t@pgfplots@tokc####1}%
+				\noexpand\pgfutil@ifnextchar{\the\t@pgfplots@tokc}{%
+					% ah - a doubled text indicator. gobble this one
+					% and collect the following one!
+					\noexpand\pgfplotstableread@impl@ITERATE@NEXT@collect@text@collect@one
+				}{%
+					% ok, we found the entire cell content.
+					\noexpand\pgfplotstableread@impl@ITERATE@NEXT@collect@text@finish
+				}%
+			}%
+		}%
+		\pgfplots@loc@TMPb
+	\fi
+}
+
+\def\pgfplotstableread@impl@ITERATE@NEXT@collect@text@collect@one#1{%
+	\t@pgfplots@tokc=\expandafter{\the\t@pgfplots@tokc#1}%
+	\pgfplotstableread@impl@ITERATE@NEXT@collect@text
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@collect@text@finish{%
+	% enclose the collected items into curly braces. This suppresses
+	% interpretation of extra chars:
+	\expandafter\pgfplotstableread@impl@ITERATE@NEXT@aftertextindicator\expandafter{\expandafter{\the\t@pgfplots@tokc}}%
+}%
+
+
 \long\def\pgfplotstableread@impl@ITERATE{%
 	\pgfutil@ifnextchar\pgfplotstable@EOI{%
 		\pgfplotstableread@impl@gobble
@@ -1487,6 +1554,24 @@
 		\pgfplotstableread@impl@ITERATE@NEXT
 	}%
 }%
+
+\def\pgfplotstableread@impl@ITERATE@NEXT@checkindicator#1{%
+	\pgfutil@ifnextchar{#1}{%
+		% Ah! Our cell starts with a text indicator! Assume it is
+		% enclosed by text indicators.
+		\pgfplotstableread@impl@ITERATE@NEXT@checkindicator@gobble@one%
+	}{%
+		% ok, Cell does not start with a text indicator. collect
+		% as-is, assuming that a text indicator does not simply occur
+		% within a cell which is not enclosed by text indicators:
+		\pgfplotstableread@impl@ITERATE@NEXT@aftertextindicator
+	}%
+}%
+\def\pgfplotstableread@impl@ITERATE@NEXT@checkindicator@gobble@one#1{%
+	\t@pgfplots@tokc={}%
+	\pgfplotstableread@impl@ITERATE@NEXT@collect@text%
+}%
+
 \long\def\pgfplotstableread@impl@ITERATE@NEXT#1 {%
 	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
 	\pgfplotstableread@impl@ITERATE
