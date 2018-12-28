@@ -96,6 +96,7 @@ DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 #PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
 PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.1/tex
 PGF_ACTUAL_PATH=$(PGF_REFERENCE_PATH)
+#PGF_ACTUAL_PATH=~/code/tex/pgf
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 

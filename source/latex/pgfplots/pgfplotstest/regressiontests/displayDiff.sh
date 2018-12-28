@@ -53,4 +53,8 @@ if [ $GENERATED_PAIRED_VIEW -eq 1 ]; then
 else
 	PAIRED_IMAGES="$ACTUAL $EXPECTED"
 fi
-display -delay 1 -loop 3 $PAIRED_IMAGES || break
+
+LOOP="-loop 3"
+LOOP="" # broken!?
+
+display -delay 1 $LOOP $PAIRED_IMAGES || break
