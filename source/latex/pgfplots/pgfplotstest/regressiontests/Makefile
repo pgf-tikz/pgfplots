@@ -75,7 +75,7 @@ FAILURES=$(wildcard *.diff.png)
 DIFFS_OF_ERRORS=$(FAILURES:.diff.png=.diff)
 
 # REQUIRES apcalc package ('calc' executable)
-ACCEPTED_NORMALIZED_ERROR=5e-4
+ACCEPTED_NORMALIZED_ERROR=9e-4
 DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
 INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY=plotdata/risingdrop3d.png plotdata/plotgraphics3dsurf.png
@@ -235,7 +235,7 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	fi
 	@#./patch_repository.sh $(TMP_REPOSITORY)
 	@if [ ! -d references/plotdata ]; then cd references; ln -s ../plotdata; fi
-	cd references || exit 1;\
+	@cd references || exit 1;\
 	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
 	export LUAINPUTS="$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/:$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_REFERENCE_PATH)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/generic/pgf/libraries/luamath/:"; \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
