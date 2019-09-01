@@ -71,8 +71,11 @@ DIFF_MEASURES=$(UNIT_SOURCES:.tex=.diff)
 DIFF_MEASURES_LUABACKEND_ONLY=$(GENERATED_LUALATEX_BACKEND_TESTS:.tex=.diff)
 DIFF_MEASURES_LUABACKEND_FALLBACKS_ONLY=$(GENERATED_LUALATEX_TO_PDFTEX_FALLBACK_TESTS:.tex=.diff)
 
+FAILURES=$(wildcard *.diff.png)
+DIFFS_OF_ERRORS=$(FAILURES:.diff.png=.diff)
+
 # REQUIRES apcalc package ('calc' executable)
-ACCEPTED_NORMALIZED_ERROR=5e-4
+ACCEPTED_NORMALIZED_ERROR=9e-4
 DIRECTORY_FOR_ACCEPTED_ERRORS=./pgfplotsUTaccepted
 
 INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY=plotdata/risingdrop3d.png plotdata/plotgraphics3dsurf.png
@@ -91,11 +94,12 @@ TMP_REPOSITORY=/tmp/pgfplots_copy
 DEFAULT_REFERENCE_BRANCH:=$(shell git describe --tags HEAD)
 
 # the following two variables control which PGF version is to be used for the references and the actual files, respectively:
-#PGF_REFERENCE_PATH=~/code/tex/pgf
+PGF_REFERENCE_PATH=~/code/tex/pgf
 #PGF_REFERENCE_PATH=~/code/tex/pgf_2.10/tex
 #PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.0/tex
-PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.1/tex
+#PGF_REFERENCE_PATH=~/code/tex/pgf_3.0.1/tex
 PGF_ACTUAL_PATH=$(PGF_REFERENCE_PATH)
+#PGF_ACTUAL_PATH=~/code/tex/pgf
 
 .PRECIOUS:  $(UNIT_SOURCES:%.tex=%.checkoutreferencerev.sh) $(UNIT_SOURCES:%.tex=%.compile.sh) $(UNIT_PDF_REFERENCES) $(UNIT_SOURCES:%.tex=%.pdf)
 
@@ -118,6 +122,8 @@ diffluafallback: $(DIFF_MEASURES_LUABACKEND_FALLBACKS_ONLY)
 difflua: $(DIFF_MEASURES_LUABACKEND_ONLY)
 
 pdf: $(UNIT_PDFS) 
+
+errors: $(DIFFS_OF_ERRORS)
 
 clean: cleanX
 	rm -fr references 
@@ -230,8 +236,8 @@ references/%.pdf: %.tex %.checkoutreferencerev.sh %.compile.sh
 	@#./patch_repository.sh $(TMP_REPOSITORY)
 	@if [ ! -d references/plotdata ]; then cd references; ln -s ../plotdata; fi
 	@cd references || exit 1;\
-	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
-	export LUAINPUTS="$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/:$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/generic/pgf/libraries/luamath/:"; \
+	export TEXINPUTS=.:..:$(TMP_REPOSITORY)/tex//:$(PGF_REFERENCE_PATH)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/latex//:$(TEXINPUTS); \
+	export LUAINPUTS="$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/:$(TMP_REPOSITORY)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_REFERENCE_PATH)/tex//:$(PGF_REFERENCE_PATH)/generic//:$(PGF_REFERENCE_PATH)/generic/pgf/libraries/luamath/:"; \
 	echo "export TEXINPUTS=$${TEXINPUTS}:\$$TEXINPUTS" $(AUTO_INDENT_PIPE); \
 	echo "cd references && \"compile $<\" ..." $(AUTO_INDENT_PIPE); \
 	# create *.diff.png -> this makes it much more visible that it failed: \
@@ -249,8 +255,8 @@ endif
 %.pdf: %.tex %.compile.sh $(INCLUDE_GRAPHICS_FROM_DIR_DIRECTORY)
 	@echo "$(STATISTICS) $@: recompiling $< ..."
 	@rm -f $@; \
-	export TEXINPUTS="./:$(PGFPLOTS_GIT_BASEDIR)/tex//:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/latex//:"; \
-	export LUAINPUTS="$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/:$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/generic/pgf/libraries/luamath/:"; \
+	export TEXINPUTS="./:$(PGFPLOTS_GIT_BASEDIR)/tex//:$(PGF_ACTUAL_PATH)/tex//:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/latex//:"; \
+	export LUAINPUTS="$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/:$(PGFPLOTS_GIT_BASEDIR)/tex/generic/pgfplots/lua/pgfplotsoldpgfsupp:$(PGF_ACTUAL_PATH)/tex//:$(PGF_ACTUAL_PATH)/generic//:$(PGF_ACTUAL_PATH)/generic/pgf/libraries/luamath/:"; \
 	bash ./$(@:.pdf=.compile.sh) $(<:.tex=) 1>$(<:.tex=.log.all) 2>&1  || \
 		( sh ../scripts/compile_failed.sh "$<" "$@" "" $(AUTO_INDENT_PIPE); exit 1 )
 

@@ -10,6 +10,7 @@ SELECTED_PAGE=-1
 if [ $# -ge 2 ]; then
 	SELECTED_PAGE=$2
 fi
+killall display
 
 if [ $# -ge 1 ]; then
 	DIFF_PNG=$1
@@ -23,10 +24,11 @@ else
 	exit 1
 fi
 
+TIMEOUT=-delay 50
 ACTUAL=${DIFF_PNG%%.diff.png}.pdf
 EXPECTED=references/$ACTUAL
 echo "display $DIFF_PNG"
-display $DIFF_PNG &
+display $TIMEOUT $DIFF_PNG &
 
 echo "cycling through diff($DIFF_PNG) $ACTUAL $EXPECTED (selected page $SELECTED_PAGE)..."
 
@@ -53,4 +55,12 @@ if [ $GENERATED_PAIRED_VIEW -eq 1 ]; then
 else
 	PAIRED_IMAGES="$ACTUAL $EXPECTED"
 fi
-display -delay 1 -loop 3 $PAIRED_IMAGES || break
+
+
+for A in $PAIRED_IMAGES; do
+	display $TIMEOUT $A & 
+done
+
+# the following is broken :-(
+LOOP="-loop 3"
+#display -delay 1 $LOOP $PAIRED_IMAGES 
