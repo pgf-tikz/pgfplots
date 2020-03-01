@@ -1,5 +1,7 @@
 # pgfplots
 
+[![Travis Build Status][travis-svg]][travis-link]
+
 pgfplots - Create normal/logarithmic plots in two and three dimensions for LaTeX/TeX/ConTeXt.
 
 pgfplotstable - Loads, rounds, formats and postprocesses numerical tables.
@@ -39,3 +41,6 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+[travis-svg]: https://travis-ci.com/pgf-tikz/pgfplots.svg?branch=master
+[travis-link]: https://travis-ci.com/pgf-tikz/pgfplots
