@@ -12,6 +12,9 @@ if ! command -v texlua > /dev/null; then
   # Install a minimal system
   ./install-tl --profile=../texlive.profile
 
+  # Bump up the main memory
+  echo "main_memory = 12435455" >> /tmp/texlive/texmf.cnf
+
   cd ..
 fi
 
