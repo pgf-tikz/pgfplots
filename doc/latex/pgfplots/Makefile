@@ -26,7 +26,7 @@ $(info TEXINPUTS = $(TEXINPUTS))
 include pgfplots.makefile
 
 TeX-programming-notes.pdf: revisionfile FORCE
-	mkdir -p gnuplot
+	mkdir -p gnuplot figures/expensiveexamples
 	@$(TEXMFCNF_FOR_MEMLIMITS) && pdflatex $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
@@ -34,7 +34,7 @@ TeX-programming-notes.pdf: revisionfile FORCE
 	@echo "$@ compiled successfully. You may need to re-run make several times to get all cross-references right."
 
 %.pdf: revisionfile FORCE
-	mkdir -p gnuplot
+	mkdir -p gnuplot figures/expensiveexamples
 	@$(TEXMFCNF_FOR_MEMLIMITS) && $(LATEX) $(@:.pdf=.tex)
 	@bibtex $(@:.pdf=) || exit 0
 	@makeindex $(@:.pdf=) || exit 0
@@ -59,6 +59,7 @@ html: FORCE
 pgfplots.pdf: $(ALL_FIGURES)
 
 pgfplots.makefile:
+	mkdir -p gnuplot figures/expensiveexamples
 	@$(TEXMFCNF_FOR_MEMLIMITS) && $(LATEX) pgfplots
 
 clean:
