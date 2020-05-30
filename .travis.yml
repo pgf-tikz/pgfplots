@@ -17,8 +17,9 @@ cache:
 addons:
   apt:
     packages:
-      - gnuplot
-      - realpath
+      - &base_deps
+        - gnuplot
+        - realpath
 
 before_script:
   - git fetch --unshallow --tags
@@ -41,15 +42,46 @@ _build_package: &_build_package |
   cp -v doc/latex/pgfplots/*.pdf /tmp/gh-pages
   make -C .. -f pgfplots/scripts/pgfplots/Makefile.pgfplots_release_sourceforge
 
+# FIXME:
+# Currently none of the testsuites work. Therfore `make' is followed by `true'
+# to set the exit status of the pipe to true. This has to be fixed to make this
+# actually usable, because right now this will just always pass.
+_build_tests: &_build_tests |
+  cd "source/latex/pgfplots/pgfplotstest/$suite"
+  make -j $(nproc) -k || true
+  grep -A2 '^!' *.log
+
 jobs:
   include:
-    - env: engine=lualatex
+    - name: Manual lualatex
+      env: engine=lualatex
       script: *_build_manual
       after_success: *_build_package
 
-    - env: engine=pdflatex
+    - name: Manual pdflatex
+      env: engine=pdflatex
       script: *_build_manual
       after_success: *_build_package
+
+    - name: Gallery
+      script: |
+        cd "doc/latex/pgfplots/gallery"
+        make -j $(nproc) -k
+        grep -A2 '^!' *.log
+
+#   - name: lua_tests
+#     env: suite=lua_tests
+#     addons: {apt: {packages: [*base_deps, lua5.2, lua-unit]}}
+#     script: *_build_tests
+
+    - name: regressiontests
+      env: suite=regressiontests
+      addons: {apt: {packages: [*base_deps, imagemagick]}}
+      script: *_build_tests
+
+    - name: unittest
+      env: suite=unittest
+      script: *_build_tests
 
 deploy:
   - provider: pages

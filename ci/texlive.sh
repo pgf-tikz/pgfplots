@@ -73,19 +73,24 @@ tlmgr install \
     makeindex \
     metafont \
     mfware \
+    multido \
     multirow \
     pdfescape \
     pdflscape \
     pdftexcmds \
     pgf \
     pgfplots \
+    preview \
     psnfss \
+    shellesc \
     soul \
     soulpos \
+    standalone \
     todonotes \
     tools \
     units \
     url \
+    varwidth \
     vmargin \
     xcolor \
     xkeyval \
