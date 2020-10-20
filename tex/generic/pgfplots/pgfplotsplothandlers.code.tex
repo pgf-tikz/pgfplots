@@ -2090,6 +2090,12 @@
 	contour external/script extension/.initial=script,
 	contour external/script/.initial=,% not yet initialised
 	contour external/cmd/.initial=,% not yet initialised
+	contour external/script type/.is choice=,%
+	contour external/script type/system call/.code={\def\pgfplotsplothandlercontourexternal@script@type{S}},%
+	contour external/script type/lua/.code={\def\pgfplotsplothandlercontourexternal@script@type{L}\pgfkeyssetvalue{/pgfplots/contour external/script extension}{lua}},%
+	contour external/script type/system call,%
+	contour external/@before cmd/.initial=,
+	contour external/@after cmd/.initial=,
 	contour external/.search also=/pgfplots/contour,
 	contour gnuplot/.style={
 		contour external={%
@@ -2684,6 +2690,7 @@
 	\else
 		\pgfplotsset{plot to file/scanline marks/if in input}% the choice 'always' is unaware of existing end-of-scanline marks
 	\fi
+	%
 	\pgfplotsplothandlertofile{\pgfplotsplothandlercontourexternal@file.dat}%
 	\pgfplotsplothandlersurveystart
 	\let\pgfplotsplothandlersurveypoint@tofile=\pgfplotsplothandlersurveypoint
@@ -2694,6 +2701,10 @@
 	\pgfplotsplothandlersurveypoint@contour@prepare@axes x%
 	\pgfplotsplothandlersurveypoint@contour@prepare@axes y%
 	\pgfplotsplothandlersurveypoint@contour@prepare@axes z%
+	%
+	\global\let\pgfplotsplothandlercontourexternal@metamin=\relax
+	\global\let\pgfplotsplothandlercontourexternal@metamax=\relax
+	%
 }%
 
 % #1: either x, y, or z
@@ -2745,20 +2756,35 @@
 }%
 
 \def\pgfplotsplothandlersurveypoint@contourexternal{%
-	% temporarily disable updates to point meta limits. They should be
-	% updated during the contour prepared processing.
-	\let\pgfplotsplothandlercontourexternal@orig@perpointlimits@limits=\pgfplots@set@perpointmeta@limits
-	\let\pgfplots@set@perpointmeta@limits=\relax
-	%
+	\ifx\pgfplotsplothandlercontourexternal@metamin\relax
+		% remember values. We want to restore them right before we parse the output of contour external:
+		\global\let\pgfplotsplothandlercontourexternal@metamin=\pgfplots@metamin
+		\global\let\pgfplotsplothandlercontourexternal@metamax=\pgfplots@metamax
+	\fi
+
 	\pgfplotsaxissurveysetpointmeta
-	\let\pgfplots@current@point@z=\pgfplots@current@point@meta
 	%
-	\let\pgfplots@set@perpointmeta@limits=\pgfplotsplothandlercontourexternal@orig@perpointlimits@limits
+	\let\pgfplots@current@point@z=\pgfplots@current@point@meta
 	%
 	\pgfplotsplothandlersurveypoint@contour@axes@std@to@reordered
 	%
 %\message{contour gnuplot: collecting point (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z) [\pgfplots@current@point@meta]...}%
 	\pgfplotsplothandlersurveypoint@tofile
+}%
+
+% Utility function which is NOT normally invoked. It can be invoked inside of 'contour external/@before cmd'. Should it become the default?
+\def\pgfplotscontourpopulateallkeys{%
+	\pgfkeysgetvalue{/pgfplots/contour/levels}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\ifx\pgfplots@metamax\pgfutil@empty
+		\else
+			\edef\pgfplots@loc@TMPa{\pgfplots@metamin:\pgfplots@metamax}%
+			\edef\thecontournumber{\pgfkeysvalueof{/pgfplots/contour/number}}%
+			\expandafter\pgfplots@domain@to@foreach\pgfplots@loc@TMPa\relax{\thecontournumber}%
+			\expandafter\pgfplots@foreach@to@list@macro\expandafter{\pgfplotsretval}%
+			\pgfkeyslet{/pgfplots/contour/levels}\pgfplotsretval
+		\fi
+	\fi
 }%
 
 {
@@ -2777,6 +2803,7 @@
 		\fi
 	\fi
 	%
+	\pgfkeysvalueof{/pgfplots/contour external/@before cmd}\relax%
 	\begingroup
 	\let\numcoords=\pgfplots@current@point@coordindex%
 	\pgfplotsautocompletemeshkeys
@@ -2790,16 +2817,41 @@
 	\edef\ordering{\pgfplots@plot@mesh@ordering}%
 	\edef\infile{\pgfplotsplothandlercontourexternal@file.dat}%
 	\edef\outfile{\pgfplotsplothandlercontourexternal@file.table}%
-	\edef\script{\pgfplotsplothandlercontourexternal@file.\pgfkeysvalueof{/pgfplots/contour external/script extension}}%
+	%
+	\pgfkeysgetvalue{/pgfplots/contour external/cmd}\cmd
+	\pgfkeysgetvalue{/pgfplots/contour external/script extension}\scriptext
+	\if S\pgfplotsplothandlercontourexternal@script@type
+	\else
+		% script type=lua
+		\ifx\cmd\pgfutil@empty
+			\pgfkeyssetvalue{/pgfplots/contour external/cmd}{require(\"\scriptbase\")}%
+			\pgfkeysgetvalue{/pgfplots/contour external/cmd}\cmd
+		\fi
+	\fi
+	%
+	\edef\script{\pgfplotsplothandlercontourexternal@file.\scriptext}%
+	\edef\scriptbase{\pgfplotsplothandlercontourexternal@file}%
 	\edef\thecontourlevels{\pgfkeysvalueof{/pgfplots/contour/levels}}%
 	\edef\thecontournumber{\pgfkeysvalueof{/pgfplots/contour/number}}%
 	\immediate\openout\w@pgf@writea=\script
 	\immediate\write\w@pgf@writea{\pgfkeysvalueof{/pgfplots/contour external/script}}%
 	\immediate\closeout\w@pgf@writea
 	%
-	\pgfplots@shellescape{\pgfkeysvalueof{/pgfplots/contour external/cmd}}%
+	\if S\pgfplotsplothandlercontourexternal@script@type
+		\pgfplots@shellescape{\cmd}%
+	\else
+		\ifpgfplots@LUA@supported
+			\pgfplotsutil@directlua{\pgfkeysvalueof{/pgfplots/contour external/cmd}}%
+		\else
+			\pgfplots@error{Calls to 'lua' are currently unsupported. Please invoke lualatex instead.}%
+		\fi
+	\fi
+	\pgfkeysvalueof{/pgfplots/contour external/@after cmd}\relax%
 	\endgroup
 	%
+	% RESET point meta computation here such that it can be collected from the 'contour prepared' stream (i.e. the output of contour external):
+	\global\let\pgfplots@metamin=\pgfplotsplothandlercontourexternal@metamin
+	\global\let\pgfplots@metamax=\pgfplotsplothandlercontourexternal@metamax
 	%
 	\pgfplotsplothandlercontourprepared
 	% the PREPARE steps in the coord stream start/end have already
