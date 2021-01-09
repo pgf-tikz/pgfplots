@@ -2051,25 +2051,22 @@ expected bounds.
 }%
 \tikzset{external/figure name/.add={}{contour_}}%
 %
-\PGFPlots{} supports visualization of contour plots whose coordinates have been
-computed by \emph{external tools}. The |contour prepared| plot handler coming
-with \PGFPlots{} takes precomputed contour line coordinates and handles their
-visualization (|contour/draw color|, |contour/labels| etc.). The
-|contour gnuplot| style takes matrix input in the same format as for |mesh| or
-|surf| (that includes any of the \PGFPlots{} matrix input methods). It then
-writes the matrix data to a file and invokes |gnuplot| (or other, user
-customizable external programs) to compute contour coordinates. Finally, the
-computed contours are visualized with the |contour prepared| algorithm. Thus,
-external programs need to compute the contour coordinates and \PGFPlots{}
-visualizes the result.
+\PGFPlots{} supports visualization of contour plots. Due to the complexity of these algorithms, \PGFPlots\ needs more computation power. You have the choice between |contour lua| which requires no additional software to be installed, but requires you to invoke |lualatex| instead of |pdflatex|, or you can resort to |contour gnuplot| in which case you need to allow \TeX\ to invoke |gnuplot| and you need to install |gnuplot|.
+
+Both |contour lua| and |contour gnuplot| expect matrix input in the same format as for |mesh| or
+|surf| (that includes any of the \PGFPlots{} matrix input methods). At the time of this writing, both require temporary files for input and output data.
+The resulting contour lines are visualized with the |contour prepared| plot handler which takes precomputed contour line coordinates and handles their
+visualization (|contour/draw color|, |contour/labels| etc.). In short: both plot handlers expect the usual matrix input and generate contour lines. The recommended way to visualize contour lines is |contour lua| since it requires no 3rd party programs, but requires you to invoke |lualatex|.
 
 We discuss the high level interface to external programs first and continue
 with |contour prepared| later-on.
 
 \begin{plottype}[/pgfplots]{
-    contour gnuplot=\textcolor{black}{\marg{{\normalfont options with
+    contour lua=\textcolor{black}{\marg{{\normalfont options with
     `\texttt{contour/}' or `\texttt{contour external/}' prefix}}}%
 }
+{\emph{This algorithm was implemented and contributed by Francesco Poli}}
+
     This is a high level contour plot interface. It expects matrix data in the
     same way as two dimensional |surf| or |mesh| plots do. It then computes
     contours and visualizes them.
@@ -2079,7 +2076,7 @@ with |contour prepared| later-on.
 \begin{tikzpicture}
 \begin{axis}[view={0}{90}]
     \addplot3 [
-        contour gnuplot
+        contour lua
     ] {x*y};
 \end{axis}
 \end{tikzpicture}
@@ -2095,7 +2092,7 @@ with |contour prepared| later-on.
 \begin{tikzpicture}
 \begin{axis}
     \addplot3 [
-        contour gnuplot
+        contour lua
     ] {exp(0-x^2-y^2)};
 \end{axis}
 \end{tikzpicture}
@@ -2110,7 +2107,7 @@ with |contour prepared| later-on.
 \begin{tikzpicture}
 \begin{axis}[view={0}{90}]
     \addplot3 [
-        contour gnuplot
+        contour lua
     ] coordinates {
         (0,0,0) (1,0,0)   (2,0,0)   (3,0,0)
 
@@ -2124,25 +2121,23 @@ with |contour prepared| later-on.
     %
     \noindent What happens behind the scenes is that \PGFPlots{} takes the
     input matrix and writes all encountered coordinates to a temporary file,
-    including the end-of-scanline markers. Then, it generates a small |gnuplot|
-    script and invokes |gnuplot| to compute the contour coordinates, writing
+    including the end-of-scanline markers. Then, it generates a small |lua|
+    script and invokes a |lua| algorithm to compute the contour coordinates, writing
     everything into a temporary output file. Afterwards, it includes
-    |gnuplot|'s output file just as if you'd write
+    |lua|'s output file just as if you'd write
     |\addplot3[contour prepared] file |\marg{temporaryfile}|;|.
 
-    All this invocation of |gnuplot|, including input/output file management is
+    All this invocation of |lua|, including input/output file management is
     transparent to the user. It only requires two things: first of all, it
-    requires matrix data as input.\footnote{Note that \texttt{contour gnuplot}
+    requires matrix data as input.\footnote{Note that \texttt{contour lua}
     processes the input stream only once. Consequently, the temporary file will
     contain only information which was available before the first point has
     been seen. The example above works because it contains |empty line|s as
     end-of-scanline markers. If you do not provide such markers, you may need
     to provide two of the three options \texttt{mesh/rows}, \texttt{mesh/cols},
-    or \texttt{mesh/num points}.} Second, it requires you to enable system
-    calls. Consider the documentation for \verbpdfref{plot gnuplot} for how to
-    enable system calls.
-
-    Note that the $z$-coordinate of the data which is communicated to |gnuplot|
+    or \texttt{mesh/num points}.} 
+	
+    Note that the $z$-coordinate of the data which is communicated to |contour lua|
     is the current value of |point meta|. This allows to generate contours on
     two columns only and has more freedom. See also the
     |contour external/output point meta| key.
@@ -2165,7 +2160,7 @@ with |contour prepared| later-on.
         (0,2,0) (1,2,0.7) (2,2,0.8) (3,2,0.5)
     };
     \addplot3 [
-        contour gnuplot,
+        contour lua,
         z filter/.code={\def\pgfmathresult{1}},
     ] coordinates {
         (0,0,0) (1,0,0)   (2,0,0)   (3,0,0)
@@ -2177,54 +2172,16 @@ with |contour prepared| later-on.
 \end{axis}
 \end{tikzpicture}
 \end{codeexample}
-
-    An unexpected side effect of a |z filter| combined with |contour gnuplot|
-    is that the color information and the label sizes are essentially lost. To
-    compensate this effect, we have to assign a new value for |point meta|. But
-    since |point meta| defines the values for contour levels (see above), there
-    is a special key named |output point meta| which can be used here:
-
-\pgfplotsexpensiveexample
-\begin{codeexample}[]
-\begin{tikzpicture}
-\begin{axis}
-    \addplot3 [surf,shader=interp] coordinates {
-        (0,0,0) (1,0,0)   (2,0,0)   (3,0,0)
-
-        (0,1,0) (1,1,0.6) (2,1,0.7) (3,1,0.5)
-
-        (0,2,0) (1,2,0.7) (2,2,0.8) (3,2,0.5)
-    };
-    \addplot3 [
-        contour gnuplot={
-            output point meta=rawz,
-        },
-        z filter/.code={\def\pgfmathresult{1}},
-    ] coordinates {
-        (0,0,0) (1,0,0)   (2,0,0)   (3,0,0)
-
-        (0,1,0) (1,1,0.6) (2,1,0.7) (3,1,0.5)
-
-        (0,2,0) (1,2,0.7) (2,2,0.8) (3,2,0.5)
-    };
-\end{axis}
-\end{tikzpicture}
-\end{codeexample}
-
-    Here, |output point meta=rawz| allows to assign point meta to the
-    \emph{output} of the contouring algorithm, i.e.\@ something which is handed
-    over to |contour prepared|. The choice |rawz| means to use the unfiltered
-    $z$-coordinate which is what we want here.
 
     There are several fine-tuning parameters of the input/output file
     management, and it is even possible to invoke different programs than
-    |gnuplot| (even |matlab|). These details are discussed at the end of this
+    |lua| (see |contour gnuplot|). These details are discussed at the end of this
     section, see below at page~\pageref{key:pgfplots:contour:gnuplot}.
 \end{plottype}
 
 \begin{pgfplotskey}{contour/number=\marg{integer} (initially 5)}
     Configures the number of contour lines which should be produced by any
-    contouring algorithm. The value is applied to both |contour gnuplot| and
+    contouring algorithm. The value is applied to both |contour lua| and
     |contour filled|.
     %
 \pgfplotsexpensiveexample
@@ -2236,7 +2193,7 @@ with |contour prepared| later-on.
     view={0}{90},
 ]
     \addplot3 [
-        contour gnuplot={number=14},
+        contour lua={number=14, labels=false},
         thick,
     ] {exp(-x^2-y^2)*x};
 \end{axis}
@@ -2263,7 +2220,7 @@ with |contour prepared| later-on.
     view={0}{90},
 ]
     \addplot3 [
-         contour gnuplot={levels={-0.1,-0.2,-0.6}},
+         contour lua={levels={-0.1,-0.2,-0.6}},
          thick,
     ] {exp(-x^2-y^2)*x};
 \end{axis}
@@ -2291,7 +2248,7 @@ with |contour prepared| later-on.
     domain=-2:2,
 ]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             contour dir=x,
             labels=false,
             number=15,
@@ -2314,7 +2271,7 @@ with |contour prepared| later-on.
     domain=-2:2,
 ]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             contour dir=y,
             labels=false,
             number=15,
@@ -2332,7 +2289,7 @@ with |contour prepared| later-on.
 \begin{tikzpicture}
 \begin{axis}[view={60}{30},axis equal image]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             contour dir=x,
             number=20,
             labels=false,
@@ -2444,19 +2401,19 @@ with |contour prepared| later-on.
     \addplot3 [surf] {x^2-y^2};
 
     \addplot3 [
-        contour gnuplot={contour dir=y,
+        contour lua={contour dir=y,
             draw color=red,labels=false},
         y filter/.expression={-5},
     ] {x^2-y^2};
 
     \addplot3 [
-        contour gnuplot={contour dir=x,
+        contour lua={contour dir=x,
             draw color=blue,labels=false},
         x filter/.expression={5},
     ] {x^2-y^2};
 
     \addplot3 [
-        contour gnuplot={contour dir=z,
+        contour lua={contour dir=z,
             draw color=black,labels=false},
         z filter/.expression={25},
     ] {x^2-y^2};
@@ -2487,6 +2444,50 @@ with |contour prepared| later-on.
     permutation. This allows to draw $x$ or $y$ contours which are given in the
     prepared format.
 \end{pgfplotskey}
+
+\begin{plottype}[/pgfplots]{
+    contour gnuplot=\textcolor{black}{\marg{{\normalfont options with
+    `\texttt{contour/}' or `\texttt{contour external/}' prefix}}}%
+}
+    This is a high level contour plot interface. It expects matrix data in the
+    same way as two dimensional |surf| or |mesh| plots do. It then computes
+    contours and visualizes them. The handler |contour gnuplot| works in the very same way as |contour lua| and produces results of comparable quality. All the keys and examples mentioned above apply for |contour gnuplot| as well. However, you necessarily need to apply the following steps before you can use |contour gnuplot|:
+\begin{enumerate}
+	\item install |gnuplot| on your system.
+	\item Ensure that you can invoke |gnuplot| from a terminal (like cmd.exe or bash). To this end, you will need to add |gnuplot| to the PATH environment variable.
+	\item When invoking |pdflatex|, you need to enable system calls. 
+
+        For \TeX{}Live, this is |pdflatex -shell-escape|. For MiK\TeX{}, the system uses |pdflatex -enable-write18| . Some \TeX\ distributions require you to use two slashes for the option.
+\end{enumerate}
+	See also the documentation for \verbpdfref{plot gnuplot} for a related section.
+
+
+
+	The usage is the same as for |contour lua|, so please refer to the |contour lua| and its examples.
+
+    %
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[view={0}{90}]
+    \addplot3 [
+        contour gnuplot
+    ] {x*y};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+
+\pgfplotsexpensiveexample
+\begin{codeexample}[]
+\begin{tikzpicture}
+\begin{axis}[view={0}{90}]
+	\addplot3 [
+		contour gnuplot={number=6}
+	] {exp(-x^2-y^2)};
+\end{axis}
+\end{tikzpicture}
+\end{codeexample}
+\end{plottype}
 
 \begin{plottype}[/pgfplots]{contour prepared=\textcolor{black}{\marg{{\normalfont options with `\texttt{contour/}' prefix}}}}
     A plot handler which expects already computed contours on input and
@@ -2697,7 +2698,7 @@ save 'exporteddata.dat' data -ASCII
     view={0}{90},
 ]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             scanline marks=required,
             number=14,
             contour label style={
@@ -2721,7 +2722,7 @@ save 'exporteddata.dat' data -ASCII
 \begin{tikzpicture}
 \begin{axis}[view={0}{90}]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             labels over line,
             number=9,
         },
@@ -2749,7 +2750,7 @@ save 'exporteddata.dat' data -ASCII
 \begin{tikzpicture}
 \begin{axis}[view={0}{90}]
     \addplot3 [
-        contour gnuplot={
+        contour lua={
             levels={0.1,0.2,0.5,1,2,5},
             labels=false,
             handler/.style=smooth,
@@ -2780,7 +2781,7 @@ save 'exporteddata.dat' data -ASCII
 }
     This handler constitutes a generic interface to external programs to
     compute contour lines. The |contour gnuplot| method is actually a special
-    case of |contour external|.
+    case of |contour external|. At the time of this writing, even |contour lua| is a special case of |contour external|.
 
     \begin{pgfplotskey}{contour external/file=\marg{base file name} (initially empty)}
         The initial configuration is to automatically generate a unique file name.
@@ -3231,7 +3232,7 @@ arithmetics.
         function has the range $f(x,y) \in [-16,30.2]$ for $x,y \in [-10,10]$.
         \footnote{You can play around with this example to see how the color is
         shifted if the ranges are not coupled.} Here is the result together
-        with |contour gnuplot| as reference:
+        with |contour lua| as reference:
         %
 \pgfplotsexpensiveexample
 \begin{codeexample}[]
@@ -3256,7 +3257,7 @@ arithmetics.
 
     \addplot3 [
         thick,
-        contour gnuplot={
+        contour lua={
             draw color=red,
             levels=1,
             labels=false,
@@ -3387,7 +3388,7 @@ arithmetics.
 
     |contour filled| supports no contour labels and no contour outlines.
     Furthermore, its contour lines differ from the contours computed by
-    |contour gnuplot|.
+    |contour lua|.
 \end{plottype}
 }
 
