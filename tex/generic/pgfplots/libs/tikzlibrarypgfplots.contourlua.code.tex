@@ -1,0 +1,80 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007-2021 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+\ifpgfplots@LUA@supported
+\else
+	\pgfplots@error{Library 'contourlua' requires you to run in LUA mode (i.e. lualatex instead of pdflatex)}%
+\fi
+
+\pgfplotsutil@directlua{require("prepcontour");}
+
+\pgfplotsset{
+	contour lua/.style={
+		contour external={%
+			% we decided to NOT precompute contour/levels:
+			% @before cmd=\pgfplotscontourpopulateallkeys,
+			scanline marks=required,
+			script type=lua,
+			%
+			% this library consumes FOUR coordinates...
+			script input format=x y z meta,
+			% ... and it also generates FOUR. Always read the last one
+			% as it is never subject to rounding issues within the
+			% same contour line:
+			output point meta=explicit,
+			%
+			script={
+				copylines = 0;
+				nblocks   = \if 0\ordering \pgfkeysvalueof{/pgfplots/mesh/rows}\else \pgfkeysvalueof{/pgfplots/mesh/cols}\fi;
+				nlines    = \if 0\ordering \pgfkeysvalueof{/pgfplots/mesh/cols}\else \pgfkeysvalueof{/pgfplots/mesh/rows}\fi;
+				if copylines == nil or nblocks == nil or nlines == nil then
+					io.stderr:write("failed to parse arguments");
+					os.exit(2);
+				end;
+				yvaries = \if 0\ordering 'x'\else 'y'\fi;
+				yvaries = (yvaries == 'y');
+				infile = io.open(\"\infile\", \"r\");
+				outfile = io.open(\"\outfile\", \"w\");
+				mesh = PrepcMesh.new(yvaries, nblocks, nlines, copylines, infile, outfile);
+				\ifx\thecontourlevels\pgfutil@empty
+				levels = PrepcMesh.computeLevels(\thecontournumber, \pgfplotsmetamin,\pgfplotsmetamax);
+				\else
+				levels = {\thecontourlevels};
+				\fi
+				for n = 1, \#levels do
+					level = tonumber(levels[n]);
+					if level then
+						mesh:contour(level);
+					end;
+				end;
+				io.close(infile);
+				mesh:printcontours();
+				io.close(outfile);
+			},%
+			#1,%
+		},
+	}
+}
+
