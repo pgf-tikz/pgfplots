@@ -129,11 +129,13 @@ end
 function PrepcMesh:autocontour(N, meta_min, meta_max, tolerance)
     -- subdivide the meta_min÷meta_max interval into N equal sub-intervals
     -- and pick the midpoints of those sub-intervals
-    step     = (meta_max - meta_min)/N
-    meta_mid = (meta_max + meta_min)/2
-    n_mid    = (N + 1)/2
+    meta_min = tonumber(meta_min)
+    meta_max = tonumber(meta_max)
+    local step     = (meta_max - meta_min)/N
+    local meta_mid = (meta_max + meta_min)/2
+    local n_mid    = (N + 1)/2
     for n = 1, N do
-        isoval = meta_mid + (n - n_mid)*step
+        local isoval = meta_mid + (n - n_mid)*step
         self:contour(isoval, tolerance)
     end
 end
