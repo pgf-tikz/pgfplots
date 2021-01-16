@@ -4,9 +4,9 @@
 
 prepcontour [Lua variant] - prepare contour lines (for pgfplots)
 
-Version:  0.6 (2020-10-10)
+Version:  0.8 (2021-01-10)
 
-Copyright (C) 2020  Francesco Poli <invernomuto@paranoici.org>
+Copyright (C) 2020-2021  Francesco Poli <invernomuto@paranoici.org>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -124,6 +124,19 @@ end
 
 
 --[[ begin core of the program logic ]]--
+
+-- build N contour lines between meta_min and meta_max
+function PrepcMesh:autocontour(N, meta_min, meta_max, tolerance)
+    -- subdivide the meta_min÷meta_max interval into N equal sub-intervals
+    -- and pick the midpoints of those sub-intervals
+    step     = (meta_max - meta_min)/N
+    meta_mid = (meta_max + meta_min)/2
+    n_mid    = (N + 1)/2
+    for n = 1, N do
+        isoval = meta_mid + (n - n_mid)*step
+        self:contour(isoval, tolerance)
+    end
+end
 
 -- build contour lines for meta==isoval
 function PrepcMesh:contour(isoval, tolerance)
@@ -540,19 +553,6 @@ function PrepcMesh:printcontours()
     end
 end
 
-function PrepcMesh.computeLevels(N, meta_min, meta_max)
-    local levels   = {}
-	meta_min = tonumber(meta_min)
-	meta_max = tonumber(meta_max)
-    local step     = (meta_max - meta_min)/N
-    local meta_mid = (meta_max + meta_min)/2
-    local n_mid    = (N + 1)/2
-    for n = 1, N do
-        levels[n] = meta_mid + (n - n_mid)*step
-    end
-	return levels
-end
-
 -- print a debug representation of mesh and not-done sides
 function PrepcMesh:show_sides(isoval)
     -- short names
@@ -593,49 +593,3 @@ function PrepcMesh:show_sides(isoval)
     self.os:write("#\n")
 end
 
-if false then
-	-- main program
-	usage = "Usage: " .. arg[0] .. [[
-	 CL NB NL {x|y} [VAL]... < IN > OUT
-
-	where:
-	CL  number of text lines to be copied from the input beginning to the output
-	NB  number of text blocks to be read from the input
-	NL  number of text lines included in each input block
-	x|y ordering ('x' if x varies, 'y' if y varies)
-	VAL level for contour lines
-	IN  input file
-	OUT output file
-	]]
-
-	-- simplistic command-line argument parsing
-	-- TODO: use a better approach (argparse? some other library?)
-	if arg[4] == nil then
-		io.stderr:write(arg[0] .. ": too few arguments\n" .. usage)
-		os.exit(1)
-	end
-	copylines = tonumber(arg[1])
-	nblocks   = tonumber(arg[2])
-	nlines    = tonumber(arg[3])
-	if copylines == nil or nblocks == nil or nlines == nil then
-		io.stderr:write(arg[0] .. ": failed to parse arguments\n" .. usage)
-		os.exit(2)
-	end
-	yvaries = arg[4]:sub(1, 1)
-	if yvaries ~= 'x' and yvaries ~= 'y' then
-		io.stderr:write(arg[0] .. ": failed to parse argument '"
-					 .. arg[4] .. "'!\n" .. usage)
-		os.exit(3)
-	end
-	yvaries = (yvaries == 'y')
-
-	mesh = PrepcMesh.new(yvaries, nblocks, nlines, copylines)
-	for n = 5, #arg do
-		level = tonumber(arg[n])
-		if level then
-			mesh:contour(level)
-		end
-	end
-
-	mesh:printcontours()
-end
