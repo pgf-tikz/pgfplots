@@ -4,7 +4,7 @@
 
 prepcontour [Lua variant] - prepare contour lines (for pgfplots)
 
-Version:  0.8 (2021-01-10)
+Version:  1.0 (2021-02-08)
 
 Copyright (C) 2020-2021  Francesco Poli <invernomuto@paranoici.org>
 
@@ -143,12 +143,15 @@ end
 -- build contour lines for meta==isoval
 function PrepcMesh:contour(isoval, tolerance)
     -- set relative tolerance
-    local tol = tolerance or 1e-5
+    local tol = tolerance or 1e-3
 
     -- short names
     local st = self.st
     local si = self.si
     local sj = self.sj
+
+    -- local variables
+    local i, j
 
     if self.done_i == nil then
         self.done_i = {}  -- table of markers for i-sides
@@ -339,6 +342,13 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
     local st = self.st
     local si = self.si
     local sj = self.sj
+
+    -- local variables
+    local ia, ja, na, wa
+    local ib, jb, nb, wb
+    local pt, k, count, next_side
+    local meta_NW, meta_NE, meta_SW, meta_SE, meta_mean
+    local max_dist, abs_tol, next_done, next_done_idx
 
     while true do
         --[[
