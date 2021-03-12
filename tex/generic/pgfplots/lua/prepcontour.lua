@@ -4,7 +4,7 @@
 
 prepcontour [Lua variant] - prepare contour lines (for pgfplots)
 
-Version:  1.0 (2021-02-08)
+Version:  1.4 (2021-02-22)
 
 Copyright (C) 2020-2021  Francesco Poli <invernomuto@paranoici.org>
 
@@ -126,7 +126,7 @@ end
 --[[ begin core of the program logic ]]--
 
 -- build N contour lines between meta_min and meta_max
-function PrepcMesh:autocontour(N, meta_min, meta_max, tolerance)
+function PrepcMesh:autocontour(N, meta_min, meta_max, corners, tolerance)
     -- subdivide the meta_min÷meta_max interval into N equal sub-intervals
     -- and pick the midpoints of those sub-intervals
     meta_min = tonumber(meta_min)
@@ -136,12 +136,12 @@ function PrepcMesh:autocontour(N, meta_min, meta_max, tolerance)
     local n_mid    = (N + 1)/2
     for n = 1, N do
         local isoval = meta_mid + (n - n_mid)*step
-        self:contour(isoval, tolerance)
+        self:contour(isoval, corners, tolerance)
     end
 end
 
 -- build contour lines for meta==isoval
-function PrepcMesh:contour(isoval, tolerance)
+function PrepcMesh:contour(isoval, corners, tolerance)
     -- set relative tolerance
     local tol = tolerance or 1e-3
 
@@ -269,7 +269,7 @@ function PrepcMesh:contour(isoval, tolerance)
     for i = 0, self.ni - 1 do
         if not self.done_i[i*si+j] then
             self.done_i[i*si+j] = true
-            self:build_line(isoval, tol, i+1, j+1, 'S')
+            self:build_line(isoval, tol, i+1, j+1, 'S', corners)
             if self.debug then
                 self:show_sides(isoval)
             end
@@ -280,7 +280,7 @@ function PrepcMesh:contour(isoval, tolerance)
     for j = 0, self.nj - 1 do
         if not self.done_j[i*sj+j] then
             self.done_j[i*sj+j] = true
-            self:build_line(isoval, tol, i+1, j+1, 'W')
+            self:build_line(isoval, tol, i+1, j+1, 'W', corners)
             if self.debug then
                 self:show_sides(isoval)
             end
@@ -291,7 +291,7 @@ function PrepcMesh:contour(isoval, tolerance)
     for i = 0, self.ni - 1 do
         if not self.done_i[i*si+j] then
             self.done_i[i*si+j] = true
-            self:build_line(isoval, tol, i+1, j  , 'N')
+            self:build_line(isoval, tol, i+1, j  , 'N', corners)
             if self.debug then
                 self:show_sides(isoval)
             end
@@ -302,7 +302,7 @@ function PrepcMesh:contour(isoval, tolerance)
     for j = 0, self.nj - 1 do
         if not self.done_j[i*sj+j] then
             self.done_j[i*sj+j] = true
-            self:build_line(isoval, tol, i  , j+1, 'E')
+            self:build_line(isoval, tol, i  , j+1, 'E', corners)
             if self.debug then
                 self:show_sides(isoval)
             end
@@ -321,13 +321,13 @@ function PrepcMesh:contour(isoval, tolerance)
     for j = 0, self.nj - 1 do
         for i = 0, self.ni - 1 do
             if not self.done_i[i*si+j] then
-                self:build_line(isoval, tol, i+1, j+1, 'S')
+                self:build_line(isoval, tol, i+1, j+1, 'S', corners)
                 if self.debug then
                     self:show_sides(isoval)
                 end
             end
             if not self.done_j[i*sj+j] then
-                self:build_line(isoval, tol, i  , j+1, 'E')
+                self:build_line(isoval, tol, i  , j+1, 'E', corners)
                 if self.debug then
                     self:show_sides(isoval)
                 end
@@ -337,7 +337,7 @@ function PrepcMesh:contour(isoval, tolerance)
 end
 
 -- build a single contour line
-function PrepcMesh:build_line(isoval, tol, ic, jc, side)
+function PrepcMesh:build_line(isoval, tol, ic, jc, side, corners)
     -- short names
     local st = self.st
     local si = self.si
@@ -346,25 +346,27 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
     -- local variables
     local ia, ja, na, wa
     local ib, jb, nb, wb
+    local ie, je, ne
+    local id, jd, nd
     local pt, k, count, next_side
-    local meta_NW, meta_NE, meta_SW, meta_SE, meta_mean
-    local max_dist, abs_tol, next_done, next_done_idx
+    local cc, xi_k, eta_k, ck, above, sign_ck
+    local xi_v, eta_v, xi_0, xi_1, eta_0, eta_1
+    local next_done, next_done_idx
 
     while true do
         --[[
             Start from cell (ic,jc) and its South, West, North, or East side
 
-                             b              a    N    b              b
+              e         d    b         d    a    N    b    d         b
                o-------o      o-------o      o-*-----o      o-------o
                |       |      |       |      |       |      |       *
                |   c   |    W |   c   |      |   c   |      |   c   | E
                |       |      *       |      |       |      |       |
                o----*--o      o-------o      o-------o      o-------o
-              a    S    b    a                                       a
+              a    S    b    a         e    e         d    e         a
         --]]
 
-        -- compute the intersection point between the side
-        -- and the meta==isoval level surface
+        -- find nodes a and b
         if side == 'E' then ia = ic     else ia = ic - 1 end
         if side == 'N' then ja = jc     else ja = jc - 1 end
         if side == 'W' then ib = ic - 1 else ib = ic     end
@@ -376,6 +378,8 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
         na = self.coords[ia*st+ja]                   -- node a
         nb = self.coords[ib*st+jb]                   -- node b
 
+        -- compute the intersection point between the side
+        -- and the meta==isoval level surface
         wa = (isoval - nb.meta)/(na.meta - nb.meta)  -- weights
         wb = 1 - wa
 
@@ -392,6 +396,14 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
             self.newcoords[#self.newcoords + 1] = Coord.new()
             break  -- the contour line is finished
         end
+
+        -- find nodes e and d
+        if side == 'W' then ie = ic     else ie = ic - 1 end
+        if side == 'S' then je = jc     else je = jc - 1 end
+        if side == 'E' then id = ic - 1 else id = ic     end
+        if side == 'N' then jd = jc - 1 else jd = jc     end
+        ne = self.coords[ie*st+je]                   -- node e
+        nd = self.coords[id*st+jd]                   -- node d
 
         -- look at the other three sides of the cell:
         -- how many of them have done==false ?
@@ -421,9 +433,9 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
             if zero other sides have done==false, then stop
 
                  o     o
-                 |
-                 *
-                 o     o
+
+
+                 o---*-o
         --]]
         if count == 0 then
             self.newcoords[#self.newcoords + 1] = Coord.new()
@@ -434,89 +446,178 @@ function PrepcMesh:build_line(isoval, tol, ic, jc, side)
             if exactly one other side has done==false, then
             next_side already specifies the next side to start from
 
-                 o     o
-                 |   ..*
-                 *'''  |
-                 o     o
+                 o-*---o
+                   |
+                    \
+                 o---*-o
 
             nothing to be done for the time being...
         --]]
 
         --[[
+            the surface inside the cell is thought as the bilinear
+            interpolation of the four nodes and hence mapped onto
+            a unit square in the xi,eta plane:
+
+               eta ^
+                   |               pt.x[k] = (1-xi)*(1-eta)*na.x[k] +
+                  1+------+                     xi *(1-eta)*nb.x[k] +
+                   |e    d|                  (1-xi)*   eta *ne.x[k] +
+                   |      |                     xi *   eta *nd.x[k]
+                   |a    b|
+                  0+------+------>
+                   0      1      xi
+
+            the equation of the contour line is therefore:
+            cc*xi*eta - eta_k*xi - xi_k*eta == ck
+        --]]
+        cc    = na.meta - nb.meta + nd.meta - ne.meta
+        eta_k = na.meta - nb.meta
+        xi_k  = na.meta - ne.meta
+        ck    = isoval  - na.meta
+
+        if math.abs(cc) <=
+           math.max(math.abs(tol*eta_k), math.abs(tol*xi_k)) then
+            --[[
+                cc is negligible and the contour line is
+                basically a straight line:
+                eta_k*xi + xi_k*eta + ck == 0
+            --]]
+            cc = 0
+        else
+            --[[
+                cc is non-zero (and non-negligible) and we can divide
+                both sides of the equation by cc:
+                xi*eta - (eta_k/cc)*xi - (xi_k/cc)*eta == ck/cc
+            --]]
+            xi_k  = xi_k /cc        -- let's rename the coefficients
+            eta_k = eta_k/cc
+            ck    = xi_k*eta_k + ck/cc
+            --[[
+                the contour line is an equilateral hyperbola (in the
+                xi,eta plane) with asymptotes xi == xi_k and eta == eta_k
+                and constant product ck:
+                (xi - xi_k)*(eta - eta_k) == ck
+            --]]
+            if math.abs(ck) <= math.abs(tol/2) then
+                --[[
+                    ck is negligible and the hyperbola basically
+                    degenerates into its asymptotes
+                --]]
+                ck = 0
+            end
+        end
+
+        --[[
             if two or three other sides have done==false, then
             choose the next side
 
-                     ?
-                 o---*-o
-                 |     * ?
-                 *     |
-                 o-*---o
                    ?
+                 o-*---o
+                 |     * ?
+               ? *     |
+                 o---*-o
+
         --]]
         if count >= 2 then
             -- how can we choose the next side?
-            -- on the basis of the arithmetic mean of the four meta values
-            meta_NW   =  self.coords[(ic-1)*st+ jc   ].meta
-            meta_NE   =  self.coords[ ic   *st+ jc   ].meta
-            meta_SW   =  self.coords[(ic-1)*st+(jc-1)].meta
-            meta_SE   =  self.coords[ ic   *st+(jc-1)].meta
-            meta_mean = (meta_NW + meta_NE + meta_SW + meta_SE)/4
+            --[[
+                if there's more than one side to choose from, cc is
+                necessarily non-zero (a straight line could not cross
+                more than two sides of the unit square) and the
+                center k of the hyperbola is necessarily inside the
+                cell (otherwise one hyperbola branch would be completely
+                outside the cell and the other branch could not cross
+                more than two sides)
 
-            -- compute absolute tolerance (maximum distance from the
-            -- arithmetic mean, multiplied by relative tolerance)
-            max_dist = math.max(math.abs(meta_NW - meta_mean),
-                                math.abs(meta_NE - meta_mean),
-                                math.abs(meta_SW - meta_mean),
-                                math.abs(meta_SE - meta_mean))
-            abs_tol = math.abs(tol*max_dist)
+                hence, choose the next side by checking the quadrant
+                where the hyperbola branch crossing side a-b lies
 
-            if math.abs(meta_mean - isoval) <= abs_tol then
-                --[[
-                        b
-                         L---*-H
-                         |     | n
-                         |  ..'* e
-                         *''   | x
-                         H-*---L t
-                        a
-
-                    choose the opposite side
-                --]]
+                   eta ^
+                       |  :
+                      1+--:---+
+                       |e :  d|
+                    ······+k······
+                       |a :  b|
+                      0+--:---+------>
+                       0  :   1      xi
+            --]]
+            if ck == 0 then      -- math.abs(ck) <= math.abs(tol/2)
+                -- choose side e-d
                 next_side = side
-            else -- meta_mean < isoval - abs_tol or
-                 -- meta_mean > isoval + abs_tol
-                --[[
-                    if meta_mean < isoval - abs_tol then
-
-                        b
-                         L---*-H
-                         |     |
-                         |  L  *
-                         *.    |
-                         H-*---L
-                        a  next
-
-                    choose the side adjacent to the node with meta > isoval
-
-                    if meta_mean > isoval + abs_tol then
-
-                        b  next
-                         L---*-H
-                         | .'  |
-                         |' H  *
-                         *     |
-                         H-*---L
-                        a
-
-                    choose the side adjacent to the node with meta <= isoval
-                --]]
-                back = ((meta_mean > isoval) == (nb.meta > isoval))
-                if side == 'S' or side == 'N' then
-                    if back then next_side = 'E' else next_side = 'W' end
+            elseif ck < 0 then   -- ck < -tol/2
+                -- choose side b-d
+                if side == 'N' or side == 'S' then
+                    next_side = 'W'
                 else
-                    if back then next_side = 'N' else next_side = 'S' end
+                    next_side = 'S'
+                end
+            else                 -- ck > +tol/2
+                -- choose side a-e
+                if side == 'N' or side == 'S' then
+                    next_side = 'E'
+                else
+                    next_side = 'N'
                 end
             end
+        end
+
+        if corners then   -- enhanced corner algorithm
+
+            --[[
+                if, within the cell, the contour line is not straight
+                we can improve its representation by computing an
+                additional point: the vertex v of the hyperbola branch,
+                as long as it lies inside the cell
+            --]]
+            if cc ~= 0 then
+                -- depending on where the center k is, consider the
+                -- vertex above or below k
+                if eta_k < 0 then above = 1 else above = -1 end
+                -- also check the sign of ck
+                if ck < 0 then sign_ck = -1 else sign_ck = 1 end
+                -- compute the vertex v
+                xi_v  =  xi_k + sign_ck*above*math.sqrt(math.abs(ck))
+                eta_v = eta_k +         above*math.sqrt(math.abs(ck))
+
+                --[[
+                    the vertex will be considered inside the cell, as long as
+                    xi_0 <= xi_v <= xi_1   and    eta_0 <= eta_v <= eta_1
+                --]]
+                xi_0  =   - math.abs(tol/10)
+                xi_1  = 1 + math.abs(tol/10)
+                eta_0 =     math.abs(tol)
+                eta_1 = 1 + math.abs(tol/10)
+                -- eta_0 is meant to reject a vertex too close to side a-b
+                -- (which already has a contour line point!)
+                -- we should also reject a vertex too close to the next side
+                if next_side == side then
+                  -- next side is e-d
+                  eta_1 = 1 - math.abs(tol)
+                elseif next_side == 'W' or next_side == 'S' then
+                  -- next side is b-d
+                  xi_1  = 1 - math.abs(tol)
+                else  -- next_side == 'E' or next_side == 'N'
+                  -- next side is a-e
+                  xi_0  =     math.abs(tol)
+                end
+
+                if xi_0  <= xi_v  and xi_v  <= xi_1  and
+                   eta_0 <= eta_v and eta_v <= eta_1 then
+                    -- v is inside the cell: compute its actual coordinates
+                    pt = Coord.new()
+                    for k = 1, 3 do
+                        pt.x[k] = (1-xi_v)*(1-eta_v)*na.x[k] +
+                                     xi_v *(1-eta_v)*nb.x[k] +
+                                  (1-xi_v)*   eta_v *ne.x[k] +
+                                     xi_v *   eta_v *nd.x[k]
+                    end
+                    pt.meta = isoval
+                    -- add the vertex to the contour line
+                    self.newcoords[#self.newcoords + 1] = pt
+                end
+            end
+
         end
 
         -- point to done value for the next side and
