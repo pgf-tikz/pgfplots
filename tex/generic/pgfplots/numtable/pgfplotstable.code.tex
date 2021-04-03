@@ -2802,15 +2802,45 @@
 			\pgfplotslistcheckempty\pgfplotstable@VARIANCE
 			\ifpgfplotslistempty
 				\pgfmathfloatcreate{1}{1.0}{0}%
-				\let\pgfplotstable@invsqr=\pgfmathresult
+				\let\pgfplotstable@variance=\pgfmathresult
 			\else
 				\pgfplotslistpopfront\pgfplotstable@VARIANCE\to\pgfplotstable@variance
 				\pgfmathfloatparsenumber{\pgfplotstable@variance}%
 				\let\pgfplotstable@variance=\pgfmathresult
-				\pgfmathfloatmultiply@{\pgfplotstable@variance}{\pgfplotstable@variance}%
-				\let\pgfplotstable@sqr=\pgfmathresult
-				\pgfmathfloatreciprocal@{\pgfplotstable@sqr}%
-				\let\pgfplotstable@invsqr=\pgfmathresult
+			\fi
+			%
+			% if we're in y log mode, then instead of y +- dy, we have log_b(y +- dy)
+			% which Taylor expands to log_b(y) +- dy/(y ln(b)) + O(dy^2)
+			% However, this might introduce a division-by-zero in the exceptional case
+			% where b=1 or log_b(0) = -infinity, so instead of computing 1/(dy/(y ln b))^2
+			% we will compute (y ln b)^2*1/dy^2.  Note that we don't factor out the ^2
+			% because floating point operations don't commute and the historical behavior
+			% was to compute 1/dy^2.
+			%
+			\pgfmathfloatmultiply@{\pgfplotstable@variance}{\pgfplotstable@variance}%
+			\let\pgfplotstable@sqr=\pgfmathresult
+			\pgfmathfloatreciprocal@{\pgfplotstable@sqr}%
+			\let\pgfplotstable@invsqr=\pgfmathresult
+			% N.B. at this point, \pgfplotstable@invsqr, \pgfplotstable@sqr, and \pgfplotstable@variance are
+			% all missing log-scaling.  We update \pgfplotstable@invsqr now, but leave \pgfplotstable@sqr
+			% and \pgfplotstable@variance alone because they are not used below this point.
+			\ifx\pgfplotstableparseylogbase\pgfutil@empty
+			\else
+				% However, before compat 1.18, this was not the behavior, so we recreate the
+				% old behavior in compatibility versions.
+				\ifpgfplots@deprecated@dontlogscalevariance
+				\else
+					\pgfplotstableparseyinv@{\pgfplotstable@y}% y
+					\let\pgfplotstable@tmp=\pgfmathresult
+					\pgfmathfloatmultiply@{\pgfplotstable@tmp}{\pgfplotstableparseylogofbasefloat}% y * ln(b)
+					\let\pgfplotstable@ylnb=\pgfmathresult
+					\pgfmathfloatmultiply@{\pgfplotstable@ylnb}{\pgfplotstable@ylnb}% (y * ln(b))^2
+					\let\pgfplotstable@ylnbsqr=\pgfmathresult
+					% since \pgfplotstable@invsqr is used, but \pgfplotstable@sqr and \pgfplotstable@variance are not
+					% we only need to update \pgfplotstable@invsqr
+					\pgfmathfloatmultiply@{\pgfplotstable@invsqr}{\pgfplotstable@ylnbsqr}% (y * ln(b))^2 / dy^2
+					\let\pgfplotstable@invsqr=\pgfmathresult
+				\fi
 			\fi
 			%
 			\pgfmathfloatadd@{\pgfplotstable@S}{\pgfplotstable@invsqr}%
