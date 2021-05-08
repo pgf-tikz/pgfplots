@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # it generates tex/generic/pgfplots/pgfplots.revision.tex which, in turn, will be loaded
 # by pgfplots.sty
 #
