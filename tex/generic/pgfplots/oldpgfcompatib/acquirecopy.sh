@@ -38,7 +38,6 @@ HEADER="$HEADER\n%%% Date of this copy: `date` %%%\n\n\n"
 	# $PGFDIR/latex/pgf/frontendlayer/libraries/tikzlibraryexternal.code.tex \
 	# $PGFDIR/latex/pgf/utilities/tikzexternal.sty \
 	# `find $PGFDIR/latex/pgf/doc -name '*.tex'`\
-	# $PGFDIR/generic/pgf/utilities/pgfutil-common-lists.tex \
 	# $PGFDIR/generic/pgf/math/pgfmathfloat.code.tex \
 	# $PGFDIR/generic/pgf/libraries/luamath/pgflibraryluamath.code.tex \
 	# $PGFDIR/generic/pgf/frontendlayer/tikz/libraries/tikzexternalshared.code.tex \
