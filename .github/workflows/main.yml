@@ -1,0 +1,130 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        engine: [lualatex]
+
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
+
+    - name: Cache dependencies
+      uses: actions/cache@v2
+      with:
+        path: |
+          /tmp/texlive
+          ~/.texlive
+          /tmp/tlpkg
+          doc/latex/pgfplots/figures/expensiveexamples
+          doc/latex/pgfplots/gnuplot
+        key: texlive
+
+    - name: Set up TeX Live environment
+      uses: pgf-tikz/actions/install-tl@master
+      with:
+        packages:
+          accsupp
+          acrotex
+          amsfonts
+          amsmath
+          atbegshi
+          atveryend
+          auxhook
+          bibtex
+          bitset
+          booktabs
+          colortbl
+          conv-xkv
+          ec
+          epstopdf-pkg
+          etex-pkg
+          etexcmds
+          etoolbox
+          eurosym
+          geometry
+          german
+          graphics
+          hycolor
+          hyperref
+          ifoddpage
+          iftex
+          infwarerr
+          intcalc
+          kvdefinekeys
+          kvoptions
+          kvsetkeys
+          l3kernel
+          l3packages
+          latex
+          latex-bin
+          letltxmacro
+          listings
+          ltxcmds
+          luacode
+          luainputenc
+          luatex
+          luatex85
+          luatexbase
+          luatodonotes
+          makeindex
+          metafont
+          mfware
+          multido
+          multirow
+          pdfescape
+          pdflscape
+          pdftexcmds
+          pgf
+          pgfplots
+          preview
+          psnfss
+          soul
+          soulpos
+          standalone
+          todonotes
+          tools
+          units
+          url
+          varwidth
+          vmargin
+          xcolor
+          xkeyval
+          xstring
+          zref
+
+    - name: 'Install system dependencies'
+      run: |
+        sudo apt-get update -yy
+        sudo apt-get install -yy gnuplot
+
+    - name: 'Install pgfplots'
+      run: |
+        tlmgr init-usertree --usertree $PWD
+        echo "TEXMFHOME=$PWD" >> $GITHUB_ENV
+
+    - name: Generate the revision file
+      run: |
+        bash scripts/pgfplots/pgfplotsrevisionfile.sh
+        cat tex/generic/pgfplots/pgfplots.revision.tex
+        echo "GIT_TAG=$(git describe --abbrev=0 --tags)" >> $GITHUB_ENV
+
+    - name: Build the manual
+      run: |
+        cd doc/latex/pgfplots
+        while : ; do
+          make -j $(nproc) LATEX="${{ matrix.engine }} -shell-escape -halt-on-error -interaction=nonstopmode"
+          grep -q -E "(There were undefined references|Rerun to get (cross-references|the bars) right)" *.log || break
+          [ "$(( thisrun=$(( thisrun + 1 )) ))" -lt 5 ] || { echo "Reruns exceeded"; exit 1; }
+        done
+        cd -
+
+    - name: Build package
+      run: |
+        make -C .. -f pgfplots/scripts/pgfplots/Makefile.pgfplots_release_sourceforge
