@@ -33,7 +33,7 @@ patch(tx',ty',tcm');
 print('plot1.png','-dpng');
 patchtopgfplots(tx,ty,[], tcm, 'plot1.dat');
 
-% Second type, interpolated colors, seperate for each patch
+% Second type, interpolated colors, separate for each patch
 close all
 patch(tx',ty',c2');
 print('plot2.png','-dpng');
