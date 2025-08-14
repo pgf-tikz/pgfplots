@@ -154,7 +154,7 @@ cleanX:
 	@# touch diff.png in case the diff routine fails -- we want to see it in the error report counts
 	@./pdfdiff.sh $< references/$< $@ || touch $@.png
 	@if [ "`cat $@`" = "0 (0)" ]; then \
-		echo "  PASSED: no differences detected (removing superfluos diff-pngs)"; \
+		echo "  PASSED: no differences detected (removing superfluous diff-pngs)"; \
 		rm -f $@.png $<.png $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@ $(DIRECTORY_FOR_ACCEPTED_ERRORS)/$@.png; # no need to keep the images (the latter for multi-page mode). \
 	else \
 		#echo "$<: found nonzero pixel differences `cat $@`."; \
@@ -171,7 +171,7 @@ cleanX:
 		rm -f $@.normalized; \
 		calc -p "$$NORMALIZED <= $$ACCEPTED_ERROR" > $@.isaccepted || ( echo "calc invocation failed. Please ensure that apcalc package is installed."; exit 1 ); \
 		if [ "`cat $@.isaccepted`" = "1" ]; then \
-			echo "  PASSED: only approved differences $$NORMALIZED <= $$ACCEPTED_ERROR detected; moving superfluos diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
+			echo "  PASSED: only approved differences $$NORMALIZED <= $$ACCEPTED_ERROR detected; moving superfluous diff-pngs to $(DIRECTORY_FOR_ACCEPTED_ERRORS))"; \
 			mkdir -p $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			mv $@.png $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
 			cp $@ $(DIRECTORY_FOR_ACCEPTED_ERRORS); \
