@@ -51,7 +51,32 @@ $header =
 % http://www.ctan.org/tex-archive/graphics/pgf/contrib/pgfplots/doc/latex/plotdata/
 
 \usepackage{pgfplots}
+\usepackage{pgfplotstable}
 \pgfplotsset{compat=newest}
+
+% The manual loads these libraries globally; the extracted standalone examples
+% need them too. external/clickable/snakes are intentionally omitted.
+\usetikzlibrary{
+	arrows.meta,backgrounds,calc,decorations.footprints,decorations.markings,
+	decorations.pathreplacing,fixedpointarithmetic,intersections,patterns,
+	plotmarks,shapes.arrows,spy,through}
+\usepgfplotslibrary{
+	colorbrewer,colormaps,dateplot,fillbetween,groupplots,patchplots,polar,
+	smithchart,statistics,ternary,units}
+
+% Some colormap examples reuse this display style defined earlier in the manual.
+\pgfplotsset{
+	cycle from colormap manual style/.style={
+		x=3cm,y=10pt,ytick=\empty,
+		colorbar style={x=,y=,ytick=\empty},
+		point meta min=0,point meta max=1,
+		stack plots=y,
+		y dir=reverse,colorbar style={y dir=reverse},
+		every axis plot/.style={line width=2pt},
+		legend entries={0,...,20},
+		legend pos=outer north east,
+	},
+}
 
 \pagestyle{empty}
 ';
@@ -148,6 +173,9 @@ for($j = 2; $j<=$#ARGV; ++$j ) {
 		$prefix = "" if not defined($prefix);
 		next if ($prefix =~ m/NO GALLERY/);
 		$prefix =~ s/% //;
+		# Only a preamble directive (a LaTeX command) belongs in the output;
+		# ignore prose notes like "% FIXME ...".
+		$prefix = "" unless $prefix =~ m/^\s*\\/;
 
 		$possiblecomment = $matches[4*$q+1];
 		$possiblecomment = "" if not defined($possiblecomment);
