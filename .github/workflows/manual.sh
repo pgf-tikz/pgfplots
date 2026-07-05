@@ -29,8 +29,11 @@ echo "::endgroup::"
 echo "::group::Build the manual"
 cd doc/latex/pgfplots
 thisrun=0
+if ! nproc="$(nproc)"; then
+	nproc=1
+fi
 while : ; do
-	make LATEX="lualatex -shell-escape -halt-on-error -interaction=nonstopmode"
+	make -j "${nproc}" LATEX="lualatex -shell-escape -halt-on-error -interaction=nonstopmode"
 	if ! grep -q -E "(There were undefined references|Rerun to get (cross-references|the bars) right)" -- *.log; then
 		break
 	fi
