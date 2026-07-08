@@ -10,8 +10,6 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bzip2
 echo "::endgroup::"
 
 echo "::group::Set up TeX Live environment"
-tlmgr repository add http://contrib.texlive.info/current tlcontrib || true
-tlmgr pinning add tlcontrib "*"
 tlmgr install acrotex
 echo "::endgroup::"
 
