@@ -1,3 +1,4 @@
+table.getn = function(t) return #t end -- compatibility with Lua > 5.2
 require('luaunit')
 USE_EXPECTED_ACTUAL_IN_ASSERT_EQUALS = false
 require('pgfplots')

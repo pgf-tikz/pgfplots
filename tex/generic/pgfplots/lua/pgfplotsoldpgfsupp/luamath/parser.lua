@@ -41,7 +41,7 @@
 --
 -- local result = pgfluamathparser.pgfmathparse("1+ 2*4^2")
 --
--- This LUA class has a direct backend in \pgfuselibrary{luamath}, see the documentation of that TeX package.
+-- This LUA class has a direct backend in \usepgflibrary{luamath}, see the documentation of that TeX package.
 
 local pgfluamathparser = pgfluamathparser or {}
 

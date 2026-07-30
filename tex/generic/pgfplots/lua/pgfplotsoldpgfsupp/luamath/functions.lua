@@ -500,7 +500,7 @@ end
 function pgfluamathfunctions.pointnormalised (pgfx, pgfy)
    local pgfx_normalised, pgfy_normalised
    if pgfx == 0. and pgfy == 0. then
-      -- Orginal pgf macro gives this result
+      -- Original pgf macro gives this result
       tex.dimen['pgf@x'] = "0pt"
       tex.dimen['pgf@y'] = "1pt"
    else
