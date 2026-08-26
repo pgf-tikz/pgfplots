@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#shellcheck enable=all
 
 set -o errexit
 set -o nounset
@@ -14,7 +15,18 @@ done
 echo "::endgroup::"
 
 echo "::group::Set up TeX Live environment"
-tlmgr install acrotex
+# Some CTAN mirrors are rather flaky, so we retry 5 times
+attempts=5
+for ((i=1; i<=attempts; i++)); do
+	tlmgr install acrotex && break
+	echo "Attempt ${i}/${attempts} failed."
+	if (( i == attempts )); then
+		echo "Failed!"
+		exit 1
+	fi
+	echo "Retrying..."
+	sleep 1
+done
 echo "::endgroup::"
 
 echo "::group::Create TeX Live usertree"
