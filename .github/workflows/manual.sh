@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#shellcheck enable=all
 
 set -o errexit
 set -o nounset
@@ -37,7 +38,7 @@ while : ; do
 	if ! grep -q -E "(There were undefined references|Rerun to get (cross-references|the bars) right)" -- *.log; then
 		break
 	fi
-	if ! [[ "$(( thisrun=$(( thisrun + 1 )) ))" -lt 5 ]]; then
+	if [[ "$(( thisrun=$(( thisrun + 1 )) ))" -ge 5 ]]; then
 		echo "::error::Reruns exceeded"
 		exit 1
 	fi
@@ -46,5 +47,12 @@ cd -
 echo "::endgroup::"
 
 echo "::group::Build package"
+VERSION="_$(git describe --tags --always --dirty)"
+export VERSION
 make -C .. -f pgfplots/scripts/pgfplots/Makefile.pgfplots_release_sourceforge
+echo "::endgroup::"
+
+echo "::group::Collect artifacts"
+mkdir -pv artifacts
+mv -v -t artifacts ../pgfplots*.pdf ../pgfplots*.zip
 echo "::endgroup::"

@@ -1,4 +1,5 @@
 #!/bin/bash
+#shellcheck enable=all
 #
 # Runs the pgfplots test suites (lua, unittest, regression) from the top level
 # of the repository. With no arguments it runs: lua unittest
